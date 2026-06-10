@@ -231,6 +231,16 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
                 .onChange(of: controller.mode) { controller.restartIfRunning() }
 
+                LabeledContent("Display layout") {
+                    Button("Arrange Displays…") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.Displays-Settings.extension") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .controlSize(.small)
+                }
+                .help("Opens System Settings → Displays, where you can position the extended display relative to your Mac screen (Arrange…).")
+
                 Section("Permissions") {
                     permissionRow(
                         "Screen Recording",
