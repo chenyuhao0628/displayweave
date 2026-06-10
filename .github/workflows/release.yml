@@ -1,0 +1,65 @@
+name: Release
+
+# release-please keeps a running "release PR" with the changelog generated
+# from conventional commits (feat:, fix:, ...). Merging that PR tags a
+# release, which triggers the artifact build below.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: rp
+        with:
+          release-type: simple
+
+  artifacts:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build macOS app (ad-hoc signed)
+        run: |
+          xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac \
+            -configuration Release -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
+            build
+          ditto -c -k --keepParent \
+            build/Build/Products/Release/OpenSidecar.app \
+            OpenSidecar-macOS.zip
+
+      - name: Build iOS app (unsigned, for sideloading)
+        run: |
+          xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarPhone \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/OpenSidecarPhone.app Payload/
+          zip -qry OpenSidecar-iOS-unsigned.ipa Payload
+
+      - name: Upload artifacts to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ needs.release-please.outputs.tag_name }}" \
+            OpenSidecar-macOS.zip OpenSidecar-iOS-unsigned.ipa

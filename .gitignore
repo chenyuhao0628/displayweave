@@ -13,3 +13,10 @@ xcuserdata/
 
 # macOS
 .DS_Store
+
+# Internal working notes (kept locally, not part of the open-source repo)
+PROJECT_BRIEF.md
+CLAUDE.md
+
+# Local developer config (signing team etc.)
+.env

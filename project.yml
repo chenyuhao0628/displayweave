@@ -1,9 +1,11 @@
 name: OpenSidecar
 options:
   createIntermediateGroups: true
+# DEVELOPMENT_TEAM comes from the environment (see generate.sh / .env) so no
+# personal team ID lives in the repo. Unset = unsigned, fine for CI.
 settings:
   base:
-    DEVELOPMENT_TEAM: FCL75KKM67
+    DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5.9"
 targets:

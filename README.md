@@ -75,11 +75,38 @@ exactly half that in points (@2x HiDPI) and streams the pixels back.
 BetterDisplay and DeskPad) — which is precisely why this project can't ship
 on the App Store and lives on GitHub instead.
 
-## Quick start
+## Install
 
-You install **two apps**: a Mac app (captures and sends) and an iOS app
-(receives and displays). Both are built from this repo with standard Apple
-tooling.
+You need **two apps**: a Mac app (captures and sends) and an iOS app
+(receives and displays).
+
+### Prebuilt downloads (Mac)
+
+Grab `OpenSidecar-macOS.zip` from the
+[latest release](https://github.com/peetzweg/opensidecar/releases/latest).
+The app is ad-hoc signed (no paid developer certificate), so on first launch
+macOS will warn about an unidentified developer — **right-click → Open**, or:
+
+```sh
+xattr -d com.apple.quarantine OpenSidecar.app
+```
+
+### iPhone app
+
+Apple doesn't allow distributing installable iOS builds without a paid
+developer program, so pick one:
+
+- **Build from source** (recommended): open the project in Xcode, select your
+  free Apple ID under Signing, hit Run. Takes ~2 minutes.
+- **Sideload the release `.ipa`**: each release includes
+  `OpenSidecar-iOS-unsigned.ipa`, which tools like
+  [AltStore](https://altstore.io) or Sideloadly can sign with your own
+  Apple ID and install.
+
+Free-account sideloads expire after 7 days and need a re-deploy; a paid
+account ($99/yr) removes that limit.
+
+## Quick start (from source)
 
 ### Prerequisites
 
@@ -95,7 +122,8 @@ app onto your device).
 ```sh
 git clone https://github.com/peetzweg/opensidecar.git
 cd opensidecar
-xcodegen generate
+echo "DEVELOPMENT_TEAM=YOURTEAMID" > .env   # your Apple team ID, for signing
+./generate.sh                               # runs xcodegen with your .env
 xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac \
   -configuration Debug -derivedDataPath build build
 xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarPhone \
@@ -103,7 +131,9 @@ xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarPhone \
   -derivedDataPath build -allowProvisioningUpdates build
 ```
 
-(Or open `OpenSidecar.xcodeproj` in Xcode and hit Run on each target.)
+(Or open `OpenSidecar.xcodeproj` in Xcode and hit Run on each target. Your
+team ID is shown at [developer.apple.com/account](https://developer.apple.com/account)
+under Membership, or just pick your team in Xcode's Signing pane.)
 
 ### Run (USB — recommended)
 
@@ -166,15 +196,23 @@ The capture/streaming pipeline itself uses only public APIs.
 - [ ] Apple Pencil + pressure (iPad)
 - [ ] Multiple virtual displays
 - [ ] Menu bar app mode
-- [ ] Prebuilt releases (signed Mac app + AltStore/SideStore manifest)
+- [x] Prebuilt releases (ad-hoc Mac app + sideloadable iOS ipa)
+- [ ] Developer-ID-signed + notarized Mac releases (needs paid Apple account)
 
 ## Contributing
 
 Issues and PRs are very welcome — especially for the roadmap items above.
 The codebase is intentionally small: ~4 Swift files per platform, no
-dependencies. Read [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) for the original
-architecture notes and `Mac/CGVirtualDisplayPrivate.h` for the private API
+dependencies. The [How it works](#how-it-works) section above is the
+architecture doc; see `Mac/CGVirtualDisplayPrivate.h` for the private API
 surface.
+
+Releases are automated with
+[release-please](https://github.com/googleapis/release-please): use
+[Conventional Commits](https://www.conventionalcommits.org) (`feat:`,
+`fix:`, `docs:`, …) and a release PR with a generated changelog appears
+automatically — merging it tags the release and attaches prebuilt
+artifacts.
 
 ## License
 
