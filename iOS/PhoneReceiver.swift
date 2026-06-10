@@ -347,6 +347,7 @@ final class PhoneReceiver: ObservableObject {
             "pixelsWide": devicePixelsWide,
             "pixelsHigh": devicePixelsHigh,
             "scale": deviceScale,
+            "device": UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone",
         ], on: conn)
         Log.info("hello sent")
     }

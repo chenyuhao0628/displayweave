@@ -194,6 +194,14 @@ final class SenderController: ObservableObject {
             self?.framesSent = frames
             self?.mbps = mbps
         }
+        sender.onDisconnected = { [weak self] in
+            // Device unplugged / left the network and stayed gone: end the
+            // session fully (virtual display + capture + indicator) rather
+            // than dialing forever or silently switching transports.
+            Log.info("device disconnected — session stopped")
+            self?.stop()
+            self?.status = "Disconnected — session stopped"
+        }
         self.sender = sender
         Task {
             do {
@@ -279,7 +287,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("OpenSidecar")
                         .font(.title3.bold())
-                    Text("Your iPhone as a second display")
+                    Text("Your iPad or iPhone as a second display")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -291,7 +299,7 @@ struct ContentView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     .controlSize(.large)
-                    .help("Drop the connection and pair with the phone again")
+                    .help("Drop the connection and pair with the device again")
                 }
                 Button(controller.running ? "Stop" : "Start") {
                     controller.running ? controller.stop() : controller.start()
@@ -369,7 +377,7 @@ struct ContentView: View {
                     permissionRow(
                         "Accessibility",
                         granted: permissions.accessibility,
-                        help: "Required for touch input from the phone.",
+                        help: "Required for touch input from the device.",
                         anchor: "Privacy_Accessibility"
                     )
                     // macOS offers no API to query Local Network access, so
@@ -378,7 +386,7 @@ struct ContentView: View {
                         "Local Network",
                         granted: !controller.discovered.isEmpty,
                         uncertain: controller.discovered.isEmpty,
-                        help: "Required for WiFi mode. If no device appears in the Connection menu, allow OpenSidecar under Privacy & Security → Local Network on this Mac AND on the iPhone — and keep the iPhone app open.",
+                        help: "Required for WiFi mode. If no device appears in the Connection menu, allow OpenSidecar under Privacy & Security → Local Network on this Mac AND on the device — and keep the OpenSidecar app open there.",
                         anchor: "Privacy_LocalNetwork"
                     )
                 }

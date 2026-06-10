@@ -48,13 +48,13 @@ jobs:
 
       - name: Build iOS app (unsigned, for sideloading)
         run: |
-          xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarPhone \
+          xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecariOS \
             -configuration Release -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             build
           mkdir Payload
-          cp -R build/Build/Products/Release-iphoneos/OpenSidecarPhone.app Payload/
+          cp -R build/Build/Products/Release-iphoneos/OpenSidecariOS.app Payload/
           zip -qry OpenSidecar-iOS-unsigned.ipa Payload
 
       - name: Upload artifacts to the release

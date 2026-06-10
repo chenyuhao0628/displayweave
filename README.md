@@ -128,7 +128,7 @@ echo "DEVELOPMENT_TEAM=YOURTEAMID" > .env   # your Apple team ID, for signing
 ./generate.sh                               # runs xcodegen with your .env
 xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac \
   -configuration Debug -derivedDataPath build build
-xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarPhone \
+xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecariOS \
   -configuration Debug -destination 'generic/platform=iOS' \
   -derivedDataPath build -allowProvisioningUpdates build
 ```

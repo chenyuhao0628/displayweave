@@ -67,6 +67,9 @@ struct PhoneInfo: Decodable {
     let pixelsWide: Int   // landscape-oriented (long edge)
     let pixelsHigh: Int
     let scale: Double
+    let device: String?   // "iPad" / "iPhone" (older receivers omit it)
+
+    var kind: String { device ?? "device" }
 }
 
 @available(macOS 14.0, *)
@@ -75,6 +78,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     // Status surfaced to the UI (updated on main thread).
     @MainActor var onStatus: ((String) -> Void)?
     @MainActor var onStats: ((Int, Double) -> Void)?   // framesSent, mbps
+    // Fired when a previously connected device stays gone past the grace
+    // period — the controller ends the session (capture, virtual display,
+    // recording indicator all torn down) instead of dialing forever or
+    // silently coming back over a different transport.
+    @MainActor var onDisconnected: (() -> Void)?
 
     private var stream: SCStream?
     private var encoder: VTCompressionSession?
@@ -97,6 +105,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     private var needsKeyframe = true
     private var connectionReady = false
     private var stopped = false
+
+    // Disconnect detection: before the first connection we dial patiently
+    // (the user may start the Mac side first); once connected, a device that
+    // stays gone past the grace ends the session via onDisconnected.
+    private var everConnected = false
+    private var disconnectedSince: Date?
+    private let disconnectGraceSeconds: TimeInterval = 10
 
     private var lastHello: PhoneInfo?
     private var helloContinuation: CheckedContinuation<PhoneInfo, Error>?
@@ -181,7 +196,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
             try await startCapture(display: display, pixelsWide: captureW, pixelsHigh: captureH)
 
         case .extend:
-            await status("Waiting for phone hello…")
+            await status("Waiting for the device to connect…")
             let info = try await waitForHello()
             try await setupExtend(info)
 
@@ -322,7 +337,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         lastCursorSent = (-1, -1, false)
         startCursorEcho()
         Log.info("capture started: \(pixelsWide)x\(pixelsHigh) display \(display.displayID) mode \(mode.rawValue) localCursor=\(localCursor)")
-        await status("\(mode == .extend ? "Extending" : "Mirroring") \(pixelsWide)×\(pixelsHigh)")
+        let kind = lastHello?.kind ?? "device"
+        await status("\(mode == .extend ? "Extending to" : "Mirroring to") \(kind) (\(pixelsWide)×\(pixelsHigh))")
     }
 
     func stop() {
@@ -349,6 +365,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         queue.async { [weak self] in
             guard let self, !self.stopped else { return }
             Log.info("manual reconnect requested")
+            self.disconnectedSince = Date()   // fresh grace window
             self.scheduleReconnect()
         }
     }
@@ -393,6 +410,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
             case .ready:
                 Log.info("connection ready to \(self.endpointName)")
                 self.connectionReady = true
+                self.everConnected = true
+                self.disconnectedSince = nil
                 self.needsKeyframe = true   // new peer needs SPS/PPS + IDR
                 self.lastReceived = Date()  // fresh grace period for the watchdog
                 self.receiveControl(on: conn)
@@ -420,6 +439,18 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
 
     private func scheduleReconnect() {
         guard !stopped else { return }
+        if everConnected {
+            if let since = disconnectedSince {
+                if Date().timeIntervalSince(since) > disconnectGraceSeconds {
+                    Log.info("device gone for >\(Int(disconnectGraceSeconds))s — ending session")
+                    Task { @MainActor in self.onDisconnected?() }
+                    return
+                }
+            } else {
+                disconnectedSince = Date()
+                Task { await status("Connection lost — retrying for \(Int(disconnectGraceSeconds))s…") }
+            }
+        }
         connectionReady = false
         connection?.cancel()
         connection = nil

@@ -3,6 +3,9 @@ import AVFoundation
 import UIKit
 import Combine
 
+/// "iPad" or "iPhone" — so UI copy names the device the user is holding.
+let deviceKind = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
+
 @main
 struct OpenSidecarPhoneApp: App {
     var body: some Scene {
@@ -119,7 +122,7 @@ struct IdleView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Label("Plug in the USB cable and start the Mac app",
                       systemImage: "cable.connector")
-                Label("Or choose this iPhone under WiFi in the Mac app",
+                Label("Or choose this \(deviceKind) under WiFi in the Mac app",
                       systemImage: "wifi")
                 Label("Keep this app open — streaming starts automatically",
                       systemImage: "play.circle")
@@ -139,7 +142,7 @@ struct IdleView: View {
             }
             .buttonStyle(.bordered)
 
-            Text("Tip: shake the phone to open settings anytime")
+            Text("Tip: shake the \(deviceKind) to open settings anytime")
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
                 .padding(.bottom, 8)
@@ -315,15 +318,15 @@ struct SettingsView: View {
                 } header: {
                     Text("Permissions")
                 } footer: {
-                    Text("WiFi mode needs Local Network access. If your Mac can't find this iPhone, enable it under Settings → Privacy & Security → Local Network → OpenSidecar. USB mode works without it.")
+                    Text("WiFi mode needs Local Network access. If your Mac can't find this \(deviceKind), enable it under Settings → Privacy & Security → Local Network → OpenSidecar. USB mode works without it.")
                 }
 
                 Section {
                     Label("USB: plug in the cable, run the Mac app — it connects automatically through the wire (lowest latency).",
                           systemImage: "cable.connector")
-                    Label("WiFi: both devices on the same network, then pick this iPhone in the Mac app's Connection menu.",
+                    Label("WiFi: both devices on the same network, then pick this \(deviceKind) in the Mac app's Connection menu.",
                           systemImage: "wifi")
-                    Label("Rotate the phone for a vertical second monitor.",
+                    Label("Rotate the \(deviceKind) for a vertical second monitor.",
                           systemImage: "rectangle.portrait.rotate")
                     Label("Touch: tap to click, drag to drag, two-finger pan to scroll.",
                           systemImage: "hand.tap")
