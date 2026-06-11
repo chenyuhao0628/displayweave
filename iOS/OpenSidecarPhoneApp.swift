@@ -356,6 +356,19 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    // Isolated from the receiver: the Status section above
+                    // re-renders on every stream update, and a TextField that
+                    // rebuilds mid-tap loses focus (the "tap twice to edit"
+                    // bug). This subview owns its focus and doesn't observe
+                    // the receiver, so it survives those rebuilds.
+                    DeviceNameField { receiver.setServiceName($0) }
+                } header: {
+                    Text("Name")
+                } footer: {
+                    Text("Shown in the Mac app's WiFi connection menu. iOS hides this \(deviceKind)'s real name from apps, so set it here once.")
+                }
+
+                Section {
                     Toggle("Performance overlay", isOn: $showAnalytics)
                     Toggle("Metal renderer (experimental)", isOn: $metalRenderer)
                 } header: {
@@ -410,6 +423,22 @@ struct SettingsView: View {
     }
 }
 
+/// The device-name editor, deliberately kept out of any high-frequency
+/// @ObservedObject so streaming updates can't rebuild it and steal focus.
+private struct DeviceNameField: View {
+    @AppStorage("deviceName") private var deviceName = UIDevice.current.name
+    @FocusState private var focused: Bool
+    let onChange: (String) -> Void
+
+    var body: some View {
+        TextField("Device name", text: $deviceName)
+            .textInputAutocapitalization(.words)
+            .autocorrectionDisabled()
+            .focused($focused)
+            .onChange(of: deviceName) { _, name in onChange(name) }
+    }
+}
+
 // MARK: - Model
 
 @MainActor
@@ -425,7 +454,8 @@ final class ReceiverModel: ObservableObject {
         receiver.setNativePanel(long: Int(max(native.width, native.height)),
                                 short: Int(min(native.width, native.height)),
                                 scale: Double(UIScreen.main.nativeScale))
-        receiver.serviceName = UIDevice.current.name
+        let savedName = UserDefaults.standard.string(forKey: "deviceName")
+        receiver.serviceName = (savedName?.isEmpty == false) ? savedName! : UIDevice.current.name
         receiver.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
