@@ -337,6 +337,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("showAnalytics") private var showAnalytics = false
     @AppStorage("metalRenderer") private var metalRenderer = false
+    @AppStorage("deviceName") private var deviceName = UIDevice.current.name
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
@@ -353,6 +354,19 @@ struct SettingsView: View {
                         LabeledContent("Stream",
                                        value: "\(Int(receiver.videoSize.width))×\(Int(receiver.videoSize.height)) @ \(receiver.fps) fps")
                     }
+                }
+
+                Section {
+                    TextField("Device name", text: $deviceName)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .onChange(of: deviceName) { _, name in
+                            receiver.setServiceName(name)
+                        }
+                } header: {
+                    Text("Name")
+                } footer: {
+                    Text("Shown in the Mac app's WiFi connection menu. iOS hides this \(deviceKind)'s real name from apps, so set it here once.")
                 }
 
                 Section {
@@ -425,7 +439,8 @@ final class ReceiverModel: ObservableObject {
         receiver.setNativePanel(long: Int(max(native.width, native.height)),
                                 short: Int(min(native.width, native.height)),
                                 scale: Double(UIScreen.main.nativeScale))
-        receiver.serviceName = UIDevice.current.name
+        let savedName = UserDefaults.standard.string(forKey: "deviceName")
+        receiver.serviceName = (savedName?.isEmpty == false) ? savedName! : UIDevice.current.name
         receiver.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }

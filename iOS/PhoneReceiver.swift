@@ -137,7 +137,27 @@ final class PhoneReceiver: ObservableObject {
     private(set) var devicePixelsWide = 0
     private(set) var devicePixelsHigh = 0
     var deviceScale: Double = 2
+    // Name advertised over Bonjour for the Mac's WiFi picker. iOS 16+ returns
+    // a generic "iPhone" from UIDevice.current.name (the user-assigned name
+    // needs an entitlement Apple gates behind approval and personal teams
+    // can't get), so this is user-editable in Settings. The USB picker gets
+    // the real name host-side via lockdownd regardless.
     var serviceName = "OpenSidecar"
+
+    /// Update the advertised name and re-publish if already listening.
+    func setServiceName(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolved = trimmed.isEmpty ? UIDevice.current.name : trimmed
+        queue.async {
+            guard resolved != self.serviceName else { return }
+            self.serviceName = resolved
+            if self.listener != nil {
+                self.listener?.service = NWListener.Service(
+                    name: resolved, type: "_opensidecar._tcp")
+                Log.info("re-advertising as \"\(resolved)\"")
+            }
+        }
+    }
 
     func setNativePanel(long: Int, short: Int, scale: Double) {
         nativeLong = long
