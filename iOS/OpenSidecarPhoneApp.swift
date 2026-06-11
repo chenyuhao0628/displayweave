@@ -337,7 +337,6 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("showAnalytics") private var showAnalytics = false
     @AppStorage("metalRenderer") private var metalRenderer = false
-    @AppStorage("deviceName") private var deviceName = UIDevice.current.name
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
@@ -357,12 +356,12 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    TextField("Device name", text: $deviceName)
-                        .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled()
-                        .onChange(of: deviceName) { _, name in
-                            receiver.setServiceName(name)
-                        }
+                    // Isolated from the receiver: the Status section above
+                    // re-renders on every stream update, and a TextField that
+                    // rebuilds mid-tap loses focus (the "tap twice to edit"
+                    // bug). This subview owns its focus and doesn't observe
+                    // the receiver, so it survives those rebuilds.
+                    DeviceNameField { receiver.setServiceName($0) }
                 } header: {
                     Text("Name")
                 } footer: {
@@ -421,6 +420,22 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+}
+
+/// The device-name editor, deliberately kept out of any high-frequency
+/// @ObservedObject so streaming updates can't rebuild it and steal focus.
+private struct DeviceNameField: View {
+    @AppStorage("deviceName") private var deviceName = UIDevice.current.name
+    @FocusState private var focused: Bool
+    let onChange: (String) -> Void
+
+    var body: some View {
+        TextField("Device name", text: $deviceName)
+            .textInputAutocapitalization(.words)
+            .autocorrectionDisabled()
+            .focused($focused)
+            .onChange(of: deviceName) { _, name in onChange(name) }
     }
 }
 
