@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.0](https://github.com/peetzweg/opensidecar/compare/v0.4.0...v0.5.0) (2026-06-11)
+
+
+### Features
+
+* auto-connect the -host/-port manual endpoint alongside devices ([e3dfc0f](https://github.com/peetzweg/opensidecar/commit/e3dfc0f7db6de8a1aaa39c4afedd6d2db4df9830))
+* dedupe USB/WiFi sessions to the same physical device ([3228256](https://github.com/peetzweg/opensidecar/commit/3228256139ab80e658c7f0d019b30f91346ee854))
+* multi-device sessions — one virtual display per connected device ([272a794](https://github.com/peetzweg/opensidecar/commit/272a794d20946dd8133cdb673104c589ed87c81b))
+* multiple devices as simultaneous extended displays ([bc6b869](https://github.com/peetzweg/opensidecar/commit/bc6b869a321a964656d9c30c249c558c1afe8d99))
+* one row per physical device, no automatic transport handover ([1cf5745](https://github.com/peetzweg/opensidecar/commit/1cf57450a09c632388fbb4f833f701e8aed89c54))
+* per-display test patterns + multi-device docs and test tool ([d04a4ce](https://github.com/peetzweg/opensidecar/commit/d04a4cec233a061d1b6ef0d9fb12b27094b35cc5))
+* relicense from MIT to GPL-3.0 ([22607a7](https://github.com/peetzweg/opensidecar/commit/22607a760afe0589f1f2485743b0a972b5f71804))
+
+
+### Bug Fixes
+
+* enforce HiDPI mode continuously, orientation-specific display serials ([300330e](https://github.com/peetzweg/opensidecar/commit/300330ea05d8ab0b99d9a3822bf745b33a2d28a7))
+* real event source + clickState on injected clicks ([ede0ce4](https://github.com/peetzweg/opensidecar/commit/ede0ce4c11a0da2385109222338398216676d248))
+* size the cursor sprite against the live display mode ([b494081](https://github.com/peetzweg/opensidecar/commit/b49408116d320655e2a13d0dbec5b45d220fb64a))
+* user clicks take over dying sessions; recover vanished [@2x](https://github.com/2x) modes ([0b74810](https://github.com/peetzweg/opensidecar/commit/0b74810acf013116e8343bcebea422da661f262d))
+
 ## [0.4.0](https://github.com/peetzweg/opensidecar/compare/v0.3.0...v0.4.0) (2026-06-11)
 
 
