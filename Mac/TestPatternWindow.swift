@@ -7,10 +7,12 @@ import AppKit
 /// Enable with `defaults write sh.peet.opensidecar.mac testPattern -bool true`.
 @MainActor
 enum TestPattern {
-    private static var window: NSWindow?
+    // One window per virtual display — multi-device sessions each get their
+    // own pattern, so all pipelines stream at once during measurements.
+    private static var windows: [CGDirectDisplayID: NSWindow] = [:]
 
     static func show(on displayID: CGDirectDisplayID) {
-        hide()
+        hide(on: displayID)
         // The screen may register a beat after the virtual display appears.
         Task { @MainActor in
             for _ in 0..<10 {
@@ -22,7 +24,7 @@ enum TestPattern {
                     w.contentView = NSHostingView(rootView: PatternView())
                     w.setFrame(screen.frame, display: true)
                     w.orderFrontRegardless()
-                    window = w
+                    windows[displayID] = w
                     Log.info("test pattern window shown on display \(displayID)")
                     return
                 }
@@ -32,9 +34,8 @@ enum TestPattern {
         }
     }
 
-    static func hide() {
-        window?.orderOut(nil)
-        window = nil
+    static func hide(on displayID: CGDirectDisplayID) {
+        windows.removeValue(forKey: displayID)?.orderOut(nil)
     }
 }
 

@@ -540,6 +540,8 @@ struct VideoLayerView: UIViewRepresentable {
         private var cursorNorm = CGPoint(x: 0.5, y: 0.5)
         private var cursorVisible = false
 
+        private var lastLoggedLayout = ""
+
         override func layoutSubviews() {
             super.layoutSubviews()
             CATransaction.begin()
@@ -555,6 +557,15 @@ struct VideoLayerView: UIViewRepresentable {
             if cursorLayer.superlayer == nil { layer.addSublayer(cursorLayer) }
             updateCursorLayout()
             CATransaction.commit()
+            // Rotation diagnostics — one line per layout change.
+            let video = receiver?.videoSize ?? .zero
+            let line = "layout: bounds=\(Int(bounds.width))x\(Int(bounds.height))"
+                + " video=\(Int(video.width))x\(Int(video.height))"
+                + " layer=\(Int(layer.sublayers?.first?.frame.width ?? -1))x\(Int(layer.sublayers?.first?.frame.height ?? -1))"
+            if line != lastLoggedLayout {
+                lastLoggedLayout = line
+                Log.info(line)
+            }
         }
 
         /// Aspect-fit rect of the video inside the view (inverse of normalized()).

@@ -68,6 +68,9 @@ struct PhoneInfo: Decodable {
     let pixelsHigh: Int
     let scale: Double
     let device: String?   // "iPad" / "iPhone" (older receivers omit it)
+    let id: String?       // per-install identity (older receivers omit it) —
+                          // lets the controller match the same physical device
+                          // across USB and WiFi
 
     var kind: String { device ?? "device" }
 }
@@ -90,6 +93,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     // recording indicator all torn down) instead of dialing forever or
     // silently coming back over a different transport.
     @MainActor var onDisconnected: (() -> Void)?
+    // Fired on every hello — carries the receiver's install id so the
+    // controller can deduplicate USB/WiFi sessions to the same device.
+    @MainActor var onHello: ((PhoneInfo) -> Void)?
 
     private var stream: SCStream?
     private var encoder: VTCompressionSession?
@@ -102,6 +108,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     private let endpointName: String
     private let mode: CaptureMode
     private let quality: StreamQuality
+    // Stable per-device serial for the virtual display, so macOS can tell
+    // multiple OpenSidecar monitors apart and persist their arrangement.
+    private let displaySerial: UInt32
 
     // Backpressure: outstanding sends. If the socket can't keep up we drop
     // frames instead of queueing latency, then force a keyframe to resync.
@@ -140,7 +149,6 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     private var lastCursorSent: (x: Double, y: Double, visible: Bool) = (-1, -1, false)
     private var lastCursorPNGHash = 0
     private var captureDisplayID: CGDirectDisplayID = 0
-    private var displayPointsSize = CGSize.zero
 
     // Input latency: touches arrive stamped in our clock (the phone applies
     // its sync offset); delta to now = network + deframe + dispatch.
@@ -161,11 +169,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     private var lastCaptureAt = Date.distantPast
 
     init(transport: SenderTransport, name: String, mode: CaptureMode,
-         quality: StreamQuality = .best) {
+         quality: StreamQuality = .best, displaySerial: UInt32 = 0x0001) {
         self.transport = transport
         self.endpointName = name
         self.mode = mode
         self.quality = quality
+        self.displaySerial = displaySerial
         super.init()
     }
 
@@ -238,10 +247,22 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
             ? CGSize(width: 147, height: 68)
             : CGSize(width: 68, height: 147)
 
+        // USB sessions can start before lockdown resolves the device name —
+        // fall back to the kind from the hello rather than the generic label.
+        let displayName = endpointName.hasPrefix("iPhone / iPad")
+            ? "OpenSidecar — \(info.kind)"
+            : "OpenSidecar — \(endpointName)"
+        // Orientation-specific serial: macOS persists the chosen mode per
+        // serial, and a portrait mode restored onto a landscape display
+        // pillarboxes the desktop INTO the framebuffer (streamed as-is).
+        // Distinct serials per orientation keep the two configs apart.
+        let serial = info.pixelsWide >= info.pixelsHigh
+            ? displaySerial
+            : displaySerial ^ 0x8000_0000
         let vd = await MainActor.run {
-            VirtualDisplay(name: "OpenSidecar",
+            VirtualDisplay(name: displayName,
                            pointsWide: pointsWide, pointsHigh: pointsHigh,
-                           sizeInMillimeters: mm)
+                           sizeInMillimeters: mm, serialNum: serial)
         }
         guard let vd else {
             throw NSError(domain: "MacSender", code: 2,
@@ -339,7 +360,6 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         try await stream.startCapture()
         self.stream = stream
         captureDisplayID = display.displayID
-        displayPointsSize = CGSize(width: display.width, height: display.height)
         lastCursorPNGHash = 0      // rotation rebuilds: re-send the sprite
         lastCursorSent = (-1, -1, false)
         startCursorEcho()
@@ -626,11 +646,18 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     private func pollCursorImage() {
-        guard connectionReady, displayPointsSize != .zero,
+        // Display size read LIVE, not snapshotted at capture start: the
+        // HiDPI mode settles (and macOS re-flips it) asynchronously, and a
+        // sprite normalized against the 1x size renders at half size on the
+        // device. Mixing the size into the dedup hash re-sends the sprite
+        // whenever the mode flips, so the proportion always heals.
+        guard connectionReady, captureDisplayID != 0,
               let cursor = NSCursor.currentSystem else { return }
+        let displaySize = CGDisplayBounds(captureDisplayID).size   // points, current mode
+        guard displaySize.width > 0, displaySize.height > 0 else { return }
         let image = cursor.image
         guard let tiff = image.tiffRepresentation else { return }
-        let hash = tiff.hashValue
+        let hash = tiff.hashValue ^ Int(displaySize.width) &* 31
         guard hash != lastCursorPNGHash else { return }
         guard let rep = NSBitmapImageRep(data: tiff),
               let png = rep.representation(using: .png, properties: [:]),
@@ -642,8 +669,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         // sprite without knowing capture scale or HiDPI factor.
         let msg = String(format:
             "{\"type\":\"cursorImg\",\"nw\":%.5f,\"nh\":%.5f,\"ax\":%.3f,\"ay\":%.3f,\"png\":\"%@\"}",
-            size.width / displayPointsSize.width,
-            size.height / displayPointsSize.height,
+            size.width / displaySize.width,
+            size.height / displaySize.height,
             size.width > 0 ? hot.x / size.width : 0,
             size.height > 0 ? hot.y / size.height : 0,
             png.base64EncodedString())
@@ -692,6 +719,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
             if let info = try? JSONDecoder().decode(PhoneInfo.self, from: payload) {
                 let previous = lastHello
                 lastHello = info
+                Task { @MainActor in self.onHello?(info) }
                 if let continuation = helloContinuation {
                     helloContinuation = nil
                     continuation.resume(returning: info)

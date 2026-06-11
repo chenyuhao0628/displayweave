@@ -234,7 +234,6 @@ Tracked as [roadmap issues](https://github.com/peetzweg/opensidecar/issues?q=is%
 - [#7](https://github.com/peetzweg/opensidecar/issues/7) On-screen modifier key sidebar
 
 **Display & media**
-- [#8](https://github.com/peetzweg/opensidecar/issues/8) Multiple devices / multiple virtual displays
 - [#9](https://github.com/peetzweg/opensidecar/issues/9) Resolution & quality settings
 - [#10](https://github.com/peetzweg/opensidecar/issues/10) HEVC encoding
 - [#12](https://github.com/peetzweg/opensidecar/issues/12) Audio forwarding
@@ -248,7 +247,7 @@ Tracked as [roadmap issues](https://github.com/peetzweg/opensidecar/issues?q=is%
 - [#14](https://github.com/peetzweg/opensidecar/issues/14) Remote access beyond the local network
 - [#15](https://github.com/peetzweg/opensidecar/issues/15) Additional client platforms
 
-Done: prebuilt releases, built-in USB connectivity (no helper tools), WiFi via Bonjour, portrait mode, touch + two-finger scroll, performance overlay, iPad support.
+Done: prebuilt releases, built-in USB connectivity (no helper tools), WiFi via Bonjour, portrait mode, touch + two-finger scroll, performance overlay, iPad support, multiple devices at once ([#8](https://github.com/peetzweg/opensidecar/issues/8) — every connected device becomes its own extended display).
 
 ## Contributing
 

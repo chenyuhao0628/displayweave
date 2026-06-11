@@ -8,6 +8,11 @@ final class InputInjector {
 
     private let displayID: CGDirectDisplayID
     private var isDown = false
+    // A real event source (vs nil) plus clickState=1 below: menu tracking
+    // treats sourceless/zero-click synthetic clicks as malformed — menus
+    // open but their tracking session breaks, leaving zombie menu windows
+    // composited on the display (visible in the stream, unclickable).
+    private let source = CGEventSource(stateID: .hidSystemState)
 
     init(displayID: CGDirectDisplayID) {
         self.displayID = displayID
@@ -45,8 +50,9 @@ final class InputInjector {
             return
         }
 
-        guard let event = CGEvent(mouseEventSource: nil, mouseType: type,
+        guard let event = CGEvent(mouseEventSource: source, mouseType: type,
                                   mouseCursorPosition: point, mouseButton: .left) else { return }
+        event.setIntegerValueField(.mouseEventClickState, value: 1)
         event.post(tap: .cghidEventTap)
     }
 
@@ -55,7 +61,7 @@ final class InputInjector {
     func handleScroll(dx: Double, dy: Double) {
         let bounds = CGDisplayBounds(displayID)
         let scale = bounds.width > 0 ? Double(CGDisplayPixelsWide(displayID)) / bounds.width : 2
-        guard let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel,
+        guard let event = CGEvent(scrollWheelEvent2Source: source, units: .pixel,
                                   wheelCount: 2,
                                   wheel1: Int32((dy / scale).rounded()),
                                   wheel2: Int32((dx / scale).rounded()),
