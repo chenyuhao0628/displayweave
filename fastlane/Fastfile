@@ -1,0 +1,60 @@
+def asc_api_key
+  app_store_connect_api_key(
+    key_id:                ENV.fetch("APP_STORE_CONNECT_KEY_ID"),
+    issuer_id:             ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+    key_content:           ENV.fetch("APP_STORE_CONNECT_KEY_CONTENT"),
+    is_key_content_base64: true
+  )
+end
+
+platform :mac do
+  desc "Build Developer ID-signed, notarized macOS app for direct distribution"
+  lane :build_release do
+    key = asc_api_key
+    # Developer ID certs can't be managed via ASC API key — Apple limitation.
+    # CI uses readonly: true so it just reads from the git repo, no Apple auth needed.
+    match(
+      type:           "developer_id",
+      app_identifier: "com.peetzweg.opensidecar.mac",
+      readonly:       is_ci
+    )
+    build_mac_app(
+      project:          "OpenSidecar.xcodeproj",
+      scheme:           "OpenSidecarMac",
+      configuration:    "Release",
+      export_method:    "developer-id",
+      output_directory: "build/export",
+      output_name:      "OpenSidecar"
+    )
+    notarize(
+      package:   "build/export/OpenSidecar.app",
+      bundle_id: "com.peetzweg.opensidecar.mac",
+      api_key:   key
+    )
+  end
+end
+
+platform :ios do
+  desc "Build and upload to TestFlight"
+  lane :beta do
+    key = asc_api_key
+    match(
+      type:           "appstore",
+      app_identifier: "com.peetzweg.opensidecar.ios",
+      api_key:        key,
+      readonly:       is_ci
+    )
+    build_app(
+      project:          "OpenSidecar.xcodeproj",
+      scheme:           "OpenSidecariOS",
+      configuration:    "Release",
+      export_method:    "app-store",
+      output_directory: "build/export",
+      output_name:      "OpenSidecariOS"
+    )
+    upload_to_testflight(
+      api_key:                           key,
+      skip_waiting_for_build_processing: true
+    )
+  end
+end

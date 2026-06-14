@@ -30,36 +30,55 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
       - name: Generate project
+        env:
+          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
         run: xcodegen generate
 
-      - name: Build macOS app (ad-hoc signed)
+      # Deploy key gives CI read access to the private certs repo without
+      # exposing any write or repo-scope permissions.
+      - name: Set up SSH for match certs repo
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.MATCH_DEPLOY_KEY }}
+
+      - name: Build notarized macOS app
+        env:
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
+          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
+        run: bundle exec fastlane mac build_release
+
+      - name: Zip notarized macOS app
         run: |
-          xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac \
-            -configuration Release -derivedDataPath build \
-            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
-            build
           ditto -c -k --keepParent \
-            build/Build/Products/Release/OpenSidecar.app \
+            build/export/OpenSidecar.app \
             OpenSidecar-macOS.zip
 
-      - name: Build iOS app (unsigned, for sideloading)
-        run: |
-          xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecariOS \
-            -configuration Release -destination 'generic/platform=iOS' \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            build
-          mkdir Payload
-          cp -R build/Build/Products/Release-iphoneos/OpenSidecariOS.app Payload/
-          zip -qry OpenSidecar-iOS-unsigned.ipa Payload
+      - name: Build iOS app and upload to TestFlight
+        env:
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
+          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
+        run: bundle exec fastlane ios beta
 
-      - name: Upload artifacts to the release
+      - name: Upload macOS artifact to release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ needs.release-please.outputs.tag_name }}" \
-            OpenSidecar-macOS.zip OpenSidecar-iOS-unsigned.ipa
+            OpenSidecar-macOS.zip

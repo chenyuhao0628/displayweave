@@ -26,11 +26,12 @@ targets:
         LSApplicationCategoryType: public.app-category.utilities
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: sh.peet.opensidecar.mac
+        PRODUCT_BUNDLE_IDENTIFIER: com.peetzweg.opensidecar.mac
         PRODUCT_NAME: OpenSidecar
         BUNDLE_DISPLAY_NAME: OpenSidecar
         SWIFT_OBJC_BRIDGING_HEADER: Mac/OpenSidecarMac-Bridging-Header.h
-        ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_ENTITLEMENTS: Mac/OpenSidecarMac.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       configs:
         # Local dev builds get their own identity: TCC keys permission
@@ -40,7 +41,7 @@ targets:
         # The distinct display name keeps the two telling apart in the
         # System Settings permission lists.
         Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: sh.peet.opensidecar.mac.debug
+          PRODUCT_BUNDLE_IDENTIFIER: com.peetzweg.opensidecar.mac.debug
           BUNDLE_DISPLAY_NAME: OpenSidecar Dev
   OpenSidecariOS:
     type: application
@@ -63,6 +64,6 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: sh.peet.opensidecar.phone
+        PRODUCT_BUNDLE_IDENTIFIER: com.peetzweg.opensidecar.ios
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
