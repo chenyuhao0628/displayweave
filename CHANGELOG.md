@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/peetzweg/opensidecar/compare/v0.5.0...v0.6.0) (2026-06-14)
+
+
+### Features
+
+* fastlane release pipeline for iOS TestFlight and notarized Mac builds ([d940685](https://github.com/peetzweg/opensidecar/commit/d940685d9a515a0f11fe248c1f85e95e67a8d39d))
+
 ## [0.5.0](https://github.com/peetzweg/opensidecar/compare/v0.4.0...v0.5.0) (2026-06-11)
 
 
