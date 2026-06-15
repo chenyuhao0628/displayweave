@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.16](https://github.com/peetzweg/opensidecar/compare/v0.6.15...v0.6.16) (2026-06-15)
+
+
+### Bug Fixes
+
+* inject release version and unique build number into app builds ([924b464](https://github.com/peetzweg/opensidecar/commit/924b464f43d1170808b77e48448b6e2ecdd61ab4))
+
 ## [0.6.15](https://github.com/peetzweg/opensidecar/compare/v0.6.14...v0.6.15) (2026-06-15)
 
 
