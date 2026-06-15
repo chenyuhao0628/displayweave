@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.10](https://github.com/peetzweg/opensidecar/compare/v0.6.9...v0.6.10) (2026-06-15)
+
+
+### Bug Fixes
+
+* use Xcode 26 icon format with rendering-intent template ([1169c57](https://github.com/peetzweg/opensidecar/commit/1169c57c4ec1b84bae0ae73ea6bae96f00cb6358))
+
 ## [0.6.9](https://github.com/peetzweg/opensidecar/compare/v0.6.8...v0.6.9) (2026-06-15)
 
 
