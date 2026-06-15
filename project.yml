@@ -62,6 +62,7 @@ targets:
       path: iOS/Info.plist
       properties:
         CFBundleDisplayName: OpenSidecar
+        CFBundleIconName: AppIcon
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         NSLocalNetworkUsageDescription: OpenSidecar advertises itself on the local network so your Mac can connect over WiFi.
