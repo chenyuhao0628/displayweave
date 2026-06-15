@@ -70,6 +70,7 @@ platform :ios do
     )
     upload_to_testflight(
       api_key:                           key,
+      app_identifier:                    "com.peetzweg.opensidecar.ios",
       skip_waiting_for_build_processing: true
     )
   end
