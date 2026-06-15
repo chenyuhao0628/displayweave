@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.5](https://github.com/peetzweg/opensidecar/compare/v0.6.4...v0.6.5) (2026-06-15)
+
+
+### Bug Fixes
+
+* add setup_ci for keychain and correct Mac profile name ([c29944c](https://github.com/peetzweg/opensidecar/commit/c29944c3073967418801eb63c1656d441922612c))
+
 ## [0.6.4](https://github.com/peetzweg/opensidecar/compare/v0.6.3...v0.6.4) (2026-06-14)
 
 
