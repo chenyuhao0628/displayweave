@@ -77,7 +77,10 @@
     /* ---- section scaffolding ---- */
     section { border-top: 1px solid var(--line); }
     section:first-of-type { border-top: 0; }
-    .sec { padding: 84px 0; }
+    /* Vertical only — horizontal padding comes from .wrap. Using the padding
+       shorthand here would reset .wrap's left/right padding to 0 (same
+       specificity, later rule wins), making content run edge-to-edge on mobile. */
+    .sec { padding-top: 84px; padding-bottom: 84px; }
     .eyebrow { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.14em;
       text-transform: uppercase; color: var(--faint); margin-bottom: 20px; }
     h1 { font-size: clamp(2.2rem, 6vw, 3.6rem); line-height: 1.04;
@@ -86,7 +89,7 @@
       font-weight: 600; }
 
     /* ---- hero ---- */
-    .hero { padding: 92px 0 84px; }
+    .hero { padding-top: 92px; padding-bottom: 84px; }   /* vertical only — see .sec note */
     .hero h1 { max-width: 16ch; }
     .hero h1 .u { text-decoration: underline; text-decoration-thickness: 2px;
       text-underline-offset: 6px; }
@@ -209,6 +212,15 @@
     footer .links { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 14px; }
     footer .links a { color: var(--muted); text-decoration-color: var(--line); }
     footer .fine { color: var(--faint); font-size: 0.84rem; }
+
+    /* ---- mobile: tighter gutters + less vertical air ---- */
+    @media (max-width: 560px) {
+      .wrap { padding: 0 20px; }
+      .sec { padding-top: 56px; padding-bottom: 56px; }
+      .hero { padding-top: 56px; padding-bottom: 60px; }
+      .downloads > div { padding: 22px; }
+      .fcell { padding: 20px; }
+    }
   </style>
 </head>
 <body>
