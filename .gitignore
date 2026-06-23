@@ -17,6 +17,11 @@ xcuserdata/
 # Internal working notes (kept locally, not part of the open-source repo)
 PROJECT_BRIEF.md
 CLAUDE.md
+ICON_WORKFLOW.md
+
+# Icon source artwork (kept locally; generated assets are committed — see ICON_WORKFLOW.md)
+newicon.svg
+newnewicon.png
 
 # Local developer config (signing team etc.)
 .env

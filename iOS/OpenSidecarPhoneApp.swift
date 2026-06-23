@@ -125,9 +125,10 @@ struct IdleView: View {
         VStack(spacing: 28) {
             Spacer()
 
-            Image(systemName: "rectangle.on.rectangle")
-                .font(.system(size: 56, weight: .light))
-                .foregroundStyle(.tint)
+            Image("AppLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 132)
 
             VStack(spacing: 6) {
                 Text("OpenSidecar")
