@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.0](https://github.com/peetzweg/opensidecar/compare/v0.7.2...v0.8.0) (2026-06-29)
+
+
+### Features
+
+* **site:** improve landing-page SEO (robots, sitemap, meta) ([757983c](https://github.com/peetzweg/opensidecar/commit/757983c33d2d310dd9b32749b3cf8827d8b99eeb))
+* **site:** improve landing-page SEO (robots, sitemap, meta) ([d1e63c9](https://github.com/peetzweg/opensidecar/commit/d1e63c902fcdbf462b49e1eef441087b459cab05)), closes [#59](https://github.com/peetzweg/opensidecar/issues/59)
+
+
+### Bug Fixes
+
+* **mac:** guard liveness monitors against double-start ([#75](https://github.com/peetzweg/opensidecar/issues/75) hardening) ([0c96e65](https://github.com/peetzweg/opensidecar/commit/0c96e65f75d6de1de980dc9b80fc7a57728e5da0))
+* **mac:** stop CPU leak that creeps up across sleep/wake ([#75](https://github.com/peetzweg/opensidecar/issues/75)) ([c365668](https://github.com/peetzweg/opensidecar/commit/c365668e1a45e9dfbde44b1256ea9b4982270638))
+* **mac:** stop cursor-image poll leak across sleep/wake ([#75](https://github.com/peetzweg/opensidecar/issues/75)) ([0e8a959](https://github.com/peetzweg/opensidecar/commit/0e8a9591cc6e2d73507c355ce84178344b0fcfae))
+
 ## [0.7.2](https://github.com/peetzweg/opensidecar/compare/v0.7.1...v0.7.2) (2026-06-23)
 
 
