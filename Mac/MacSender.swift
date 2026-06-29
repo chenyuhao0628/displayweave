@@ -121,6 +121,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     private var needsKeyframe = true
     private var connectionReady = false
     private var stopped = false
+    // The liveness monitors are self-rescheduling chains guarded only by
+    // `stopped`; arm them at most once per instance so a double start() can't
+    // stack parallel loops (the failure mode behind #75). Mirrors the
+    // `monitorsStarted` guard the iOS PhoneReceiver already uses.
+    private var monitorsStarted = false
 
     // Disconnect detection: before the first connection we dial patiently
     // (the user may start the Mac side first); once connected, a device that
@@ -184,8 +189,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     func start() async throws {
         stopped = false
         queue.async { self.connect() }   // dial state lives on `queue`
-        schedulePing()
-        scheduleWatchdog()
+        if !monitorsStarted {
+            monitorsStarted = true
+            schedulePing()
+            scheduleWatchdog()
+        }
 
         // Screen Recording permission: poll until granted. No auto-prompt at
         // launch — the permission panel's Grant button triggers the system
