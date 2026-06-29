@@ -146,6 +146,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     private let localCursor = UserDefaults.standard.object(forKey: "localCursor") == nil
         || UserDefaults.standard.bool(forKey: "localCursor")
     private var cursorTimer: DispatchSourceTimer?
+    private var cursorImageTimer: DispatchSourceTimer?
     private var lastCursorSent: (x: Double, y: Double, visible: Bool) = (-1, -1, false)
     private var lastCursorPNGHash = 0
     private var captureDisplayID: CGDirectDisplayID = 0
@@ -372,6 +373,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         stopped = true
         cursorTimer?.cancel()
         cursorTimer = nil
+        cursorImageTimer?.cancel()
+        cursorImageTimer = nil
         stream?.stopCapture { _ in }
         stream = nil
         connection?.cancel()
@@ -615,6 +618,27 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         scheduleCursorImagePoll()
     }
 
+    /// Sprite changes (arrow ↔ I-beam ↔ resize…) must land fast or the wrong
+    /// cursor shows over hot areas — poll at 30Hz on the main thread (NSCursor
+    /// is AppKit), hash the raw bitmap, and only PNG-encode + send on change.
+    ///
+    /// A dedicated timer (cancelled+replaced here, like cursorTimer above) — not
+    /// a self-rescheduling asyncAfter chain. Every rebuild re-enters
+    /// startCursorEcho, and sleep/wake rebuilds happen often; a recursive chain
+    /// guarded only by `stopped` would stack one extra 30Hz main-thread
+    /// TIFF-encode loop per rebuild, creeping CPU to ~50% until a restart (#75).
+    private func scheduleCursorImagePoll() {
+        cursorImageTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 0.033, repeating: .milliseconds(33))
+        timer.setEventHandler { [weak self] in
+            guard let self, !self.stopped, self.localCursor else { return }
+            self.pollCursorImage()
+        }
+        timer.resume()
+        cursorImageTimer = timer
+    }
+
     private func pollCursorPosition() {
         guard connectionReady, captureDisplayID != 0,
               let loc = CGEvent(source: nil)?.location else { return }
@@ -631,17 +655,6 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         } else if lastCursorSent.visible {
             lastCursorSent.visible = false
             sendJSONFrame("{\"type\":\"cursor\",\"v\":0}")
-        }
-    }
-
-    /// Sprite changes (arrow ↔ I-beam ↔ resize…) must land fast or the wrong
-    /// cursor shows over hot areas — poll at 30Hz on the main thread (NSCursor
-    /// is AppKit), hash the raw bitmap, and only PNG-encode + send on change.
-    private func scheduleCursorImagePoll() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.033) { [weak self] in
-            guard let self, !self.stopped, self.localCursor else { return }
-            self.pollCursorImage()
-            self.scheduleCursorImagePoll()
         }
     }
 
