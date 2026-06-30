@@ -18,7 +18,7 @@ export default function App() {
   // Progressive enhancement: current release version + live star count.
   // Fails silent (offline / rate-limited) — the page works without it.
   useEffect(() => {
-    fetch("https://api.github.com/repos/peetzweg/opensidecar/releases/latest", {
+    fetch("https://api.github.com/repos/peetzweg/opendisplay/releases/latest", {
       headers: { Accept: "application/vnd.github+json" },
     })
       .then((r) => (r.ok ? r.json() : null))
@@ -27,7 +27,7 @@ export default function App() {
       })
       .catch(() => {})
 
-    fetch("https://api.github.com/repos/peetzweg/opensidecar", {
+    fetch("https://api.github.com/repos/peetzweg/opendisplay", {
       headers: { Accept: "application/vnd.github+json" },
     })
       .then((r) => (r.ok ? r.json() : null))
@@ -44,7 +44,7 @@ export default function App() {
       <nav>
         <div className="wrap">
           <a className="brand" href="./">
-            <img src="icon-256.png" alt="" /> OpenSidecar
+            <img src="icon-256.png" alt="" /> OpenDisplay
           </a>
           <div className="links">
             <a href="#features">Features</a>
@@ -54,8 +54,8 @@ export default function App() {
             <a href="#support">Support</a>
             <a
               className="gh"
-              href="https://github.com/peetzweg/opensidecar"
-              title="Star OpenSidecar on GitHub"
+              href="https://github.com/peetzweg/opendisplay"
+              title="Star OpenDisplay on GitHub"
             >
               <svg className="gh-logo" viewBox="0 0 16 16" aria-hidden="true">
                 <path
@@ -107,7 +107,7 @@ export default function App() {
           </p>
 
           <p className="needs-both">
-            OpenSidecar is <strong>two apps that work together</strong> — install both to get going.
+            OpenDisplay is <strong>two apps that work together</strong> — install both to get going.
           </p>
           <div className="downloads">
             <div>
@@ -118,13 +118,13 @@ export default function App() {
               <p className="dl-sub">The sender — captures a virtual display and streams it.</p>
               <a
                 className="btn primary"
-                href="https://github.com/peetzweg/opensidecar/releases/latest/download/OpenSidecar.dmg"
+                href="https://github.com/peetzweg/opendisplay/releases/latest/download/OpenDisplay.dmg"
               >
                 Download for Mac
               </a>
               <p className="note">
                 Signed &amp; notarized — opens normally on macOS&nbsp;14+. Prefer to compile it yourself?{" "}
-                <a href="https://github.com/peetzweg/opensidecar#quick-start">Build from source ↗</a>
+                <a href="https://github.com/peetzweg/opendisplay#quick-start">Build from source ↗</a>
               </p>
             </div>
             <div>
@@ -152,7 +152,7 @@ export default function App() {
                 </a>
                 ,<br />
                 or get started now by{" "}
-                <a href="https://github.com/peetzweg/opensidecar#quick-start">
+                <a href="https://github.com/peetzweg/opendisplay#quick-start">
                   compiling it from source ↗
                 </a>
                 .
@@ -165,7 +165,7 @@ export default function App() {
       <section id="support">
         <div className="wrap sec support">
           <p className="eyebrow">Support the project</p>
-          <h2>If OpenSidecar saved you a monitor, consider buying me a coffee.</h2>
+          <h2>If OpenDisplay saved you a monitor, consider buying me a coffee.</h2>
           <p>
             Free, open source, and funded out of my own pocket — including the Apple Developer
             membership behind signed, one-click installs. If it helps you, a tip keeps it going.
@@ -197,27 +197,27 @@ export default function App() {
           <p className="eyebrow">Contribute</p>
           <h2>Open source, and built in the open.</h2>
           <p style={{ color: "var(--muted)", maxWidth: "72ch", marginTop: "8px" }}>
-            OpenSidecar is GPL-3.0 and developed entirely on GitHub — the whole stack, from Mac
+            OpenDisplay is GPL-3.0 and developed entirely on GitHub — the whole stack, from Mac
             capture and H.264 encoding to the iOS receiver, is yours to read, build, and improve.
             Bug reports, feature ideas, and pull requests are all welcome. Build-and-run instructions
             live in the README.
           </p>
           <div className="btn-row">
-            <a className="btn primary" href="https://github.com/peetzweg/opensidecar">View on GitHub ↗</a>
-            <a className="btn ghost" href="https://github.com/peetzweg/opensidecar/issues">Open an issue ↗</a>
+            <a className="btn primary" href="https://github.com/peetzweg/opendisplay">View on GitHub ↗</a>
+            <a className="btn ghost" href="https://github.com/peetzweg/opendisplay/issues">Open an issue ↗</a>
           </div>
           <p className="sub">
             New here? Start with the{" "}
-            <a href="https://github.com/peetzweg/opensidecar#quick-start">README quick-start</a>{" "}
+            <a href="https://github.com/peetzweg/opendisplay#quick-start">README quick-start</a>{" "}
             to build both apps, or browse the{" "}
-            <a href="https://github.com/peetzweg/opensidecar/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22">good first issues</a>.
+            <a href="https://github.com/peetzweg/opendisplay/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22">good first issues</a>.
           </p>
         </div>
       </section>
 
       <section id="why">
         <div className="wrap sec">
-          <p className="eyebrow">Why OpenSidecar</p>
+          <p className="eyebrow">Why OpenDisplay</p>
           <h2>The device you already own becomes a real additional display.</h2>
           <div className="compare">
             <div className="row">
@@ -234,7 +234,7 @@ export default function App() {
               <p>Great latency, but you're buying a hardware dongle.</p>
             </div>
             <div className="row highlight">
-              <div className="name">OpenSidecar</div>
+              <div className="name">OpenDisplay</div>
               <p>Free, open source, auditable. The device you already own becomes a real additional
               display. If you were about to build your own — contribute here instead.</p>
             </div>
@@ -244,7 +244,7 @@ export default function App() {
           <div className="tbl-scroll">
             <table>
               <thead>
-                <tr><th></th><th className="os">OpenSidecar</th><th>Apple Sidecar</th><th>Duet</th><th>Luna</th></tr>
+                <tr><th></th><th className="os">OpenDisplay</th><th>Apple Sidecar</th><th>Duet</th><th>Luna</th></tr>
               </thead>
               <tbody>
                 <tr><td>Price</td><td className="mark-yes os">Free &amp; open source</td><td>Free</td><td className="mark-no">Subscription</td><td className="mark-no">$$$ + dongle</td></tr>
@@ -310,8 +310,8 @@ export default function App() {
             </details>
             <details>
               <summary>What's the license? Can I fork it or use it commercially?</summary>
-              <p>OpenSidecar is licensed under{" "}
-              <a href="https://github.com/peetzweg/opensidecar/blob/main/LICENSE">GPL-3.0</a>. You can
+              <p>OpenDisplay is licensed under{" "}
+              <a href="https://github.com/peetzweg/opendisplay/blob/main/LICENSE">GPL-3.0</a>. You can
               use, study, and adapt it freely — including commercially. If you distribute a modified
               version, it must remain open source under the same license with the original attribution
               intact, so improvements flow back to everyone instead of into closed forks. (Releases up
@@ -324,14 +324,14 @@ export default function App() {
       <footer>
         <div className="wrap">
           <div className="links">
-            <a href="https://github.com/peetzweg/opensidecar">GitHub</a>
-            <a href="https://github.com/peetzweg/opensidecar/releases/latest">Releases</a>
-            <a href="https://github.com/peetzweg/opensidecar/issues">Issues</a>
+            <a href="https://github.com/peetzweg/opendisplay">GitHub</a>
+            <a href="https://github.com/peetzweg/opendisplay/releases/latest">Releases</a>
+            <a href="https://github.com/peetzweg/opendisplay/issues">Issues</a>
             <a href="https://ko-fi.com/peetzweg">Support / Ko-fi</a>
             <a href="privacy.html">Privacy</a>
-            <a href="https://github.com/peetzweg/opensidecar/blob/main/LICENSE">GPL-3.0 License</a>
+            <a href="https://github.com/peetzweg/opendisplay/blob/main/LICENSE">GPL-3.0 License</a>
           </div>
-          <p className="fine">OpenSidecar — use your iPhone or iPad as a second monitor for your Mac. Free forever.</p>
+          <p className="fine">OpenDisplay — use your iPhone or iPad as a second monitor for your Mac. Free forever.</p>
         </div>
       </footer>
     </>

@@ -37,14 +37,14 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSUIElement: true
-        NSLocalNetworkUsageDescription: OpenSidecar connects to your iPad or iPhone over the local network in WiFi mode.
+        NSLocalNetworkUsageDescription: OpenDisplay connects to your iPad or iPhone over the local network in WiFi mode.
         NSBonjourServices: ["_opensidecar._tcp"]
         LSApplicationCategoryType: public.app-category.utilities
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.peetzweg.opensidecar.mac
-        PRODUCT_NAME: OpenSidecar
-        BUNDLE_DISPLAY_NAME: OpenSidecar
+        PRODUCT_NAME: OpenDisplay
+        BUNDLE_DISPLAY_NAME: OpenDisplay
         SWIFT_OBJC_BRIDGING_HEADER: Mac/OpenSidecarMac-Bridging-Header.h
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_ENTITLEMENTS: Mac/OpenSidecarMac.entitlements
@@ -58,7 +58,7 @@ targets:
         # System Settings permission lists.
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.peetzweg.opensidecar.mac.debug
-          BUNDLE_DISPLAY_NAME: OpenSidecar Dev
+          BUNDLE_DISPLAY_NAME: OpenDisplay Dev
   OpenSidecariOS:
     type: application
     platform: iOS
@@ -68,13 +68,13 @@ targets:
     info:
       path: iOS/Info.plist
       properties:
-        CFBundleDisplayName: OpenSidecar
+        CFBundleDisplayName: OpenDisplay
         CFBundleIconName: AppIcon
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
-        NSLocalNetworkUsageDescription: OpenSidecar advertises itself on the local network so your Mac can connect over WiFi.
+        NSLocalNetworkUsageDescription: OpenDisplay advertises itself on the local network so your Mac can connect over WiFi.
         NSBonjourServices: ["_opensidecar._tcp"]
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

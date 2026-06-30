@@ -142,7 +142,7 @@ final class PhoneReceiver: ObservableObject {
     // needs an entitlement Apple gates behind approval and personal teams
     // can't get), so this is user-editable in Settings. The USB picker gets
     // the real name host-side via lockdownd regardless.
-    var serviceName = "OpenSidecar"
+    var serviceName = "OpenDisplay"
 
     // Stable per-install identity, advertised in the Bonjour TXT record and
     // sent in every hello. The Mac uses it to recognize "same device, other

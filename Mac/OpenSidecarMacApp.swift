@@ -63,7 +63,7 @@ enum MainWindow {
                 contentRect: NSRect(x: 0, y: 0, width: 440, height: 540),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered, defer: false)
-            w.title = "OpenSidecar"
+            w.title = "OpenDisplay"
             w.contentView = NSHostingView(
                 rootView: ContentView(controller: SenderController.shared))
             w.isReleasedWhenClosed = false
@@ -596,7 +596,7 @@ struct ContentView: View {
                     .resizable()
                     .frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("OpenSidecar")
+                    Text("OpenDisplay")
                         .font(.title3.bold())
                     Text("Your iPads and iPhones as extra displays")
                         .font(.caption)
@@ -616,7 +616,7 @@ struct ContentView: View {
             Form {
                 Section("Devices") {
                     if controller.deviceEntries.isEmpty {
-                        Text("No devices found — plug one in via USB, or open the OpenSidecar app on a device on this WiFi network.")
+                        Text("No devices found — plug one in via USB, or open the OpenDisplay app on a device on this WiFi network.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -676,7 +676,7 @@ struct ContentView: View {
                         }
                     }
                     if controller.presentation == .background {
-                        Text("No menu bar or Dock icon — streaming keeps running. Open the OpenSidecar app again (Spotlight/Finder) to show this window.")
+                        Text("No menu bar or Dock icon — streaming keeps running. Open the OpenDisplay app again (Spotlight/Finder) to show this window.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -713,7 +713,7 @@ struct ContentView: View {
                         "Local Network",
                         granted: !controller.discovered.isEmpty,
                         uncertain: controller.discovered.isEmpty,
-                        help: "Required for WiFi mode. If no device appears in the Devices list, allow OpenSidecar under Privacy & Security → Local Network on this Mac AND on the device — and keep the OpenSidecar app open there.",
+                        help: "Required for WiFi mode. If no device appears in the Devices list, allow OpenDisplay under Privacy & Security → Local Network on this Mac AND on the device — and keep the OpenDisplay app open there.",
                         anchor: "Privacy_LocalNetwork"
                     )
                 }

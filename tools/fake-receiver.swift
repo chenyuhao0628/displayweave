@@ -1,4 +1,4 @@
-// Fake OpenSidecar receiver — speaks just enough of the wire protocol to
+// Fake OpenDisplay receiver — speaks just enough of the wire protocol to
 // stand in for a third device: sends hello + pings, consumes video frames,
 // reports receive rate. For Mac-side scale testing only.
 import Foundation

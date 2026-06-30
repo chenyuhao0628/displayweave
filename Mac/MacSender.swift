@@ -109,7 +109,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     private let mode: CaptureMode
     private let quality: StreamQuality
     // Stable per-device serial for the virtual display, so macOS can tell
-    // multiple OpenSidecar monitors apart and persist their arrangement.
+    // multiple OpenDisplay monitors apart and persist their arrangement.
     private let displaySerial: UInt32
 
     // Backpressure: outstanding sends. If the socket can't keep up we drop
@@ -259,8 +259,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         // USB sessions can start before lockdown resolves the device name —
         // fall back to the kind from the hello rather than the generic label.
         let displayName = endpointName.hasPrefix("iPhone / iPad")
-            ? "OpenSidecar — \(info.kind)"
-            : "OpenSidecar — \(endpointName)"
+            ? "OpenDisplay — \(info.kind)"
+            : "OpenDisplay — \(endpointName)"
         // Orientation-specific serial: macOS persists the chosen mode per
         // serial, and a portrait mode restored onto a landscape display
         // pillarboxes the desktop INTO the framebuffer (streamed as-is).
@@ -535,7 +535,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
                 case .noDevice:
                     hint = "Waiting for a USB device — plug in the iPhone or iPad…"
                 case .refused:
-                    hint = "Device found — open the OpenSidecar app on it…"
+                    hint = "Device found — open the OpenDisplay app on it…"
                 default:
                     Log.info("usb dial failed: \(error)")
                     hint = "USB connection failed: \(error.localizedDescription)"

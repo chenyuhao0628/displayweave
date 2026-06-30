@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="public/icon.png" width="128" alt="OpenSidecar app icon" />
+<img src="public/icon.png" width="128" alt="OpenDisplay app icon" />
 
-# OpenSidecar
+# OpenDisplay
 
 **Turn your spare Apple devices into second monitors for your Mac — free, open source, no subscription.**
 
@@ -11,13 +11,13 @@ alternative to Apple Sidecar, Duet Display, and Luna Display: true extended
 display (not just mirroring), Retina-sharp, over USB or WiFi, with touch and
 scroll input.
 
-[Website](https://peetzweg.github.io/opensidecar/) · [Quick start](#quick-start) · [How it works](#how-it-works) · [FAQ](#faq) · [Contributing](#contributing)
+[Website](https://peetzweg.github.io/opendisplay/) · [Quick start](#quick-start) · [How it works](#how-it-works) · [FAQ](#faq) · [Contributing](#contributing)
 
 </div>
 
 ---
 
-## Why OpenSidecar exists
+## Why OpenDisplay exists
 
 Turning an iPhone or iPad into an external display for a Mac is a solved
 problem — but every existing option has a catch:
@@ -27,7 +27,7 @@ problem — but every existing option has a catch:
 - **Duet Display** moved to a subscription.
 - **Luna Display** requires a hardware dongle.
 
-OpenSidecar is the missing option: a **free, open-source, no-account,
+OpenDisplay is the missing option: a **free, open-source, no-account,
 no-dongle** way to use the iOS device you already own as a true second
 display. If you were about to write your own — don't! Contribute here
 instead; the hard parts (virtual display creation, low-latency H.264
@@ -86,8 +86,8 @@ You need **two apps**: a Mac app (captures and sends) and an iOS app
 
 ### Prebuilt downloads (Mac)
 
-Grab `OpenSidecar.dmg` from the
-[latest release](https://github.com/peetzweg/opensidecar/releases/latest).
+Grab `OpenDisplay.dmg` from the
+[latest release](https://github.com/peetzweg/opendisplay/releases/latest).
 The app is signed with a Developer ID certificate and notarized by Apple, so it
 opens with a plain double-click on macOS 14+ — no Gatekeeper warning. Open the
 `.dmg` and drag the app to Applications.
@@ -113,8 +113,8 @@ app onto your device).
 ### Build
 
 ```sh
-git clone https://github.com/peetzweg/opensidecar.git
-cd opensidecar
+git clone https://github.com/peetzweg/opendisplay.git
+cd opendisplay
 echo "DEVELOPMENT_TEAM=YOURTEAMID" > .env   # your Apple team ID, for signing
 ./generate.sh                               # runs xcodegen with your .env
 xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac \
@@ -130,7 +130,7 @@ under Membership, or just pick your team in Xcode's Signing pane.)
 
 ### Run (USB — recommended)
 
-1. Install + open **OpenSidecar** on the iPhone (it listens on port 9000).
+1. Install + open **OpenDisplay** on the iPhone (it listens on port 9000).
 2. On the Mac, run `./run.sh` (or just open the app) — it talks to macOS's
    built-in `usbmuxd` directly and auto-connects over the cable. No tunnel
    tools needed.
@@ -190,7 +190,7 @@ quality-per-bit.
 between your Mac and your device, over your cable or your LAN. No servers,
 no accounts, no analytics. Full details — including what the apps store
 locally and the current WiFi-encryption caveat — on the
-[privacy page](https://peetzweg.github.io/opensidecar/privacy.html).
+[privacy page](https://peetzweg.github.io/opendisplay/privacy.html).
 
 **What's the license? Can I fork it or use it commercially?**
 [GPL-3.0](LICENSE). Use, study, and adapt it freely — commercially too. If
@@ -207,7 +207,7 @@ The capture/streaming pipeline itself uses only public APIs.
 
 ## Comparison
 
-| | OpenSidecar | Apple Sidecar | Duet Display | Luna Display |
+| | OpenDisplay | Apple Sidecar | Duet Display | Luna Display |
 |---|---|---|---|---|
 | Price | **Free, open source** | Free | Subscription | $$$ + dongle |
 | iPhone as display | ✅ | ❌ (iPad only) | ✅ | ✅ |
@@ -219,33 +219,33 @@ The capture/streaming pipeline itself uses only public APIs.
 
 ## Roadmap
 
-Tracked as [roadmap issues](https://github.com/peetzweg/opensidecar/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap) — pick one up if you'd like to contribute!
+Tracked as [roadmap issues](https://github.com/peetzweg/opendisplay/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap) — pick one up if you'd like to contribute!
 
 **Connectivity & distribution**
-- [#16](https://github.com/peetzweg/opensidecar/issues/16) Encrypted WiFi transport with pairing code
+- [#16](https://github.com/peetzweg/opendisplay/issues/16) Encrypted WiFi transport with pairing code
 - [ ] App Store release of the iOS app + notarized Mac downloads
 
 **Input**
-- [#4](https://github.com/peetzweg/opensidecar/issues/4) Apple Pencil with pressure and tilt
-- [#5](https://github.com/peetzweg/opensidecar/issues/5) Right-click and multi-touch gestures
-- [#6](https://github.com/peetzweg/opensidecar/issues/6) Hardware keyboard passthrough
-- [#7](https://github.com/peetzweg/opensidecar/issues/7) On-screen modifier key sidebar
+- [#4](https://github.com/peetzweg/opendisplay/issues/4) Apple Pencil with pressure and tilt
+- [#5](https://github.com/peetzweg/opendisplay/issues/5) Right-click and multi-touch gestures
+- [#6](https://github.com/peetzweg/opendisplay/issues/6) Hardware keyboard passthrough
+- [#7](https://github.com/peetzweg/opendisplay/issues/7) On-screen modifier key sidebar
 
 **Display & media**
-- [#9](https://github.com/peetzweg/opensidecar/issues/9) Resolution & quality settings
-- [#10](https://github.com/peetzweg/opensidecar/issues/10) HEVC encoding
-- [#12](https://github.com/peetzweg/opensidecar/issues/12) Audio forwarding
-- [#17](https://github.com/peetzweg/opensidecar/issues/17) macOS receiver — use another Mac as a display
+- [#9](https://github.com/peetzweg/opendisplay/issues/9) Resolution & quality settings
+- [#10](https://github.com/peetzweg/opendisplay/issues/10) HEVC encoding
+- [#12](https://github.com/peetzweg/opendisplay/issues/12) Audio forwarding
+- [#17](https://github.com/peetzweg/opendisplay/issues/17) macOS receiver — use another Mac as a display
 
 **Experience**
-- [#11](https://github.com/peetzweg/opensidecar/issues/11) Menu bar app mode with auto-connect
-- [#13](https://github.com/peetzweg/opensidecar/issues/13) Battery & lifecycle awareness
+- [#11](https://github.com/peetzweg/opendisplay/issues/11) Menu bar app mode with auto-connect
+- [#13](https://github.com/peetzweg/opendisplay/issues/13) Battery & lifecycle awareness
 
 **Exploratory**
-- [#14](https://github.com/peetzweg/opensidecar/issues/14) Remote access beyond the local network
-- [#15](https://github.com/peetzweg/opensidecar/issues/15) Additional client platforms
+- [#14](https://github.com/peetzweg/opendisplay/issues/14) Remote access beyond the local network
+- [#15](https://github.com/peetzweg/opendisplay/issues/15) Additional client platforms
 
-Done: prebuilt releases, built-in USB connectivity (no helper tools), WiFi via Bonjour, portrait mode, touch + two-finger scroll, performance overlay, iPad support, multiple devices at once ([#8](https://github.com/peetzweg/opensidecar/issues/8) — every connected device becomes its own extended display).
+Done: prebuilt releases, built-in USB connectivity (no helper tools), WiFi via Bonjour, portrait mode, touch + two-finger scroll, performance overlay, iPad support, multiple devices at once ([#8](https://github.com/peetzweg/opendisplay/issues/8) — every connected device becomes its own extended display).
 
 ## Contributing
 

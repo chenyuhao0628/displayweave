@@ -5,11 +5,11 @@
 set -e
 cd "$(dirname "$0")"
 
-APP=build/Build/Products/Debug/OpenSidecar.app
+APP=build/Build/Products/Debug/OpenDisplay.app
 if [[ ! -d $APP ]]; then
   echo "Mac app not built — run: xcodegen generate && xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac -configuration Debug -derivedDataPath build build"
   exit 1
 fi
 
 open "$APP"
-echo "OpenSidecar running — logs at /tmp/opensidecar-mac.log."
+echo "OpenDisplay running — logs at /tmp/opensidecar-mac.log."

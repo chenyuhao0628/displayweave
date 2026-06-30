@@ -1,9 +1,9 @@
 {
-  "name": "opensidecar-site",
+  "name": "opendisplay-site",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "OpenSidecar landing page (Vite + React + motion). Builds into docs/ for GitHub Pages.",
+  "description": "OpenDisplay landing page (Vite + React + motion). Builds into docs/ for GitHub Pages.",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "vite",
