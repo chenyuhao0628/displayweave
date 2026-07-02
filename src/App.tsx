@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { AnimatePresence, motion } from "motion/react"
 import TextRotate from "./components/TextRotate"
 
 const HERO_WORDS = [
@@ -14,6 +15,22 @@ const HERO_WORDS = [
 export default function App() {
   const [macVer, setMacVer] = useState<string | null>(null)
   const [starCount, setStarCount] = useState<string | null>(null)
+  // Show the brand icon in the navbar only once the big hero logo has
+  // scrolled up behind the sticky nav — it "hands off" from hero to navbar.
+  const heroLogoRef = useRef<HTMLImageElement>(null)
+  const [showNavLogo, setShowNavLogo] = useState(false)
+
+  useEffect(() => {
+    const el = heroLogoRef.current
+    if (!el || typeof IntersectionObserver === "undefined") return
+    const io = new IntersectionObserver(
+      ([entry]) => setShowNavLogo(!entry.isIntersecting),
+      // 60px = navbar height, so the handoff fires as the logo slips under it.
+      { rootMargin: "-60px 0px 0px 0px", threshold: 0 }
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
 
   // Progressive enhancement: current release version + live star count.
   // Fails silent (offline / rate-limited) — the page works without it.
@@ -44,7 +61,26 @@ export default function App() {
       <nav>
         <div className="wrap">
           <a className="brand" href="./">
-            <img src="icon-256.png" alt="" /> OpenDisplay
+            <AnimatePresence mode="popLayout" initial={false}>
+              {showNavLogo && (
+                <motion.img
+                  key="nav-logo"
+                  className="nav-logo"
+                  src="logo.png"
+                  alt=""
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0 }}
+                  transition={{ type: "spring", damping: 16, stiffness: 340 }}
+                />
+              )}
+            </AnimatePresence>
+            <motion.span
+              layout
+              transition={{ type: "spring", damping: 22, stiffness: 340 }}
+            >
+              OpenDisplay
+            </motion.span>
           </a>
           <div className="links">
             <a href="#demo">Demo</a>
@@ -76,6 +112,7 @@ export default function App() {
 
       <section>
         <div className="wrap hero">
+          <img ref={heroLogoRef} className="hero-logo" src="logo.png" alt="OpenDisplay" width="160" height="160" />
           <p className="eyebrow">Free &amp; open source · macOS + iOS</p>
           <h1>
             <span className="l1">

@@ -27,7 +27,7 @@ nav .wrap { display: flex; align-items: center; justify-content: space-between;
   height: 60px; }
 nav .brand { display: flex; align-items: center; gap: 10px; font-weight: 600;
   letter-spacing: -0.01em; text-decoration: none; }
-nav .brand img { width: 26px; height: 26px; }
+nav .brand img { width: 43px; height: 43px; }
 nav .links { display: flex; gap: 22px; font-size: 0.9rem; }
 nav .links a { text-decoration: none; color: var(--muted); }
 nav .links a:hover { color: var(--fg); }
@@ -51,7 +51,8 @@ h2 { font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.1; letter-spacing: -0.0
   font-weight: 600; }
 
 /* ---- hero ---- */
-.hero { padding-top: 92px; padding-bottom: 84px; }   /* vertical only — see .sec note */
+.hero { padding-top: 48px; padding-bottom: 84px; }   /* vertical only — see .sec note */
+.hero-logo { display: block; width: 160px; height: 160px; margin-bottom: 24px; }
 .hero h1 { max-width: 30ch; }
 /* two fixed lines: "Use your <pill>" then a stable "as your Mac's second monitor."
    l1 stays on one line (nowrap) so the rotating word's width never pushes l2 around */
