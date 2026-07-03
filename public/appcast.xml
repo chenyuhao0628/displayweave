@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>OpenDisplay</title>
+        <item>
+            <title>0.10.1</title>
+            <pubDate>Fri, 03 Jul 2026 20:16:34 +0000</pubDate>
+            <sparkle:version>100</sparkle:version>
+            <sparkle:shortVersionString>0.10.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/peetzweg/opendisplay/releases/download/v0.10.1/OpenDisplay.dmg" length="1908619" type="application/octet-stream" sparkle:edSignature="jjHTbXNlw1RYqLnZpm8zng43Qg/zhc9dFEd/J5mAdcEMkAQ7zAU0MdWSbURsh41FMga8wmJZ5vmLPvl9AouOAA=="/>
+        </item>
+    </channel>
+</rss>
