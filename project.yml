@@ -57,13 +57,11 @@ targets:
         # domain. The release workflow publishes appcast.xml so this URL
         # resolves — see .github/workflows/release.yml.
         SUFeedURL: https://opendisplay.app/appcast.xml
-        # PLACEHOLDER — auto-update will NOT verify/install until this is set.
-        # The MAINTAINER must run Sparkle's `generate_keys` (ships with the
-        # Sparkle SPM artifact / release tarball), then paste the printed
-        # PUBLIC EdDSA key here, and add the matching PRIVATE key as the
-        # `SPARKLE_PRIVATE_KEY` GitHub Actions secret (used to sign the
-        # appcast in CI). The private key must NEVER be committed.
-        SUPublicEDKey: REPLACE_WITH_SUPUBLICEDKEY_FROM_generate_keys
+        # Public EdDSA key from Sparkle's `generate_keys`. The matching private
+        # key lives only as the `SPARKLE_PRIVATE_KEY` GitHub Actions secret
+        # (used to sign the appcast in CI) and is never committed. Sparkle
+        # verifies update signatures against this public key before installing.
+        SUPublicEDKey: rYxlIePmwzi2bRo/qIsuY2TqTnQ34li2gQhJpGBiumw=
         # Check for updates automatically in the background on a schedule.
         SUEnableAutomaticChecks: true
     settings:
