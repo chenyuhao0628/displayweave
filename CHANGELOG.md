@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.1](https://github.com/peetzweg/opendisplay/compare/v0.10.0...v0.10.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* **ci:** appcast never publishes on first release (untracked file) ([090144c](https://github.com/peetzweg/opendisplay/commit/090144cd195acf2397d804ddf5e5538ed7ece1ac))
+* **ci:** publish appcast on first release (detect untracked file) ([db16008](https://github.com/peetzweg/opendisplay/commit/db16008ef3c9176b33ba3b8c319cc843547155c1))
+
 ## [0.10.0](https://github.com/peetzweg/opendisplay/compare/v0.9.0...v0.10.0) (2026-07-03)
 
 
