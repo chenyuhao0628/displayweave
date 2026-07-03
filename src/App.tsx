@@ -276,7 +276,7 @@ export default function App() {
             <p>
               Supporting me on Ko-fi keeps OpenDisplay well maintained and free for
               everyone, including the people who can't afford to chip in. My goal is to
-              make this the greatest display companion app there is for your iPad.
+              make this the greatest display companion app there is for iPad.
             </p>
             <p>
               If it saved you from buying a monitor, a small tip helps keep it going.
@@ -297,8 +297,8 @@ export default function App() {
           <div className="fgrid">
             <div className="fcell"><span className="n">001</span><h3>No account, ever</h3><p>No sign-up, no email, no login. And unlike Apple Sidecar — which only works between devices on the <em>same</em> Apple ID — OpenDisplay pairs across different Apple IDs, so you can use a partner's or friend's iPad. Download both apps and go.</p></div>
             <div className="fcell"><span className="n">002</span><h3>Low-latency pipeline</h3><p>Up to 60 FPS over USB. Hardware H.264 (VideoToolbox real-time mode), TCP_NODELAY, and frame-dropping backpressure with instant keyframe recovery keep it responsive.</p></div>
-            <div className="fcell"><span className="n">003</span><h3>Retina sharp</h3><p>Native Retina resolution — the virtual display matches your device panel pixel-for-pixel at HiDPI (@2x), so text looks exactly like it should.</p></div>
-            <div className="fcell"><span className="n">004</span><h3>True extension</h3><p>macOS treats your phone as a real monitor via a virtual display — arrange it in System Settings, drag windows onto it. Mirroring is available too.</p></div>
+            <div className="fcell"><span className="n">003</span><h3>Two, even three screens</h3><p>You're not limited to one device. Run several iPads and iPhones at once, each as its own extended display — up to three has been tested, and you can freely mix iPads and iPhones. Arrange them all in System Settings like real monitors.</p></div>
+            <div className="fcell"><span className="n">004</span><h3>Retina sharp</h3><p>Native Retina resolution — the virtual display matches your device panel pixel-for-pixel at HiDPI (@2x), so text looks exactly like it should.</p></div>
             <div className="fcell"><span className="n">005</span><h3>USB-wired, lowest latency</h3><p>Streams over your charging cable via usbmux. No network, no jitter — and your phone charges while it works.</p></div>
             <div className="fcell"><span className="n">006</span><h3>WiFi, zero config</h3><p>The phone advertises itself with Bonjour; pick it from a dropdown. No IP addresses to type.</p></div>
             <div className="fcell"><span className="n">007</span><h3>Touch &amp; scroll</h3><p>Tap to click, drag to drag, two-finger pan to scroll. A tiny touchscreen for your Mac.</p></div>
