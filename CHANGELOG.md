@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.10.0](https://github.com/peetzweg/opendisplay/compare/v0.9.0...v0.10.0) (2026-07-03)
+
+
+### Features
+
+* **mac:** scaffold Sparkle auto-update with Pages-hosted appcast ([42415f8](https://github.com/peetzweg/opendisplay/commit/42415f802485136b7bf4261705aae47863430787))
+* **mac:** Sparkle auto-update with Pages-hosted appcast (rebase of [#70](https://github.com/peetzweg/opendisplay/issues/70)) ([1d52c29](https://github.com/peetzweg/opendisplay/commit/1d52c298cb3ed125e340fd6d9f115521a2404370))
+* **web:** activate App Store download link for iOS receiver ([9ae421e](https://github.com/peetzweg/opendisplay/commit/9ae421ee079b558bb1ad095dab35a007eabb1b5b))
+* **web:** add demo video section ([6a5a358](https://github.com/peetzweg/opendisplay/commit/6a5a358730e7844f528dcb9fcabf2b14a36c6e01))
+* **web:** add hero app-icon logo with animated navbar handoff ([c4b2997](https://github.com/peetzweg/opendisplay/commit/c4b29971778905c1e29606a7d51f63c3d281f3e7))
+* **web:** add multi-screen feature, tweak Ko-fi iPad wording ([279a39d](https://github.com/peetzweg/opendisplay/commit/279a39dd12dc58b6dbff9f78c9c8ac234fd40e37))
+* **web:** add Plausible analytics and iOS Smart App Banner ([5504d91](https://github.com/peetzweg/opendisplay/commit/5504d91d46fbd6f4d41e964df5733eea9855eab5))
+* **web:** add social share image and FAQPage structured data ([3fe0915](https://github.com/peetzweg/opendisplay/commit/3fe0915d25381a3f3276d61d88e4df5e463dc97c))
+* **web:** align download secondary links, add older-version link, iPadOS, mobile step order ([1d59277](https://github.com/peetzweg/opendisplay/commit/1d59277bc1402f609a47d5fa184c93ee5351f34c))
+* **web:** refine feature copy and reorder the grid ([a4e0799](https://github.com/peetzweg/opendisplay/commit/a4e0799a4ce6e2bb3ddd896e8113e1136f6df03f))
+* **web:** reorder sections, Ko-fi branding, cost transparency, scroll-spy ([36105d3](https://github.com/peetzweg/opendisplay/commit/36105d3b1624f869ba7ce2fea29227281ceb7468))
+* **web:** serve site from opendisplay.app custom domain ([712918f](https://github.com/peetzweg/opendisplay/commit/712918f21ca03c9a457a75766165896b2f7c99a2))
+
+
+### Bug Fixes
+
+* **ci:** guard Sparkle appcast step via env, not secrets context ([acd23b5](https://github.com/peetzweg/opendisplay/commit/acd23b5ca0fb087908494ada816cb3cb16ecf197))
+* **ci:** release workflow fails at startup (secrets in if:) ([ff2e82f](https://github.com/peetzweg/opendisplay/commit/ff2e82f31f96973aee70674f648d56b4c47c2788))
+
 ## [0.9.0](https://github.com/peetzweg/opendisplay/compare/v0.8.0...v0.9.0) (2026-06-30)
 
 
