@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.11.0](https://github.com/peetzweg/opendisplay/compare/v0.10.1...v0.11.0) (2026-07-07)
+
+
+### Features
+
+* **web:** full-bleed showcase strip with ad-blocker-proof tweet fallbacks ([26879c2](https://github.com/peetzweg/opendisplay/commit/26879c28f7c2912e8fc86b7c24ea3de7c58ac3d1))
+* **web:** replace live X embeds with self-hosted static post cards ([9415b37](https://github.com/peetzweg/opendisplay/commit/9415b37ba2639ced50707b52efae921f5b2d84d2))
+* **web:** showcase community tweets alongside the demo video ([9d95a94](https://github.com/peetzweg/opendisplay/commit/9d95a94cb56dcb4b99b630204610576cc4e8ec47))
+* **web:** showcase community tweets alongside the demo video ([b32a4d1](https://github.com/peetzweg/opendisplay/commit/b32a4d1f2327e7d06166f4892acd6d70a70137dd))
+
+
+### Bug Fixes
+
+* **mac:** force extend-mode virtual display out of system mirror sets ([84f7dee](https://github.com/peetzweg/opendisplay/commit/84f7dee8e22f80c7b7a5d1e3bc23cb933fa56817))
+* **mac:** force extend-mode virtual display out of system mirror sets ([#100](https://github.com/peetzweg/opendisplay/issues/100)) ([e3fca0e](https://github.com/peetzweg/opendisplay/commit/e3fca0e0869faafe9af9e3bd617ed9e8c936b64a))
+
 ## [0.10.1](https://github.com/peetzweg/opendisplay/compare/v0.10.0...v0.10.1) (2026-07-03)
 
 
