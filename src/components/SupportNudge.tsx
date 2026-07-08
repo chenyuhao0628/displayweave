@@ -11,7 +11,7 @@ export default function SupportNudge() {
         <span className="kofi-banner-text">Free, and built by one person.</span>
       </span>
       <span className="kofi-banner-cta">
-        Support me<span className="kofi-banner-arrow">↓</span>
+        Buy Me a Coffee<span className="kofi-banner-arrow">↓</span>
       </span>
     </a>
   )
