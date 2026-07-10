@@ -70,3 +70,150 @@ enum AndroidAdbFailure: Error, LocalizedError, Equatable {
         }
     }
 }
+
+struct AndroidAdbCommandResult: Equatable {
+    let stdout: String
+    let stderr: String
+    let exitCode: Int32
+}
+
+protocol AndroidAdbProcessRunning: Sendable {
+    func run(executable: URL, arguments: [String], timeout: Duration) async throws
+        -> AndroidAdbCommandResult
+}
+
+struct FoundationAdbProcessRunner: AndroidAdbProcessRunning {
+    func run(executable: URL, arguments: [String], timeout: Duration) async throws
+        -> AndroidAdbCommandResult {
+        let process = Process()
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.executableURL = executable
+        process.arguments = arguments
+        process.standardOutput = stdout
+        process.standardError = stderr
+        try process.run()
+
+        return try await withTaskCancellationHandler {
+            try await withThrowingTaskGroup(of: Int32?.self) { group in
+                group.addTask {
+                    process.waitUntilExit()
+                    return process.terminationStatus
+                }
+                group.addTask {
+                    try await Task.sleep(for: timeout)
+                    return nil
+                }
+
+                guard let first = try await group.next() else {
+                    throw AndroidAdbFailure.timedOut
+                }
+                if first == nil {
+                    if process.isRunning { process.terminate() }
+                    process.waitUntilExit()
+                    group.cancelAll()
+                    throw AndroidAdbFailure.timedOut
+                }
+                group.cancelAll()
+                let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
+                let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
+                return AndroidAdbCommandResult(
+                    stdout: String(decoding: outputData, as: UTF8.self),
+                    stderr: String(decoding: errorData, as: UTF8.self),
+                    exitCode: first!)
+            }
+        } onCancel: {
+            if process.isRunning { process.terminate() }
+        }
+    }
+}
+
+enum AndroidAdbExecutableResolver {
+    static func resolve(
+        configuredPath: String?,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        fileExists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) },
+        isExecutable: (URL) -> Bool = { FileManager.default.isExecutableFile(atPath: $0.path) }
+    ) -> URL? {
+        var candidates: [URL] = []
+        if let configuredPath, !configuredPath.isEmpty {
+            candidates.append(expand(configuredPath, homeDirectory: homeDirectory))
+        }
+        for directory in environment["PATH"]?.split(separator: ":") ?? [] {
+            candidates.append(URL(fileURLWithPath: String(directory)).appendingPathComponent("adb"))
+        }
+        if let androidHome = environment["ANDROID_HOME"], !androidHome.isEmpty {
+            candidates.append(URL(fileURLWithPath: androidHome)
+                .appendingPathComponent("platform-tools/adb"))
+        }
+        if let sdkRoot = environment["ANDROID_SDK_ROOT"], !sdkRoot.isEmpty {
+            candidates.append(URL(fileURLWithPath: sdkRoot)
+                .appendingPathComponent("platform-tools/adb"))
+        }
+        candidates.append(homeDirectory.appendingPathComponent("Library/Android/sdk/platform-tools/adb"))
+        candidates.append(URL(fileURLWithPath: "/opt/homebrew/bin/adb"))
+        candidates.append(URL(fileURLWithPath: "/usr/local/bin/adb"))
+        return candidates.first { fileExists($0) && isExecutable($0) }
+    }
+
+    static func searchedPaths(
+        configuredPath: String?,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [String] {
+        var paths: [String] = []
+        if let configuredPath, !configuredPath.isEmpty {
+            paths.append(expand(configuredPath, homeDirectory: homeDirectory).path)
+        }
+        paths += (environment["PATH"]?.split(separator: ":") ?? []).map {
+            URL(fileURLWithPath: String($0)).appendingPathComponent("adb").path
+        }
+        if let value = environment["ANDROID_HOME"], !value.isEmpty {
+            paths.append(URL(fileURLWithPath: value).appendingPathComponent("platform-tools/adb").path)
+        }
+        if let value = environment["ANDROID_SDK_ROOT"], !value.isEmpty {
+            paths.append(URL(fileURLWithPath: value).appendingPathComponent("platform-tools/adb").path)
+        }
+        paths.append(homeDirectory.appendingPathComponent("Library/Android/sdk/platform-tools/adb").path)
+        paths.append("/opt/homebrew/bin/adb")
+        paths.append("/usr/local/bin/adb")
+        return paths
+    }
+
+    private static func expand(_ path: String, homeDirectory: URL) -> URL {
+        if path == "~" { return homeDirectory }
+        if path.hasPrefix("~/") {
+            return homeDirectory.appendingPathComponent(String(path.dropFirst(2)))
+        }
+        return URL(fileURLWithPath: path)
+    }
+}
+
+struct AndroidAdbClient: Sendable {
+    let executable: URL
+    let runner: any AndroidAdbProcessRunning
+
+    func devices() async throws -> [AndroidAdbDevice] {
+        let result = try await runner.run(executable: executable,
+                                          arguments: ["devices", "-l"],
+                                          timeout: .seconds(10))
+        guard result.exitCode == 0 else {
+            throw AndroidAdbFailure.commandFailed(exitCode: result.exitCode,
+                                                  message: result.stderr)
+        }
+        return AndroidAdbDeviceList.parse(result.stdout)
+    }
+
+    @discardableResult
+    func run(serial: String, arguments: [String]) async throws -> AndroidAdbCommandResult {
+        let result = try await runner.run(executable: executable,
+                                          arguments: ["-s", serial] + arguments,
+                                          timeout: .seconds(10))
+        guard result.exitCode == 0 else {
+            throw AndroidAdbFailure.commandFailed(exitCode: result.exitCode,
+                                                  message: result.stderr)
+        }
+        return result
+    }
+}

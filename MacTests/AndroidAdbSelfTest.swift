@@ -4,9 +4,21 @@ private func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     if !condition() { fatalError(message) }
 }
 
+private final class FakeAdbRunner: AndroidAdbProcessRunning, @unchecked Sendable {
+    var calls: [(URL, [String])] = []
+    var result = AndroidAdbCommandResult(stdout: "List of devices attached\n",
+                                         stderr: "", exitCode: 0)
+
+    func run(executable: URL, arguments: [String], timeout: Duration) async throws
+        -> AndroidAdbCommandResult {
+        calls.append((executable, arguments))
+        return result
+    }
+}
+
 @main
 struct AndroidAdbSelfTest {
-    static func main() {
+    static func main() async throws {
         let output = """
         List of devices attached
         R58M123 device product:foo model:Pixel_8 transport_id:1
@@ -37,6 +49,57 @@ struct AndroidAdbSelfTest {
         expect(AndroidAdbFailure.multipleDevices(["A", "B"])
             .localizedDescription.contains("选择目标设备"),
                "multiple devices should request an explicit selection")
+
+        let candidates = Set([
+            "/configured/adb", "/path/bin/adb", "/android-home/platform-tools/adb",
+            "/sdk-root/platform-tools/adb", "/Users/test/Library/Android/sdk/platform-tools/adb",
+            "/opt/homebrew/bin/adb", "/usr/local/bin/adb",
+        ])
+        let environment = [
+            "PATH": "/path/bin:/other/bin",
+            "ANDROID_HOME": "/android-home",
+            "ANDROID_SDK_ROOT": "/sdk-root",
+        ]
+        let selected = AndroidAdbExecutableResolver.resolve(
+            configuredPath: "/configured/adb", environment: environment,
+            homeDirectory: URL(fileURLWithPath: "/Users/test"),
+            fileExists: { candidates.contains($0.path) },
+            isExecutable: { candidates.contains($0.path) })
+        expect(selected?.path == "/configured/adb",
+               "configured ADB path should have highest priority")
+
+        let pathSelected = AndroidAdbExecutableResolver.resolve(
+            configuredPath: nil, environment: environment,
+            homeDirectory: URL(fileURLWithPath: "/Users/test"),
+            fileExists: { candidates.contains($0.path) },
+            isExecutable: { candidates.contains($0.path) })
+        expect(pathSelected?.path == "/path/bin/adb", "PATH should precede SDK locations")
+
+        let runner = FakeAdbRunner()
+        let client = AndroidAdbClient(executable: URL(fileURLWithPath: "/configured/adb"),
+                                      runner: runner)
+        _ = try await client.devices()
+        expect(runner.calls.last?.1 == ["devices", "-l"],
+               "device discovery should call adb devices -l")
+        _ = try await client.run(serial: "R58M123", arguments: ["forward", "--list"])
+        expect(runner.calls.last?.1 == ["-s", "R58M123", "forward", "--list"],
+               "device commands should pass serial as a separate argument")
+
+        let processRunner = FoundationAdbProcessRunner()
+        let printed = try await processRunner.run(
+            executable: URL(fileURLWithPath: "/usr/bin/printf"),
+            arguments: ["%s", "hello"], timeout: .seconds(2))
+        expect(printed.stdout == "hello" && printed.exitCode == 0,
+               "production runner should capture stdout without a shell")
+
+        do {
+            _ = try await processRunner.run(
+                executable: URL(fileURLWithPath: "/bin/sleep"),
+                arguments: ["1"], timeout: .milliseconds(20))
+            fatalError("production runner should time out a long command")
+        } catch AndroidAdbFailure.timedOut {
+            // Expected.
+        }
 
         print("AndroidAdbSelfTest PASS")
     }
