@@ -1,5 +1,12 @@
 # Security
 
+## 中文说明
+
+DisplayWeave 不使用项目运营的云端视频中转，但当前 WiFi TCP 尚未实现
+生产级加密配对，请仅在可信局域网使用。Apple 接收端支持 USB；Android
+当前仅支持 WiFi，USB/ADB reverse 尚未实现。现有下载文件是开发预览：
+macOS 仅作 ad-hoc 本地签名且未公证，iOS 仅供 Simulator，Android 为 Debug APK。
+
 DisplayWeave is designed for local use. It captures your Mac display and sends
 frames directly to a receiver on USB or the local network.
 
@@ -7,19 +14,23 @@ frames directly to a receiver on USB or the local network.
 
 - No project-operated relay server is used for screen content.
 - WiFi mode uses local-network discovery and a direct TCP connection.
-- USB mode uses local device transport where supported.
+- Apple-receiver USB mode uses local `usbmuxd` transport. Android currently
+  uses WiFi only; Android USB/ADB reverse is not implemented.
 - macOS Screen Recording permission is required for capture.
 - macOS Accessibility permission is required for injected touch and scroll input.
 
 ## Current Caveats
 
-- WiFi pairing and transport encryption are not production-grade in this fork.
+- WiFi pairing and transport encryption are not production-grade in the current project.
 - Use trusted local networks.
 - Avoid exposing receiver ports outside your LAN.
 - VPN TUN mode, firewall tools, and network filters can affect discovery and
   latency.
 - Android receiver behavior depends on device vendor networking and decoder
   implementations.
+- DisplayWeave does not currently provide signed and notarized release
+  packages. Source builds and locally signed artifacts carry the trust of the
+  local toolchain and signing identity used to produce them.
 
 ## Reporting Security Issues
 
@@ -38,6 +49,6 @@ Useful security reports include:
 
 ## Dependency And Build Trust
 
-Build locally from source when evaluating this fork. Generated build output,
+Build locally from source when evaluating DisplayWeave. Generated build output,
 APK files, provisioning profiles, and signing credentials should not be
 committed to the repository.

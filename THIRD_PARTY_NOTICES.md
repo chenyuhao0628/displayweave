@@ -12,7 +12,9 @@ primary upstream sources relevant to the repository.
 
 DisplayWeave retains OpenDisplay's Git history, applicable copyright notices,
 and GPL-3.0 licensing requirements. The repository root `LICENSE` contains the
-license text governing this derivative work.
+license text governing the current DisplayWeave work. OpenDisplay is the source
+project; DisplayWeave is independently named and maintained rather than
+presented as an official OpenDisplay distribution.
 
 ## SideScreen
 

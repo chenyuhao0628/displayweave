@@ -82,7 +82,7 @@
   <div class="wrap">
     <p class="eyebrow">Privacy policy</p>
     <h1>No accounts. No analytics. No servers.</h1>
-    <p class="updated">Effective June 11, 2026 · applies to the DisplayWeave Mac and iOS apps and this website</p>
+    <p class="updated">Effective July 10, 2026 · applies to the DisplayWeave Mac, iOS/iPadOS, and Android apps and this website</p>
   </div>
 </header>
 
@@ -92,8 +92,8 @@
     <div class="tldr">
       <p>DisplayWeave collects <strong>no data</strong>. There are no accounts, no analytics,
       no telemetry, no crash reporting, no ads, and no servers — ours or anyone else's.
-      Your screen content travels directly from your Mac to your device over your USB
-      cable or your local network, and nowhere else. Because the source code is public,
+      Your screen content travels directly from your Mac to an Apple receiver over USB,
+      or to an Apple or Android receiver over your local network, and nowhere else. Because the source code is public,
       every claim on this page is verifiable.</p>
     </div>
 
@@ -103,8 +103,8 @@
     and sends it over a <strong>single direct connection</strong> to the DisplayWeave
     app on your device:</p>
     <ul>
-      <li><strong>Over USB</strong>, the video travels through your cable via the
-      <code>usbmuxd</code> service built into macOS. It never touches any network.</li>
+      <li><strong>Over USB (iPhone/iPad)</strong>, the video travels through your cable
+      via the <code>usbmuxd</code> service built into macOS. It never touches any network.</li>
       <li><strong>Over WiFi</strong>, the video travels across your own local network
       directly between the two devices, discovered via Bonjour.</li>
     </ul>
@@ -145,17 +145,17 @@
           Mac.</td></tr>
       <tr><td>Local Network (Mac and device)</td>
           <td>For WiFi discovery and streaming on your own network. Not needed in
-          USB mode.</td></tr>
+          Apple-receiver USB mode.</td></tr>
     </table>
     <p>Every permission is used solely for the function above, on your own machines.</p>
 
     <h2>An honest caveat: WiFi transport is not yet encrypted</h2>
     <div class="note">
-      <p>USB streaming is point-to-point over your cable. WiFi streaming, however,
+      <p>Apple-receiver USB streaming is point-to-point over your cable. WiFi streaming, however,
       currently travels <strong>unencrypted across your local network</strong> —
       someone with access to the same network could in principle observe the video
       stream. On a trusted home or office network this is rarely a concern, but on
-      shared or public WiFi we recommend USB mode. Encrypted WiFi transport with
+      shared or public WiFi we recommend Apple-receiver USB mode where available. Encrypted WiFi transport with
       device pairing is on the roadmap
       (see the <a href="https://github.com/chenyuhao0628/displayweave/blob/main/docs/roadmap-and-acceptance.md">project roadmap</a>).
       A privacy page that didn't tell you this wouldn't be worth linking to.</p>

@@ -1,5 +1,11 @@
 # App Store Connect listing — reference
 
+> **Current status:** This is reference metadata for a future DisplayWeave iOS
+> distribution update. The repository is currently source-first and does not
+> claim that a signed DisplayWeave App Store/TestFlight package is available.
+> A Simulator-only development preview may be published separately, but it is
+> not an App Store/TestFlight build and cannot be installed on physical devices.
+
 Canonical copy for the iOS app's App Store Connect / TestFlight text fields, kept in
 version control so we know what's live and can edit deliberately.
 

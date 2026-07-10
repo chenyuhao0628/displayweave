@@ -1,10 +1,36 @@
-# OpenDisplay Android 120Hz Migration Plan
+# DisplayWeave Android High-Refresh Migration Record
 
-This document records the phase-1 audit for migrating the current OpenDisplay
-Mac + Android receiver pipeline from a fixed H.264/60fps WiFi path to a
-negotiated 60/90/120fps path with HEVC preferred and H.264 fallback.
+## 中文摘要
 
-Scope for this phase: audit only. No core streaming behavior has been changed.
+核心迁移已经完成：Android 支持可选能力协商、`streamConfig`、HEVC 与
+H.264 自动回退、动态 30/60/90/120fps、高刷新显示请求、低延迟队列和
+运行时统计。OnePlus OPD2413 在 HEVC/120 WiFi 环境下实测约 109-111
+FPS，Android 显示模式为 120Hz，但仍未达到稳定满 120 FPS。本文后续内容
+保留迁移前审计和各阶段实现记录，不应把历史“未完成”描述当作当前状态。
+
+> **Status:** The core migration described here is complete. This document
+> preserves the original audit, phase history, implementation notes, and
+> physical-device evidence. It is not a description of pending work.
+
+DisplayWeave migrated the inherited fixed H.264/60fps WiFi path to optional
+capability negotiation, dynamic 30/60/90/120fps selection, HEVC preference with
+H.264 fallback, Android high-refresh display requests, bounded queueing, and
+runtime performance statistics.
+
+The completed path was physically validated on a OnePlus OPD2413 running
+Android SDK 36. In HEVC/120 over WiFi, capture through render measured about
+109-111 FPS while Android reported an active 120Hz mode. H.264/60 fallback was
+also validated. High refresh remains experimental: this result is below
+sustained 120 FPS and does not generalize to all hardware.
+
+Still planned, not implemented: Android USB/ADB reverse, encrypted WiFi pairing,
+iOS/iPadOS 120Hz, and signed/notarized DisplayWeave packages.
+
+## Historical Phase-1 Audit
+
+The sections below describe the pre-migration state and should be read as a
+historical baseline unless a later implementation phase explicitly updates
+them.
 
 Reference repository audited: `tranvuongquocdat/SideScreen`, cloned locally to
 `/private/tmp/SideScreen` for comparison.
@@ -164,7 +190,7 @@ is copied or adapted beyond high-level design ideas, add or update
 
 ## Key Differences
 
-| Area | Current OpenDisplay | SideScreen reference | Migration direction |
+| Area | Historical pre-migration baseline | SideScreen reference | Migration direction |
 | --- | --- | --- | --- |
 | Device capability | Android hello has size/scale only | Codec capability negotiation exists | Extend hello JSON with optional fields and defaults |
 | Virtual display fps | Hard-coded 60Hz | Refresh rate is an input | Add selected/requested fps to `VirtualDisplay` |

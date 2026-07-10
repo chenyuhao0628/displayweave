@@ -3,20 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>DisplayWeave — Turn iPhone, iPad, and Android devices into Mac displays</title>
-  <meta name="description" content="DisplayWeave is an open-source, local-first second-display platform for macOS with iPhone, iPad, and Android receivers, HEVC, and experimental high-refresh Android modes." />
+  <title>DisplayWeave — Local second displays for Mac, iPhone, iPad, and Android</title>
+  <meta name="description" content="DisplayWeave turns iPhone, iPad, and Android devices into local second displays for macOS. Apple supports USB/WiFi; Android supports WiFi with HEVC and experimental high refresh." />
   <meta name="keywords" content="Android second monitor,iPad external display,iPhone second monitor,macOS virtual display,HEVC,120Hz,open source" />
   <link rel="icon" type="image/png" href="./icon-256.png" />
   <link rel="canonical" href="https://chenyuhao0628.github.io/displayweave/" />
-  <!-- Smart App Banner: offers the iOS receiver to visitors on iPhone/iPad Safari. -->
-  <meta name="apple-itunes-app" content="app-id=6780264891" />
-
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="DisplayWeave" />
   <meta property="og:locale" content="en_US" />
   <meta property="og:title" content="DisplayWeave — One Mac. Every screen." />
-  <meta property="og:description" content="Use iPhone, iPad, or Android as a local second display for macOS, with HEVC and experimental high-refresh Android support." />
+  <meta property="og:description" content="Use iPhone, iPad, or Android as a local second display for macOS. Android HEVC high refresh is experimental and measured about 109-111 FPS on tested hardware." />
   <meta property="og:url" content="https://chenyuhao0628.github.io/displayweave/" />
   <meta property="og:image" content="https://chenyuhao0628.github.io/displayweave/og.png" />
   <meta property="og:image:type" content="image/png" />
@@ -25,7 +22,7 @@
   <meta property="og:image:alt" content="DisplayWeave — open-source cross-device second displays for macOS." />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="DisplayWeave — One Mac. Every screen." />
-  <meta name="twitter:description" content="Open-source, local-first display extension for iPhone, iPad, and Android." />
+  <meta name="twitter:description" content="Open-source local second displays: Apple receivers over USB/WiFi, Android over WiFi with experimental HEVC high refresh." />
   <meta name="twitter:image" content="https://chenyuhao0628.github.io/displayweave/og.png" />
   <meta name="twitter:image:alt" content="DisplayWeave — open-source cross-device second displays for macOS." />
 
@@ -37,22 +34,22 @@
     "operatingSystem": "macOS 14+, iPadOS 17+, iOS 17+, Android 8+",
     "applicationCategory": "UtilitiesApplication",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-    "description": "Open-source, local-first second-display platform for macOS with iPhone, iPad, and Android receivers, HEVC, and experimental high-refresh Android modes.",
+    "description": "Independent, open-source, local-first second-display platform for macOS with iPhone, iPad, and Android receivers. Apple receivers support USB and WiFi; Android currently supports WiFi with HEVC and experimental high refresh.",
     "featureList": [
       "True extended display via a virtual monitor (not just mirroring)",
-      "Wired USB streaming over the charging cable for lowest latency",
-      "Zero-config WiFi discovery via Bonjour",
+      "Wired USB streaming for iPhone and iPad receivers",
+      "Local WiFi discovery for Apple and Android receivers",
       "Retina / HiDPI (@2x) display matching the device panel",
       "Touch input: tap to click, drag, two-finger scroll",
       "Portrait or landscape virtual display",
       "Hardware HEVC and H.264 VideoToolbox pipeline",
       "Android MediaCodec receiver with experimental 60/90/120fps modes",
+      "Approximately 109-111 FPS measured on one OnePlus 120Hz device in HEVC/120 WiFi testing",
       "Self-hosted and private — no servers, accounts or telemetry"
     ],
     "url": "https://chenyuhao0628.github.io/displayweave/",
     "image": "https://chenyuhao0628.github.io/displayweave/icon.png",
-    "downloadUrl": "https://github.com/chenyuhao0628/displayweave/releases/latest",
-    "softwareHelp": "https://github.com/chenyuhao0628/displayweave#quick-start",
+    "softwareHelp": "https://github.com/chenyuhao0628/displayweave#build-from-source",
     "isAccessibleForFree": true,
     "license": "https://www.gnu.org/licenses/gpl-3.0.html",
     "author": {
@@ -88,6 +85,22 @@
       },
       {
         "@type": "Question",
+        "name": "Does Android work over USB?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Not yet. Android currently connects over local WiFi. USB via ADB reverse is planned, while iPhone and iPad receivers already support USB through macOS usbmuxd."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does 120Hz mean stable 120 FPS?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. DisplayWeave can negotiate a 120fps target and request a 120Hz Android display mode, but actual throughput depends on the full pipeline. The validated OnePlus HEVC/120 WiFi run measured about 109-111 FPS end to end. High refresh remains experimental."
+        }
+      },
+      {
+        "@type": "Question",
         "name": "Why do I see the purple screen-recording indicator on my Mac?",
         "acceptedAnswer": {
           "@type": "Answer",
@@ -107,7 +120,7 @@
         "name": "iPad support?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "The receiver is a universal iOS app — it runs on iPad today. Run the Mac, an iPhone and an iPad at once for a second and a third screen. iPad-specific features (Apple Pencil, pressure) are on the roadmap."
+          "text": "The receiver is a universal iOS app and runs on iPad today. The inherited Apple receiver path supports more than one device, while broader DisplayWeave multi-device validation is ongoing. iPad-specific features such as Apple Pencil and pressure are on the roadmap."
         }
       },
       {
@@ -123,7 +136,7 @@
         "name": "What's the license? Can I fork it or use it commercially?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "DisplayWeave is licensed under GPL-3.0. You can use, study, and adapt it freely — including commercially. If you distribute a modified version, it must remain open source under the same license with the original attribution intact, so improvements flow back to everyone instead of into closed forks. (Releases up to v0.4.x were MIT-licensed and remain available under those terms.)"
+          "text": "DisplayWeave is licensed under GPL-3.0. You can use, study, and adapt it, including commercially, subject to that license. Distributed derivative versions must preserve the applicable GPL source and attribution obligations. DisplayWeave is independently maintained and derived from OpenDisplay; origin and SideScreen reference details are recorded in the third-party notices."
         }
       }
     ]

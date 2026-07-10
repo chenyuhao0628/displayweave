@@ -1,6 +1,6 @@
 # Support
 
-This fork is source-first and community-maintained. The fastest way to debug a
+DisplayWeave is source-first and community-maintained. The fastest way to debug a
 problem is to include enough context to reproduce the connection path.
 
 ## Before Reporting
@@ -37,7 +37,8 @@ issues, also include:
 
 - tablet brand and model
 - Android version
-- whether wireless debugging or USB debugging was used
+- whether wireless or USB debugging was enabled for installation/log capture;
+  Android display streaming itself currently uses WiFi
 - whether the app exits, freezes, shows black video, or keeps running without
   frames
 - whether cursor and touch behave differently in mirror versus extend mode

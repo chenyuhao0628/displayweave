@@ -6,6 +6,11 @@
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://chenyuhao0628.github.io/displayweave/zh.html</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
     <loc>https://chenyuhao0628.github.io/displayweave/privacy.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>

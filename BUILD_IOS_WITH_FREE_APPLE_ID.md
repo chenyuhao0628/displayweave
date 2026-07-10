@@ -1,8 +1,11 @@
 # Build iOS With A Free Apple ID
 
-This fork does not publish a ready-to-install iOS app package. iOS builds need
+DisplayWeave does not currently publish a ready-to-install iOS app package. iOS builds need
 to be signed by the person installing them. The simplest path is to open the
 project in Xcode and let Xcode sign the app with your own Apple ID.
+
+The GitHub development preview includes an iOS Simulator `.app` archive for
+testing on a Mac. It is not an IPA and cannot be installed on an iPhone or iPad.
 
 ## What You Need
 
@@ -52,5 +55,5 @@ and trying to re-sign it manually.
 
 A paid Apple Developer Program account is only needed if you want broader iOS
 distribution options such as TestFlight, App Store distribution, or ad hoc
-distribution to registered devices. This fork currently focuses on local
+distribution to registered devices. DisplayWeave currently focuses on local
 development builds.

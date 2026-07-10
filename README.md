@@ -1,5 +1,11 @@
 <p align="center">
-  <img src="public/logo.png" width="128" alt="DisplayWeave app icon" />
+  <img src="public/logo.png" width="420" alt="DisplayWeave logo" />
+</p>
+
+<p align="center">
+  <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="https://chenyuhao0628.github.io/displayweave/">Website</a> ·
+  <a href="https://chenyuhao0628.github.io/displayweave/zh.html">中文网站</a>
 </p>
 
 # DisplayWeave
@@ -10,9 +16,9 @@
 
 Turn your iPhone, iPad, or Android device into a second display for macOS.
 
-DisplayWeave is an open-source, local-first display extension platform built
-for cross-device use. It extends the OpenDisplay foundation with an Android
-receiver, Chinese localization, HEVC streaming, dynamic frame-rate
+DisplayWeave is an independent, open-source, local-first display extension
+platform for cross-device use. It is derived from OpenDisplay and now includes
+an Android receiver, Chinese localization, HEVC streaming, dynamic frame-rate
 negotiation, and experimental 60/90/120fps Android display modes.
 
 > No cloud. No account. Your display stream stays on your local connection.
@@ -23,9 +29,9 @@ negotiation, and experimental 60/90/120fps Android display modes.
 
 让 iPhone、iPad 和 Android 设备成为 Mac 的第二块屏幕。
 
-DisplayWeave 是一个开源、本地优先的跨设备扩展显示项目。项目基于
-OpenDisplay 演化，并增加 Android 接收端、中文界面、HEVC 视频链路、
-动态帧率协商及实验性 Android 60/90/120fps 高刷新支持。
+DisplayWeave 是独立维护的开源、本地优先跨设备扩展显示项目。项目源自
+OpenDisplay，并已加入 Android 接收端、中文界面、HEVC 视频链路、动态
+帧率协商及实验性 Android 60/90/120fps 高刷新支持。
 
 > 无需云端，无需账号，显示数据保留在本地连接中。
 
@@ -72,6 +78,28 @@ Android 高刷新链路已在 OnePlus OPD2413、Android SDK 36 和 WiFi 环境�
 真机验证。HEVC/120 模式的采集、编码、发送、接收、解码和渲染约为
 109-111 FPS，Android 实际显示模式为 120Hz；H.264/60 回退也已验证。
 Android 高刷新目前仍属于实验功能，不代表所有设备都能稳定满 120 FPS。
+
+| Area | Current state |
+| --- | --- |
+| Apple receivers | H.264 over USB or local WiFi |
+| Android receiver | HEVC/H.265 or H.264 fallback over local WiFi |
+| Android frame rate | Dynamic 30/60/90/120fps negotiation; high refresh is experimental |
+| Verified result | About 109-111 FPS end to end on one OnePlus 120Hz device in HEVC/120 WiFi testing |
+| Not implemented | Android USB/ADB reverse, iOS/iPadOS 120Hz, encrypted WiFi pairing |
+| Distribution | Development previews available; no signed and notarized production package yet |
+
+## Development Preview Downloads
+
+Release: [`v0.1.0-preview.1`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.1.0-preview.1)
+
+| Platform | Download | Important limitation |
+| --- | --- | --- |
+| macOS | `DisplayWeave-macOS-development-preview.zip` | Ad-hoc signed for local testing; not Developer ID signed or notarized |
+| iOS/iPadOS | `DisplayWeave-iOS-Simulator-development-preview.zip` | Simulator only; not installable on an iPhone or iPad |
+| Android | `DisplayWeave-Android-debug.apk` | Installable Debug APK; WiFi transport only |
+
+These files are development previews. The source build instructions below
+remain the authoritative path until production signing and notarization exist.
 
 ## Requirements
 
@@ -134,6 +162,7 @@ Useful documentation:
 - [Android receiver guide](AndroidReceiver/README.md)
 - [Android 120Hz migration and physical-device results](docs/120hz-migration-plan.md)
 - [Development roadmap and acceptance targets](docs/roadmap-and-acceptance.md)
+- [Brand and documentation audit](docs/branding-and-doc-audit.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 ## Project Origin

@@ -1,5 +1,7 @@
 import { createRoot } from "react-dom/client"
-import App from "./App"
+import App, { type Locale } from "./App"
 import "./index.css"
 
-createRoot(document.getElementById("root")!).render(<App />)
+const locale: Locale = window.location.pathname.endsWith("/zh.html") ? "zh" : "en"
+
+createRoot(document.getElementById("root")!).render(<App initialLocale={locale} />)

@@ -2,10 +2,23 @@
 
 Android WiFi receiver for DisplayWeave.
 
-This module lets an Android tablet act as a receiver for the Mac sender. It
-uses the same DisplayWeave/OpenDisplay-compatible receiver contract as the iOS app: Bonjour-compatible
-service discovery, a length-prefixed transport, negotiated HEVC/H.264 video,
-and JSON control messages for input, configuration, and liveness.
+This module lets an Android tablet or phone act as a DisplayWeave receiver for
+the Mac sender. It uses a backward-compatible receiver contract: Android NSD
+discovery, length-prefixed local WiFi transport, negotiated HEVC/H.264 video,
+and JSON control messages for input, configuration, recovery, and liveness.
+
+## Current Status
+
+| Capability | Status |
+| --- | --- |
+| Android receiver over local WiFi | Completed |
+| HEVC/H.265 with H.264 fallback | Completed and physically validated |
+| Dynamic 30/60/90/120fps negotiation | Completed; high refresh remains experimental |
+| OnePlus HEVC/120 WiFi result | About 109-111 FPS end to end on the tested setup |
+| Android USB/ADB reverse | Planned, not implemented |
+| Encrypted WiFi pairing | Planned, not implemented |
+| Development download | Installable Debug APK in the preview GitHub Release |
+| Signed store/release package | Not available; build from source for production trust |
 
 ## 中文说明
 
@@ -140,6 +153,9 @@ build path.
 - Hardware decoder behavior can vary by Android vendor.
 - Multi-touch is currently mapped to practical desktop gestures, not a full macOS gesture set.
 - Store distribution is not configured.
+- A requested 120fps mode or active 120Hz panel does not guarantee sustained
+  120 rendered FPS. The current physical validation measured about 109-111 FPS
+  on one OnePlus device.
 
 ## Verification
 
@@ -159,7 +175,9 @@ through `WifiTcpReceiverTransport`.
 
 ## Upstream Compatibility
 
-This receiver intentionally preserves the existing OpenDisplay-compatible receiver shape so the
-Mac sender does not need a separate Android-only streaming protocol. Android
-features should stay close to that contract unless there is a clear reason to
-add versioned protocol capability negotiation.
+This receiver intentionally preserves the inherited OpenDisplay-compatible
+wire shape so the Mac sender does not need a separate Android-only streaming
+protocol. `app.opendisplay.android`, `OpenDisplayServer`,
+`H264SurfaceDecoder`, and `_opensidecar._tcp` are internal compatibility
+identifiers, not the user-facing product name. New behavior should continue to
+use optional or versioned capability negotiation.

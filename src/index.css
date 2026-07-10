@@ -30,14 +30,17 @@ nav .wrap { display: flex; align-items: center; justify-content: space-between;
   height: 60px; }
 nav .brand { display: flex; align-items: center; gap: 10px; font-weight: 600;
   letter-spacing: -0.01em; text-decoration: none; }
-nav .brand img { width: 43px; height: 43px; }
 nav .links { display: flex; gap: 22px; font-size: 0.9rem; }
 nav .links a { text-decoration: none; color: var(--muted); }
 nav .links a:hover { color: var(--fg); }
 nav .links a.gh { display: inline-flex; align-items: center; gap: 6px; }
 nav .gh-logo { width: 16px; height: 16px; fill: currentColor; display: block; }
 nav .gh-stars { font-variant-numeric: tabular-nums; }
-@media (max-width: 680px) { nav .links { display: none; } }
+.mobile-language { display: none; color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+@media (max-width: 680px) {
+  nav .links { display: none; }
+  .mobile-language { display: block; }
+}
 
 /* ---- section scaffolding ---- */
 section { border-top: 1px solid var(--line); }
@@ -65,7 +68,7 @@ h2 { font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.1; letter-spacing: -0.0
    hero → bar → downloads run reads as one block, like before the split. */
 .downloads-sec { border-top: 0; padding: 44px 0 84px; }
 .downloads-sec .needs-both { margin-top: 0; }
-.hero-logo { display: block; width: 160px; height: 160px; margin-bottom: 24px; }
+.hero-logo { display: block; width: min(420px, 90vw); height: auto; margin: -72px 0 -54px; }
 .hero h1 { max-width: 30ch; }
 /* two fixed lines: "Use your <pill>" then a stable "as your Mac's second monitor."
    l1 stays on one line (nowrap) so the rotating word's width never pushes l2 around */
@@ -109,17 +112,13 @@ h2 { font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.1; letter-spacing: -0.0
 /* ---- download blocks ---- */
 .needs-both { margin-top: 44px; color: var(--muted); font-size: 0.98rem; }
 .needs-both strong { color: var(--fg); }
-.downloads { display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+.downloads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0;
   margin-top: 18px; border: 1px solid var(--line); }
 .downloads > div { padding: 28px; }
 .downloads > div + div { border-left: 1px solid var(--line); }
 @media (max-width: 720px) {
   .downloads { grid-template-columns: 1fr; }
-  /* On mobile the phone install takes priority — surface Step 2 first. */
-  .downloads > div:nth-child(2) { order: -1; }
-  .downloads > div + div { border-left: 0; border-top: 0; }
-  /* Divider now sits above the (visually second) Mac card. */
-  .downloads > div:first-child { border-top: 1px solid var(--line); }
+  .downloads > div + div { border-left: 0; border-top: 1px solid var(--line); }
 }
 .dl-head { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--faint); margin-bottom: 6px;
@@ -137,6 +136,7 @@ h2 { font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.1; letter-spacing: -0.0
 .btn.ghost { background: transparent; color: var(--fg); }
 .btn.ghost:hover { background: var(--fg); color: var(--bg); }
 .note { font-size: 0.84rem; color: var(--muted); margin-top: 14px; line-height: 1.5; }
+.release-warning { margin-top: 14px; color: var(--muted); font-size: 0.84rem; }
 .sub { display: block; font-size: 0.84rem; color: var(--muted); margin-top: 12px; }
 /* Secondary links under the download buttons share one subtle treatment
    (they had drifted — the iOS ones were inheriting the darker default link). */
@@ -217,7 +217,7 @@ a.showcase-item.is-post:hover { border-color: var(--line-strong); }
 
 /* ---- "why" comparison rows ---- */
 .compare { border-top: 1px solid var(--line); margin-top: 28px; }
-/* 24px horizontal padding = the boxed OpenDisplay row's 2px border + 22px padding,
+/* 24px horizontal padding = the boxed DisplayWeave row's 2px border + 22px padding,
    so every product name and description lines up with the highlighted one */
 .compare .row { display: grid; grid-template-columns: 150px 1fr; gap: 24px;
   padding: 22px 24px; border-bottom: 1px solid var(--line); align-items: start; }
@@ -236,7 +236,7 @@ code { font-family: var(--mono); }
 p code { font-size: 0.88em; background: #f2f2f2; padding: 1px 5px; border-radius: 3px; }
 
 /* ---- comparison table ---- */
-/* no outer frame — keep only the inner row lines (and the boxed OpenDisplay column) */
+/* no outer frame — keep only the inner row lines (and the boxed DisplayWeave column) */
 .tbl-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 0.92rem; min-width: 660px; }
 th, td { padding: 13px 16px; text-align: left; border-bottom: 1px solid var(--line);
@@ -248,7 +248,7 @@ thead th { text-align: center; font-size: 1rem; color: var(--fg); font-weight: 6
 tbody td:first-child { color: var(--muted); }
 .mark-yes { color: var(--fg); font-weight: 600; }
 .mark-no { color: var(--faint); }
-/* highlight the OpenDisplay column — framed in brand blue */
+/* highlight the DisplayWeave column — framed in brand blue */
 th.os, td.os { border-left: 2px solid var(--accent); border-right: 2px solid var(--accent);
   background: #fafafa; }
 thead th.os { border-top: 2px solid var(--accent); color: var(--fg); }
@@ -312,6 +312,7 @@ footer { border-top: 1px solid var(--line); padding: 48px 0 64px;
 footer .links { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 14px; }
 footer .links a { color: var(--muted); text-decoration-color: var(--line); }
 footer .fine { color: var(--faint); font-size: 0.84rem; }
+.contribute-copy { color: var(--muted); max-width: 72ch; margin-top: 8px; }
 
 /* ---- mobile: tighter gutters + less vertical air ---- */
 @media (max-width: 560px) {
