@@ -36,13 +36,29 @@ struct SystemLoopbackPortAllocator: AndroidAdbPortAllocating {
     }
 }
 
-struct AndroidAdbForward: Equatable, Identifiable, Sendable {
+struct AndroidAdbForward: Equatable, Hashable, Identifiable, Sendable {
     let sessionID: UUID
     let serial: String
     let localPort: UInt16
     let remotePort: UInt16
 
     var id: UUID { sessionID }
+}
+
+struct AndroidAdbSessionDescriptor: Equatable, Sendable {
+    let serial: String
+    let host: String
+    let port: UInt16
+    let transportName: String
+
+    var sessionID: String { "android-adb:\(serial)" }
+
+    init(mapping: AndroidAdbForward) {
+        serial = mapping.serial
+        host = "127.0.0.1"
+        port = mapping.localPort
+        transportName = "usb"
+    }
 }
 
 actor AndroidAdbForwardManager {

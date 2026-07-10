@@ -29,6 +29,7 @@ enum CaptureMode: String {
 enum SenderTransport {
     case tcp(NWEndpoint)                   // WiFi (Bonjour) or -host/-port override
     case usb(udid: String?, port: UInt16)  // native usbmuxd dial; nil = first device
+    case androidAdb(port: UInt16)          // localhost endpoint created by adb forward
 }
 
 @available(macOS 14.0, *)
@@ -439,6 +440,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         switch transport {
         case .tcp(let endpoint): connectTCP(endpoint)
         case .usb(let udid, let port): connectUSB(udid: udid, port: port)
+        case .androidAdb(let port):
+            connectTCP(.hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!))
         }
     }
 
@@ -1111,7 +1114,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     }
 
     private func sendStreamConfig(width: Int, height: Int) {
-        let transportName = lastHello?.negotiatedTransport ?? "unknown"
+        let transportName: String
+        if case .androidAdb = transport {
+            transportName = "usb"
+        } else {
+            transportName = lastHello?.negotiatedTransport ?? "unknown"
+        }
         let message = StreamConfigMessage(
             codec: streamCodec,
             fps: requestedCaptureFps,

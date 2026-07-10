@@ -48,6 +48,13 @@ struct AndroidAdbForwardSelfTest {
 
         let first = try await manager.create(serial: "A")
         let second = try await manager.create(serial: "B")
+        let descriptor = AndroidAdbSessionDescriptor(mapping: first)
+        require(descriptor.sessionID == "android-adb:A",
+                "Android session identity should remain stable across port recreation")
+        require(descriptor.host == "127.0.0.1" && descriptor.port == 19001,
+                "Android session should dial only its loopback forward")
+        require(descriptor.transportName == "usb",
+                "streamConfig should identify the ADB path as USB")
         require(first.localPort == 19001 && second.localPort == 19002,
                 "each Android device should receive an independent local port")
         require(first.remotePort == 9000 && second.remotePort == 9000,
