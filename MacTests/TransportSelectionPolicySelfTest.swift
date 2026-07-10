@@ -35,6 +35,36 @@ struct TransportSelectionPolicySelfTest {
         check([0.5, 1, 2, 4, 8], TransportSelectionPolicy.recoveryDelays,
               "USB recovery should use finite exponential backoff")
 
+        let autoRecovery = AndroidUsbRecoveryMachine(mode: .auto)
+        check(.waiting(attempt: 0, delay: 0.5),
+              autoRecovery.reduce(state: .connected, event: .socketFailed),
+              "socket failure should begin the first bounded delay")
+        check(.reconnecting(attempt: 0),
+              autoRecovery.reduce(state: .waiting(attempt: 0, delay: 0.5),
+                                  event: .adbAvailable),
+              "an available ADB device should recreate its mapping")
+        check(.waiting(attempt: 1, delay: 1),
+              autoRecovery.reduce(state: .waiting(attempt: 0, delay: 0.5),
+                                  event: .adbUnavailable),
+              "an unavailable device should advance the backoff")
+        check(.awaitingWifi,
+              autoRecovery.reduce(state: .waiting(attempt: 4, delay: 8),
+                                  event: .adbUnavailable),
+              "Auto should consider WiFi only after USB retries are exhausted")
+        check(.fallbackWifi("wifi:pixel"),
+              autoRecovery.reduce(state: .awaitingWifi,
+                                  event: .wifiMatched("wifi:pixel")),
+              "matching WiFi should become the Auto fallback")
+
+        let usbRecovery = AndroidUsbRecoveryMachine(mode: .usb)
+        check(.failed,
+              usbRecovery.reduce(state: .waiting(attempt: 4, delay: 8),
+                                 event: .adbUnavailable),
+              "explicit USB mode should fail instead of using WiFi")
+        check(.cancelled,
+              autoRecovery.reduce(state: .waiting(attempt: 2, delay: 2), event: .cancelled),
+              "user cancellation should stop all scheduled recovery")
+
         print("TransportSelectionPolicySelfTest PASS")
     }
 }

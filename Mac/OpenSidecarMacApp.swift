@@ -189,6 +189,8 @@ final class SenderController: ObservableObject {
     private var androidAdbClient: AndroidAdbClient?
     private var androidForwardManager: AndroidAdbForwardManager?
     private var androidConnectPending = Set<String>()
+    private var androidRecoveryAttempt: [String: Int] = [:]
+    private var androidRecoveryGeneration: [String: Int] = [:]
 
     // Connection policy — deliberately simple, no automatic transport
     // switching. One session per physical device; whichever transport
@@ -541,6 +543,8 @@ final class SenderController: ObservableObject {
             }
             if case .androidAdb(let mapping) = session.target, let installID = info.id {
                 self.installIDByAndroidSerial[mapping.serial] = installID
+                self.androidRecoveryAttempt.removeValue(forKey: mapping.serial)
+                self.androidRecoveryGeneration[mapping.serial, default: 0] += 1
             }
             self.dedupeSessions()
         }
@@ -549,12 +553,13 @@ final class SenderController: ObservableObject {
             session?.mbps = mbps
         }
         sender.onDisconnected = { [weak self, weak session] in
-            // Device unplugged / left the network and stayed gone: end this
-            // session fully (virtual display + capture + indicator). No
-            // transport fallback — reconnecting is the user's call.
             guard let self, let session else { return }
-            Log.info("device disconnected — session \(session.id) stopped")
-            self.end(session)
+            if case .androidAdb(let mapping) = session.target {
+                self.recoverAndroidAdb(session: session, mapping: mapping)
+            } else {
+                Log.info("device disconnected — session \(session.id) stopped")
+                self.end(session)
+            }
         }
         sessions.append(session)
         Task {
@@ -602,11 +607,73 @@ final class SenderController: ObservableObject {
         }
     }
 
+    private func recoverAndroidAdb(session: DeviceSession, mapping: AndroidAdbForward) {
+        let serial = mapping.serial
+        let installID = session.deviceID ?? installIDByAndroidSerial[serial]
+        let manager = session.androidForwardManager
+        Log.info("Android USB disconnected — beginning bounded recovery for \(serial)")
+        end(session)
+
+        guard settings.transportMode != .wifi, let manager else { return }
+        let startAttempt = androidRecoveryAttempt[serial, default: 0]
+        androidRecoveryGeneration[serial, default: 0] += 1
+        let generation = androidRecoveryGeneration[serial, default: 0]
+
+        Task {
+            for attempt in startAttempt..<TransportSelectionPolicy.recoveryDelays.count {
+                guard androidRecoveryGeneration[serial] == generation else { return }
+                let delay = TransportSelectionPolicy.recoveryDelays[attempt]
+                androidAdbStatus = "USB 已断开，\(delay.formatted()) 秒后尝试恢复（\(attempt + 1)/5）"
+                try? await Task.sleep(for: .seconds(delay))
+                guard androidRecoveryGeneration[serial] == generation else { return }
+
+                do {
+                    guard let client = androidAdbClient else { throw AndroidAdbFailure.noDevices }
+                    let devices = try await client.devices()
+                    androidDevices = devices
+                    guard devices.contains(where: { $0.serial == serial && $0.state == .device }) else {
+                        androidRecoveryAttempt[serial] = attempt + 1
+                        continue
+                    }
+                    let replacement = try await manager.create(serial: serial)
+                    androidRecoveryAttempt[serial] = attempt + 1
+                    androidAdbStatus = "USB 映射已恢复，正在重新连接 Android Receiver…"
+                    connect(to: .androidAdb(replacement))
+                    return
+                } catch {
+                    androidRecoveryAttempt[serial] = attempt + 1
+                    androidAdbStatus = "USB 恢复失败：\(error.localizedDescription)"
+                }
+            }
+            finishAndroidRecovery(serial: serial, installID: installID,
+                                  generation: generation)
+        }
+    }
+
+    private func finishAndroidRecovery(serial: String, installID: String?, generation: Int) {
+        guard androidRecoveryGeneration[serial] == generation else { return }
+        androidRecoveryAttempt.removeValue(forKey: serial)
+        guard settings.transportMode == .auto else {
+            androidAdbStatus = "USB 恢复失败，请检查数据线、USB 调试授权和 Android Receiver"
+            return
+        }
+        guard let installID,
+              let receiver = discovered.first(where: { txtID(of: $0) == installID }) else {
+            androidAdbStatus = "USB 恢复失败，且未发现同一设备的 WiFi Receiver"
+            return
+        }
+        androidAdbStatus = "USB 恢复失败，正在切换同一设备的 WiFi…"
+        connect(to: .wifi(receiver))
+    }
+
     /// User-initiated disconnect: also opt the device out of auto-connect.
     func disconnect(_ session: DeviceSession) {
         switch session.target {
         case .usb: usbDisabled.insert(session.id)
-        case .androidAdb: usbDisabled.insert(session.id)
+        case .androidAdb(let mapping):
+            usbDisabled.insert(session.id)
+            androidRecoveryGeneration[mapping.serial, default: 0] += 1
+            androidRecoveryAttempt.removeValue(forKey: mapping.serial)
         case .androidAdbDevice: break
         case .wifi: wifiRemembered.remove(session.id)
         }
