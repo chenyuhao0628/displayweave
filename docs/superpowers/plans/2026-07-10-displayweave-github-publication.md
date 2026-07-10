@@ -17,10 +17,10 @@
 - Create: `THIRD_PARTY_NOTICES.md`
 - Move: `DisplayWeave_后续开发与验收目标_Codex提示词.md` to `docs/roadmap-and-acceptance.md`
 
-- [ ] Replace fork-style README positioning with the approved DisplayWeave English and Chinese positioning.
-- [ ] State experimental Android high-refresh support accurately and include the measured 109-111 FPS result.
-- [ ] Add GPL-3.0 OpenDisplay origin attribution and MIT SideScreen design-reference notice.
-- [ ] Link build, Android receiver, migration, and roadmap documentation.
+- [x] Replace fork-style README positioning with the approved DisplayWeave English and Chinese positioning.
+- [x] State experimental Android high-refresh support accurately and include the measured 109-111 FPS result.
+- [x] Add GPL-3.0 OpenDisplay origin attribution and MIT SideScreen design-reference notice.
+- [x] Link build, Android receiver, migration, and roadmap documentation.
 
 ### Task 2: Update user-visible product branding
 
@@ -37,27 +37,27 @@
 - Modify: `AndroidReceiver/app/src/main/java/app/opendisplay/android/OpenDisplayServer.java`
 - Modify: `AndroidReceiver/README.md`
 
-- [ ] Change visible app names, instructions, and service labels to DisplayWeave.
-- [ ] Point user-facing GitHub links at `chenyuhao0628/displayweave`.
-- [ ] Keep bundle IDs, Android application ID/package, Xcode schemes, protocol classes, preferences, and `_opensidecar._tcp` unchanged.
+- [x] Change visible app names, instructions, and service labels to DisplayWeave.
+- [x] Point user-facing GitHub links at `chenyuhao0628/displayweave`.
+- [x] Keep bundle IDs, Android application ID/package, Xcode schemes, protocol classes, preferences, and `_opensidecar._tcp` unchanged.
 
 ### Task 3: Verify publication build
 
 **Files:**
 - Verify: all modified files
 
-- [ ] Run `./gradlew clean`, `./gradlew assembleDebug`, and `./gradlew test` in `AndroidReceiver`.
-- [ ] Regenerate the Xcode project with `./generate.sh`.
-- [ ] Build `OpenSidecarMac` and `OpenSidecariOS` with `xcodebuild`.
-- [ ] Run `git diff --check` and inspect staged scope.
+- [x] Run `./gradlew clean`, `./gradlew assembleDebug`, and `./gradlew test` in `AndroidReceiver`.
+- [x] Regenerate the Xcode project with `./generate.sh`.
+- [x] Build `OpenSidecarMac` and `OpenSidecariOS` with `xcodebuild`.
+- [x] Run `git diff --check` and inspect staged scope.
 
 ### Task 4: Publish repository
 
 **Files:**
 - Commit all publication files.
 
-- [ ] Commit with `docs: launch DisplayWeave project identity`.
-- [ ] Create the public repository `chenyuhao0628/displayweave` without initializing replacement files.
-- [ ] Add a `displayweave` remote and push the current branch history as the remote default `main` branch.
-- [ ] Set the approved About description and repository topics.
-- [ ] Verify the public repository, default branch, latest commit, README, license, and clean local worktree.
+- [x] Commit with `docs: launch DisplayWeave project identity`.
+- [x] Create the public repository `chenyuhao0628/displayweave` without initializing replacement files.
+- [x] Add a `displayweave` remote and push the current branch history as the remote default `main` branch.
+- [x] Set the approved About description and repository topics.
+- [x] Verify the public repository, default branch, latest commit, README, license, and clean local worktree.

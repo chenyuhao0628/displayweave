@@ -1,8 +1,9 @@
 name: Release
 
 on:
-  push:
-    branches: [main]
+  # DisplayWeave is source-first until signing, notarization, App Store, and
+  # release-please permissions are configured for this repository.
+  workflow_dispatch:
 
 permissions:
   contents: write
