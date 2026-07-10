@@ -166,9 +166,12 @@ final class SenderController: ObservableObject {
     @Published var port = UserDefaults.standard.string(forKey: "port") ?? "9000"
     // `-mode mirror` / `-mode extend` launch argument also works.
     @Published var mode = CaptureMode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .extend
-    @Published var quality = StreamQuality(rawValue: UserDefaults.standard.string(forKey: "quality") ?? "") ?? .best {
-        didSet { UserDefaults.standard.set(quality.rawValue, forKey: "quality") }
+    @Published var settings = StreamSettings.load() {
+        didSet {
+            settings.save()
+        }
     }
+    var quality: StreamQuality { settings.quality }
 
     var running: Bool { !sessions.isEmpty }
 
@@ -422,7 +425,7 @@ final class SenderController: ObservableObject {
 
         let name = label(for: target)
         let sender = MacSender(transport: transport, name: name, mode: mode,
-                               quality: quality, displaySerial: Self.displaySerial(for: id))
+                               settings: settings, displaySerial: Self.displaySerial(for: id))
         let session = DeviceSession(id: id, target: target, name: name, sender: sender)
         sender.onStatus = { [weak session] text in
             session?.status = text
@@ -678,16 +681,51 @@ struct ContentView: View {
                 .onChange(of: controller.mode) { controller.restartAll() }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Picker("画质", selection: $controller.quality) {
+                    Picker("FPS", selection: $controller.settings.fpsMode) {
+                        ForEach(StreamFpsMode.allCases, id: \.self) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: controller.settings.fpsMode) { _, _ in controller.restartAll() }
+                    Text("Auto 会根据接收端上报的 maxFps 选择 60/90/120，并在虚拟显示创建失败时回退。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Picker("Codec", selection: $controller.settings.codecMode) {
+                        ForEach(StreamCodecMode.allCases, id: \.self) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: controller.settings.codecMode) { _, _ in controller.restartAll() }
+                    Text("Auto 会优先采用接收端上报的首选 codec；HEVC 初始化失败会自动回退 H.264。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Picker("画质", selection: $controller.settings.quality) {
                         ForEach(StreamQuality.allCases, id: \.self) { q in
                             Text(q.label).tag(q)
                         }
                     }
-                    .onChange(of: controller.quality) { controller.restartAll() }
-                    Text(controller.quality.explanation)
+                    .onChange(of: controller.settings.quality) { _, _ in controller.restartAll() }
+                    Text(controller.settings.quality.explanation)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                LabeledContent("Transport") {
+                    Text(controller.settings.transportMode.label)
+                        .foregroundStyle(.secondary)
+                }
+                .help("Android 当前使用 WiFi；USB/ADB reverse 会复用集中 transport 设置继续接入。")
+
+                Toggle("Debug Stats", isOn: $controller.settings.enableDebugStats)
+                    .onChange(of: controller.settings.enableDebugStats) { _, _ in controller.restartAll() }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Picker("显示位置", selection: $controller.presentation) {

@@ -40,7 +40,10 @@ fastlane/test_output/
 # deployed straight to GitHub Pages, so the build output is not committed.
 node_modules/
 dist-ssr/
-docs/
+docs/*
+!docs/120hz-migration-plan.md
 
 # Android local build artifacts
 AndroidReceiver/dist/
+.gradle/
+AndroidReceiver/local.properties

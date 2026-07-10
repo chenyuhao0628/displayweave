@@ -14,7 +14,10 @@ public final class ProtocolSelfTest {
     public static void main(String[] args) throws Exception {
         testLengthPrefixedRoundTrip();
         testJsonClassification();
+        testHelloJsonIncludesDisplayCapabilities();
+        testStreamConfigJson();
         testAnnexBTelemetryAndNalus();
+        testAnnexBFindsHevcParameterSets();
         testSpsParser();
         testMacCursorControlMessage();
         testTouchPointerIndexIsSafe();
@@ -37,6 +40,54 @@ public final class ProtocolSelfTest {
         assertFalse(LengthPrefixedProtocol.isPureJsonControl(new byte[] {'{', 0, 0, 0, 1, 0x65}));
     }
 
+    private static void testHelloJsonIncludesDisplayCapabilities() {
+        String json = LengthPrefixedProtocol.helloJson(
+                2560,
+                1600,
+                2.0,
+                120,
+                120,
+                new String[] {"hevc", "h264"},
+                "hevc",
+                "Android Tablet",
+                35,
+                "wifi",
+                "Android",
+                "install-1");
+        assertContains(json, "\"type\":\"hello\"");
+        assertContains(json, "\"pixelsWide\":2560");
+        assertContains(json, "\"pixelsHigh\":1600");
+        assertContains(json, "\"scale\":2.000");
+        assertContains(json, "\"refreshRate\":120");
+        assertContains(json, "\"maxFps\":120");
+        assertContains(json, "\"supportedCodecs\":[\"hevc\",\"h264\"]");
+        assertContains(json, "\"preferredCodec\":\"hevc\"");
+        assertContains(json, "\"deviceModel\":\"Android Tablet\"");
+        assertContains(json, "\"androidSdk\":35");
+        assertContains(json, "\"transport\":\"wifi\"");
+        assertContains(json, "\"device\":\"Android\"");
+        assertContains(json, "\"id\":\"install-1\"");
+    }
+
+    private static void testStreamConfigJson() {
+        String json = LengthPrefixedProtocol.streamConfigJson(
+                "hevc",
+                120,
+                2560,
+                1600,
+                60_000_000,
+                "main",
+                "wifi");
+        assertContains(json, "\"type\":\"streamConfig\"");
+        assertContains(json, "\"codec\":\"hevc\"");
+        assertContains(json, "\"fps\":120");
+        assertContains(json, "\"width\":2560");
+        assertContains(json, "\"height\":1600");
+        assertContains(json, "\"bitrate\":60000000");
+        assertContains(json, "\"profile\":\"main\"");
+        assertContains(json, "\"transport\":\"wifi\"");
+    }
+
     private static void testAnnexBTelemetryAndNalus() throws Exception {
         byte[] prefix = "{\"cap\":1,\"snd\":2}".getBytes("UTF-8");
         byte[] frame = concat(prefix, new byte[] {0, 0, 0, 1, 0x67, 1, 2},
@@ -44,6 +95,18 @@ public final class ProtocolSelfTest {
         assertEquals("{\"cap\":1,\"snd\":2}", AnnexB.telemetryPrefix(frame));
         assertEquals(2, AnnexB.nalUnits(frame).size());
         assertEquals(7, AnnexB.findNalUnit(frame, 7)[0] & 0x1F);
+    }
+
+    private static void testAnnexBFindsHevcParameterSets() throws Exception {
+        byte[] prefix = "{\"cap\":1,\"snd\":2}".getBytes("UTF-8");
+        byte[] frame = concat(prefix,
+                new byte[] {0, 0, 0, 1, (byte) (32 << 1), 1},
+                new byte[] {0, 0, 0, 1, (byte) (33 << 1), 1},
+                new byte[] {0, 0, 0, 1, (byte) (34 << 1), 1},
+                new byte[] {0, 0, 0, 1, (byte) (19 << 1), 1});
+        assertEquals(32, (AnnexB.findNalUnit(frame, 32, true)[0] >> 1) & 0x3F);
+        assertEquals(33, (AnnexB.findNalUnit(frame, 33, true)[0] >> 1) & 0x3F);
+        assertEquals(34, (AnnexB.findNalUnit(frame, 34, true)[0] >> 1) & 0x3F);
     }
 
     private static void testSpsParser() {
@@ -180,6 +243,12 @@ public final class ProtocolSelfTest {
     private static void assertEquals(Object expected, Object actual) {
         if (expected == null ? actual != null : !expected.equals(actual)) {
             throw new AssertionError("expected " + expected + " but got " + actual);
+        }
+    }
+
+    private static void assertContains(String value, String expectedSubstring) {
+        if (!value.contains(expectedSubstring)) {
+            throw new AssertionError("expected " + value + " to contain " + expectedSubstring);
         }
     }
 

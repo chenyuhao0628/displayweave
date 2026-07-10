@@ -13,6 +13,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
+import android.view.Display;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -26,6 +27,8 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+
+import java.util.Locale;
 
 public final class MainActivity extends Activity implements OpenDisplayServer.Listener {
     private static final int REQUEST_NEARBY_WIFI = 20;
@@ -50,6 +53,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private final ScrollGestureTracker scrollGesture = new ScrollGestureTracker();
     private TouchGestureCoordinator touchGesture;
     private StreamMetrics lastMetrics = new StreamMetrics(0, 0, 0, 0);
+    private VideoStreamConfig lastStreamConfig = VideoStreamConfig.DEFAULT;
+    private float requestedSurfaceRefreshRate = 60f;
+    private String surfaceFrameRateStatus = "not requested";
 
     @Override
     @SuppressWarnings("deprecation")
@@ -123,6 +129,20 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     @Override
+    public void onStreamConfig(VideoStreamConfig config) {
+        runOnUiThread(() -> {
+            lastStreamConfig = config;
+            requestStreamRefreshRate(config.fps);
+            refreshStreamingStatus();
+        });
+    }
+
+    @Override
+    public float currentDisplayRefreshRate() {
+        return currentRefreshRate();
+    }
+
+    @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_NEARBY_WIFI && hasNearbyWifiPermission()) {
@@ -178,6 +198,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 if (server != null) {
                     server.updateDisplay(currentDisplaySpec());
                 }
+                requestStreamRefreshRate(lastStreamConfig.fps);
             }
 
             @Override
@@ -465,19 +486,113 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             return;
         }
         StringBuilder value = new StringBuilder("正在接收");
+        value.append(" · ").append(lastStreamConfig.codec.toUpperCase(Locale.US));
+        value.append(" · 请求 ").append(lastStreamConfig.fps).append(" FPS");
         if (lastMetrics.receiverFps > 0) {
-            value.append(" · ").append(lastMetrics.receiverFps).append(" FPS");
+            value.append(" · 收 ").append(lastMetrics.receiverFps).append(" FPS");
+        }
+        if (lastMetrics.decodedFps > 0) {
+            value.append(" · 解 ").append(lastMetrics.decodedFps).append(" FPS");
+        }
+        if (lastMetrics.renderedFps > 0) {
+            value.append(" · 渲 ").append(lastMetrics.renderedFps).append(" FPS");
+        }
+        if (requestedSurfaceRefreshRate > 0) {
+            value.append(" · 屏幕 ").append(Math.round(requestedSurfaceRefreshRate)).append("Hz");
+        }
+        if (lastMetrics.droppedFramesAndroid > 0) {
+            value.append(" · Android丢 ").append(lastMetrics.droppedFramesAndroid);
+        }
+        if (lastMetrics.queueDepthAndroid > 0) {
+            value.append(" · 队列 ").append(lastMetrics.queueDepthAndroid);
         }
         if (lastMetrics.rttMs > 0) {
             value.append(" · RTT ").append(Math.round(lastMetrics.rttMs)).append(" ms");
+        }
+        if (lastMetrics.endToEndLatencyMs > 0) {
+            value.append(" · E2E ").append(lastMetrics.endToEndLatencyMs).append(" ms");
+        }
+        if (lastMetrics.decodeLatencyMs > 0) {
+            value.append(" · 解码 ").append(lastMetrics.decodeLatencyMs).append(" ms");
+        }
+        if (lastMetrics.latestFrameAgeMs > 0) {
+            value.append(" · 帧龄 ").append(lastMetrics.latestFrameAgeMs).append(" ms");
         }
         if (lastMetrics.inputP50Ms > 0) {
             value.append(" · 输入 ").append(Math.round(lastMetrics.inputP50Ms)).append(" ms");
         }
         if (lastMetrics.macCaptureFps > 0) {
-            value.append(" · Mac ").append(lastMetrics.macCaptureFps).append(" FPS");
+            value.append(" · 捕 ").append(lastMetrics.macCaptureFps).append(" FPS");
+        }
+        if (lastMetrics.encodedFps > 0) {
+            value.append(" · 编 ").append(lastMetrics.encodedFps).append(" FPS");
+        }
+        if (lastMetrics.sentFps > 0) {
+            value.append(" · 发 ").append(lastMetrics.sentFps).append(" FPS");
+        }
+        if (lastMetrics.actualVirtualDisplayRefreshRate > 0) {
+            value.append(" · 虚拟屏 ").append(lastMetrics.actualVirtualDisplayRefreshRate).append("Hz");
+        }
+        if (lastMetrics.encodeLatencyMs > 0) {
+            value.append(" · 编码 ").append(lastMetrics.encodeLatencyMs).append(" ms");
+        }
+        if (lastMetrics.averageFrameSize > 0) {
+            value.append(" · 帧 ").append(lastMetrics.averageFrameSize / 1024).append(" KB");
+        }
+        if (lastMetrics.bitrate > 0) {
+            value.append(" · 码率 ").append(lastMetrics.bitrate / 1_000_000).append(" Mbps");
+        }
+        if (lastMetrics.droppedFramesMac > 0) {
+            value.append(" · Mac丢 ").append(lastMetrics.droppedFramesMac);
+        }
+        if (lastMetrics.queueDepthMac > 0) {
+            value.append(" · Mac队列 ").append(lastMetrics.queueDepthMac);
+        }
+        if (lastMetrics.transport != null && lastMetrics.transport.length() > 0) {
+            value.append(" · ").append(lastMetrics.transport.toUpperCase(Locale.US));
         }
         setStatus(value.toString());
+    }
+
+    private void requestStreamRefreshRate(int fps) {
+        float target = RefreshRateController.chooseRefreshRate(
+                fps, supportedRefreshRates(), currentRefreshRate());
+        requestedSurfaceRefreshRate = target;
+
+        WindowManager.LayoutParams attrs = getWindow().getAttributes();
+        attrs.preferredRefreshRate = target;
+        getWindow().setAttributes(attrs);
+
+        surfaceFrameRateStatus = "window=" + Math.round(target) + "Hz";
+        if (Build.VERSION.SDK_INT >= 30 && activeSurface != null) {
+            try {
+                activeSurface.getSurface().setFrameRate(
+                        target,
+                        android.view.Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE);
+                surfaceFrameRateStatus += ", surface=set";
+            } catch (RuntimeException error) {
+                surfaceFrameRateStatus += ", surface=failed:" + error.getClass().getSimpleName();
+            }
+        } else {
+            surfaceFrameRateStatus += ", surface=unsupported";
+        }
+        android.util.Log.i("OpenDisplay", "refresh request: requestedFps=" + fps
+                + " displayRefreshRate=" + currentRefreshRate()
+                + " selectedRefreshRate=" + target
+                + " surfaceFrameRateSetResult=" + surfaceFrameRateStatus);
+    }
+
+    private float[] supportedRefreshRates() {
+        Display display = currentDisplay();
+        if (display == null) {
+            return new float[] {60f};
+        }
+        Display.Mode[] modes = display.getSupportedModes();
+        float[] rates = new float[modes.length];
+        for (int i = 0; i < modes.length; i++) {
+            rates[i] = modes[i].getRefreshRate();
+        }
+        return rates;
     }
 
     private void updateStatusOverlayVisibility() {
@@ -511,7 +626,63 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private DisplaySpec scaledDisplaySpec(int width, int height, double density, DisplayProfile profile) {
         int scaledW = Math.max(2, ((int) Math.round(width * profile.scale)) & ~1);
         int scaledH = Math.max(2, ((int) Math.round(height * profile.scale)) & ~1);
-        return new DisplaySpec(scaledW, scaledH, density);
+        int refreshRate = bucketRefreshRate(currentRefreshRate());
+        int maxFps = bucketRefreshRate(maxSupportedRefreshRate(refreshRate));
+        String[] supportedCodecs = CodecCapabilities.supportedVideoCodecs();
+        String preferredCodec = CodecCapabilities.preferredVideoCodec();
+        return new DisplaySpec(scaledW, scaledH, density,
+                refreshRate,
+                maxFps,
+                supportedCodecs,
+                preferredCodec,
+                deviceModel(),
+                Build.VERSION.SDK_INT,
+                "wifi");
+    }
+
+    private float currentRefreshRate() {
+        Display display = currentDisplay();
+        return display == null ? 60f : display.getRefreshRate();
+    }
+
+    private float maxSupportedRefreshRate(float fallback) {
+        Display display = currentDisplay();
+        if (display == null) {
+            return fallback;
+        }
+        float max = fallback;
+        for (Display.Mode mode : display.getSupportedModes()) {
+            max = Math.max(max, mode.getRefreshRate());
+        }
+        return max;
+    }
+
+    private Display currentDisplay() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            return getDisplay();
+        }
+        @SuppressWarnings("deprecation")
+        Display display = getWindowManager().getDefaultDisplay();
+        return display;
+    }
+
+    private int bucketRefreshRate(float refreshRate) {
+        if (refreshRate >= 110f) return 120;
+        if (refreshRate >= 80f) return 90;
+        if (refreshRate >= 45f) return 60;
+        return 30;
+    }
+
+    private String deviceModel() {
+        String manufacturer = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.trim();
+        String model = Build.MODEL == null ? "" : Build.MODEL.trim();
+        if (manufacturer.length() == 0) {
+            return model.length() == 0 ? "Android Tablet" : model;
+        }
+        if (model.toLowerCase(Locale.US).startsWith(manufacturer.toLowerCase(Locale.US))) {
+            return model;
+        }
+        return manufacturer + " " + model;
     }
 
     private DisplayProfile currentDisplayProfile() {

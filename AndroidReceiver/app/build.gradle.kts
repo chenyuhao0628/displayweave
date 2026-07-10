@@ -1,0 +1,71 @@
+import org.gradle.api.tasks.testing.logging.TestLogEvent
+
+plugins {
+    id("com.android.application")
+}
+
+android {
+    namespace = "app.opendisplay.android"
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = "app.opendisplay.android"
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 1
+        versionName = "0.1"
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+val sdkRoot = providers.environmentVariable("ANDROID_SDK_ROOT")
+    .orElse(providers.environmentVariable("ANDROID_HOME"))
+    .orElse(providers.provider { "${System.getProperty("user.home")}/Library/Android/sdk" })
+
+val selfTestClasses = layout.buildDirectory.dir("selfTest/classes")
+val selfTestSourceRoots = files("src/main/java", "../tests/java")
+
+fun androidJarFile() = file("${sdkRoot.get()}/platforms/android-36.1/android.jar")
+
+val compileSelfTests by tasks.registering(JavaCompile::class) {
+    description = "Compiles OpenDisplay Android plain Java self-tests."
+    source(selfTestSourceRoots.asFileTree.matching { include("**/*.java") })
+    classpath = files(androidJarFile())
+    destinationDirectory.set(selfTestClasses)
+    sourceCompatibility = JavaVersion.VERSION_17.toString()
+    targetCompatibility = JavaVersion.VERSION_17.toString()
+    options.compilerArgs.add("-Xlint:-options")
+}
+
+fun registerSelfTest(name: String, mainClassName: String) =
+    tasks.register<JavaExec>(name) {
+        group = "verification"
+        description = "Runs $mainClassName."
+        dependsOn(compileSelfTests)
+        classpath(selfTestClasses, files(androidJarFile()))
+        mainClass.set(mainClassName)
+    }
+
+val runProtocolSelfTest = registerSelfTest(
+    "runProtocolSelfTest",
+    "app.opendisplay.android.protocol.ProtocolSelfTest"
+)
+
+val runVideoStreamPolicySelfTest = registerSelfTest(
+    "runVideoStreamPolicySelfTest",
+    "app.opendisplay.android.VideoStreamPolicySelfTest"
+)
+
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events = setOf(TestLogEvent.FAILED, TestLogEvent.SKIPPED)
+    }
+}
+
+tasks.matching { it.name == "test" }.configureEach {
+    dependsOn(runProtocolSelfTest, runVideoStreamPolicySelfTest)
+}

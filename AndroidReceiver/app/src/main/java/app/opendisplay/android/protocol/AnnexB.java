@@ -59,12 +59,20 @@ public final class AnnexB {
     }
 
     public static byte[] findNalUnit(byte[] payload, int nalType) {
+        return findNalUnit(payload, nalType, false);
+    }
+
+    public static byte[] findNalUnit(byte[] payload, int nalType, boolean hevc) {
         for (byte[] unit : nalUnits(payload)) {
-            if (unit.length > 0 && (unit[0] & 0x1F) == nalType) {
+            if (unit.length > 0 && nalType(unit, hevc) == nalType) {
                 return unit;
             }
         }
         return null;
+    }
+
+    private static int nalType(byte[] unit, boolean hevc) {
+        return hevc ? ((unit[0] >> 1) & 0x3F) : (unit[0] & 0x1F);
     }
 
     public static byte[] withStartCode(byte[] nalu) {

@@ -6,11 +6,7 @@ import android.view.Surface;
 
 import org.json.JSONObject;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.IOException;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -22,26 +18,43 @@ import app.opendisplay.android.protocol.MacControlMessage;
 public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, NsdAdvertiser.Listener {
     private static final int PORT = 9000;
 
-    private final Context context;
     private final Listener listener;
-    private final ExecutorService io = Executors.newSingleThreadExecutor();
-    private final ExecutorService writer = Executors.newSingleThreadExecutor();
+    private final ExecutorService decoderWorker = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor();
     private final String installId;
     private final NsdAdvertiser advertiser;
+    private final ReceiverTransport transport;
     private volatile DisplaySpec displaySpec;
     private volatile boolean running;
-    private ServerSocket serverSocket;
-    private Socket socket;
-    private BufferedOutputStream output;
     private H264SurfaceDecoder decoder;
     private Double clockOffsetMs;
-    private final ControlMessageWriter controlWriter = new ControlMessageWriter(writer);
     private int renderedFrames;
+    private int decodedFrames;
+    private int receivedFrames;
+    private int droppedFramesAndroid;
+    private int queueDepthAndroid;
+    private long latestFrameAgeMsSum;
+    private int latestFrameAgeSamples;
+    private long endToEndLatencyMsSum;
+    private int endToEndLatencySamples;
+    private long decodeLatencyMsSum;
+    private int decodeLatencySamples;
     private long metricsWindowStartMs;
     private double lastRttMs;
     private double lastInputP50Ms;
     private int lastMacCaptureFps;
+    private int lastMacActualVirtualDisplayRefreshRate = 60;
+    private int lastMacEncodedFps;
+    private int lastMacSentFps;
+    private int lastMacAverageFrameSize;
+    private int lastMacEncodeLatencyMs;
+    private int lastMacQueueDepth;
+    private int lastMacDroppedFrames;
+    private String lastMacTransport = "wifi";
+    private VideoStreamConfig currentStreamConfig = VideoStreamConfig.DEFAULT;
+    private byte[] latestVideoFrame;
+    private VideoFrameTelemetry latestVideoFrameTelemetry;
+    private boolean decoderScheduled;
 
     public interface Listener {
         void onStatus(String status);
@@ -50,13 +63,20 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
         void onCursor(double x, double y, boolean visible);
         void onCursorImage(byte[] png, double anchorX, double anchorY,
                            double normalizedWidth, double normalizedHeight);
+        void onStreamConfig(VideoStreamConfig config);
+        float currentDisplayRefreshRate();
         void onMetrics(StreamMetrics metrics);
     }
 
     public OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener) {
-        this.context = context.getApplicationContext();
+        this(context, displaySpec, listener, new WifiTcpReceiverTransport(PORT));
+    }
+
+    OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener,
+                      ReceiverTransport transport) {
         this.displaySpec = displaySpec;
         this.listener = listener;
+        this.transport = transport;
         this.installId = InstallId.get(context);
         this.advertiser = new NsdAdvertiser(context, this);
     }
@@ -68,27 +88,50 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
         running = true;
         decoder = new H264SurfaceDecoder(surface, this);
         metricsWindowStartMs = System.currentTimeMillis();
-        advertiser.start("OpenDisplay Android", installId, PORT);
-        io.execute(this::acceptLoop);
+        transport.start(new ReceiverTransport.Listener() {
+            @Override
+            public void onListening(int port) {
+                advertiser.start("OpenDisplay Android", installId, port);
+                listener.onStatus("正在监听 :" + port + " / " + transport.name());
+            }
+
+            @Override
+            public void onConnected(String peer) {
+                resetQueuedFrames();
+                listener.onConnected(true);
+                listener.onStatus("Mac 已连接：" + peer);
+                sendHello();
+            }
+
+            @Override
+            public void onPayload(byte[] payload) {
+                handleTransportPayload(payload);
+            }
+
+            @Override
+            public void onDisconnected() {
+                resetQueuedFrames();
+                listener.onConnected(false);
+                listener.onStreaming(false);
+            }
+
+            @Override
+            public void onError(String message) {
+                listener.onStatus(message);
+            }
+        });
         timer.scheduleAtFixedRate(this::sendPingIfConnected, 2, 2, TimeUnit.SECONDS);
-        listener.onStatus("正在监听 :" + PORT);
     }
 
     public void stop() {
         running = false;
         advertiser.stop();
-        closeClient();
-        if (serverSocket != null) {
-            try {
-                serverSocket.close();
-            } catch (IOException ignored) {
-            }
-        }
+        transport.stop();
+        resetQueuedFrames();
         if (decoder != null) {
             decoder.release();
         }
-        io.shutdownNow();
-        writer.shutdownNow();
+        decoderWorker.shutdownNow();
         timer.shutdownNow();
     }
 
@@ -106,49 +149,62 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
         sendJson(LengthPrefixedProtocol.scrollJson(dx, dy));
     }
 
-    private void acceptLoop() {
-        try (ServerSocket server = new ServerSocket(PORT)) {
-            server.setReuseAddress(true);
-            serverSocket = server;
-            while (running) {
-                Socket accepted = server.accept();
-                accepted.setTcpNoDelay(true);
-                closeClient();
-                socket = accepted;
-                output = new BufferedOutputStream(accepted.getOutputStream());
-                listener.onConnected(true);
-                listener.onStatus("Mac 已连接：" + accepted.getInetAddress().getHostAddress());
-                sendHello();
-                readLoop(accepted);
+    private void enqueueVideoFrame(byte[] payload) {
+        receivedFrames++;
+        VideoFrameTelemetry telemetry = VideoFrameTelemetry.fromWirePayload(
+                payload, System.currentTimeMillis());
+        synchronized (this) {
+            if (latestVideoFrame != null) {
+                boolean queuedImportant = VideoFrameClassifier.isImportant(
+                        latestVideoFrame, currentStreamConfig);
+                boolean incomingImportant = VideoFrameClassifier.isImportant(
+                        payload, currentStreamConfig);
+                if (queuedImportant && !incomingImportant) {
+                    droppedFramesAndroid++;
+                    return;
+                }
+                droppedFramesAndroid++;
             }
-        } catch (IOException error) {
-            if (running) {
-                listener.onStatus("监听失败：" + error.getMessage());
+            latestVideoFrame = payload;
+            latestVideoFrameTelemetry = telemetry;
+            queueDepthAndroid = 1;
+            if (!decoderScheduled) {
+                decoderScheduled = true;
+                decoderWorker.execute(this::drainLatestVideoFrames);
             }
         }
     }
 
-    private void readLoop(Socket active) {
-        try {
-            BufferedInputStream input = new BufferedInputStream(active.getInputStream());
-            while (running && active == socket && !active.isClosed()) {
-                byte[] payload = LengthPrefixedProtocol.read(input);
-                if (LengthPrefixedProtocol.isPureJsonControl(payload)) {
-                    handleMacJson(new String(payload, java.nio.charset.StandardCharsets.UTF_8));
-                } else if (decoder != null) {
-                    decoder.queueFrame(payload);
+    private void drainLatestVideoFrames() {
+        while (running) {
+            byte[] frame;
+            VideoFrameTelemetry telemetry;
+            synchronized (this) {
+                frame = latestVideoFrame;
+                telemetry = latestVideoFrameTelemetry;
+                latestVideoFrame = null;
+                latestVideoFrameTelemetry = null;
+                queueDepthAndroid = 0;
+                if (frame == null) {
+                    decoderScheduled = false;
+                    return;
                 }
             }
-        } catch (IOException error) {
-            if (running) {
-                listener.onStatus("连接已断开，等待 Mac 重新连接…");
+            H264SurfaceDecoder activeDecoder = decoder;
+            if (activeDecoder != null) {
+                activeDecoder.queueFrame(frame, telemetry);
             }
-        } finally {
-            if (active == socket) {
-                closeClient();
-                listener.onConnected(false);
-                listener.onStreaming(false);
-            }
+        }
+        synchronized (this) {
+            decoderScheduled = false;
+        }
+    }
+
+    private void handleTransportPayload(byte[] payload) {
+        if (LengthPrefixedProtocol.isPureJsonControl(payload)) {
+            handleMacJson(new String(payload, StandardCharsets.UTF_8));
+        } else if (decoder != null) {
+            enqueueVideoFrame(payload);
         }
     }
 
@@ -160,6 +216,20 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
                 double t = object.optDouble("t", 0);
                 lastInputP50Ms = object.optDouble("inp50", lastInputP50Ms);
                 lastMacCaptureFps = object.optInt("capFps", lastMacCaptureFps);
+                lastMacActualVirtualDisplayRefreshRate = object.optInt(
+                        "actualVirtualDisplayRefreshRate",
+                        lastMacActualVirtualDisplayRefreshRate);
+                lastMacEncodedFps = object.optInt("encodedFps", lastMacEncodedFps);
+                lastMacSentFps = object.optInt("sentFps", lastMacSentFps);
+                lastMacAverageFrameSize = object.optInt("averageFrameSize", lastMacAverageFrameSize);
+                lastMacEncodeLatencyMs = (int) Math.round(object.optDouble(
+                        "encodeLatencyMs", lastMacEncodeLatencyMs));
+                lastMacQueueDepth = object.has("queueDepthMac")
+                        ? object.optInt("queueDepthMac", lastMacQueueDepth)
+                        : object.optInt("pending", lastMacQueueDepth);
+                lastMacDroppedFrames = object.has("droppedFramesMac")
+                        ? object.optInt("droppedFramesMac", lastMacDroppedFrames)
+                        : object.optInt("drops", lastMacDroppedFrames);
                 sendJson(LengthPrefixedProtocol.pongJson(t, LengthPrefixedProtocol.nowMs()));
             } else if ("pong".equals(type)) {
                 double t1 = object.optDouble("t", 0);
@@ -178,6 +248,23 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
                 byte[] png = Base64.decode(cursor.pngBase64, Base64.DEFAULT);
                 listener.onCursorImage(png, cursor.anchorX, cursor.anchorY,
                         cursor.normalizedWidth, cursor.normalizedHeight);
+            } else if ("streamConfig".equals(type)) {
+                if (decoder != null) {
+                    VideoStreamConfig config = VideoStreamConfig.from(
+                            object.optString("codec", "h264"),
+                            object.optInt("fps", 60),
+                            object.optInt("width", displaySpec.pixelsWide),
+                            object.optInt("height", displaySpec.pixelsHigh),
+                            object.optInt("bitrate", 0));
+                    currentStreamConfig = config;
+                    lastMacTransport = object.optString("transport", lastMacTransport);
+                    listener.onStreamConfig(config);
+                    decoder.applyStreamConfig(
+                            config.codec,
+                            config.fps,
+                            config.width,
+                            config.height);
+                }
             }
         } catch (Exception ignored) {
         }
@@ -192,6 +279,13 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
                 spec.pixelsWide,
                 spec.pixelsHigh,
                 spec.scale,
+                spec.refreshRate,
+                spec.maxFps,
+                spec.supportedCodecs,
+                spec.preferredCodec,
+                spec.deviceModel,
+                spec.androidSdk,
+                spec.transport,
                 "Android",
                 installId));
     }
@@ -200,22 +294,15 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
         sendJson(LengthPrefixedProtocol.pingJson(LengthPrefixedProtocol.nowMs()));
     }
 
-    private synchronized void sendJson(String json) {
-        if (output == null) {
-            return;
-        }
-        controlWriter.send(output, json);
+    private void sendJson(String json) {
+        transport.send(json.getBytes(StandardCharsets.UTF_8));
     }
 
-    private synchronized void closeClient() {
-        if (socket != null) {
-            try {
-                socket.close();
-            } catch (IOException ignored) {
-            }
-            socket = null;
-        }
-        output = null;
+    private synchronized void resetQueuedFrames() {
+        latestVideoFrame = null;
+        latestVideoFrameTelemetry = null;
+        queueDepthAndroid = 0;
+        decoderScheduled = false;
     }
 
     @Override
@@ -232,16 +319,109 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
     }
 
     @Override
-    public void onDecoderFrameRendered() {
+    public void onDecoderCodecFailure(String codec, String message) {
+        String fallbackStatus = CodecFallbackStatus.messageForCodecFailure(codec);
+        if (fallbackStatus != null) {
+            listener.onStatus(fallbackStatus);
+        }
+        sendJson(LengthPrefixedProtocol.codecFailureJson(codec, message));
+    }
+
+    @Override
+    public void onDecoderFrameDropped() {
+        droppedFramesAndroid++;
+    }
+
+    @Override
+    public synchronized void onDecoderFrameDecoded() {
+        decodedFrames++;
+    }
+
+    @Override
+    public synchronized void onDecoderFrameRendered(VideoFrameTelemetry telemetry) {
         renderedFrames++;
         long now = System.currentTimeMillis();
+        if (telemetry != null) {
+            latestFrameAgeMsSum += telemetry.latestFrameAgeMs(now);
+            latestFrameAgeSamples++;
+            long endToEndLatencyMs = telemetry.endToEndLatencyMs(now, clockOffsetMs);
+            if (endToEndLatencyMs >= 0) {
+                this.endToEndLatencyMsSum += endToEndLatencyMs;
+                endToEndLatencySamples++;
+            }
+            long decodeLatencyMs = telemetry.decodeLatencyMs(now, clockOffsetMs);
+            if (decodeLatencyMs >= 0) {
+                this.decodeLatencyMsSum += decodeLatencyMs;
+                decodeLatencySamples++;
+            }
+        }
         long elapsed = now - metricsWindowStartMs;
         if (elapsed >= 1000) {
-            int fps = (int) Math.round(renderedFrames * 1000.0 / elapsed);
+            int renderedFps = (int) Math.round(renderedFrames * 1000.0 / elapsed);
+            int decodedFps = (int) Math.round(decodedFrames * 1000.0 / elapsed);
+            int receivedFps = (int) Math.round(receivedFrames * 1000.0 / elapsed);
+            int dropped = droppedFramesAndroid;
+            int latestFrameAgeMs = averageAndResetLatestFrameAge();
+            int endToEndLatencyMs = averageAndResetEndToEndLatency();
+            int decodeLatencyMs = averageAndResetDecodeLatency();
             renderedFrames = 0;
+            decodedFrames = 0;
+            receivedFrames = 0;
+            droppedFramesAndroid = 0;
             metricsWindowStartMs = now;
-            listener.onMetrics(new StreamMetrics(fps, lastRttMs, lastInputP50Ms, lastMacCaptureFps));
+            listener.onMetrics(new StreamMetrics(
+                    receivedFps,
+                    renderedFps,
+                    decodedFps,
+                    lastRttMs,
+                    lastInputP50Ms,
+                    lastMacCaptureFps,
+                    currentStreamConfig.fps,
+                    currentStreamConfig.codec,
+                    currentStreamConfig.bitrate,
+                    dropped,
+                    queueDepthAndroid,
+                    listener.currentDisplayRefreshRate(),
+                    latestFrameAgeMs,
+                    endToEndLatencyMs,
+                    decodeLatencyMs,
+                    lastMacActualVirtualDisplayRefreshRate,
+                    lastMacEncodedFps,
+                    lastMacSentFps,
+                    lastMacAverageFrameSize,
+                    lastMacEncodeLatencyMs,
+                    lastMacQueueDepth,
+                    lastMacDroppedFrames,
+                    lastMacTransport));
         }
+    }
+
+    private int averageAndResetLatestFrameAge() {
+        int average = averageMs(latestFrameAgeMsSum, latestFrameAgeSamples);
+        latestFrameAgeMsSum = 0;
+        latestFrameAgeSamples = 0;
+        return average;
+    }
+
+    private int averageAndResetEndToEndLatency() {
+        int average = averageMs(endToEndLatencyMsSum, endToEndLatencySamples);
+        endToEndLatencyMsSum = 0;
+        endToEndLatencySamples = 0;
+        return average;
+    }
+
+    private int averageAndResetDecodeLatency() {
+        int average = averageMs(decodeLatencyMsSum, decodeLatencySamples);
+        decodeLatencyMsSum = 0;
+        decodeLatencySamples = 0;
+        return average;
+    }
+
+    private static int averageMs(long sum, int samples) {
+        if (samples <= 0) {
+            return 0;
+        }
+        return (int) Math.round(sum / (double) samples);
     }
 
     @Override

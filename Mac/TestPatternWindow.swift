@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MetalKit
 
 /// Debug aid: a full-screen animated window on the virtual display so the
 /// pipeline streams continuously — without it, ScreenCaptureKit emits nothing
@@ -21,7 +22,7 @@ enum TestPattern {
                 }) {
                     let w = NSWindow(contentRect: screen.frame, styleMask: [.borderless],
                                      backing: .buffered, defer: false)
-                    w.contentView = NSHostingView(rootView: PatternView())
+                    w.contentView = DisplayLinkPatternView(displayID: displayID)
                     w.setFrame(screen.frame, display: true)
                     w.orderFrontRegardless()
                     windows[displayID] = w
@@ -39,22 +40,40 @@ enum TestPattern {
     }
 }
 
-private struct PatternView: View {
-    var body: some View {
-        TimelineView(.animation) { context in
-            Canvas { g, size in
-                let t = context.date.timeIntervalSinceReferenceDate
-                g.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.white))
-                // Bouncing block — guarantees per-frame pixel changes.
-                let x = (sin(t * 1.7) * 0.5 + 0.5) * (size.width - 140)
-                let y = (cos(t * 2.3) * 0.5 + 0.5) * (size.height - 240) + 100
-                g.fill(Path(roundedRect: CGRect(x: x, y: y, width: 140, height: 140), cornerRadius: 20),
-                       with: .color(.blue))
-                // Millisecond clock — lets a photo of both screens show lag.
-                let ms = Int(t * 1000) % 1_000_000
-                g.draw(Text("\(ms)").font(.system(size: 72, design: .monospaced)).foregroundStyle(.black),
-                       at: CGPoint(x: size.width / 2, y: 60))
-            }
-        }
+private final class DisplayLinkPatternView: MTKView, MTKViewDelegate {
+    private lazy var commandQueue = device?.makeCommandQueue()
+
+    init(displayID: CGDirectDisplayID) {
+        super.init(frame: .zero, device: MTLCreateSystemDefaultDevice())
+        delegate = self
+        preferredFramesPerSecond = 120
+        enableSetNeedsDisplay = false
+        isPaused = false
+        framebufferOnly = true
+        colorPixelFormat = .bgra8Unorm
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+
+    func draw(in view: MTKView) {
+        guard let commandQueue,
+              let pass = currentRenderPassDescriptor,
+              let drawable = currentDrawable,
+              let commandBuffer = commandQueue.makeCommandBuffer(),
+              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return }
+        let t = ProcessInfo.processInfo.systemUptime
+        pass.colorAttachments[0].clearColor = MTLClearColor(
+            red: 0.45 + sin(t * 1.7) * 0.35,
+            green: 0.45 + cos(t * 2.3) * 0.35,
+            blue: 0.65,
+            alpha: 1)
+        encoder.endEncoding()
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
     }
 }

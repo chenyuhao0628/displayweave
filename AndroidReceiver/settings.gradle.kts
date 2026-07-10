@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "OpenDisplayAndroidReceiver"
-include ":app"
+include(":app")

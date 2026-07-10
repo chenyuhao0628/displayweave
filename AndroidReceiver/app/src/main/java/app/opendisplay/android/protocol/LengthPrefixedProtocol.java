@@ -67,9 +67,29 @@ public final class LengthPrefixedProtocol {
 
     public static String helloJson(int pixelsWide, int pixelsHigh, double scale,
                                    String device, String installId) {
+        return helloJson(pixelsWide, pixelsHigh, scale, 60, 60,
+                new String[] {"h264"}, "h264", device, 0, "wifi", device, installId);
+    }
+
+    public static String helloJson(int pixelsWide, int pixelsHigh, double scale,
+                                   int refreshRate, int maxFps,
+                                   String[] supportedCodecs, String preferredCodec,
+                                   String deviceModel, int androidSdk, String transport,
+                                   String device, String installId) {
         return String.format(Locale.US,
-                "{\"type\":\"hello\",\"pixelsWide\":%d,\"pixelsHigh\":%d,\"scale\":%.3f,\"device\":\"%s\",\"id\":\"%s\"}",
-                pixelsWide, pixelsHigh, scale, escape(device), escape(installId));
+                "{\"type\":\"hello\",\"pixelsWide\":%d,\"pixelsHigh\":%d,\"scale\":%.3f,"
+                        + "\"refreshRate\":%d,\"maxFps\":%d,\"supportedCodecs\":%s,"
+                        + "\"preferredCodec\":\"%s\",\"deviceModel\":\"%s\",\"androidSdk\":%d,"
+                        + "\"transport\":\"%s\",\"device\":\"%s\",\"id\":\"%s\"}",
+                pixelsWide, pixelsHigh, scale,
+                sanitizeFps(refreshRate), sanitizeFps(maxFps),
+                stringArrayJson(supportedCodecs),
+                escape(preferredCodec),
+                escape(deviceModel),
+                Math.max(0, androidSdk),
+                escape(transport),
+                escape(device),
+                escape(installId));
     }
 
     public static String touchJson(String phase, double x, double y, Double macClockMs) {
@@ -93,6 +113,26 @@ public final class LengthPrefixedProtocol {
 
     public static String keyframeRequestJson() {
         return "{\"type\":\"kf\"}";
+    }
+
+    public static String codecFailureJson(String codec, String message) {
+        return String.format(Locale.US,
+                "{\"type\":\"codecFailure\",\"codec\":\"%s\",\"message\":\"%s\"}",
+                escape(codec), escape(message));
+    }
+
+    public static String streamConfigJson(String codec, int fps, int width, int height,
+                                          int bitrate, String profile, String transport) {
+        return String.format(Locale.US,
+                "{\"type\":\"streamConfig\",\"codec\":\"%s\",\"fps\":%d,\"width\":%d,"
+                        + "\"height\":%d,\"bitrate\":%d,\"profile\":\"%s\",\"transport\":\"%s\"}",
+                escape(codec),
+                sanitizeFps(fps),
+                Math.max(1, width),
+                Math.max(1, height),
+                Math.max(0, bitrate),
+                escape(profile),
+                escape(transport));
     }
 
     public static String scrollJson(double dx, double dy) {
@@ -122,6 +162,34 @@ public final class LengthPrefixedProtocol {
     }
 
     private static String escape(String text) {
+        if (text == null) {
+            return "";
+        }
         return text.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private static int sanitizeFps(int fps) {
+        if (fps >= 110) return 120;
+        if (fps >= 80) return 90;
+        if (fps >= 45) return 60;
+        return 30;
+    }
+
+    private static String stringArrayJson(String[] values) {
+        StringBuilder out = new StringBuilder("[");
+        if (values != null) {
+            boolean first = true;
+            for (String value : values) {
+                if (value == null || value.length() == 0) {
+                    continue;
+                }
+                if (!first) {
+                    out.append(",");
+                }
+                out.append("\"").append(escape(value)).append("\"");
+                first = false;
+            }
+        }
+        return out.append("]").toString();
     }
 }

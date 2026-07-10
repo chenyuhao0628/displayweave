@@ -10,6 +10,9 @@ final class VirtualDisplay {
     private let settings: CGVirtualDisplaySettings
     let pointsWide: Int
     let pointsHigh: Int
+    let requestedRefreshRate: Int
+    private(set) var actualRefreshRate: Int
+    private(set) var refreshRateFallbackReason: String?
 
     var displayID: CGDirectDisplayID { display.displayID }
 
@@ -18,9 +21,11 @@ final class VirtualDisplay {
     /// arrangement on vendor/product/serial, so a stable serial means each
     /// device keeps its position in System Settings across sessions.
     init?(name: String, pointsWide: Int, pointsHigh: Int, sizeInMillimeters: CGSize,
-          serialNum: UInt32 = 0x0001) {
+          serialNum: UInt32 = 0x0001, requestedRefreshRate: Int = 60) {
         self.pointsWide = pointsWide
         self.pointsHigh = pointsHigh
+        self.requestedRefreshRate = RefreshRatePolicy.sanitize(requestedRefreshRate)
+        self.actualRefreshRate = self.requestedRefreshRate
 
         let descriptor = CGVirtualDisplayDescriptor()
         descriptor.setDispatchQueue(DispatchQueue.main)
@@ -39,14 +44,28 @@ final class VirtualDisplay {
 
         settings = CGVirtualDisplaySettings()
         settings.hiDPI = 1
-        settings.modes = [
-            CGVirtualDisplayMode(width: UInt(pointsWide), height: UInt(pointsHigh), refreshRate: 60)
-        ]
-        guard display.apply(settings) else {
-            Log.info("CGVirtualDisplay applySettings FAILED")
+
+        var appliedRefreshRate: Int?
+        for refreshRate in RefreshRatePolicy.attemptOrder(requestedFps: self.requestedRefreshRate) {
+            settings.modes = [
+                CGVirtualDisplayMode(width: UInt(pointsWide), height: UInt(pointsHigh), refreshRate: Double(refreshRate))
+            ]
+            if display.apply(settings) {
+                appliedRefreshRate = refreshRate
+                break
+            }
+            Log.info("CGVirtualDisplay applySettings FAILED for requestedRefreshRate=\(refreshRate)")
+        }
+        guard let appliedRefreshRate else {
+            Log.info("CGVirtualDisplay applySettings FAILED for all refresh rates")
             return nil
         }
-        Log.info("virtual display created: id=\(display.displayID) \(pointsWide)x\(pointsHigh)pt @2x")
+        actualRefreshRate = Self.currentRefreshRate(for: display.displayID, fallback: appliedRefreshRate)
+        refreshRateFallbackReason = RefreshRatePolicy.fallbackReason(
+            requestedFps: self.requestedRefreshRate,
+            appliedFps: appliedRefreshRate,
+            actualFps: actualRefreshRate)
+        Log.info("virtual display created: id=\(display.displayID) \(pointsWide)x\(pointsHigh)pt @2x requestedRefreshRate=\(self.requestedRefreshRate) actualRefreshRate=\(actualRefreshRate) selectedResolution=\(pointsWide)x\(pointsHigh) scale=2 fallback=\(refreshRateFallbackReason ?? "none")")
 
         // macOS defaults the new display to its 1x mode AND can restore a
         // stale saved mode for this serial asynchronously, seconds after the
@@ -68,6 +87,13 @@ final class VirtualDisplay {
                 try? await Task.sleep(for: .milliseconds(settled ? 2000 : 200))
             }
         }
+    }
+
+    private static func currentRefreshRate(for displayID: CGDirectDisplayID, fallback: Int) -> Int {
+        guard let mode = CGDisplayCopyDisplayMode(displayID), mode.refreshRate > 0 else {
+            return fallback
+        }
+        return RefreshRatePolicy.sanitize(Int(mode.refreshRate.rounded()))
     }
 
     /// Returns true when the display is (now) in its HiDPI mode. Silent when
