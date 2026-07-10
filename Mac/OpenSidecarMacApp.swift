@@ -169,6 +169,12 @@ final class SenderController: ObservableObject {
     @Published var usbDevices: [UsbmuxDevice] = []
     @Published var androidDevices: [AndroidAdbDevice] = []
     @Published var androidAdbStatus = "正在查找 ADB…"
+    @Published var androidAdbPath = UserDefaults.standard.string(forKey: "androidAdbPath") ?? "" {
+        didSet {
+            UserDefaults.standard.set(androidAdbPath, forKey: "androidAdbPath")
+            Task { await refreshAndroidAdb() }
+        }
+    }
     // `-host x.x.x.x` / `-port n` bypass usbmuxd with a manual TCP endpoint
     // (debugging escape hatch, e.g. an iproxy or SSH tunnel).
     @Published var host = UserDefaults.standard.string(forKey: "host") ?? "127.0.0.1"
@@ -258,7 +264,7 @@ final class SenderController: ObservableObject {
     }
 
     private func refreshAndroidAdb() async {
-        let configured = UserDefaults.standard.string(forKey: "androidAdbPath")
+        let configured = androidAdbPath.isEmpty ? nil : androidAdbPath
         guard let executable = AndroidAdbExecutableResolver.resolve(configuredPath: configured) else {
             androidDevices = []
             androidAdbStatus = AndroidAdbFailure.executableNotFound(
@@ -276,8 +282,8 @@ final class SenderController: ObservableObject {
         do {
             let devices = try await androidAdbClient.devices()
             androidDevices = devices
-            androidAdbStatus = devices.isEmpty ? AndroidAdbFailure.noDevices.localizedDescription
-                : "ADB 已发现 \(devices.count) 台 Android 设备"
+            androidAdbStatus = AndroidAdbPresentation.make(
+                executableFound: true, devices: devices).message
             autoConnect()
         } catch {
             androidDevices = []
@@ -711,6 +717,7 @@ final class SenderController: ObservableObject {
     struct DeviceEntry: Identifiable {
         let id: String
         let name: String
+        let detail: String?
         let usbTarget: ConnectionTarget?
         let wifiTarget: ConnectionTarget?
 
@@ -740,6 +747,7 @@ final class SenderController: ObservableObject {
             entries.append(DeviceEntry(
                 id: "android-device:\(device.serial)",
                 name: device.model ?? "Android（\(device.serial)）",
+                detail: androidDeviceDetail(device),
                 usbTarget: device.state == .device ? adbTarget : nil,
                 wifiTarget: twin.map { .wifi($0) }))
         }
@@ -758,6 +766,7 @@ final class SenderController: ObservableObject {
                     ?? twin.flatMap(serviceName)
                     ?? session(for: usbTarget.sessionID)?.deviceKind
                     ?? "iPhone / iPad",
+                detail: nil,
                 usbTarget: usbTarget,
                 wifiTarget: twin.map { .wifi($0) }))
         }
@@ -765,6 +774,7 @@ final class SenderController: ObservableObject {
             let target = ConnectionTarget.usb(udid: nil)
             coveredSessionIDs.insert(target.sessionID)
             entries.append(DeviceEntry(id: target.sessionID, name: label(for: target),
+                                       detail: nil,
                                        usbTarget: target, wifiTarget: nil))
         }
         for result in discovered {
@@ -773,15 +783,29 @@ final class SenderController: ObservableObject {
             let target = ConnectionTarget.wifi(result)
             coveredSessionIDs.insert(target.sessionID)
             entries.append(DeviceEntry(id: "service:\(name)", name: name,
+                                       detail: nil,
                                        usbTarget: nil, wifiTarget: target))
         }
         // Sessions whose device vanished from discovery (e.g. Bonjour record
         // gone while the stream is still alive) keep a row to disconnect.
         for session in sessions where !coveredSessionIDs.contains(session.id) {
             entries.append(DeviceEntry(id: session.id, name: session.name,
+                                       detail: nil,
                                        usbTarget: nil, wifiTarget: nil))
         }
         return entries
+    }
+
+    private func androidDeviceDetail(_ device: AndroidAdbDevice) -> String {
+        let shortSerial = device.serial.count > 12
+            ? "…" + device.serial.suffix(8)
+            : device.serial
+        switch device.state {
+        case .device: return "USB 已授权 · \(shortSerial)"
+        case .unauthorized: return "尚未授权 USB 调试，请在设备上允许当前 Mac · \(shortSerial)"
+        case .offline: return "ADB 设备离线 · \(shortSerial)"
+        case .unknown(let state): return "ADB 状态：\(state) · \(shortSerial)"
+        }
     }
 
     func session(for entry: DeviceEntry) -> DeviceSession? {
@@ -884,6 +908,11 @@ struct ContentView: View {
                                     .frame(width: 9, height: 9)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(entry.name)
+                                    if let detail = entry.detail {
+                                        Text(detail)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
                                     Text(entry.transportLabel)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
@@ -958,6 +987,16 @@ struct ContentView: View {
                     Text("Auto 优先 USB；Android USB 不可用时才尝试同一设备的 WiFi。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Text(controller.androidAdbStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    DisclosureGroup("Android ADB 设置") {
+                        TextField("ADB 路径（留空自动查找）",
+                                  text: $controller.androidAdbPath)
+                        Text("自动依次检查自定义路径、PATH、ANDROID_HOME、ANDROID_SDK_ROOT、用户 Android SDK 和 Homebrew。USB 调试授权代表设备信任当前 Mac。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Toggle("Debug Stats", isOn: $controller.settings.enableDebugStats)

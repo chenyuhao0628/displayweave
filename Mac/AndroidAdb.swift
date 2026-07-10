@@ -15,6 +15,44 @@ struct AndroidAdbDevice: Equatable, Identifiable {
     var id: String { serial }
 }
 
+struct AndroidAdbPresentation: Equatable, Sendable {
+    let message: String
+    let connectableSerials: [String]
+
+    static func make(executableFound: Bool,
+                     devices: [AndroidAdbDevice]) -> AndroidAdbPresentation {
+        guard executableFound else {
+            return AndroidAdbPresentation(message: "未找到 ADB，请配置 Android SDK 中的 adb 路径",
+                                          connectableSerials: [])
+        }
+        guard !devices.isEmpty else {
+            return AndroidAdbPresentation(message: AndroidAdbFailure.noDevices.localizedDescription,
+                                          connectableSerials: [])
+        }
+        let ready = devices.filter { $0.state == .device }.map(\.serial)
+        if ready.count > 1 {
+            return AndroidAdbPresentation(
+                message: AndroidAdbFailure.multipleDevices(ready).localizedDescription,
+                connectableSerials: ready)
+        }
+        if ready.count == 1 {
+            return AndroidAdbPresentation(message: "Android USB 设备已就绪",
+                                          connectableSerials: ready)
+        }
+        if let unauthorized = devices.first(where: { $0.state == .unauthorized }) {
+            return AndroidAdbPresentation(
+                message: AndroidAdbFailure.unauthorized(unauthorized.serial).localizedDescription,
+                connectableSerials: [])
+        }
+        if let offline = devices.first(where: { $0.state == .offline }) {
+            return AndroidAdbPresentation(
+                message: AndroidAdbFailure.offline(offline.serial).localizedDescription,
+                connectableSerials: [])
+        }
+        return AndroidAdbPresentation(message: "ADB 设备不可用", connectableSerials: [])
+    }
+}
+
 enum AndroidAdbDeviceList {
     static func parse(_ output: String) -> [AndroidAdbDevice] {
         output.split(separator: "\n").compactMap { line in

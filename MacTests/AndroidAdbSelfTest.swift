@@ -101,6 +101,38 @@ struct AndroidAdbSelfTest {
             // Expected.
         }
 
+        let missingPresentation = AndroidAdbPresentation.make(
+            executableFound: false, devices: [])
+        expect(missingPresentation.message.contains("未找到 ADB")
+               && missingPresentation.connectableSerials.isEmpty,
+               "missing ADB should be actionable and disable connection")
+        let emptyPresentation = AndroidAdbPresentation.make(
+            executableFound: true, devices: [])
+        expect(emptyPresentation.message == "未检测到 Android 设备",
+               "empty ADB list should show the required message")
+        let unauthorizedPresentation = AndroidAdbPresentation.make(
+            executableFound: true,
+            devices: [AndroidAdbDevice(serial: "U", state: .unauthorized, model: nil)])
+        expect(unauthorizedPresentation.message.contains("允许当前 Mac"),
+               "unauthorized device should show the authorization action")
+        let offlinePresentation = AndroidAdbPresentation.make(
+            executableFound: true,
+            devices: [AndroidAdbDevice(serial: "O", state: .offline, model: nil)])
+        expect(offlinePresentation.message.contains("离线"),
+               "offline device should be identified")
+        let readyPresentation = AndroidAdbPresentation.make(
+            executableFound: true,
+            devices: [AndroidAdbDevice(serial: "A", state: .device, model: "Pixel")])
+        expect(readyPresentation.connectableSerials == ["A"],
+               "ready device should enable its connection")
+        let multiplePresentation = AndroidAdbPresentation.make(
+            executableFound: true,
+            devices: [AndroidAdbDevice(serial: "A", state: .device, model: nil),
+                      AndroidAdbDevice(serial: "B", state: .device, model: nil)])
+        expect(multiplePresentation.message.contains("选择目标设备")
+               && multiplePresentation.connectableSerials == ["A", "B"],
+               "multiple devices should remain individually selectable")
+
         print("AndroidAdbSelfTest PASS")
     }
 }
