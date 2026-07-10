@@ -121,7 +121,7 @@ enum Usbmux {
         let conn = try await connect(deviceID: deviceID, port: lockdownPort, queue: queue)
         defer { conn.cancel() }
         let request = try PropertyListSerialization.data(fromPropertyList: [
-            "Request": "GetValue", "Key": "DeviceName", "Label": "OpenDisplay",
+            "Request": "GetValue", "Key": "DeviceName", "Label": "DisplayWeave",
         ] as [String: Any], format: .xml, options: 0)
         var packet = withUnsafeBytes(of: UInt32(request.count).bigEndian) { Data($0) }
         packet.append(request)
@@ -180,8 +180,8 @@ enum Usbmux {
 
     static func send(_ message: [String: Any], on conn: NWConnection) async throws {
         var message = message
-        message["ProgName"] = "OpenDisplay"
-        message["ClientVersionString"] = "OpenDisplay"
+        message["ProgName"] = "DisplayWeave"
+        message["ClientVersionString"] = "DisplayWeave"
         let body = try PropertyListSerialization.data(
             fromPropertyList: message, format: .xml, options: 0)
         var packet = Data(capacity: 16 + body.count)

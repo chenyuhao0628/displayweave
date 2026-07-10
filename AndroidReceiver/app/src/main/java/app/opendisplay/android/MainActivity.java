@@ -232,7 +232,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         logo.setAdjustViewBounds(true);
         content.addView(logo, new LinearLayout.LayoutParams(dp(118), dp(118)));
 
-        TextView title = text("OpenDisplay Android", 30, Color.rgb(20, 24, 34), true);
+        TextView title = text("DisplayWeave Android", 30, Color.rgb(20, 24, 34), true);
         title.setGravity(Gravity.CENTER);
         content.addView(title, matchWrap());
 
@@ -241,9 +241,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         idleStatusView.setPadding(0, dp(8), 0, dp(24));
         content.addView(idleStatusView, matchWrap());
 
-        content.addView(cardText("1. 在 Mac 上启动 OpenDisplay Mac 端\n"
+        content.addView(cardText("1. 在 Mac 上启动 DisplayWeave Mac 端\n"
                 + "2. 保持 Android 与 Mac 在同一 WiFi\n"
-                + "3. 在 Mac 端 WiFi 列表中选择 OpenDisplay Android\n"
+                + "3. 在 Mac 端 WiFi 列表中选择 DisplayWeave Android\n"
                 + "4. 成功后会自动切换到全屏副屏画面"));
 
         Button settings = new Button(this);
@@ -361,8 +361,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             return;
         }
         new AlertDialog.Builder(this)
-                .setTitle("欢迎使用 OpenDisplay")
-                .setMessage("这个 Android 端需要和 Mac 端配合使用。请先在 Mac 上启动 OpenDisplay，"
+                .setTitle("欢迎使用 DisplayWeave")
+                .setMessage("这个 Android 端需要和 Mac 端配合使用。请先在 Mac 上启动 DisplayWeave，"
                         + "再让两台设备连接同一个 WiFi，随后在 Mac 端选择这台 Android 设备。")
                 .setPositiveButton("知道了", (dialog, which) ->
                         prefs.edit().putBoolean(KEY_ONBOARDING_DISMISSED, true).apply())

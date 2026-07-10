@@ -1,6 +1,6 @@
 # Security
 
-OpenDisplay is designed for local use. It captures your Mac display and sends
+DisplayWeave is designed for local use. It captures your Mac display and sends
 frames directly to a receiver on USB or the local network.
 
 ## Security Model

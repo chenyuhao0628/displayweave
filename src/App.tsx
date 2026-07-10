@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import Showcase from "./components/Showcase"
-import SupportNudge from "./components/SupportNudge"
 import TextRotate from "./components/TextRotate"
 
 const HERO_WORDS = [
   "iPhone",
+  "Android tablet",
   "girlfriend's iPad",
   "mother's iPad",
   "partner's iPad",
@@ -37,7 +37,7 @@ export default function App() {
   // Progressive enhancement: current release version + live star count.
   // Fails silent (offline / rate-limited) — the page works without it.
   useEffect(() => {
-    fetch("https://api.github.com/repos/peetzweg/opendisplay/releases/latest", {
+    fetch("https://api.github.com/repos/chenyuhao0628/displayweave/releases/latest", {
       headers: { Accept: "application/vnd.github+json" },
     })
       .then((r) => (r.ok ? r.json() : null))
@@ -46,7 +46,7 @@ export default function App() {
       })
       .catch(() => {})
 
-    fetch("https://api.github.com/repos/peetzweg/opendisplay", {
+    fetch("https://api.github.com/repos/chenyuhao0628/displayweave", {
       headers: { Accept: "application/vnd.github+json" },
     })
       .then((r) => (r.ok ? r.json() : null))
@@ -114,20 +114,19 @@ export default function App() {
               layout
               transition={{ type: "spring", damping: 22, stiffness: 340 }}
             >
-              OpenDisplay
+              DisplayWeave
             </motion.span>
           </a>
           <div className="links">
             <a href="#demo">Demo</a>
-            <a href="#support">Support</a>
             <a href="#features">Features</a>
             <a href="#why">Compare</a>
             <a href="#faq">FAQ</a>
             <a href="#contribute">Contribute</a>
             <a
               className="gh"
-              href="https://github.com/peetzweg/opendisplay"
-              title="Star OpenDisplay on GitHub"
+              href="https://github.com/chenyuhao0628/displayweave"
+              title="Star DisplayWeave on GitHub"
             >
               <svg className="gh-logo" viewBox="0 0 16 16" aria-hidden="true">
                 <path
@@ -145,12 +144,11 @@ export default function App() {
         </div>
       </nav>
 
-      {/* Sticky-scope: the Ko-fi bar sticks under the nav through the hero and
-          demo, then releases where this div ends — right before #support. */}
+      {/* Keep the hero, receiver choices, and demo as one visual opening. */}
       <div className="nudge-scope">
       <section>
         <div className="wrap hero">
-          <img ref={heroLogoRef} className="hero-logo" src="logo.png" alt="OpenDisplay" width="160" height="160" />
+          <img ref={heroLogoRef} className="hero-logo" src="logo.png" alt="DisplayWeave" width="160" height="160" />
           <p className="eyebrow">Free &amp; open source</p>
           <h1>
             <span className="l1">
@@ -172,23 +170,18 @@ export default function App() {
             <span className="l2">as your Mac's <span className="u">second monitor</span>.</span>
           </h1>
           <p className="tagline">
-            A free, open-source alternative to Apple Sidecar, Duet Display and Luna Display.
-            Use your iPhone and iPad as a second — and even a third — screen for your Mac.
-            A true extended display, not a mirror: USB or WiFi, Retina-sharp, with touch and
-            scroll. No subscription. No dongle. No account.
+            Turn an iPhone, iPad, or Android device into a true extended display for your Mac.
+            Stream locally over USB or WiFi with touch input, HEVC on Android, and experimental
+            high-refresh Android modes. No subscription. No dongle. No account.
           </p>
-          <p className="meta">macOS 14+ &nbsp;·&nbsp; iPadOS 17+ &nbsp;·&nbsp; iOS 17+ &nbsp;·&nbsp; GPL-3.0</p>
+          <p className="meta">macOS 14+ &nbsp;·&nbsp; iOS/iPadOS 17+ &nbsp;·&nbsp; Android 8+ &nbsp;·&nbsp; GPL-3.0</p>
         </div>
       </section>
-
-      {/* Full-width Ko-fi bar between the hero pitch and the downloads. It sits
-          in flow here and pins under the nav once you scroll past it. */}
-      <SupportNudge />
 
       <section className="downloads-sec">
         <div className="wrap">
           <p className="needs-both">
-            OpenDisplay is <strong>two apps that work together</strong> — install both to get going.
+            Run the <strong>Mac sender</strong> with the receiver for your device.
           </p>
           <div className="downloads">
             <div>
@@ -199,17 +192,16 @@ export default function App() {
               <p className="dl-sub">The sender — captures a virtual display and streams it.</p>
               <a
                 className="btn primary"
-                href="https://github.com/peetzweg/opendisplay/releases/latest/download/OpenDisplay.dmg"
+                href="https://github.com/chenyuhao0628/displayweave#build-from-source"
               >
-                Download for Mac
+                Build the Mac sender
               </a>
               <p className="note">
-                Signed &amp; notarized — opens normally on macOS&nbsp;14+. Prefer to compile it yourself?{" "}
-                <a href="https://github.com/peetzweg/opendisplay#quick-start">Build from source ↗</a>
+                Public release packages will appear on GitHub after signing and notarization are configured.
               </p>
               <p className="note">
                 Looking for an older version?{" "}
-                <a href="https://github.com/peetzweg/opendisplay/releases">Browse all releases ↗</a>
+                <a href="https://github.com/chenyuhao0628/displayweave/releases">Browse all releases ↗</a>
               </p>
             </div>
             <div>
@@ -217,35 +209,18 @@ export default function App() {
                 <span className="step">Step 2</span> On your iPhone &amp; iPad
               </div>
               <p className="dl-sub">The receiver — displays the stream and sends touch back.</p>
-              {/* TODO: On desktop only, show a QR code next to the App Store
-                  badge that encodes the App Store link, so visitors on a
-                  desktop PC can scan it with their iPhone or iPad to install
-                  the receiver. Hide it on touch/mobile viewports. */}
-              <div className="ios-row">
-                <a
-                  className="badge-wrap"
-                  href="https://apps.apple.com/app/id6780264891"
-                >
-                  <img
-                    className="appstore-badge"
-                    src="app-store-badge.svg"
-                    alt="Download on the App Store"
-                    width="120"
-                    height="40"
-                  />
-                </a>
+              <a className="btn primary" href="https://github.com/chenyuhao0628/displayweave#build-from-source">
+                Build the Apple receiver
+              </a>
+            </div>
+            <div>
+              <div className="dl-head">
+                <span className="step">Step 2</span> On your Android device
               </div>
-              <p className="sub">
-                Want early builds? <a id="testflight" href="https://testflight.apple.com/join/3NYaY11c">
-                  Join the TestFlight beta
-                </a>
-                ,<br />
-                or{" "}
-                <a href="https://github.com/peetzweg/opendisplay#quick-start">
-                  compile it from source ↗
-                </a>
-                .
-              </p>
+              <p className="dl-sub">HEVC/H.264 receiver with experimental 60/90/120fps modes.</p>
+              <a className="btn primary" href="https://github.com/chenyuhao0628/displayweave/tree/main/AndroidReceiver">
+                Build the Android receiver
+              </a>
             </div>
           </div>
         </div>
@@ -257,58 +232,24 @@ export default function App() {
           <h2>See it in action.</h2>
           <Showcase />
           <p className="sub">
-            Using OpenDisplay in the wild?{" "}
-            <a href="https://x.com/peetzweg">Tag @peetzweg on X</a> and your setup might
-            end up here.
+            These community examples come from the OpenDisplay project history that
+            DisplayWeave builds on.
           </p>
         </div>
       </section>
       </div>
-
-      <section id="support">
-        <div className="wrap sec support">
-          <p className="eyebrow">Support the project</p>
-          <img className="kofi-logo" src="kofi-logo.png" alt="Ko-fi" width="200" height="61" />
-          <h2>If OpenDisplay saved you a monitor, consider buying me a coffee.</h2>
-          <div className="support-note">
-            <p>
-              OpenDisplay is a one-person labour of love, built and maintained by me,
-              Philip. It's not a company. It's just me.
-            </p>
-            <p>
-              It's free, open source, and funded out of my own pocket. The fixed costs
-              are modest but real: <strong>$99 a year</strong> for the Apple Developer
-              membership behind the signed, one-click installs, and <strong>$11 a year</strong>{" "}
-              for the domain. On top of that go a lot of unpaid evenings and weekends.
-            </p>
-            <p>
-              Supporting me on Ko-fi keeps OpenDisplay well maintained and free for
-              everyone, including the people who can't afford to chip in. My goal is to
-              make this the greatest display companion app there is for iPad.
-            </p>
-            <p>
-              If it saved you from buying a monitor, a small tip helps keep it going.
-              Thank you.
-            </p>
-          </div>
-          <a className="btn kofi" href="https://ko-fi.com/peetzweg">
-            <img className="kofi-mark" src="kofi-mark.webp" alt="" width="28" height="28" />
-            Support on Ko-fi
-          </a>
-        </div>
-      </section>
 
       <section id="features">
         <div className="wrap sec">
           <p className="eyebrow">Features</p>
           <h2>A true extended display, the way it should be.</h2>
           <div className="fgrid">
-            <div className="fcell"><span className="n">001</span><h3>No account, ever</h3><p>No sign-up, no email, no login. And unlike Apple Sidecar — which only works between devices on the <em>same</em> Apple ID — OpenDisplay pairs across different Apple IDs, so you can use a partner's or friend's iPad. Download both apps and go.</p></div>
-            <div className="fcell"><span className="n">002</span><h3>Low-latency pipeline</h3><p>Up to 60 FPS over USB. Hardware H.264 (VideoToolbox real-time mode), TCP_NODELAY, and frame-dropping backpressure with instant keyframe recovery keep it responsive.</p></div>
+            <div className="fcell"><span className="n">001</span><h3>No account, ever</h3><p>No sign-up, no email, no login. And unlike Apple Sidecar — which only works between devices on the <em>same</em> Apple ID — DisplayWeave pairs across different Apple IDs, so you can use a partner's or friend's iPad. Download both apps and go.</p></div>
+            <div className="fcell"><span className="n">002</span><h3>High-refresh Android</h3><p>HEVC hardware encoding and decoding, dynamic 30/60/90/120fps negotiation, and latest-frame queueing. A 120Hz test device sustained approximately 109-111 FPS end to end.</p></div>
             <div className="fcell"><span className="n">003</span><h3>Two, even three screens</h3><p>You're not limited to one device. Run several iPads and iPhones at once, each as its own extended display — up to three has been tested, and you can freely mix iPads and iPhones. Arrange them all in System Settings like real monitors.</p></div>
             <div className="fcell"><span className="n">004</span><h3>Retina sharp</h3><p>Native Retina resolution — the virtual display matches your device panel pixel-for-pixel at HiDPI (@2x), so text looks exactly like it should.</p></div>
-            <div className="fcell"><span className="n">005</span><h3>USB-wired, lowest latency</h3><p>Streams over your charging cable via usbmux. No network, no jitter — and your phone charges while it works.</p></div>
-            <div className="fcell"><span className="n">006</span><h3>WiFi, zero config</h3><p>The phone advertises itself with Bonjour; pick it from a dropdown. No IP addresses to type.</p></div>
+            <div className="fcell"><span className="n">005</span><h3>Apple USB support</h3><p>iPhone and iPad receivers can stream through the charging cable via usbmux. Android USB/ADB reverse is planned.</p></div>
+            <div className="fcell"><span className="n">006</span><h3>Cross-device WiFi</h3><p>Apple and Android receivers advertise themselves locally; pick one from the Mac. No cloud service is involved.</p></div>
             <div className="fcell"><span className="n">007</span><h3>Touch &amp; scroll</h3><p>Tap to click, drag to drag, two-finger pan to scroll. A tiny touchscreen for your Mac.</p></div>
             <div className="fcell"><span className="n">008</span><h3>Portrait mode</h3><p>Rotate the phone and the virtual display rebuilds as a vertical monitor — perfect for chat, logs, or docs.</p></div>
             <div className="fcell"><span className="n">009</span><h3>Private by design</h3><p>One direct TCP connection between your devices. No servers, no accounts, no telemetry. Read the code.</p></div>
@@ -318,7 +259,7 @@ export default function App() {
 
       <section id="why">
         <div className="wrap sec">
-          <p className="eyebrow">Why OpenDisplay</p>
+          <p className="eyebrow">Why DisplayWeave</p>
           <h2>The device you already own becomes a real additional display.</h2>
           <div className="compare">
             <div className="row">
@@ -335,7 +276,7 @@ export default function App() {
               <p>Great latency, but you're buying a hardware dongle.</p>
             </div>
             <div className="row highlight">
-              <div className="name">OpenDisplay</div>
+              <div className="name">DisplayWeave</div>
               <p>Free, open source, auditable. The device you already own becomes a real additional
               display. If you were about to build your own — contribute here instead.</p>
             </div>
@@ -345,7 +286,7 @@ export default function App() {
           <div className="tbl-scroll">
             <table>
               <thead>
-                <tr><th></th><th className="os">OpenDisplay</th><th>Apple Sidecar</th><th>Duet</th><th>Luna</th></tr>
+                <tr><th></th><th className="os">DisplayWeave</th><th>Apple Sidecar</th><th>Duet</th><th>Luna</th></tr>
               </thead>
               <tbody>
                 <tr><td>Price</td><td className="mark-yes os">Free &amp; open source</td><td>Free</td><td className="mark-no">Subscription</td><td className="mark-no">$$$ + dongle</td></tr>
@@ -369,19 +310,16 @@ export default function App() {
               <summary>How does it actually work?</summary>
               <p>The Mac creates a virtual display with the private <code>CGVirtualDisplay</code> API
               (the same technique used by BetterDisplay and DeskPad), captures it with ScreenCaptureKit,
-              hardware-encodes H.264 with VideoToolbox, and streams it over a single TCP connection —
-              through the USB cable via usbmux, or over WiFi. The phone decodes and renders with
-              <code>AVSampleBufferDisplayLayer</code> and sends touch coordinates back, which the Mac
-              injects as mouse events.</p>
+              hardware-encodes H.264 or HEVC with VideoToolbox, and streams it over a local TCP
+              connection. Apple receivers render with <code>AVSampleBufferDisplayLayer</code>; Android
+              renders with <code>MediaCodec</code> and <code>SurfaceView</code>. Touch coordinates return
+              to the Mac as input events.</p>
             </details>
             <details>
-              <summary>Is this on the App Store?</summary>
-              <p>Yes — the iPhone &amp; iPad receiver is{" "}
-              <a href="https://apps.apple.com/app/id6780264891">live on the App Store</a>. The Mac
-              app ships as a signed, notarized direct download rather than through the Mac App Store
-              because it relies on <code>CGVirtualDisplay</code>, a private API — that's the deal for
-              every virtual-display product: use it or ship a dongle. You can also build either app
-              from source with your own (free) Apple developer account in a few minutes.</p>
+              <summary>Are signed release packages available?</summary>
+              <p>Not yet under the DisplayWeave name. The current repository is source-first while
+              signing, notarization, and store metadata are prepared. Build instructions are in the
+              README and future packages will be published through GitHub Releases.</p>
             </details>
             <details>
               <summary>Why do I see the purple screen-recording indicator on my Mac?</summary>
@@ -413,8 +351,8 @@ export default function App() {
             </details>
             <details>
               <summary>What's the license? Can I fork it or use it commercially?</summary>
-              <p>OpenDisplay is licensed under{" "}
-              <a href="https://github.com/peetzweg/opendisplay/blob/main/LICENSE">GPL-3.0</a>. You can
+              <p>DisplayWeave is licensed under{" "}
+              <a href="https://github.com/chenyuhao0628/displayweave/blob/main/LICENSE">GPL-3.0</a>. You can
               use, study, and adapt it freely — including commercially. If you distribute a modified
               version, it must remain open source under the same license with the original attribution
               intact, so improvements flow back to everyone instead of into closed forks. (Releases up
@@ -429,20 +367,21 @@ export default function App() {
           <p className="eyebrow">Contribute</p>
           <h2>Open source, and built in the open.</h2>
           <p style={{ color: "var(--muted)", maxWidth: "72ch", marginTop: "8px" }}>
-            OpenDisplay is GPL-3.0 and developed entirely on GitHub — the whole stack, from Mac
-            capture and H.264 encoding to the iOS receiver, is yours to read, build, and improve.
+            DisplayWeave is GPL-3.0 and developed entirely on GitHub — the whole stack, from Mac
+            capture and HEVC/H.264 encoding to the iOS and Android receivers, is yours to read,
+            build, and improve.
             Bug reports, feature ideas, and pull requests are all welcome. Build-and-run instructions
             live in the README.
           </p>
           <div className="btn-row">
-            <a className="btn primary" href="https://github.com/peetzweg/opendisplay">View on GitHub ↗</a>
-            <a className="btn ghost" href="https://github.com/peetzweg/opendisplay/issues">Open an issue ↗</a>
+            <a className="btn primary" href="https://github.com/chenyuhao0628/displayweave">View on GitHub ↗</a>
+            <a className="btn ghost" href="https://github.com/chenyuhao0628/displayweave/issues">Open an issue ↗</a>
           </div>
           <p className="sub">
             New here? Start with the{" "}
-            <a href="https://github.com/peetzweg/opendisplay#quick-start">README quick-start</a>{" "}
+            <a href="https://github.com/chenyuhao0628/displayweave#build-from-source">README build guide</a>{" "}
             to build both apps, or browse the{" "}
-            <a href="https://github.com/peetzweg/opendisplay/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22">good first issues</a>.
+            <a href="https://github.com/chenyuhao0628/displayweave/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22">good first issues</a>.
           </p>
         </div>
       </section>
@@ -450,14 +389,13 @@ export default function App() {
       <footer>
         <div className="wrap">
           <div className="links">
-            <a href="https://github.com/peetzweg/opendisplay">GitHub</a>
-            <a href="https://github.com/peetzweg/opendisplay/releases/latest">Releases</a>
-            <a href="https://github.com/peetzweg/opendisplay/issues">Issues</a>
-            <a href="https://ko-fi.com/peetzweg">Support / Ko-fi</a>
+            <a href="https://github.com/chenyuhao0628/displayweave">GitHub</a>
+            <a href="https://github.com/chenyuhao0628/displayweave/releases/latest">Releases</a>
+            <a href="https://github.com/chenyuhao0628/displayweave/issues">Issues</a>
             <a href="privacy.html">Privacy</a>
-            <a href="https://github.com/peetzweg/opendisplay/blob/main/LICENSE">GPL-3.0 License</a>
+            <a href="https://github.com/chenyuhao0628/displayweave/blob/main/LICENSE">GPL-3.0 License</a>
           </div>
-          <p className="fine">OpenDisplay — use your iPhone or iPad as a second monitor for your Mac. Free forever.</p>
+          <p className="fine">DisplayWeave — one Mac, every screen. Open, local, cross-device.</p>
         </div>
       </footer>
     </>

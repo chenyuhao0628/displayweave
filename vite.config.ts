@@ -1,15 +1,15 @@
 import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
 
-// The site is served from https://peetzweg.github.io/opendisplay/ via GitHub Pages
+// The site is served from the DisplayWeave repository via GitHub Pages.
 // (Pages "deploy from branch" → /docs). Relative base keeps asset URLs working
-// under the /opendisplay/ subpath without hardcoding it, and the build emits
-// straight into docs/ so the published folder stays the same.
+// under the repository subpath without hardcoding it. Site output is isolated
+// from the source documentation in docs/.
 export default defineConfig({
   base: "./",
   plugins: [react()],
   build: {
-    outDir: "docs",
+    outDir: "site-dist",
     emptyOutDir: true,
   },
 })

@@ -236,8 +236,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         // USB sessions can start before lockdown resolves the device name —
         // fall back to the kind from the hello rather than the generic label.
         let displayName = endpointName.hasPrefix("iPhone / iPad")
-            ? "OpenDisplay — \(info.kind)"
-            : "OpenDisplay — \(endpointName)"
+            ? "DisplayWeave — \(info.kind)"
+            : "DisplayWeave — \(endpointName)"
         // Orientation-specific serial: macOS persists the chosen mode per
         // serial, and a portrait mode restored onto a landscape display
         // pillarboxes the desktop INTO the framebuffer (streamed as-is).
@@ -530,7 +530,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 case .noDevice:
                     hint = "正在等待 USB 设备，请连接 iPhone 或 iPad…"
                 case .refused:
-                    hint = "已发现设备，请在设备上打开 OpenDisplay…"
+                    hint = "已发现设备，请在设备上打开 DisplayWeave…"
                 default:
                     Log.info("usb dial failed: \(error)")
                     hint = "USB 连接失败：\(error.localizedDescription)"

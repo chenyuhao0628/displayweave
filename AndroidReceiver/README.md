@@ -1,15 +1,15 @@
-# OpenDisplay Android Receiver
+# DisplayWeave Android Receiver
 
-Android WiFi receiver for the OpenDisplay Mac/Android CN fork.
+Android WiFi receiver for DisplayWeave.
 
 This module lets an Android tablet act as a receiver for the Mac sender. It
-uses the same OpenDisplay receiver contract as the iOS app: Bonjour-compatible
+uses the same DisplayWeave/OpenDisplay-compatible receiver contract as the iOS app: Bonjour-compatible
 service discovery, a length-prefixed transport, negotiated HEVC/H.264 video,
 and JSON control messages for input, configuration, and liveness.
 
 ## 中文说明
 
-安卓端的定位是“平板接收器”，不是独立投屏软件。Mac 端负责创建镜像或扩展显示器、捕获画面、优先编码 HEVC（不可用时回退 H.264）并通过局域网发送；安卓端负责发现/监听、解码、显示画面，并把触摸和滚动事件回传给 Mac。
+安卓端的定位是 DisplayWeave 的“平板接收器”，不是独立投屏软件。Mac 端负责创建镜像或扩展显示器、捕获画面、优先编码 HEVC（不可用时回退 H.264）并通过局域网发送；安卓端负责发现/监听、解码、显示画面，并把触摸和滚动事件回传给 Mac。
 
 当前已经实现：
 
@@ -159,7 +159,7 @@ through `WifiTcpReceiverTransport`.
 
 ## Upstream Compatibility
 
-This receiver intentionally uses the existing OpenDisplay receiver shape so the
+This receiver intentionally preserves the existing OpenDisplay-compatible receiver shape so the
 Mac sender does not need a separate Android-only streaming protocol. Android
 features should stay close to that contract unless there is a clear reason to
 add versioned protocol capability negotiation.

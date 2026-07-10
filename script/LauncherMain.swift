@@ -19,14 +19,14 @@ func runProcess(_ executable: String, _ arguments: [String]) -> Int32 {
 func notify(_ message: String) {
     _ = runProcess("/usr/bin/osascript", [
         "-e",
-        "display notification \"\(message)\" with title \"OpenDisplay 启动器\""
+        "display notification \"\(message)\" with title \"DisplayWeave 启动器\""
     ])
 }
 
 func showFailureDialog() {
     _ = runProcess("/usr/bin/osascript", [
         "-e",
-        "display dialog \"OpenDisplay 启动失败。将为你定位日志文件。\" buttons {\"好\"} default button \"好\" with title \"OpenDisplay 启动器\""
+        "display dialog \"DisplayWeave 启动失败。将为你定位日志文件。\" buttons {\"好\"} default button \"好\" with title \"DisplayWeave 启动器\""
     ])
 }
 
@@ -37,7 +37,7 @@ do {
     )
 
     let header = """
-    [\(Date())] OpenDisplay 启动器开始运行
+    [\(Date())] DisplayWeave 启动器开始运行
     项目路径：\(root)
     日志路径：\(logPath)
 
@@ -48,7 +48,7 @@ do {
     try logHandle.seekToEnd()
     defer { try? logHandle.close() }
 
-    notify("正在构建并启动 OpenDisplay...")
+    notify("正在构建并启动 DisplayWeave...")
 
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "\(root)/script/build_and_run.sh")
@@ -64,7 +64,7 @@ do {
     process.waitUntilExit()
 
     if process.terminationStatus == 0 {
-        notify("OpenDisplay 已启动，请查看菜单栏图标。")
+        notify("DisplayWeave 已启动，请查看菜单栏图标。")
         exit(0)
     }
 

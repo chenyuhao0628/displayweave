@@ -2,7 +2,7 @@
 set -euo pipefail
 
 MODE="${1:-run}"
-APP_NAME="OpenDisplay"
+APP_NAME="DisplayWeave"
 PROJECT="OpenSidecar.xcodeproj"
 SCHEME="OpenSidecarMac"
 CONFIGURATION="Debug"

@@ -32,7 +32,7 @@ val selfTestSourceRoots = files("src/main/java", "../tests/java")
 fun androidJarFile() = file("${sdkRoot.get()}/platforms/android-36.1/android.jar")
 
 val compileSelfTests by tasks.registering(JavaCompile::class) {
-    description = "Compiles OpenDisplay Android plain Java self-tests."
+    description = "Compiles DisplayWeave Android plain Java self-tests."
     source(selfTestSourceRoots.asFileTree.matching { include("**/*.java") })
     classpath = files(androidJarFile())
     destinationDirectory.set(selfTestClasses)

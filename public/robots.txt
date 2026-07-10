@@ -1,6 +1,6 @@
-# OpenDisplay — free, open-source Sidecar/Duet alternative
+# DisplayWeave — free, open-source Sidecar/Duet alternative
 # Allow all crawlers full access.
 User-agent: *
 Allow: /
 
-Sitemap: https://opendisplay.app/sitemap.xml
+Sitemap: https://chenyuhao0628.github.io/displayweave/sitemap.xml

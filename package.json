@@ -1,9 +1,9 @@
 {
-  "name": "opendisplay-site",
+  "name": "displayweave-site",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "OpenDisplay landing page (Vite + React + motion). Builds into docs/ for GitHub Pages.",
+  "description": "DisplayWeave landing page (Vite + React + motion). Builds into site-dist/ for GitHub Pages.",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "vite",

@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
 ADB="$ANDROID_SDK/platform-tools/adb"
-APK="$ROOT_DIR/dist/OpenDisplayAndroid-debug.apk"
+APK="$ROOT_DIR/dist/DisplayWeaveAndroid-debug.apk"
 PACKAGE="app.opendisplay.android"
 ACTIVITY="$PACKAGE/.MainActivity"
 
@@ -30,7 +30,7 @@ install_status=$?
 set -e
 printf '%s\n' "$install_output"
 if [[ "$install_status" -ne 0 ]]; then
-  echo "安装失败。如果提示签名不兼容，请先手动卸载旧版 OpenDisplay Android 后再运行此脚本。" >&2
+  echo "安装失败。如果提示签名不兼容，请先手动卸载旧版 DisplayWeave Android 后再运行此脚本。" >&2
   exit "$install_status"
 fi
 

@@ -117,14 +117,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ needs.release-please.outputs.tag_name }}" \
-            build/export/OpenDisplay.dmg
+            build/export/DisplayWeave.dmg
 
       # --- Sparkle auto-update: generate + publish the appcast (issue #52) ---
       # Builds appcast.xml from the just-released, notarized DMG and commits it
       # to public/appcast.xml on main. The Pages workflow (pages.yml) triggers
-      # on public/** changes, copies public/ into docs/ via the Vite build, and
-      # deploys it — so https://opendisplay.app/appcast.xml (the SUFeedURL in
-      # project.yml) resolves.
+      # on public/** changes, copies public/ into site-dist/ via the Vite build, and
+      # deploys it. The raw public/appcast.xml URL is the SUFeedURL in project.yml.
       #
       # No-ops gracefully until the maintainer adds the SPARKLE_PRIVATE_KEY
       # secret (the EdDSA private key from Sparkle's `generate_keys`), so this
@@ -153,7 +152,7 @@ jobs:
           # generate_appcast wants a directory of update archives. Point the
           # download links at the GitHub Release assets where the DMG lives.
           mkdir -p /tmp/appcast-updates
-          cp build/export/OpenDisplay.dmg /tmp/appcast-updates/
+          cp build/export/DisplayWeave.dmg /tmp/appcast-updates/
 
           "$GEN_APPCAST" \
             --ed-key-file /tmp/sparkle_ed_priv \

@@ -46,7 +46,7 @@ sed 's/<manifest /<manifest package="app.opendisplay.android" /' \
   --version-code 1 \
   --version-name 0.1 \
   --debug-mode \
-  -o "$WORK_DIR/OpenDisplayAndroid-unsigned.apk" \
+  -o "$WORK_DIR/DisplayWeaveAndroid-unsigned.apk" \
   "${RES_FLATS[@]}"
 
 "$JAVAC" -Xlint:-options -source 17 -target 17 \
@@ -62,7 +62,7 @@ JAVA_HOME="$JBR" PATH="$JBR/bin:$PATH" "$D8" \
 
 (
   cd "$WORK_DIR/dex"
-  zip -q "$WORK_DIR/OpenDisplayAndroid-unsigned.apk" classes.dex
+  zip -q "$WORK_DIR/DisplayWeaveAndroid-unsigned.apk" classes.dex
 )
 
 if [[ ! -e "$KEYSTORE" ]]; then
@@ -74,17 +74,17 @@ if [[ ! -e "$KEYSTORE" ]]; then
     -keyalg RSA \
     -keysize 2048 \
     -validity 10000 \
-    -dname "CN=Android Debug,O=OpenDisplay,C=CN" >/dev/null
+    -dname "CN=Android Debug,O=DisplayWeave,C=CN" >/dev/null
 fi
 
 JAVA_HOME="$JBR" PATH="$JBR/bin:$PATH" "$APKSIGNER" sign \
   --ks "$KEYSTORE" \
   --ks-pass pass:android \
   --key-pass pass:android \
-  --out "$OUT_DIR/OpenDisplayAndroid-debug.apk" \
-  "$WORK_DIR/OpenDisplayAndroid-unsigned.apk"
+  --out "$OUT_DIR/DisplayWeaveAndroid-debug.apk" \
+  "$WORK_DIR/DisplayWeaveAndroid-unsigned.apk"
 
 JAVA_HOME="$JBR" PATH="$JBR/bin:$PATH" "$APKSIGNER" verify --verbose \
-  "$OUT_DIR/OpenDisplayAndroid-debug.apk"
+  "$OUT_DIR/DisplayWeaveAndroid-debug.apk"
 
-echo "APK: $OUT_DIR/OpenDisplayAndroid-debug.apk"
+echo "APK: $OUT_DIR/DisplayWeaveAndroid-debug.apk"

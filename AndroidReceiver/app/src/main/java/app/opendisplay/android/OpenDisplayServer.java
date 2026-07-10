@@ -91,7 +91,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
         transport.start(new ReceiverTransport.Listener() {
             @Override
             public void onListening(int port) {
-                advertiser.start("OpenDisplay Android", installId, port);
+                advertiser.start("DisplayWeave Android", installId, port);
                 listener.onStatus("正在监听 :" + port + " / " + transport.name());
             }
 

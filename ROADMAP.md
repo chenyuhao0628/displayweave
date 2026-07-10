@@ -1,6 +1,6 @@
 # Roadmap
 
-This roadmap is for the OpenDisplay Mac/Android CN fork. It is intentionally
+This roadmap is for the DisplayWeave Mac/Android CN fork. It is intentionally
 practical: keep the current working path stable, then improve polish and
 maintainability.
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 
 // The demo section's media strip: the YouTube demo plus posts from people
-// using OpenDisplay in the wild. Posts render as self-contained static cards
+// using DisplayWeave in the wild. Posts render as self-contained static cards
 // (photos + avatars live in public/showcase/) instead of live X embeds —
 // widgets.js renders unreliably under ad blockers and browser privacy
 // features, and a third-party tracking script sits badly on a page that
@@ -24,7 +24,7 @@ const ITEMS: ShowcaseItem[] = [
   {
     kind: "youtube",
     id: "wyEUkMgH3zw",
-    title: "OpenDisplay demo — use your iPad as a second monitor for your Mac",
+    title: "DisplayWeave demo — use your iPad as a second monitor for your Mac",
   },
   {
     kind: "post",

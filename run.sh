@@ -5,11 +5,11 @@
 set -e
 cd "$(dirname "$0")"
 
-APP=build/Build/Products/Debug/OpenDisplay.app
+APP=build/Build/Products/Debug/DisplayWeave.app
 if [[ ! -d $APP ]]; then
   echo "Mac app not built — run: xcodegen generate && xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac -configuration Debug -derivedDataPath build build"
   exit 1
 fi
 
 open "$APP"
-echo "OpenDisplay running — logs at /tmp/opensidecar-mac.log."
+echo "DisplayWeave running — logs at /tmp/opensidecar-mac.log."

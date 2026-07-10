@@ -39,9 +39,14 @@ fastlane/test_output/
 # Node / Vite landing-page tooling. The site is built in CI (see pages.yml) and
 # deployed straight to GitHub Pages, so the build output is not committed.
 node_modules/
+.pnpm-store/
 dist-ssr/
+site-dist/
 docs/*
-!docs/120hz-migration-plan.md
+!docs/*.md
+!docs/superpowers/
+!docs/superpowers/plans/
+!docs/superpowers/plans/*.md
 
 # Android local build artifacts
 AndroidReceiver/dist/

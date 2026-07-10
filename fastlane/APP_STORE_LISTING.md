@@ -14,7 +14,7 @@ When you change a field in App Store Connect, update it here too.
 
 **Name**
 ```
-OpenDisplay
+DisplayWeave
 ```
 
 **Subtitle** _(max 30 chars)_
@@ -44,7 +44,7 @@ Turn the iPhone or iPad you already own into a real second display for your Mac 
 
 **Description**
 ```
-OpenDisplay turns your iPhone or iPad into a second display for your Mac.
+DisplayWeave turns your iPhone or iPad into a second display for your Mac.
 
 It's the open-source way to put your spare Apple device to work as a real extended monitor — drag windows onto it, keep chat, notes, or logs in view, and gain screen space anywhere you go. It's not a mirror: it's a genuine additional display your Mac treats like any other monitor.
 
@@ -55,9 +55,9 @@ It's the open-source way to put your spare Apple device to work as a real extend
 • Works in portrait or landscape
 • Private by design — a direct connection between your own devices, with no accounts, no servers, and no tracking
 
-IMPORTANT: OpenDisplay requires the companion OpenDisplay app for Mac, running on your computer on the same cable or Wi-Fi network. Get it at https://peetzweg.github.io/opendisplay — without it, this app has nothing to connect to.
+IMPORTANT: DisplayWeave requires the companion DisplayWeave app for Mac, running on your computer on the same cable or Wi-Fi network. Get it at https://github.com/chenyuhao0628/displayweave — without it, this app has nothing to connect to.
 
-OpenDisplay is open source under the GPL-3.0 license. Read the code, report issues, or contribute at https://github.com/peetzweg/opendisplay
+DisplayWeave is open source under the GPL-3.0 license. Read the code, report issues, or contribute at https://github.com/chenyuhao0628/displayweave
 ```
 
 **Keywords** _(max 100 chars; comma-separated, no spaces after commas)_
@@ -67,17 +67,17 @@ second monitor,external display,extend screen,monitor,display,screen,ipad as dis
 
 **Support URL**
 ```
-https://peetzweg.github.io/opendisplay
+https://github.com/chenyuhao0628/displayweave
 ```
 
 **Marketing URL** _(optional)_
 ```
-https://peetzweg.github.io/opendisplay
+https://github.com/chenyuhao0628/displayweave
 ```
 
 **Privacy Policy URL**
 ```
-https://peetzweg.github.io/opendisplay/privacy.html
+https://chenyuhao0628.github.io/displayweave/privacy.html
 ```
 
 ---
@@ -86,10 +86,10 @@ https://peetzweg.github.io/opendisplay/privacy.html
 
 **Beta App Description**
 ```
-OpenDisplay turns your iPhone or iPad into a second display for your Mac.
+DisplayWeave turns your iPhone or iPad into a second display for your Mac.
 
-To use this beta you also need the companion OpenDisplay app for Mac running on your computer, on the same USB cable or Wi-Fi network. Get it here:
-https://peetzweg.github.io/opendisplay
+To use this beta you also need the companion DisplayWeave app for Mac running on your computer, on the same USB cable or Wi-Fi network. Get it here:
+https://github.com/chenyuhao0628/displayweave
 
 Once both are running: connect over USB for the lowest latency or over Wi-Fi with no setup, drag windows onto the device, try touch and two-finger scroll, and rotate between portrait and landscape.
 
@@ -102,13 +102,14 @@ Please report anything that looks off — connection drops, latency, image sharp
 
 ## Notes for future edits
 
-- **App name change (2026-06-30):** Apple rejected the previous name "OpenSidecar"
-  under Guideline 5.2.5 — "Sidecar" is confusingly similar to Apple's Sidecar feature.
-  Renamed to **OpenDisplay**. The on-device name lives in `project.yml` (iOS
+- **App naming history:** Apple rejected the previous name "OpenSidecar" on
+  2026-06-30 under Guideline 5.2.5. The upstream app became OpenDisplay; this
+  community project adopted the independent DisplayWeave name on 2026-07-10.
+  The on-device name lives in `project.yml` (iOS
   `CFBundleDisplayName`, Mac `PRODUCT_NAME` / `BUNDLE_DISPLAY_NAME`) and **needs a new
-  build** to take effect; the store **Name** field is set in App Store Connect. The repo,
-  Pages site, and bundle IDs (`com.peetzweg.opensidecar.*`) intentionally keep the old
-  slug — bundle IDs are permanent and renaming them would spawn a new ASC app.
+  build** to take effect; the store **Name** field is set in App Store Connect. Legacy
+  bundle IDs (`com.peetzweg.opensidecar.*`) remain unchanged because renaming them
+  would create different App Store Connect applications.
 - **Trademark caution:** keep Apple's feature name "Sidecar" and competitor brands
   ("Duet", "Luna") **out of every field** — name, subtitle, promo text, description,
   keywords. Comparing to those products is fine on the website, not in store metadata.

@@ -7,7 +7,7 @@ import Combine
 let deviceKind = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
 
 /// Landing page — hosts the Mac app download and explains the two-app setup.
-let macAppURL = URL(string: "https://peetzweg.github.io/opendisplay/")!
+let macAppURL = URL(string: "https://github.com/chenyuhao0628/displayweave")!
 
 @main
 struct OpenSidecarPhoneApp: App {
@@ -131,7 +131,7 @@ struct IdleView: View {
                 .frame(width: 132)
 
             VStack(spacing: 6) {
-                Text("OpenDisplay")
+                Text("DisplayWeave")
                     .font(.largeTitle.bold())
                 HStack(spacing: 8) {
                     Circle()
@@ -198,7 +198,7 @@ struct OnboardingView: View {
                         Text("还需要安装 Mac 端")
                             .font(.title2.bold())
                             .multilineTextAlignment(.center)
-                        Text("OpenDisplay 可以把这台 \(deviceKind) 变成 Mac 的第二块屏幕，但需要在通过同一根 USB 线连接、或处于同一 WiFi 网络的 Mac 上运行 **OpenDisplay Mac 端 app**。")
+                        Text("DisplayWeave 可以把这台 \(deviceKind) 变成 Mac 的第二块屏幕，但需要在通过同一根 USB 线连接、或处于同一 WiFi 网络的 Mac 上运行 **DisplayWeave Mac 端 app**。")
                             .font(.body)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -206,7 +206,7 @@ struct OnboardingView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 14) {
-                        Label("在 Mac 上安装 OpenDisplay Mac 端 app", systemImage: "1.circle.fill")
+                        Label("在 Mac 上安装 DisplayWeave Mac 端 app", systemImage: "1.circle.fill")
                         Label("用 USB 连接这台 \(deviceKind)，或加入同一 WiFi", systemImage: "2.circle.fill")
                         Label("保持此 app 打开，串流会自动开始", systemImage: "3.circle.fill")
                     }
@@ -470,7 +470,7 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Button("打开 OpenDisplay 的 iOS 设置") {
+                    Button("打开 DisplayWeave 的 iOS 设置") {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
                             UIApplication.shared.open(url)
                         }
@@ -478,7 +478,7 @@ struct SettingsView: View {
                 } header: {
                     Text("权限")
                 } footer: {
-                    Text("WiFi 模式需要“本地网络”权限。如果 Mac 找不到这台 \(deviceKind)，请到“设置”→“隐私与安全性”→“本地网络”中允许 OpenDisplay。USB 模式不需要此权限。")
+                    Text("WiFi 模式需要“本地网络”权限。如果 Mac 找不到这台 \(deviceKind)，请到“设置”→“隐私与安全性”→“本地网络”中允许 DisplayWeave。USB 模式不需要此权限。")
                 }
 
                 Section {
@@ -499,20 +499,20 @@ struct SettingsView: View {
                         Label("获取 Mac 端 app", systemImage: "arrow.down.circle")
                     }
                 } footer: {
-                    Text("OpenDisplay 需要 Mac 端 app 在同一根线缆或同一 WiFi 网络中的 Mac 上运行。如果还没有安装，可以从这里下载。")
+                    Text("DisplayWeave 需要 Mac 端 app 在同一根线缆或同一 WiFi 网络中的 Mac 上运行。如果还没有安装，可以从这里下载。")
                 }
 
                 Section("关于") {
                     LabeledContent("版本", value: version)
-                    Link(destination: URL(string: "https://github.com/peetzweg/opendisplay")!) {
-                        Label("GitHub — peetzweg/opendisplay", systemImage: "link")
+                    Link(destination: URL(string: "https://github.com/chenyuhao0628/displayweave")!) {
+                        Label("GitHub — chenyuhao0628/displayweave", systemImage: "link")
                     }
                     Link(destination: macAppURL) {
                         Label("官网", systemImage: "globe")
                     }
                 }
             }
-            .navigationTitle("OpenDisplay")
+            .navigationTitle("DisplayWeave")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

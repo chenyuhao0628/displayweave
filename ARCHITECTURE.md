@@ -1,6 +1,6 @@
 # Architecture
 
-OpenDisplay is split into sender and receiver apps. The Mac app owns display
+DisplayWeave is split into sender and receiver apps. The Mac app owns display
 creation, capture, encoding, transport, and input injection. Receiver apps own
 device discovery, decode, presentation, and user input collection.
 
@@ -87,7 +87,7 @@ The Android receiver mirrors the iOS receiver contract while using Android
 platform APIs:
 
 - `NsdAdvertiser` publishes `_opensidecar._tcp`
-- `OpenDisplayServer` owns the TCP server and stream loop
+- `DisplayWeaveServer` owns the TCP server and stream loop
 - `H264SurfaceDecoder` manages `MediaCodec`
 - `CursorOverlayView` draws the Mac cursor above the video surface
 - `TouchGestureCoordinator` maps tap and drag gestures

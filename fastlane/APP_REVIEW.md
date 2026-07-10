@@ -1,5 +1,9 @@
 # App Review — response reference
 
+> Historical OpenDisplay submission record. DisplayWeave has not yet been
+> submitted under its new name; update App Store Connect metadata before using
+> any of the text below for a future submission.
+
 Reference copy of the text we send to App Review, kept in version control alongside the
 listing. Update when the situation changes.
 

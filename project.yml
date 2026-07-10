@@ -48,26 +48,25 @@ targets:
         CFBundleDisplayName: $(BUNDLE_DISPLAY_NAME)
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        NSLocalNetworkUsageDescription: OpenDisplay 在 WiFi 模式下需要通过本地网络连接你的 iPad 或 iPhone。
+        NSLocalNetworkUsageDescription: DisplayWeave 在 WiFi 模式下需要通过本地网络连接你的 iPad、iPhone 或 Android 设备。
         NSBonjourServices: ["_opensidecar._tcp"]
         LSApplicationCategoryType: public.app-category.utilities
         # --- Sparkle auto-update (issue #52) ---
-        # The appcast feed is hosted on the landing-page site at the custom
-        # domain. The release workflow publishes appcast.xml so this URL
-        # resolves — see .github/workflows/release.yml.
-        SUFeedURL: https://opendisplay.app/appcast.xml
+        # The release workflow publishes appcast.xml into public/. Automatic
+        # checks remain off until the first DisplayWeave-signed release exists.
+        SUFeedURL: https://raw.githubusercontent.com/chenyuhao0628/displayweave/main/public/appcast.xml
         # Public EdDSA key from Sparkle's `generate_keys`. The matching private
         # key lives only as the `SPARKLE_PRIVATE_KEY` GitHub Actions secret
         # (used to sign the appcast in CI) and is never committed. Sparkle
         # verifies update signatures against this public key before installing.
         SUPublicEDKey: rYxlIePmwzi2bRo/qIsuY2TqTnQ34li2gQhJpGBiumw=
         # Check for updates automatically in the background on a schedule.
-        SUEnableAutomaticChecks: true
+        SUEnableAutomaticChecks: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.peetzweg.opensidecar.mac
-        PRODUCT_NAME: OpenDisplay
-        BUNDLE_DISPLAY_NAME: OpenDisplay
+        PRODUCT_NAME: DisplayWeave
+        BUNDLE_DISPLAY_NAME: DisplayWeave
         SWIFT_OBJC_BRIDGING_HEADER: Mac/OpenSidecarMac-Bridging-Header.h
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_ENTITLEMENTS: Mac/OpenSidecarMac.entitlements
@@ -81,7 +80,7 @@ targets:
         # System Settings permission lists.
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.peetzweg.opensidecar.mac.debug
-          BUNDLE_DISPLAY_NAME: OpenDisplay 开发版
+          BUNDLE_DISPLAY_NAME: DisplayWeave 开发版
   OpenSidecariOS:
     type: application
     platform: iOS
@@ -91,13 +90,13 @@ targets:
     info:
       path: iOS/Info.plist
       properties:
-        CFBundleDisplayName: OpenDisplay
+        CFBundleDisplayName: DisplayWeave
         CFBundleIconName: AppIcon
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
-        NSLocalNetworkUsageDescription: OpenDisplay 需要在本地网络中广播此设备，以便你的 Mac 通过 WiFi 连接。
+        NSLocalNetworkUsageDescription: DisplayWeave 需要在本地网络中广播此设备，以便你的 Mac 通过 WiFi 连接。
         NSBonjourServices: ["_opensidecar._tcp"]
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

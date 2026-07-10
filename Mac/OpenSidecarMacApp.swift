@@ -79,7 +79,7 @@ enum MainWindow {
                 contentRect: NSRect(x: 0, y: 0, width: 440, height: 540),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered, defer: false)
-            w.title = "OpenDisplay"
+            w.title = "DisplayWeave"
             w.contentView = NSHostingView(
                 rootView: ContentView(controller: SenderController.shared,
                                       updater: updater))
@@ -619,9 +619,9 @@ struct ContentView: View {
                     .resizable()
                     .frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("OpenDisplay")
+                    Text("DisplayWeave")
                         .font(.title3.bold())
-                    Text("把 iPad 和 iPhone 变成额外显示器")
+                    Text("把 iPad、iPhone 和 Android 变成额外显示器")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -639,7 +639,7 @@ struct ContentView: View {
             Form {
                 Section("设备") {
                     if controller.deviceEntries.isEmpty {
-                        Text("未发现设备。请用 USB 连接 iPhone 或 iPad，或在同一 WiFi 网络中的设备上打开 OpenDisplay。")
+                        Text("未发现设备。请用 USB 连接 iPhone 或 iPad，或在同一 WiFi 网络中的设备上打开 DisplayWeave。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -734,7 +734,7 @@ struct ContentView: View {
                         }
                     }
                     if controller.presentation == .background {
-                        Text("不会显示菜单栏或程序坞图标，串流会继续运行。需要打开此窗口时，请从 Spotlight 或 Finder 再次启动 OpenDisplay。")
+                        Text("不会显示菜单栏或程序坞图标，串流会继续运行。需要打开此窗口时，请从 Spotlight 或 Finder 再次启动 DisplayWeave。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -771,7 +771,7 @@ struct ContentView: View {
                         "本地网络",
                         granted: !controller.discovered.isEmpty,
                         uncertain: controller.discovered.isEmpty,
-                        help: "WiFi 模式需要此权限。如果设备列表为空，请在这台 Mac 和 iPhone/iPad 的“隐私与安全性”→“本地网络”中允许 OpenDisplay，并保持设备端 app 打开。",
+                        help: "WiFi 模式需要此权限。如果设备列表为空，请在两端的“隐私与安全性”→“本地网络”中允许 DisplayWeave，并保持设备端 app 打开。",
                         anchor: "Privacy_LocalNetwork"
                     )
                 }
