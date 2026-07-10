@@ -19,7 +19,7 @@ iPhone、iPad 或 Android 设备作为 Mac 的第二屏。项目源自 OpenDispl
 ## 当前能力
 
 - Apple 接收端：iPhone/iPad，支持 USB（`usbmuxd`）和局域网 WiFi。
-- Android 接收端：当前使用局域网 WiFi，支持 HEVC/H.265 和 H.264 回退。
+- Android 接收端：支持局域网 WiFi 和实验性 ADB forward USB，支持 HEVC/H.265 和 H.264 回退。
 - Android 支持动态 30/60/90/120fps 协商和高刷新显示模式请求。
 - 支持触摸、拖动、光标、双指滚动和运行时全链路性能统计。
 - OnePlus OPD2413 在 HEVC/120 WiFi 测试中端到端约 109-111 FPS，
@@ -30,7 +30,7 @@ Android 高刷新仍属于实验功能。请求 120fps 或启用 120Hz 显示模
 
 ## 尚未完成
 
-- Android USB/ADB reverse。
+- Android USB 真机稳定性与多设备验证（代码已采用 ADB forward 实现）。
 - iOS/iPadOS 120Hz。
 - 加密 WiFi 配对。
 - 已签名、已公证的 DisplayWeave macOS 正式包。
@@ -45,7 +45,7 @@ Android 高刷新仍属于实验功能。请求 120fps 或启用 120Hz 显示模
 | --- | --- | --- |
 | macOS | `DisplayWeave-macOS-development-preview.zip` | 仅作本地测试的 ad-hoc 签名，未使用 Developer ID 且未公证 |
 | iOS/iPadOS | `DisplayWeave-iOS-Simulator-development-preview.zip` | 仅供 Simulator，不能安装到 iPhone/iPad 真机 |
-| Android | `DisplayWeave-Android-debug.apk` | 可安装 Debug APK；当前仅支持 WiFi 传输 |
+| Android | `DisplayWeave-Android-debug.apk` | 可安装 Debug APK；WiFi 已验证，ADB forward USB 待真机验证 |
 
 这些文件用于开发测试，不是正式生产发布包。
 
@@ -77,6 +77,14 @@ Android Debug APK 输出路径：
 ```text
 AndroidReceiver/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+Android USB 使用方法：在 Android 开发者选项中启用“USB 调试”，使用支持数据
+传输的线缆连接 Mac，打开 Android Receiver，并在设备上允许当前 Mac 的 RSA
+授权。Mac 端 Transport 选择 Auto、USB 或 WiFi：Auto 优先 USB，只会回退到
+install ID 相同的 WiFi Receiver；USB 不会静默回退；WiFi 不创建 ADB 映射。
+DisplayWeave 会依次查找自定义路径、PATH、`ANDROID_HOME`、`ANDROID_SDK_ROOT`、
+macOS 默认 Android SDK 和 Homebrew，无需强制手工配置 PATH。请注意，USB 调试
+授权是 Android 对整台 Mac 的广泛调试信任，不只是 DisplayWeave 配对。
 
 ## 文档
 

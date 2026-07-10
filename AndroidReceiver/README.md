@@ -1,6 +1,6 @@
 # DisplayWeave Android Receiver
 
-Android WiFi receiver for DisplayWeave.
+Android WiFi and ADB-forward USB receiver for DisplayWeave.
 
 This module lets an Android tablet or phone act as a DisplayWeave receiver for
 the Mac sender. It uses a backward-compatible receiver contract: Android NSD
@@ -15,7 +15,7 @@ and JSON control messages for input, configuration, recovery, and liveness.
 | HEVC/H.265 with H.264 fallback | Completed and physically validated |
 | Dynamic 30/60/90/120fps negotiation | Completed; high refresh remains experimental |
 | OnePlus HEVC/120 WiFi result | About 109-111 FPS end to end on the tested setup |
-| Android USB/ADB reverse | Planned, not implemented |
+| Android USB via ADB forward | Implemented on Mac; physical and multi-device validation pending |
 | Encrypted WiFi pairing | Planned, not implemented |
 | Development download | Installable Debug APK in the preview GitHub Release |
 | Signed store/release package | Not available; build from source for production trust |
@@ -28,6 +28,7 @@ and JSON control messages for input, configuration, recovery, and liveness.
 
 - Android NSD 广播 `_opensidecar._tcp`
 - TCP 监听端口 `9000`
+- Mac 端通过 `adb forward tcp:<动态本地端口> tcp:9000` 建立 USB 隧道
 - 与 Mac 端兼容的 length-prefixed JSON 控制帧
 - HEVC/H.265 与 H.264 Annex B 视频帧接收
 - `MediaCodec` 硬件解码到高刷新 `SurfaceView`
@@ -137,7 +138,8 @@ build path.
 - **Transport writes are off the UI thread**: `WifiTcpReceiverTransport` owns a
   serialized writer executor, avoiding Android's `NetworkOnMainThreadException`.
 - **Transport is isolated**: `OpenDisplayServer` consumes framed payloads via
-  `ReceiverTransport`; a future ADB transport can reuse the protocol/decoder.
+  `ReceiverTransport`; ADB forward delivers the unchanged TCP byte stream to
+  port 9000, so USB reuses the protocol and decoder without an Android-side fork.
 - **Tap deferral avoids scroll mis-clicks**: single-touch begin events are held
   briefly until the gesture is known; a second finger cancels the pending tap.
 - **Display profiles are receiver-driven**: Android can advertise a scaled
@@ -147,8 +149,9 @@ build path.
 
 ## Known Limits
 
-- Android currently ships only `WifiTcpReceiverTransport`; USB/ADB reverse is
-  intentionally deferred to a later transport phase.
+- Android still uses `WifiTcpReceiverTransport` as its TCP server for both
+  network sockets and ADB-forwarded loopback traffic. The Mac remains the TCP
+  client; DisplayWeave intentionally uses `adb forward`, not `adb reverse`.
 - The transport is local-network TCP and is not yet production-grade encrypted pairing.
 - Hardware decoder behavior can vary by Android vendor.
 - Multi-touch is currently mapped to practical desktop gestures, not a full macOS gesture set.
