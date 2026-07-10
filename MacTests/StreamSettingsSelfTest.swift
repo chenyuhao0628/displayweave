@@ -33,6 +33,15 @@ func assertTrue(_ value: Bool, _ message: String) {
 @main
 struct StreamSettingsSelfTest {
     static func main() {
+        let suiteName = "StreamSettingsSelfTest.\(UUID().uuidString)"
+        let emptyDefaults = UserDefaults(suiteName: suiteName)!
+        defer { emptyDefaults.removePersistentDomain(forName: suiteName) }
+
+        assertTrue(StreamTransportMode.allCases.map(\.rawValue) == ["auto", "usb", "wifi"],
+                   "transport modes remain Auto, USB, WiFi in priority order")
+        assertTrue(StreamSettings.load(from: emptyDefaults).transportMode == .auto,
+                   "new installs default transport to Auto")
+
         assertTrue(StreamQuality.allCases.map(\.rawValue) == ["low", "balanced", "high", "gaming"],
                    "quality settings expose Low/Balanced/High/Gaming in a stable order")
         assertEqual(.high, StreamQuality.fromStoredValue("best"),

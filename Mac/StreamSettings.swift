@@ -100,10 +100,14 @@ enum StreamCodecMode: String, CaseIterable {
 }
 
 enum StreamTransportMode: String, CaseIterable {
+    case auto
+    case usb
     case wifi
 
     var label: String {
         switch self {
+        case .auto: return "Auto"
+        case .usb: return "USB"
         case .wifi: return "WiFi"
         }
     }
@@ -120,7 +124,7 @@ struct StreamSettings: Equatable {
         let fpsMode = StreamFpsMode(rawValue: defaults.string(forKey: "fpsMode") ?? "") ?? legacyFpsMode(defaults)
         let codecMode = StreamCodecMode(rawValue: defaults.string(forKey: "codecMode") ?? "") ?? legacyCodecMode(defaults)
         let quality = StreamQuality.fromStoredValue(defaults.string(forKey: "quality"))
-        let transportMode = StreamTransportMode(rawValue: defaults.string(forKey: "transportMode") ?? "") ?? .wifi
+        let transportMode = StreamTransportMode(rawValue: defaults.string(forKey: "transportMode") ?? "") ?? .auto
         let debugStats = defaults.object(forKey: "debugStats") == nil || defaults.bool(forKey: "debugStats")
         return StreamSettings(
             fpsMode: fpsMode,
