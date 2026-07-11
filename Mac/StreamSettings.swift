@@ -128,13 +128,15 @@ enum BitrateMode: String, CaseIterable {
 enum BitratePreset: Int, CaseIterable {
     case mbps10 = 10, mbps20 = 20, mbps30 = 30, mbps40 = 40
     case mbps60 = 60, mbps80 = 80, mbps100 = 100, mbps120 = 120
-    case mbps160 = 160, mbps180 = 180, mbps200 = 200
+    case mbps140 = 140, mbps160 = 160, mbps180 = 180, mbps200 = 200
 
     var megabits: Int { rawValue }
     var bitsPerSecond: Int { rawValue * 1_000_000 }
     var label: String { "\(rawValue) Mbps" }
 
-    static var manualCases: [BitratePreset] { allCases.filter { $0.rawValue <= 160 } }
+    static var manualCases: [BitratePreset] {
+        allCases.filter { $0.rawValue <= 160 && $0 != .mbps140 }
+    }
     static var benchmarkCases: [BitratePreset] { allCases }
 }
 

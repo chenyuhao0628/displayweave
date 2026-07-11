@@ -47,8 +47,9 @@ struct StreamSettingsSelfTest {
                    "bitrate modes remain Auto, Manual, Benchmark")
         assertTrue(BitratePreset.manualCases.map(\.megabits) == [10, 20, 30, 40, 60, 80, 100, 120, 160],
                    "manual presets match the product list")
-        assertTrue(BitratePreset.benchmarkCases.last?.megabits == 200,
-                   "benchmark presets include 200 Mbps")
+        assertTrue(Array(BitratePreset.benchmarkCases.suffix(4)).map(\.megabits)
+                    == [140, 160, 180, 200],
+                   "benchmark presets include the 140/160/180/200 ladder")
 
         assertTrue(StreamQuality.allCases.map(\.rawValue) == ["low", "balanced", "high", "gaming"],
                    "quality settings expose Low/Balanced/High/Gaming in a stable order")
@@ -91,9 +92,10 @@ struct StreamSettingsSelfTest {
                     forced.selectedCodec(supportedCodecs: ["h264", "hevc"], preferredCodec: "hevc"),
                     "forced H.264 overrides negotiated HEVC")
 
-        forced.save(to: emptyDefaults)
-        emptyDefaults.set("manual", forKey: "bitrateMode")
-        emptyDefaults.set(120, forKey: "bitrateMbps")
+        var persisted = forced
+        persisted.bitrateMode = .manual
+        persisted.bitratePreset = .mbps120
+        persisted.save(to: emptyDefaults)
         let loadedManual = StreamSettings.load(from: emptyDefaults)
         assertTrue(loadedManual.bitrateMode == .manual && loadedManual.bitratePreset == .mbps120,
                    "manual bitrate mode and preset persist")
