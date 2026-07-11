@@ -18,6 +18,24 @@ struct TransportSelectionPolicySelfTest {
         check(.wifi(receiver.id),
               policy.preferred(mode: .wifi, androidUSB: "A", wifi: receiver),
               "WiFi mode should ignore an attached USB device")
+        check(.replaceWiFiWithUSB,
+              AndroidTransportHandoverPolicy.decision(
+                mode: .auto,
+                existing: .wifi(installID: "install-1"),
+                arrivingUSBInstallID: "install-1"),
+              "Auto must release the same Receiver's WiFi session before USB connects")
+        check(.keepExisting,
+              AndroidTransportHandoverPolicy.decision(
+                mode: .auto,
+                existing: .wifi(installID: "install-2"),
+                arrivingUSBInstallID: "install-1"),
+              "Auto must not end an unrelated WiFi Receiver")
+        check(.keepExisting,
+              AndroidTransportHandoverPolicy.decision(
+                mode: .wifi,
+                existing: .wifi(installID: "install-1"),
+                arrivingUSBInstallID: "install-1"),
+              "WiFi-only mode must not upgrade to USB")
         check(nil,
               policy.preferred(mode: .usb, androidUSB: nil, wifi: receiver),
               "USB mode should never silently choose WiFi")

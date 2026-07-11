@@ -5,6 +5,30 @@ struct WifiTransportCandidate: Equatable, Sendable {
     let installID: String?
 }
 
+enum AndroidExistingTransport: Equatable, Sendable {
+    case wifi(installID: String?)
+    case usb
+}
+
+enum AndroidTransportHandoverDecision: Equatable, Sendable {
+    case keepExisting
+    case replaceWiFiWithUSB
+}
+
+enum AndroidTransportHandoverPolicy {
+    static func decision(mode: StreamTransportMode,
+                         existing: AndroidExistingTransport,
+                         arrivingUSBInstallID: String?) -> AndroidTransportHandoverDecision {
+        guard mode != .wifi,
+              case .wifi(let wifiInstallID) = existing,
+              let wifiInstallID,
+              wifiInstallID == arrivingUSBInstallID else {
+            return .keepExisting
+        }
+        return .replaceWiFiWithUSB
+    }
+}
+
 enum TransportCandidate: Equatable, Sendable {
     case androidUSB(String)
     case wifi(String)

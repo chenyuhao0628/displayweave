@@ -37,7 +37,9 @@
 
 当前 iPhone 上的旧 OpenDisplay 结果已排除。随后使用 Xcode Personal Team 构建、安装并启动当前 DisplayWeave 0.1.0：Android ADB USB 建立显示 79（3040×1904、HEVC、120 请求/实际刷新率 120、80 Mbps），iPhone WiFi 建立显示 80（1320×2868、H.264、60、23 Mbps，旋转后显示 81）。Android 返回桌面并进入恢复流程期间，iPhone 仍持续回传 WiFi stats，证明两个 session 的 transport、显示和统计相互独立。
 
-本轮仍不能证明 30 分钟稳定、2 小时耐久、物理拔插、授权取消、实际 Auto WiFi 回退、两 Android 并发或 USB 性能优于 WiFi。
+物理拔插随后完成两轮验证。拔线后有线 ADB row 与旧 forward 均消失，无线调试 row 不会被当作 USB；Android App WiFi 以同 install ID 建立 HEVC/120 session。首轮插线暴露 WiFi session 未先让位、USB 客户端反复 watchdog 的缺陷；新增 handover policy 与回归测试后重测，日志在 14:30:29 记录 `upgrading same-install-ID session from wifi:DisplayWeave Android`，约 0.33 秒后 USB 收到 hello、建立显示 88 并发送 `transport=usb` 的 HEVC/120 streamConfig。最终仅有一个 `HA2AE8R5 tcp:53341 tcp:9000` forward；iPhone WiFi 显示 86 和 stats 持续。
+
+本轮仍不能证明 30 分钟稳定、2 小时耐久、授权取消/重授权、两 Android 并发或 USB 性能优于 WiFi。
 
 ## 异常恢复与耐久矩阵
 
@@ -46,7 +48,7 @@
 | 项目 | 状态 | 通过标准 / 需记录证据 |
 | --- | --- | --- |
 | Android App 关闭后重新打开 | 通过 | 强停/重开后约 20 秒内协议级恢复，streamConfig 重发，无 Mac 模式切换 |
-| 拔出 USB 后重新插入 | 待人工验证 | 有限退避恢复；映射无残留；记录 reconnectTime |
+| 拔出 USB 后重新插入 | 通过 | 拔线旧 mapping 消失；插回建立新动态端口；同 install ID WiFi 先结束再由 USB 收到 hello |
 | USB 调试授权取消 | 待人工验证 | 显示 unauthorized 指引，不快速无限重试 |
 | ADB Server 重启 | 通过 | daemon kill/restart 后重新探测 exact serial、结束超时 session 并建立新 peer；未错误回退 WiFi |
 | Android 锁屏后解锁 | 待人工验证 | 解锁后关键帧恢复，无持续黑屏/花屏 |
@@ -61,7 +63,7 @@
 | 连续运行 2 小时 | 待人工验证 | 无崩溃、黑屏、花屏、FPS 持续下降 |
 | 两台 Android 同时 USB | 待人工验证 | serial、本地端口、session、显示和统计独立 |
 | Android USB + Android WiFi | 待人工验证 | 同时工作，一台断开不影响另一台 |
-| Android + iPhone/iPad | 通过（当前构建） | DisplayWeave iOS 0.1.0 WiFi + Android USB 同时工作；Android 中断期间 iPhone stats 持续 |
+| Android + iPhone/iPad | 通过（当前构建） | DisplayWeave iOS 0.1.0 WiFi + Android WiFi/USB 同时工作；Android transport handover 期间 iPhone stats 持续 |
 
 ## 泄漏检查清单
 
@@ -81,4 +83,4 @@
 
 ## 当前结论
 
-自动化证据覆盖 ADB 状态识别、安全参数执行、多设备映射隔离、选择策略、有限恢复状态机与跨启动 mapping ownership。单台 OPD2413 证明 Android USB 能建立 HEVC/120 与 H.264/60 流程，但仍不能把 Preview 0.1 的 USB/WiFi Benchmark、拔插恢复、多设备、30 分钟或 2 小时耐久标记为完成。
+自动化证据覆盖 ADB 状态识别、安全参数执行、多设备映射隔离、选择策略、同 install ID WiFi→USB handover、有限恢复状态机与跨启动 mapping ownership。单台 OPD2413 证明 Android USB 能建立 HEVC/120 与 H.264/60，且物理拔插与 App WiFi/USB 转换可恢复；仍不能把 Preview 0.1 的 USB/WiFi Benchmark、授权取消、两 Android、30 分钟或 2 小时耐久标记为完成。

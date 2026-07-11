@@ -201,13 +201,13 @@ final class SenderController: ObservableObject {
     private var androidRecoveryAttempt: [String: Int] = [:]
     private var androidRecoveryGeneration: [String: Int] = [:]
 
-    // Connection policy — deliberately simple, no automatic transport
-    // switching. One session per physical device; whichever transport
-    // connected first keeps the device until the session ends. Unplugging
-    // the cable ENDS the session (it does not migrate to WiFi), and a WiFi
-    // drop does not migrate to the cable: silent transport handover
-    // surprised users more than it helped (and every virtual-display
-    // create/destroy flashes all screens).
+    // Connection policy keeps one session per physical device. Apple
+    // transports retain the existing explicit/no-mid-session-handover
+    // behavior. Android Auto is different by design: bounded USB recovery
+    // may fall back only to the same install ID over App WiFi, and a later
+    // wired attach upgrades that same WiFi session back to USB. The old
+    // session must end before dialing the replacement because the Android
+    // Receiver accepts one client.
     //
     //  - USB devices connect on attach ("plug in and go") unless the user
     //    explicitly disconnected them once (usbDisabled).
@@ -374,6 +374,17 @@ final class SenderController: ObservableObject {
             default:
                 return false
             }
+        }
+    }
+
+    /// Existing session for this physical Android, including its App WiFi
+    /// twin learned from the Receiver install ID.
+    private func activeSession(coveringAndroidUSB device: AndroidAdbDevice) -> DeviceSession? {
+        if let direct = session(for: "android-adb:\(device.serial)") { return direct }
+        guard let installID = installIDByAndroidSerial[device.serial] else { return nil }
+        return sessions.first { session in
+            guard case .wifi(let result) = session.target else { return false }
+            return session.deviceID == installID || txtID(of: result) == installID
         }
     }
 
@@ -607,6 +618,21 @@ final class SenderController: ObservableObject {
             default: androidAdbStatus = "ADB 设备不可用：\(serial)"
             }
             return
+        }
+        if let covering = activeSession(coveringAndroidUSB: device) {
+            let existingInstallID: String?
+            if case .wifi(let result) = covering.target {
+                existingInstallID = covering.deviceID ?? txtID(of: result)
+            } else {
+                existingInstallID = nil
+            }
+            let decision = AndroidTransportHandoverPolicy.decision(
+                mode: settings.transportMode,
+                existing: .wifi(installID: existingInstallID),
+                arrivingUSBInstallID: installIDByAndroidSerial[serial])
+            guard decision == .replaceWiFiWithUSB else { return }
+            Log.info("Android USB available — upgrading same-install-ID session from \(covering.id)")
+            end(covering)
         }
         guard let androidForwardManager else {
             androidAdbStatus = "ADB 尚未就绪"
