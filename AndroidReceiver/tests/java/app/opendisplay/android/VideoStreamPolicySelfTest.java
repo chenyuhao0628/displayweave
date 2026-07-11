@@ -150,13 +150,13 @@ public final class VideoStreamPolicySelfTest {
         assertEquals(ClockOffsetEstimator.State.ESTIMATING, estimator.state());
         assertTrue(estimator.addSample(3000, 3014, 3016, 3010)); // offset 10, RTT 8
         assertEquals(ClockOffsetEstimator.State.STABLE, estimator.state());
-        assertEquals(10L, estimator.offsetMs());
+        assertEquals(11L, estimator.offsetMs());
         assertEquals(1L, estimator.confidenceMs());
 
         assertTrue(estimator.addSample(4000, 4102, 4104, 4200)); // offset 1, RTT 198
         assertTrue(estimator.addSample(5000, 5022, 5024, 5020)); // offset 11, RTT 18; evicts first
         assertEquals(4, estimator.sampleCount());
-        assertEquals(10L, estimator.offsetMs());
+        assertEquals(11L, estimator.offsetMs());
         assertEquals(1L, estimator.confidenceMs());
     }
 

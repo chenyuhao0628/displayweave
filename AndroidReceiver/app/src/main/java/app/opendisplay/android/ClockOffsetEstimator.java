@@ -58,7 +58,12 @@ public final class ClockOffsetEstimator {
             return MISSING_MS;
         }
         selected.sort(Comparator.comparingDouble(sample -> sample.offsetMs));
-        return Math.round(selected.get((selected.size() - 1) / 2).offsetMs);
+        int upperIndex = selected.size() / 2;
+        double median = selected.get(upperIndex).offsetMs;
+        if (selected.size() % 2 == 0) {
+            median = (selected.get(upperIndex - 1).offsetMs + median) / 2.0;
+        }
+        return Math.round(median);
     }
 
     public long confidenceMs() {
