@@ -144,6 +144,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var benchmarkRunId: String?
     private var benchmarkSessionId: String?
     private var benchmarkScene: BenchmarkScene?
+    private var benchmarkFinishWorkItem: DispatchWorkItem?
+    private var benchmarkOutputDirectory: URL?
 
     // ScreenCaptureKit emits frames only when content changes. After a
     // reconnect on a static screen there is nothing to hang the forced
@@ -405,6 +407,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         }
     }
 
+    @MainActor
     func startBenchmark(scene: BenchmarkScene, duration: BenchmarkDuration) throws {
         let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("DisplayWeave/Benchmarks", isDirectory: true)
@@ -419,14 +422,27 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             benchmarkRunId = runId
             benchmarkSessionId = UUID().uuidString.lowercased()
             benchmarkScene = scene
+            benchmarkOutputDirectory = root.appendingPathComponent(runId, isDirectory: true)
+            let finish = DispatchWorkItem { [weak self] in
+                self?.finishBenchmarkOnQueue(message: "Benchmark completed")
+            }
+            benchmarkFinishWorkItem = finish
+            queue.asyncAfter(
+                deadline: .now() + 30 + TimeInterval(duration.rawValue), execute: finish)
         }
         Task { @MainActor in
             onBenchmarkStatus?("Warm-up 30s · \(scene.label) · run \(runId)")
         }
     }
 
+    @MainActor
     func stopBenchmark() {
         queue.async { [weak self] in self?.finishBenchmarkOnQueue(message: "Benchmark stopped") }
+    }
+
+    @MainActor
+    var isBenchmarkActive: Bool {
+        queue.sync { benchmarkRecorder != nil }
     }
 
     /// Drop the current connection and dial again — fresh TCP through the
@@ -1252,8 +1268,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
               let sessionId = benchmarkSessionId,
               let scene = benchmarkScene else { return }
         let elapsed = startedAt.duration(to: benchmarkClock.now)
-        let elapsedSeconds = elapsed.components.seconds
-        let phase = policy.phase(elapsedSeconds: TimeInterval(elapsedSeconds))
+        let elapsedSeconds = BenchmarkControlPolicy.seconds(from: elapsed)
+        let phase = policy.phase(elapsedSeconds: elapsedSeconds)
         guard phase != .finished else {
             finishBenchmarkOnQueue(message: "Benchmark completed")
             return
@@ -1292,12 +1308,21 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         benchmarkRunId = nil
         benchmarkSessionId = nil
         benchmarkScene = nil
-        let result = try? recorder.stop()
-        let finalMessage = message.map { prefix in
-            result.map { "\(prefix) · \($0.csvURL.deletingLastPathComponent().path)" } ?? prefix
-        }
-        if let finalMessage {
-            Task { @MainActor in onBenchmarkStatus?(finalMessage) }
+        benchmarkFinishWorkItem?.cancel()
+        benchmarkFinishWorkItem = nil
+        let outputDirectory = benchmarkOutputDirectory
+        benchmarkOutputDirectory = nil
+        do {
+            let result = try recorder.stop()
+            if let message {
+                let finalMessage = "\(message) · \(result.csvURL.deletingLastPathComponent().path)"
+                Task { @MainActor in onBenchmarkStatus?(finalMessage) }
+            }
+        } catch {
+            let directory = outputDirectory?.path ?? "output path unavailable"
+            let failure = "Benchmark flush failed: \(error) · \(directory)"
+            Log.info(failure)
+            Task { @MainActor in onBenchmarkStatus?(failure) }
         }
     }
 

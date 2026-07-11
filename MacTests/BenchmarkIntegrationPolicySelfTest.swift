@@ -37,6 +37,10 @@ struct BenchmarkIntegrationPolicySelfTest {
         expect(policy.phase(elapsedSeconds: 29.999) == .warmup, "warmup lasts 30 seconds")
         expect(policy.phase(elapsedSeconds: 30) == .run, "run follows warmup")
         expect(policy.phase(elapsedSeconds: 210) == .finished, "finishes after selected duration")
+        let fractional = BenchmarkControlPolicy.seconds(from: .seconds(29.999))
+        expect(abs(fractional - 29.999) < 0.000_001, "duration conversion preserves attoseconds")
+        expect(policy.phase(elapsedSeconds: fractional) == .warmup,
+               "fractional warmup boundary stays precise")
         print("BenchmarkIntegrationPolicySelfTest PASS")
     }
 }

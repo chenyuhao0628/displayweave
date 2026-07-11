@@ -1,6 +1,11 @@
 import Foundation
 
 enum BenchmarkControlPolicy {
+    static func seconds(from duration: ContinuousClock.Duration) -> TimeInterval {
+        let parts = duration.components
+        return TimeInterval(parts.seconds) + TimeInterval(parts.attoseconds) / 1_000_000_000_000_000_000
+    }
+
     static func receiverStats(from data: Data) throws -> ReceiverStats? {
         let stats = try JSONDecoder().decode(ReceiverStats.self, from: data)
         return stats.type == "stats" ? stats : nil

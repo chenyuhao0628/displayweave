@@ -593,6 +593,10 @@ final class SenderController: ObservableObject {
                 self.end(session)
             }
         }
+        for existing in sessions where existing.sender.isBenchmarkActive {
+            existing.sender.stopBenchmark()
+            existing.benchmarkStatus = "Benchmark stopped: another session connected"
+        }
         sessions.append(session)
         Task {
             do {
