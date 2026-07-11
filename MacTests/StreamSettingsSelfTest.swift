@@ -41,6 +41,14 @@ struct StreamSettingsSelfTest {
                    "transport modes remain Auto, USB, WiFi in priority order")
         assertTrue(StreamSettings.load(from: emptyDefaults).transportMode == .auto,
                    "new installs default transport to Auto")
+        assertTrue(StreamSettings.load(from: emptyDefaults).bitrateMode == .auto,
+                   "new installs default bitrate to Auto")
+        assertTrue(BitrateMode.allCases.map(\.rawValue) == ["auto", "manual", "benchmark"],
+                   "bitrate modes remain Auto, Manual, Benchmark")
+        assertTrue(BitratePreset.manualCases.map(\.megabits) == [10, 20, 30, 40, 60, 80, 100, 120, 160],
+                   "manual presets match the product list")
+        assertTrue(BitratePreset.benchmarkCases.last?.megabits == 200,
+                   "benchmark presets include 200 Mbps")
 
         assertTrue(StreamQuality.allCases.map(\.rawValue) == ["low", "balanced", "high", "gaming"],
                    "quality settings expose Low/Balanced/High/Gaming in a stable order")
@@ -82,6 +90,18 @@ struct StreamSettingsSelfTest {
         assertEqual(.h264,
                     forced.selectedCodec(supportedCodecs: ["h264", "hevc"], preferredCodec: "hevc"),
                     "forced H.264 overrides negotiated HEVC")
+
+        forced.save(to: emptyDefaults)
+        emptyDefaults.set("manual", forKey: "bitrateMode")
+        emptyDefaults.set(120, forKey: "bitrateMbps")
+        let loadedManual = StreamSettings.load(from: emptyDefaults)
+        assertTrue(loadedManual.bitrateMode == .manual && loadedManual.bitratePreset == .mbps120,
+                   "manual bitrate mode and preset persist")
+        emptyDefaults.set("invalid", forKey: "bitrateMode")
+        emptyDefaults.set(999, forKey: "bitrateMbps")
+        let invalid = StreamSettings.load(from: emptyDefaults)
+        assertTrue(invalid.bitrateMode == .auto && invalid.bitratePreset == .mbps40,
+                   "invalid stored bitrate settings fall back safely")
 
         print("StreamSettingsSelfTest PASS")
     }
