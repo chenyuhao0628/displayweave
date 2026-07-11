@@ -116,18 +116,35 @@ facts. Copy may be idiomatic rather than mechanically translated.
   may be retained only when they demonstrate genuine app behavior and have clear
   provenance.
 
-## Documentation Update Scope
+## Documentation Update Scope and Language Policy
+
+All current, user-facing documentation must be available in both English and
+Simplified Chinese. English remains the canonical unsuffixed filename; Chinese
+uses a matching `.zh-CN.md` filename, except for the established root
+`README.zh-CN.md`. Each paired document must link to its counterpart at the top.
+The two versions must carry the same capabilities, limitations, commands,
+release filenames, verification results, and security warnings; translation may
+be idiomatic but may not weaken caveats.
 
 Update all user-facing facts and cross-links in:
 
 - `README.md` and `README.zh-CN.md`;
 - `ARCHITECTURE.md`, `ROADMAP.md`, `SECURITY.md`, and `CONTRIBUTING.md` where
-  current release behavior changes their claims;
+  current release behavior changes their claims, together with matching
+  `ARCHITECTURE.zh-CN.md`, `ROADMAP.zh-CN.md`, `SECURITY.zh-CN.md`, and
+  `CONTRIBUTING.zh-CN.md`;
 - `AndroidReceiver/README.md`;
 - release checklist, stability report, performance audit, benchmark protocol,
   brand audit, development preview guide, and Preview 0.1 release notes;
 - website metadata, structured data, social description, and release links;
 - GitHub release notes.
+
+The Android receiver guide and each current user-facing document under `docs/`
+must also have an English/Chinese pair. Historical design specifications and
+implementation plans are development records rather than user instructions;
+they may remain in their authored language, but the main documentation index
+must label them as historical/internal records and must not rely on them as the
+only explanation of a current feature.
 
 The documentation must distinguish:
 
@@ -175,7 +192,9 @@ If any gate fails, fix and rerun it before claiming publication complete.
 ## Success Criteria
 
 - GitHub's default `main` contains all verified Android USB/reconnect work,
-  current documentation, and the redesigned bilingual website.
+  current bilingual documentation, and the redesigned bilingual website.
+- Every current user-facing guide provides direct English/Chinese navigation,
+  with factual parity verified before publication.
 - The site is visually and structurally distinct from the inherited OpenDisplay
   page while retaining legally required attribution.
 - Preview 2 download links resolve to the exact published assets.
