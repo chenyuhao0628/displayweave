@@ -141,26 +141,41 @@ struct AndroidAdbSelfTest {
                "empty ADB list should show the required message")
         let unauthorizedPresentation = AndroidAdbPresentation.make(
             executableFound: true,
-            devices: [AndroidAdbDevice(serial: "U", state: .unauthorized, model: nil)])
+            devices: [AndroidAdbDevice(serial: "U", state: .unauthorized, model: nil,
+                                       connectionKind: .usb)])
         expect(unauthorizedPresentation.message.contains("允许当前 Mac"),
                "unauthorized device should show the authorization action")
         let offlinePresentation = AndroidAdbPresentation.make(
             executableFound: true,
-            devices: [AndroidAdbDevice(serial: "O", state: .offline, model: nil)])
+            devices: [AndroidAdbDevice(serial: "O", state: .offline, model: nil,
+                                       connectionKind: .usb)])
         expect(offlinePresentation.message.contains("离线"),
                "offline device should be identified")
         let readyPresentation = AndroidAdbPresentation.make(
             executableFound: true,
-            devices: [AndroidAdbDevice(serial: "A", state: .device, model: "Pixel")])
+            devices: [AndroidAdbDevice(serial: "A", state: .device, model: "Pixel",
+                                       connectionKind: .usb)])
         expect(readyPresentation.connectableSerials == ["A"],
                "ready device should enable its connection")
         let multiplePresentation = AndroidAdbPresentation.make(
             executableFound: true,
-            devices: [AndroidAdbDevice(serial: "A", state: .device, model: nil),
-                      AndroidAdbDevice(serial: "B", state: .device, model: nil)])
+            devices: [AndroidAdbDevice(serial: "A", state: .device, model: nil,
+                                       connectionKind: .usb),
+                      AndroidAdbDevice(serial: "B", state: .device, model: nil,
+                                       connectionKind: .usb)])
         expect(multiplePresentation.message.contains("选择目标设备")
                && multiplePresentation.connectableSerials == ["A", "B"],
                "multiple devices should remain individually selectable")
+
+        let wirelessOnlyPresentation = AndroidAdbPresentation.make(
+            executableFound: true,
+            devices: [AndroidAdbDevice(
+                serial: "adb-X._adb-tls-connect._tcp", state: .device, model: "Tablet",
+                connectionKind: .wirelessDebugging)])
+        expect(wirelessOnlyPresentation.connectableSerials.isEmpty,
+               "wireless debugging is not DisplayWeave USB transport")
+        expect(wirelessOnlyPresentation.message.contains("无线调试"),
+               "wireless-only discovery must explain why USB is unavailable")
 
         print("AndroidAdbSelfTest PASS")
     }

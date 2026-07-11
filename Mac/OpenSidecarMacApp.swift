@@ -189,6 +189,9 @@ final class SenderController: ObservableObject {
     var quality: StreamQuality { settings.quality }
 
     var running: Bool { !sessions.isEmpty }
+    var androidUsbDevices: [AndroidAdbDevice] {
+        AndroidAdbDeviceSelection.usbDevices(from: androidDevices)
+    }
 
     private var browser: NWBrowser?
     private var usbWatcher: UsbmuxDeviceWatcher?
@@ -365,7 +368,7 @@ final class SenderController: ObservableObject {
                 else { return false }
                 return sameDevice(result, device)
             case .androidAdb(let mapping):
-                guard let device = androidDevices.first(where: { $0.serial == mapping.serial })
+                guard let device = androidUsbDevices.first(where: { $0.serial == mapping.serial })
                 else { return false }
                 return sameAndroidDevice(result, device)
             default:
@@ -393,7 +396,7 @@ final class SenderController: ObservableObject {
             && activeSession(coveringUSB: device) == nil {
             connect(to: .usb(udid: device.udid))
         }
-        for device in androidDevices
+        for device in androidUsbDevices
             where permitsUSB
             && device.state == .device
             && !usbDisabled.contains("android-adb:\(device.serial)")
@@ -417,7 +420,7 @@ final class SenderController: ObservableObject {
     private func cabled(_ result: NWBrowser.Result) -> Bool {
         usbDevices.contains {
             sameDevice(result, $0) && !usbDisabled.contains("usb:\($0.udid)")
-        } || androidDevices.contains {
+        } || androidUsbDevices.contains {
             sameAndroidDevice(result, $0)
                 && !usbDisabled.contains("android-adb:\($0.serial)")
                 && $0.state == .device
@@ -596,7 +599,7 @@ final class SenderController: ObservableObject {
         guard settings.transportMode != .wifi,
               !androidConnectPending.contains(serial),
               session(for: "android-adb:\(serial)") == nil,
-              let device = androidDevices.first(where: { $0.serial == serial }) else { return }
+              let device = androidUsbDevices.first(where: { $0.serial == serial }) else { return }
         guard device.state == .device else {
             switch device.state {
             case .unauthorized: androidAdbStatus = AndroidAdbFailure.unauthorized(serial).localizedDescription
@@ -645,7 +648,10 @@ final class SenderController: ObservableObject {
                     guard let client = androidAdbClient else { throw AndroidAdbFailure.noDevices }
                     let devices = try await client.devices()
                     androidDevices = devices
-                    guard devices.contains(where: { $0.serial == serial && $0.state == .device }) else {
+                    let usbDevices = AndroidAdbDeviceSelection.usbDevices(from: devices)
+                    guard usbDevices.contains(where: {
+                        $0.serial == serial && $0.state == .device
+                    }) else {
                         androidRecoveryAttempt[serial] = attempt + 1
                         continue
                     }
@@ -746,7 +752,7 @@ final class SenderController: ObservableObject {
         var mergedServices = Set<String>()
         var coveredSessionIDs = Set<String>()
 
-        for device in androidDevices {
+        for device in androidUsbDevices {
             let twin = discovered.first { sameAndroidDevice($0, device) }
             if let twin, let name = serviceName(of: twin) { mergedServices.insert(name) }
             let adbTarget = ConnectionTarget.androidAdbDevice(serial: device.serial)

@@ -55,7 +55,18 @@ struct AndroidAdbPresentation: Equatable, Sendable {
             return AndroidAdbPresentation(message: AndroidAdbFailure.noDevices.localizedDescription,
                                           connectableSerials: [])
         }
-        let ready = devices.filter { $0.state == .device }.map(\.serial)
+        let usbDevices = AndroidAdbDeviceSelection.usbDevices(from: devices)
+        if usbDevices.isEmpty,
+           devices.contains(where: { $0.connectionKind == .wirelessDebugging }) {
+            return AndroidAdbPresentation(
+                message: "已检测到 Android 无线调试；请连接 USB 数据线以使用 USB 传输",
+                connectableSerials: [])
+        }
+        guard !usbDevices.isEmpty else {
+            return AndroidAdbPresentation(message: "未检测到 Android USB 设备",
+                                          connectableSerials: [])
+        }
+        let ready = usbDevices.filter { $0.state == .device }.map(\.serial)
         if ready.count > 1 {
             return AndroidAdbPresentation(
                 message: AndroidAdbFailure.multipleDevices(ready).localizedDescription,
@@ -65,12 +76,12 @@ struct AndroidAdbPresentation: Equatable, Sendable {
             return AndroidAdbPresentation(message: "Android USB 设备已就绪",
                                           connectableSerials: ready)
         }
-        if let unauthorized = devices.first(where: { $0.state == .unauthorized }) {
+        if let unauthorized = usbDevices.first(where: { $0.state == .unauthorized }) {
             return AndroidAdbPresentation(
                 message: AndroidAdbFailure.unauthorized(unauthorized.serial).localizedDescription,
                 connectableSerials: [])
         }
-        if let offline = devices.first(where: { $0.state == .offline }) {
+        if let offline = usbDevices.first(where: { $0.state == .offline }) {
             return AndroidAdbPresentation(
                 message: AndroidAdbFailure.offline(offline.serial).localizedDescription,
                 connectableSerials: [])
