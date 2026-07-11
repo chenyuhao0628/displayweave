@@ -41,7 +41,9 @@
 
 真正的 USB→WiFi Auto 回退也单独验证：14:33:27 USB socket reset，14:33:37 协议级 10 秒宽限结束，随后执行 0.5/1/2/4/8 秒有限恢复；14:33:53 仅连接同 install ID 的 `wifi:DisplayWeave Android`，建立显示 91 并发送 `transport=wifi` 的 HEVC/120 streamConfig，总恢复约 26 秒。回退完成后 ADB 只剩无线调试 row 且 `forward --list` 为空；iPhone WiFi 显示 90 与 stats 全程持续。
 
-本轮仍不能证明 30 分钟稳定、2 小时耐久、授权取消/重授权、两 Android 并发或 USB 性能优于 WiFi。
+授权取消/重授权也完成真机验证。14:36:15 有线设备真实进入 `unauthorized usb:1-2`；保持约 20 秒期间 `forward --list` 为空，Mac 未创建 Android session 或快速无限重试，iPhone WiFi 保持。14:36:53 用户重新允许后设备变为 `device`，Mac 自动创建 mapping；因 Receiver 仍在系统设置页，socket 先被重置，返回 DisplayWeave 后 14:37:31 收到 hello，建立显示 93 并发送 `transport=usb` 的 HEVC/120 streamConfig，无需 Mac 模式切换。
+
+本轮仍不能证明 30 分钟稳定、2 小时耐久、两 Android 并发、USB 输入视觉结果或 USB 性能优于 WiFi。
 
 ## 异常恢复与耐久矩阵
 
@@ -51,7 +53,7 @@
 | --- | --- | --- |
 | Android App 关闭后重新打开 | 通过 | 强停/重开后约 20 秒内协议级恢复，streamConfig 重发，无 Mac 模式切换 |
 | 拔出 USB 后重新插入 | 通过 | 拔线旧 mapping 消失；插回建立新动态端口；同 install ID WiFi 先结束再由 USB 收到 hello |
-| USB 调试授权取消 | 待人工验证 | 显示 unauthorized 指引，不快速无限重试 |
+| USB 调试授权取消 | 通过 | 真实 unauthorized 期间无 mapping/快速重试；重新允许并返回 App 后自动收到 hello 恢复 |
 | ADB Server 重启 | 通过 | daemon kill/restart 后重新探测 exact serial、结束超时 session 并建立新 peer；未错误回退 WiFi |
 | Android 锁屏后解锁 | 待人工验证 | 解锁后关键帧恢复，无持续黑屏/花屏 |
 | Android App 切后台后恢复 | 通过 | Home 后回 App 自动恢复；surface 就绪可能约 15 秒，无需 Mac 切模式 |
@@ -85,4 +87,4 @@
 
 ## 当前结论
 
-自动化证据覆盖 ADB 状态识别、安全参数执行、多设备映射隔离、选择策略、同 install ID WiFi→USB handover、有限恢复状态机与跨启动 mapping ownership。单台 OPD2413 证明 Android USB 能建立 HEVC/120 与 H.264/60，且物理拔插与 App WiFi/USB 转换可恢复；仍不能把 Preview 0.1 的 USB/WiFi Benchmark、授权取消、两 Android、30 分钟或 2 小时耐久标记为完成。
+自动化证据覆盖 ADB 状态识别、安全参数执行、多设备映射隔离、选择策略、同 install ID WiFi→USB handover、有限恢复状态机与跨启动 mapping ownership。单台 OPD2413 证明 Android USB 能建立 HEVC/120 与 H.264/60，且物理拔插、授权取消/重授权与 App WiFi/USB 转换可恢复；仍不能把 Preview 0.1 的 USB/WiFi Benchmark、USB 输入、两 Android、30 分钟或 2 小时耐久标记为完成。

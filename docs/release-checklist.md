@@ -66,7 +66,7 @@ Mac ZIP 只能标为本地开发预览。正式公开发行需配置 Developer I
 | ADB server 重启恢复 | 单设备真机通过；协议级确认后恢复，未错误回退 WiFi |
 | USB 物理拔插 / mapping 清理 | 单设备真机通过；拔线后有线 row 与旧 forward 消失，插回后新动态端口建立 |
 | Auto 同设备 WiFi 回退 / USB 再优先 | 单设备真机通过；USB 断开后 10 秒协议宽限 + 0.5/1/2/4/8 秒有限恢复，约 26 秒切到同 install ID App WiFi；插线后先结束 WiFi 再建立 USB；iPhone 不受影响 |
-| USB 调试授权取消 / 重授权 | 待人工验证 |
+| USB 调试授权取消 / 重授权 | 单设备真机通过；unauthorized 期间无 forward/快速重试，重新允许并返回 Receiver 后自动恢复 USB 画面 |
 | 50 次连接断开 | 待人工验证 |
 | 10 分钟 Benchmark | 待人工验证 |
 | Android USB + 当前 iPhone WiFi 并发 | 真机通过；两独立 session/显示，Android 中断期间 iPhone stats 持续 |
@@ -92,7 +92,7 @@ Mac ZIP 只能标为本地开发预览。正式公开发行需配置 Developer I
 
 当前可作为明确标注限制的开发预览交付，但不能写成完整发布验收完成。剩余项目：
 
-1. Android USB 输入、授权取消/重授权与两 Android 验证；
+1. Android USB 输入与两 Android 验证；
 2. 用户执行 30 分钟稳定性及 2 小时耐久测试；
 3. 按 `docs/usb-vs-wifi-benchmark.md` 执行同条件 Benchmark；
 4. 发布页醒目标明 Mac ad-hoc 未公证、iOS IPA 需要用户自签；
