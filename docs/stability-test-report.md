@@ -43,7 +43,9 @@
 
 授权取消/重授权也完成真机验证。14:36:15 有线设备真实进入 `unauthorized usb:1-2`；保持约 20 秒期间 `forward --list` 为空，Mac 未创建 Android session 或快速无限重试，iPhone WiFi 保持。14:36:53 用户重新允许后设备变为 `device`，Mac 自动创建 mapping；因 Receiver 仍在系统设置页，socket 先被重置，返回 DisplayWeave 后 14:37:31 收到 hello，建立显示 93 并发送 `transport=usb` 的 HEVC/120 streamConfig，无需 Mac 模式切换。
 
-本轮仍不能证明 30 分钟稳定、2 小时耐久、两 Android 并发、USB 输入视觉结果或 USB 性能优于 WiFi。
+USB Touch 输入用可重复的端到端方法验证：USB stream 活跃时先读取 macOS `CGEvent` 光标坐标 `(730,486)`，再通过 ADB 向 Android DisplayWeave Surface 注入触摸 `(250,300)`；约 1 秒后 Mac 光标变为 Android 虚拟显示范围内的 `(-1258,152)`。这覆盖 `MotionEvent -> touch JSON -> USB socket -> Mac InputInjector`。双指滚动的 gesture tracker 与 scroll JSON 有 ProtocolSelfTest，但真机多指视觉结果仍待人工确认，不能用单指 ADB swipe 代替。
+
+本轮仍不能证明 30 分钟稳定、2 小时耐久、两 Android 并发、双指滚动视觉结果或 USB 性能优于 WiFi。
 
 ## 异常恢复与耐久矩阵
 
@@ -87,4 +89,4 @@
 
 ## 当前结论
 
-自动化证据覆盖 ADB 状态识别、安全参数执行、多设备映射隔离、选择策略、同 install ID WiFi→USB handover、有限恢复状态机与跨启动 mapping ownership。单台 OPD2413 证明 Android USB 能建立 HEVC/120 与 H.264/60，且物理拔插、授权取消/重授权与 App WiFi/USB 转换可恢复；仍不能把 Preview 0.1 的 USB/WiFi Benchmark、USB 输入、两 Android、30 分钟或 2 小时耐久标记为完成。
+自动化证据覆盖 ADB 状态识别、安全参数执行、多设备映射隔离、选择策略、同 install ID WiFi→USB handover、有限恢复状态机与跨启动 mapping ownership。单台 OPD2413 证明 Android USB 能建立 HEVC/120 与 H.264/60、Touch 输入有效，且物理拔插、授权取消/重授权与 App WiFi/USB 转换可恢复；仍不能把 Preview 0.1 的 USB/WiFi Benchmark、双指滚动、两 Android、30 分钟或 2 小时耐久标记为完成。

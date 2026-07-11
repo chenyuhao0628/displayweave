@@ -30,7 +30,7 @@ OnePlus OPD2413 的历史 HEVC/120 WiFi 真机测试约为 109–111 FPS，Andro
 - Android Receiver 在 surface/前后台变化后幂等重启；Mac 重连会先重发 `streamConfig`，并以收到 peer 控制消息作为真正就绪条件。
 - Android Auto 从同 install ID 的 App WiFi 恢复到有线 USB 时，会先结束旧 WiFi session，再建立 USB，避免单连接 Receiver 被两个客户端争抢。
 
-OnePlus OPD2413 已确认 HEVC/120 与 H.264/60 USB 流程、返回桌面后重开、强停重开、ADB server 重启、物理拔插和授权取消/重授权可自动恢复，无需在 Mac 上切换扩展/镜像。`unauthorized` 期间不会创建 forward 或快速重试；重新允许并返回 Receiver 后恢复 USB。拔线时旧 forward 消失；10 秒协议宽限与 0.5/1/2/4/8 秒恢复耗尽后，Auto 约 26 秒切到同 install ID 的 Android App WiFi；再次插线则原子升级回 USB。当前 DisplayWeave 0.1.0 iPhone WiFi 与 Android 也已同时建立独立 session，Android transport 切换期间 iPhone 会话持续。输入、两 Android、受控 Benchmark、30 分钟和 2 小时耐久仍未完成。
+OnePlus OPD2413 已确认 HEVC/120 与 H.264/60 USB 流程、Touch 输入、返回桌面后重开、强停重开、ADB server 重启、物理拔插和授权取消/重授权可自动恢复，无需在 Mac 上切换扩展/镜像。`unauthorized` 期间不会创建 forward 或快速重试；重新允许并返回 Receiver 后恢复 USB。拔线时旧 forward 消失；10 秒协议宽限与 0.5/1/2/4/8 秒恢复耗尽后，Auto 约 26 秒切到同 install ID 的 Android App WiFi；再次插线则原子升级回 USB。当前 DisplayWeave 0.1.0 iPhone WiFi 与 Android 也已同时建立独立 session，Android transport 切换期间 iPhone 会话持续。双指滚动视觉确认、两 Android、受控 Benchmark、30 分钟和 2 小时耐久仍未完成。
 
 ## 已知限制
 
