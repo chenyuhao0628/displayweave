@@ -50,7 +50,7 @@ final class AdaptiveBitrateController {
     func evaluate(_ metrics: AdaptiveBitrateMetrics,
                   mode: BitrateMode) -> AdaptiveBitrateDecision? {
         guard metrics.timestamp.isFinite else {
-            resetTemporalBaseline()
+            resetTemporalBaseline(keepLastChange: true)
             return nil
         }
         if let previousMetrics, metrics.timestamp < previousMetrics.timestamp {

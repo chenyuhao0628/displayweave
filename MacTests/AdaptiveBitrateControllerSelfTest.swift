@@ -100,6 +100,13 @@ struct AdaptiveBitrateControllerSelfTest {
         expect(firstTrend.evaluate(metrics(0, rtt: 200, age: 200), mode: .auto) == nil,
                "first trend sample establishes a baseline")
 
+        let invalidTimestamp = AdaptiveBitrateController(
+            initialBitrate: 80_000_000, bounds: 20_000_000...100_000_000)
+        _ = invalidTimestamp.evaluate(metrics(0, pending: 2), mode: .auto)
+        _ = invalidTimestamp.evaluate(metrics(.nan, pending: 2), mode: .auto)
+        expect(invalidTimestamp.evaluate(metrics(0.5, pending: 2), mode: .auto) == nil,
+               "nonfinite timestamp cannot bypass decrease hold")
+
         let unhealthy = AdaptiveBitrateController(
             initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
         expect(unhealthy.evaluate(metrics(0, encoded: 0, sent: 0), mode: .auto) == nil,
