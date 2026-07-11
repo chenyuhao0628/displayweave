@@ -7,6 +7,7 @@ struct AdaptiveBitrateMetrics {
     var sentFps: Double
     var rttMs: Double?
     var frameAgeP95Ms: Double?
+    // Per-window counts. Producers reset both after publishing each sample.
     var macDrops: Int
     var androidDrops: Int
     var androidQueueDepth: Int
@@ -27,17 +28,21 @@ final class AdaptiveBitrateController {
     private let bounds: ClosedRange<Int>
     private let decreaseHoldSeconds: TimeInterval
     private let stableIncreaseSeconds: TimeInterval
+    private let increaseCooldownSeconds: TimeInterval
     private(set) var currentBitrate: Int
     private var previousMetrics: AdaptiveBitrateMetrics?
     private var normalSince: TimeInterval?
     private var lastChangeAt = -Double.greatestFiniteMagnitude
+    private var hasCongested = false
 
     init(initialBitrate: Int, bounds: ClosedRange<Int>,
          decreaseHoldSeconds: TimeInterval = 1,
-         stableIncreaseSeconds: TimeInterval = 5) {
+         stableIncreaseSeconds: TimeInterval = 5,
+         increaseCooldownSeconds: TimeInterval = 5) {
         self.bounds = bounds
         self.decreaseHoldSeconds = decreaseHoldSeconds
         self.stableIncreaseSeconds = stableIncreaseSeconds
+        self.increaseCooldownSeconds = increaseCooldownSeconds
         currentBitrate = Self.clamp(initialBitrate, to: bounds)
     }
 
@@ -55,6 +60,7 @@ final class AdaptiveBitrateController {
             currentBitrate = Self.clamp(
                 Int((Double(previous) * 0.80).rounded()), to: bounds)
             lastChangeAt = metrics.timestamp
+            hasCongested = true
             normalSince = nil
             previousMetrics = metrics
             guard currentBitrate != previous else { return nil }
@@ -67,7 +73,7 @@ final class AdaptiveBitrateController {
             if normalSince == nil { normalSince = metrics.timestamp }
             if let normalSince,
                metrics.timestamp - normalSince >= stableIncreaseSeconds,
-               metrics.timestamp - lastChangeAt >= stableIncreaseSeconds {
+               metrics.timestamp - lastChangeAt >= increaseCooldownSeconds {
                 let previous = currentBitrate
                 currentBitrate = Self.clamp(
                     Int((Double(previous) * 1.07).rounded()), to: bounds)
@@ -75,9 +81,11 @@ final class AdaptiveBitrateController {
                 lastChangeAt = metrics.timestamp
                 previousMetrics = metrics
                 guard currentBitrate != previous else { return nil }
+                let state: AdaptiveNetworkState = hasCongested ? .recovering : .stable
+                hasCongested = false
                 return AdaptiveBitrateDecision(
                     previousBitrate: previous, newBitrate: currentBitrate,
-                    reason: "stable-5s", networkState: .stable)
+                    reason: "stable-5s", networkState: state)
             }
         } else {
             normalSince = nil

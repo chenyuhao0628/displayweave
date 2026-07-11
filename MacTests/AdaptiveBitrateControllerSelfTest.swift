@@ -37,7 +37,7 @@ struct AdaptiveBitrateControllerSelfTest {
         expect(controller.evaluate(metrics(7), mode: .auto) == nil, "normal period restarts")
         expect(controller.evaluate(metrics(11.9), mode: .auto) == nil, "cooldown delays increase")
         let recovered = controller.evaluate(metrics(12), mode: .auto)
-        expect(recovered?.networkState == .stable, "slow increase resumes after cooldown")
+        expect(recovered?.networkState == .recovering, "first increase after congestion is recovering")
 
         let deficit = controller.evaluate(metrics(14, encoded: 60, sent: 40), mode: .auto)
         expect(deficit?.reason == "send-deficit", "sent/encoded deficit decreases")
@@ -60,6 +60,37 @@ struct AdaptiveBitrateControllerSelfTest {
             initialBitrate: 21_000_000, bounds: 20_000_000...100_000_000)
         let floorDecision = floor.evaluate(metrics(0, pending: 2), mode: .auto)
         expect(floorDecision?.newBitrate == 20_000_000, "decrease clamps to minimum")
+
+        let ceiling = AdaptiveBitrateController(
+            initialBitrate: 99_000_000, bounds: 20_000_000...100_000_000)
+        _ = ceiling.evaluate(metrics(0), mode: .auto)
+        expect(ceiling.evaluate(metrics(5), mode: .auto)?.newBitrate == 100_000_000,
+               "increase clamps to maximum")
+        let initiallyClamped = AdaptiveBitrateController(
+            initialBitrate: 999_000_000, bounds: 20_000_000...100_000_000)
+        expect(initiallyClamped.currentBitrate == 100_000_000, "initial bitrate clamps")
+
+        let gray = AdaptiveBitrateController(
+            initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
+        expect(gray.evaluate(metrics(0, encoded: 100, sent: 90), mode: .auto) == nil,
+               "hysteresis gray zone does not decrease")
+        expect(gray.evaluate(metrics(6, encoded: 100, sent: 90), mode: .auto) == nil,
+               "hysteresis gray zone does not increase")
+
+        let cooldown = AdaptiveBitrateController(
+            initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000,
+            stableIncreaseSeconds: 2, increaseCooldownSeconds: 5)
+        _ = cooldown.evaluate(metrics(0, pending: 2), mode: .auto)
+        _ = cooldown.evaluate(metrics(1), mode: .auto)
+        expect(cooldown.evaluate(metrics(3), mode: .auto) == nil,
+               "independent cooldown blocks an otherwise stable increase")
+        expect(cooldown.evaluate(metrics(5), mode: .auto)?.networkState == .recovering,
+               "increase resumes when independent cooldown expires")
+
+        let firstTrend = AdaptiveBitrateController(
+            initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
+        expect(firstTrend.evaluate(metrics(0, rtt: 200, age: 200), mode: .auto) == nil,
+               "first trend sample establishes a baseline")
 
         let fixed = AdaptiveBitrateController(
             initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
