@@ -13,14 +13,15 @@
 | Clean build | 通过 | `./gradlew clean test assembleRelease`，67 tasks，BUILD SUCCESSFUL |
 | Unit/self tests | 通过 | `ProtocolSelfTest PASS`、`VideoStreamPolicySelfTest PASS` |
 | Release APK | 通过（仅 unsigned） | `AndroidReceiver/app/build/outputs/apk/release/app-release-unsigned.apk` |
-| 独立 release 签名 | 阻塞 | Gradle 尚无 release keystore；不得使用 Debug key 冒充 Preview release key |
-| APK 签名验证 | 阻塞 | `apksigner verify` 输出 `DOES NOT VERIFY` / `Missing META-INF/MANIFEST.MF` |
+| 独立 release 签名身份 | 通过 | 仓库外 `android-preview.jks`，alias `displayweave-preview`；密码存入 macOS Keychain |
+| 签名证书 SHA-256 | 已记录 | `89:80:5F:04:58:00:EA:18:B5:6B:84:B3:2E:8E:31:B1:71:0A:3C:7B:F3:C8:5F:DA:54:D2:60:D1:FC:6D:58:9D` |
+| APK 签名验证 | 待重建 | 使用新身份重建 `app-release.apk` 后执行 `apksigner verify --verbose --print-certs` |
 | Unsigned APK SHA-256 | 已记录 | `d9af63eb302ab2512fa907cae06e29f5e614df607bc6b7077352f8c1b84c6f73`；仅用于构建追踪，不可发布 |
 | 安装测试 | 待人工验证 | 当前 `adb devices -l` 无设备；签名 APK 到位后执行 `adb install -r` |
 | Android USB 视频/codec | 基础通过 | OPD2413 建立 HEVC/120 与 H.264/60 USB 流程；输入和长时画面仍待验收 |
 | 两台 Android USB | 待人工验证 | 验证 serial、动态本地端口、session、VirtualDisplay 和统计隔离 |
 
-发布 Android Preview APK 前必须由维护者创建并安全保存独立 keystore。Gradle 已支持四个不入库的环境变量：`DISPLAYWEAVE_ANDROID_KEYSTORE`、`DISPLAYWEAVE_ANDROID_STORE_PASSWORD`、`DISPLAYWEAVE_ANDROID_KEY_ALIAS`、`DISPLAYWEAVE_ANDROID_KEY_PASSWORD`。四项全部存在时 `assembleRelease` 使用 `previewRelease` signing config；随后重新运行 `apksigner verify --verbose --print-certs`、SHA-256 和真机安装测试。
+独立 keystore 已创建在 `~/Library/Application Support/DisplayWeave/Signing/android-preview.jks`，不得移入仓库。维护者必须把 JKS 与 Keychain 密码另做离线备份；丢失后无法用新 APK 覆盖安装既有版本。Gradle 使用四个不入库的环境变量：`DISPLAYWEAVE_ANDROID_KEYSTORE`、`DISPLAYWEAVE_ANDROID_STORE_PASSWORD`、`DISPLAYWEAVE_ANDROID_KEY_ALIAS`、`DISPLAYWEAVE_ANDROID_KEY_PASSWORD`。下一步由打包脚本读取 Keychain、构建签名 APK，再执行签名验证、SHA-256 和真机首次/覆盖安装测试。
 
 ## macOS
 
