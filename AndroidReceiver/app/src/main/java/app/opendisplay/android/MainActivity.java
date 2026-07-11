@@ -47,6 +47,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private View idlePanel;
     private OpenDisplayServer server;
     private SurfaceHolder activeSurface;
+    private ReceiverLifecycleCoordinator receiverLifecycle;
     private SharedPreferences prefs;
     private String currentStatus = "等待启动…";
     private boolean streaming;
@@ -70,16 +71,38 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             requestPermissions(new String[] {Manifest.permission.NEARBY_WIFI_DEVICES}, REQUEST_NEARBY_WIFI);
         }
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        receiverLifecycle = new ReceiverLifecycleCoordinator(
+                new ReceiverLifecycleCoordinator.Actions() {
+                    @Override
+                    public boolean start() {
+                        return startServerIfReady();
+                    }
+
+                    @Override
+                    public void stop() {
+                        stopServer();
+                    }
+                });
         buildUi();
         applyKeepAwakePreference();
         showOnboardingIfNeeded();
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        receiverLifecycle.onResume();
+    }
+
+    @Override
+    protected void onPause() {
+        receiverLifecycle.onPause();
+        super.onPause();
+    }
+
+    @Override
     protected void onDestroy() {
-        if (server != null) {
-            server.stop();
-        }
+        receiverLifecycle.onDestroy();
         super.onDestroy();
     }
 
@@ -146,7 +169,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_NEARBY_WIFI && hasNearbyWifiPermission()) {
-            startServerIfReady();
+            receiverLifecycle.reevaluate();
         } else if (requestCode == REQUEST_NEARBY_WIFI) {
             setStatus("需要附近设备权限才能在 WiFi 中被 Mac 发现");
         }
@@ -190,7 +213,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             @Override
             public void surfaceCreated(SurfaceHolder holder) {
                 activeSurface = holder;
-                startServerIfReady();
+                receiverLifecycle.onSurfaceCreated();
             }
 
             @Override
@@ -204,10 +227,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             @Override
             public void surfaceDestroyed(SurfaceHolder holder) {
                 activeSurface = null;
-                if (server != null) {
-                    server.stop();
-                    server = null;
-                }
+                receiverLifecycle.onSurfaceDestroyed();
             }
         });
 
@@ -369,16 +389,28 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 .show();
     }
 
-    private void startServerIfReady() {
-        if (server != null || activeSurface == null) {
-            return;
+    private boolean startServerIfReady() {
+        if (server != null) {
+            return true;
+        }
+        if (activeSurface == null) {
+            return false;
         }
         if (!hasNearbyWifiPermission()) {
             setStatus("正在等待附近设备权限…");
-            return;
+            return false;
         }
         server = new OpenDisplayServer(MainActivity.this, currentDisplaySpec(), MainActivity.this);
         server.start(activeSurface.getSurface());
+        return true;
+    }
+
+    private void stopServer() {
+        if (server == null) {
+            return;
+        }
+        server.stop();
+        server = null;
     }
 
     private boolean hasNearbyWifiPermission() {

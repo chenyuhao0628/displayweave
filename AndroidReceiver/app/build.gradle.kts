@@ -88,6 +88,11 @@ val runVideoStreamPolicySelfTest = registerSelfTest(
     "app.opendisplay.android.VideoStreamPolicySelfTest"
 )
 
+val runReceiverLifecycleSelfTest = registerSelfTest(
+    "runReceiverLifecycleSelfTest",
+    "app.opendisplay.android.ReceiverLifecycleSelfTest"
+)
+
 tasks.withType<Test>().configureEach {
     testLogging {
         events = setOf(TestLogEvent.FAILED, TestLogEvent.SKIPPED)
@@ -95,5 +100,5 @@ tasks.withType<Test>().configureEach {
 }
 
 tasks.matching { it.name == "test" }.configureEach {
-    dependsOn(runProtocolSelfTest, runVideoStreamPolicySelfTest)
+    dependsOn(runProtocolSelfTest, runVideoStreamPolicySelfTest, runReceiverLifecycleSelfTest)
 }
