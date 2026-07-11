@@ -9,6 +9,8 @@
 - [发布检查清单](release-checklist.zh-CN.md)
 - [稳定性与真机证据](stability-test-report.zh-CN.md)
 - [性能指标审计](performance-metrics-audit.zh-CN.md)
+- [短时 Benchmark 指南](benchmark-guide.zh-CN.md)
+- [延迟测量](latency-measurement.zh-CN.md)
 - [USB/WiFi Benchmark 规程](usb-vs-wifi-benchmark.zh-CN.md)
 - [路线图与验收](roadmap-and-acceptance.zh-CN.md)
 - [Android 高刷新迁移证据](120hz-migration-plan.zh-CN.md)

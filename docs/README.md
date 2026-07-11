@@ -9,6 +9,8 @@
 - [Release checklist](release-checklist.md)
 - [Stability and physical-device evidence](stability-test-report.md)
 - [Performance metrics audit](performance-metrics-audit.md)
+- [Short benchmark guide](benchmark-guide.md)
+- [Latency measurement](latency-measurement.md)
 - [USB versus WiFi benchmark protocol](usb-vs-wifi-benchmark.md)
 - [Roadmap and acceptance](roadmap-and-acceptance.md)
 - [Android high-refresh migration evidence](120hz-migration-plan.md)
