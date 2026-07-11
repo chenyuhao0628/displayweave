@@ -26,7 +26,7 @@ public final class ClockOffsetEstimator {
         this.capacity = capacity;
     }
 
-    public boolean addSample(double receiverSendMs, double macReceiveMs,
+    public synchronized boolean addSample(double receiverSendMs, double macReceiveMs,
                              double macSendMs, double receiverReceiveMs) {
         double rttMs = (receiverReceiveMs - receiverSendMs) - (macSendMs - macReceiveMs);
         if (!Double.isFinite(rttMs) || rttMs < 0 || rttMs > MAX_RTT_MS) {
@@ -44,15 +44,15 @@ public final class ClockOffsetEstimator {
         return true;
     }
 
-    public int sampleCount() {
+    public synchronized int sampleCount() {
         return samples.size();
     }
 
-    public State state() {
+    public synchronized State state() {
         return samples.size() >= MIN_STABLE_SAMPLES ? State.STABLE : State.ESTIMATING;
     }
 
-    public long offsetMs() {
+    public synchronized long offsetMs() {
         List<Sample> selected = selectedSamples();
         if (state() != State.STABLE || selected.isEmpty()) {
             return MISSING_MS;
@@ -66,7 +66,7 @@ public final class ClockOffsetEstimator {
         return Math.round(median);
     }
 
-    public long confidenceMs() {
+    public synchronized long confidenceMs() {
         List<Sample> selected = selectedSamples();
         if (state() != State.STABLE || selected.isEmpty()) {
             return MISSING_MS;

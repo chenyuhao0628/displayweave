@@ -146,6 +146,10 @@ public final class LengthPrefixedProtocol {
             Object value = entry.getValue();
             if (value == null) {
                 out.append("null");
+            } else if (value instanceof Double && !Double.isFinite((Double) value)) {
+                out.append("null");
+            } else if (value instanceof Float && !Float.isFinite((Float) value)) {
+                out.append("null");
             } else if (value instanceof Number || value instanceof Boolean) {
                 out.append(value);
             } else {

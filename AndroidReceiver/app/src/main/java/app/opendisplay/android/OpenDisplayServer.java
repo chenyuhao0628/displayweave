@@ -165,7 +165,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
             }
         });
         timer.scheduleAtFixedRate(this::sendPingIfConnected, 2, 2, TimeUnit.SECONDS);
-        timer.scheduleAtFixedRate(this::publishStatsIfDue, 1, 1, TimeUnit.SECONDS);
+        timer.scheduleAtFixedRate(this::publishStatsSafely, 1, 1, TimeUnit.SECONDS);
     }
 
     public void stop() {
@@ -214,10 +214,10 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
     }
 
     private void enqueueVideoFrame(byte[] payload) {
-        receivedFrames++;
         VideoFrameTelemetry telemetry = VideoFrameTelemetry.fromWirePayload(
                 payload, System.currentTimeMillis());
         synchronized (this) {
+            receivedFrames++;
             if (latestVideoFrame != null) {
                 boolean queuedImportant = VideoFrameClassifier.isImportant(
                         latestVideoFrame, currentStreamConfig);
@@ -402,7 +402,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
     }
 
     @Override
-    public void onDecoderFrameDropped() {
+    public synchronized void onDecoderFrameDropped() {
         droppedFramesAndroid++;
     }
 
@@ -437,6 +437,14 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
 
     private void publishStatsIfDue() {
         publishStatsIfDue(System.currentTimeMillis());
+    }
+
+    private void publishStatsSafely() {
+        try {
+            publishStatsIfDue();
+        } catch (RuntimeException error) {
+            android.util.Log.w("DisplayWeave", "stats publication failed", error);
+        }
     }
 
     private synchronized void publishStatsIfDue(long now) {
@@ -569,7 +577,11 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
                 end++;
             }
             try {
-                return end == start ? fallback : Double.parseDouble(json.substring(start, end));
+                if (end == start) {
+                    return fallback;
+                }
+                double parsed = Double.parseDouble(json.substring(start, end));
+                return Double.isFinite(parsed) ? parsed : fallback;
             } catch (NumberFormatException ignored) {
                 return fallback;
             }

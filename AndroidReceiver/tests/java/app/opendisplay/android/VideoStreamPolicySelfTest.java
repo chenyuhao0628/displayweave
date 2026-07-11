@@ -180,6 +180,12 @@ public final class VideoStreamPolicySelfTest {
         assertEquals(3.5, metrics.inputP50Ms);
         assertEquals(8.25, metrics.inputP95Ms);
         assertEquals(120, metrics.requestedFps);
+        OpenDisplayServer.MacPingMetrics overflow = OpenDisplayServer.MacPingMetrics.parse(
+                "{\"inp50\":1e999,\"inp95\":NaN,\"requestedFps\":1e999}",
+                4.0, 9.0, 60);
+        assertEquals(4.0, overflow.inputP50Ms);
+        assertEquals(9.0, overflow.inputP95Ms);
+        assertEquals(60, overflow.requestedFps);
     }
 
     private static void testWifiTransportCarriesFramedPayloads() {

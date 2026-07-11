@@ -4,6 +4,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import app.opendisplay.android.ControlMessageWriter;
 import app.opendisplay.android.ReceiverStatsSnapshot;
@@ -18,6 +20,7 @@ public final class ProtocolSelfTest {
         testHelloJsonIncludesDisplayCapabilities();
         testStreamConfigJson();
         testReceiverStatsJsonUsesCanonicalFieldsAndNulls();
+        testStatsJsonRejectsNonFiniteNumbers();
         testAnnexBTelemetryAndNalus();
         testAnnexBFindsHevcParameterSets();
         testSpsParser();
@@ -110,6 +113,20 @@ public final class ProtocolSelfTest {
         assertContains(json, "\"sendToRenderEstimatedMs\":null");
         assertContains(json, "\"inputP95Ms\":7.5");
         assertFalse(json.contains("\"null\""));
+    }
+
+    private static void testStatsJsonRejectsNonFiniteNumbers() {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("nan", Double.NaN);
+        values.put("positiveInfinity", Double.POSITIVE_INFINITY);
+        values.put("negativeInfinity", Float.NEGATIVE_INFINITY);
+        String json = LengthPrefixedProtocol.statsJson(values);
+        assertContains(json, "\"nan\":null");
+        assertContains(json, "\"positiveInfinity\":null");
+        assertContains(json, "\"negativeInfinity\":null");
+        assertFalse(json.contains(":NaN"));
+        assertFalse(json.contains(":Infinity"));
+        assertFalse(json.contains(":-Infinity"));
     }
 
     private static void testAnnexBTelemetryAndNalus() throws Exception {
