@@ -171,7 +171,7 @@ struct BenchmarkSample {
     func csv(includeHeader: Bool) -> String {
         let row = csvFields.map(Self.escapeCSV).joined(separator: ",")
         guard includeHeader else { return row }
-        return Self.csvHeader.map(Self.escapeCSV).joined(separator: ",") + "\n" + row
+        return Self.csvHeader.map(Self.escapeCSV).joined(separator: ",") + "\r\n" + row
     }
 
     func jsonLine() throws -> String {

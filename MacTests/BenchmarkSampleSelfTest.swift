@@ -7,12 +7,61 @@ private func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     }
 }
 
+private func parseCSV(_ text: String) -> [[String]] {
+    var rows: [[String]] = []
+    var row: [String] = []
+    var field = ""
+    var quoted = false
+    let characters = Array(text)
+    var index = 0
+    while index < characters.count {
+        let character = characters[index]
+        if character == "\"" {
+            if quoted, index + 1 < characters.count, characters[index + 1] == "\"" {
+                field.append("\"")
+                index += 1
+            } else {
+                quoted.toggle()
+            }
+        } else if character == ",", !quoted {
+            row.append(field)
+            field = ""
+        } else if character == "\r\n", !quoted {
+            row.append(field)
+            rows.append(row)
+            row = []
+            field = ""
+        } else if character == "\r", !quoted,
+                  index + 1 < characters.count, characters[index + 1] == "\n" {
+            row.append(field)
+            rows.append(row)
+            row = []
+            field = ""
+            index += 1
+        } else {
+            field.append(character)
+        }
+        index += 1
+    }
+    row.append(field)
+    rows.append(row)
+    return rows
+}
+
 @main
 struct BenchmarkSampleSelfTest {
 static func main() throws {
 let statsJSON = """
 {
   "type": "stats",
+  "timestamp": 1234,
+  "deviceModel": "Pixel 9",
+  "transport": "usb",
+  "codec": "hevc",
+  "width": 1920,
+  "height": 1080,
+  "requestedFps": 60,
+  "actualAndroidDisplayRefreshRate": 59.94,
   "receivedFps": 58.5,
   "decodedFps": 57.5,
   "renderedFps": 56.5,
@@ -20,6 +69,7 @@ let statsJSON = """
   "rttMs": 4.5,
   "clockOffsetMs": -1.25,
   "offsetConfidenceMs": 0.75,
+  "clockRttMs": null,
   "clockState": "stable",
   "frameAgeAvgMs": 20.0,
   "frameAgeLatestMs": 22.0,
@@ -36,6 +86,9 @@ let statsJSON = """
 
 let stats = try JSONDecoder().decode(ReceiverStats.self, from: Data(statsJSON.utf8))
 expect(stats.type == "stats", "receiver stats type")
+expect(stats.deviceModel == "Pixel 9" && stats.width == 1920, "canonical identity fields decode")
+expect(stats.frameAgeP99Ms == 35 && stats.androidQueueDepth == 2, "canonical metric fields decode")
+expect(stats.clockRttMs == nil, "canonical nullable clock field remains nil")
 expect(stats.sendToRenderEstimatedMs == 31.25, "canonical send-to-render metric decodes")
 expect(stats.inputP95Ms == nil, "explicit JSON null remains nil")
 
@@ -68,11 +121,19 @@ let sample = BenchmarkSample(
 let csv = sample.csv(includeHeader: true)
 let headerCount = BenchmarkSample.csvHeader.count
 expect(sample.csvFields.count == headerCount, "fixed header count equals row count")
+let parsedCSV = parseCSV(csv)
+expect(parsedCSV.count == 2, "RFC 4180 parser sees header and one data record, got \(parsedCSV.count)")
+expect(parsedCSV[0].count == headerCount && parsedCSV[1].count == headerCount,
+       "parsed RFC 4180 rows have stable column counts")
 expect(csv.contains("\"run,\"\"one\"\"\""), "CSV escapes comma and quotes")
 expect(csv.contains("\"session\nline\""), "CSV escapes newline")
 expect(sample.csvFields.contains(BenchmarkSample.notAvailable), "nil writes notAvailable in CSV")
 expect(BenchmarkSample.csvHeader.first == "timestamp", "fixed header starts with timestamp")
 expect(BenchmarkSample.csvHeader.last == "macMemory", "fixed header ends with macMemory")
+var nonFiniteSample = sample
+nonFiniteSample.macCPU = .infinity
+expect(nonFiniteSample.csvFields[BenchmarkSample.csvHeader.firstIndex(of: "macCPU")!] == BenchmarkSample.notAvailable,
+       "nonfinite CSV values write notAvailable")
 
 let jsonLine = try sample.jsonLine()
 let jsonObject = try JSONSerialization.jsonObject(with: Data(jsonLine.utf8)) as! [String: Any]
