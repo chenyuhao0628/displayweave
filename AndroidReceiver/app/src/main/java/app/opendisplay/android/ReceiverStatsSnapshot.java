@@ -17,7 +17,7 @@ public final class ReceiverStatsSnapshot {
     public final int receivedFps;
     public final int decodedFps;
     public final int renderedFps;
-    public final double rttMs;
+    public final Double rttMs;
     public final Double clockOffsetMs;
     public final Double offsetConfidenceMs;
     public final Double clockRttMs;
@@ -37,7 +37,7 @@ public final class ReceiverStatsSnapshot {
     public ReceiverStatsSnapshot(
             long timestamp, String deviceModel, String transport, String codec,
             int width, int height, int requestedFps, double actualAndroidDisplayRefreshRate,
-            int receivedFps, int decodedFps, int renderedFps, double rttMs,
+            int receivedFps, int decodedFps, int renderedFps, Double rttMs,
             Double clockOffsetMs, Double offsetConfidenceMs, Double clockRttMs,
             String clockState, Double frameAgeAvgMs, Long frameAgeLatestMs,
             Long frameAgeP50Ms, Long frameAgeP95Ms, Long frameAgeP99Ms,

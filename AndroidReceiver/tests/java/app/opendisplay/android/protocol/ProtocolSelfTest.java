@@ -94,7 +94,7 @@ public final class ProtocolSelfTest {
         ReceiverStatsSnapshot snapshot = new ReceiverStatsSnapshot(
                 1234L, "Pixel \"Tablet\"\\Pro", "usb", "hevc",
                 2560, 1600, 120, 119.88,
-                118, 117, 116, 4.5,
+                118, 117, 116, null,
                 null, null, null, "estimating",
                 8.25, 9L, 6L, 14L, 20L,
                 null, null, 1, 2, 3.5, 7.5);
@@ -104,6 +104,7 @@ public final class ProtocolSelfTest {
         assertContains(json, "\"deviceModel\":\"Pixel \\\"Tablet\\\"\\\\Pro\"");
         assertContains(json, "\"actualAndroidDisplayRefreshRate\":119.88");
         assertContains(json, "\"clockOffsetMs\":null");
+        assertContains(json, "\"rttMs\":null");
         assertContains(json, "\"offsetConfidenceMs\":null");
         assertContains(json, "\"estimatedE2ELatencyMs\":null");
         assertContains(json, "\"sendToRenderEstimatedMs\":null");

@@ -165,6 +165,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
             }
         });
         timer.scheduleAtFixedRate(this::sendPingIfConnected, 2, 2, TimeUnit.SECONDS);
+        timer.scheduleAtFixedRate(this::publishStatsIfDue, 1, 1, TimeUnit.SECONDS);
     }
 
     public void stop() {
@@ -419,17 +420,26 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
             latestFrameAgeMsSum += frameAgeMs;
             latestFrameAgeSamples++;
             frameAgeDistribution.add(frameAgeMs);
-            long endToEndLatencyMs = telemetry.endToEndLatencyMs(now, clockOffsetMs);
+            Double stableOffset = stableOffsetOrNull(clockEstimator);
+            long endToEndLatencyMs = telemetry.endToEndLatencyMs(now, stableOffset);
             if (endToEndLatencyMs >= 0) {
                 this.endToEndLatencyMsSum += endToEndLatencyMs;
                 endToEndLatencySamples++;
             }
-            long decodeLatencyMs = telemetry.decodeLatencyMs(now, clockOffsetMs);
+            long decodeLatencyMs = telemetry.decodeLatencyMs(now, stableOffset);
             if (decodeLatencyMs >= 0) {
                 this.decodeLatencyMsSum += decodeLatencyMs;
                 decodeLatencySamples++;
             }
         }
+        publishStatsIfDue(now);
+    }
+
+    private void publishStatsIfDue() {
+        publishStatsIfDue(System.currentTimeMillis());
+    }
+
+    private synchronized void publishStatsIfDue(long now) {
         long elapsed = now - metricsWindowStartMs;
         if (shouldPublishStats(elapsed)) {
             int renderedFps = (int) Math.round(renderedFrames * 1000.0 / elapsed);
@@ -451,7 +461,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
                     receivedFps,
                     renderedFps,
                     decodedFps,
-                    lastRttMs,
+                    lastRttMs > 0 ? lastRttMs : null,
                     lastInputP50Ms,
                     lastMacCaptureFps,
                     currentStreamConfig.fps,
@@ -507,6 +517,12 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
 
     static boolean shouldPublishStats(long elapsedMs) {
         return elapsedMs >= 1000;
+    }
+
+    static Double stableOffsetOrNull(ClockOffsetEstimator estimator) {
+        return estimator.state() == ClockOffsetEstimator.State.STABLE
+                ? (double) estimator.offsetMs()
+                : null;
     }
 
     private static Long missingAsNull(long value) {
