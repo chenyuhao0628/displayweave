@@ -1,0 +1,72 @@
+import Foundation
+
+private func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+    if !condition() { fatalError(message) }
+}
+
+private func metrics(_ time: TimeInterval, pending: Int = 0, encoded: Double = 60,
+                     sent: Double = 60, rtt: Double = 8, age: Double = 12,
+                     macDrops: Int = 0, androidDrops: Int = 0,
+                     androidQueue: Int = 0) -> AdaptiveBitrateMetrics {
+    AdaptiveBitrateMetrics(timestamp: time, pendingSends: pending, encodedFps: encoded,
+        sentFps: sent, rttMs: rtt, frameAgeP95Ms: age, macDrops: macDrops,
+        androidDrops: androidDrops, androidQueueDepth: androidQueue)
+}
+
+@main
+struct AdaptiveBitrateControllerSelfTest {
+    static func main() {
+        let controller = AdaptiveBitrateController(
+            initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
+        expect(controller.evaluate(metrics(0), mode: .auto) == nil, "normal window starts")
+        expect(controller.evaluate(metrics(4.9), mode: .auto) == nil, "increase waits five seconds")
+        let increase = controller.evaluate(metrics(5.0), mode: .auto)
+        expect(increase?.previousBitrate == 40_000_000, "increase records previous bitrate")
+        expect(increase?.newBitrate == 42_800_000, "stable window increases seven percent")
+        expect(increase?.reason == "stable-5s" && increase?.networkState == .stable,
+               "increase records reason and state")
+
+        let decrease = controller.evaluate(metrics(6, pending: 2), mode: .auto)
+        expect(decrease?.previousBitrate == 42_800_000, "decrease uses current bitrate")
+        expect(decrease?.newBitrate == 34_240_000, "congestion decreases twenty percent")
+        expect(decrease?.reason == "pending-sends" && decrease?.networkState == .congested,
+               "congestion records reason and state")
+        expect(controller.evaluate(metrics(6.5, pending: 3), mode: .auto) == nil,
+               "minimum hold prevents rapid repeated decreases")
+
+        expect(controller.evaluate(metrics(7), mode: .auto) == nil, "normal period restarts")
+        expect(controller.evaluate(metrics(11.9), mode: .auto) == nil, "cooldown delays increase")
+        let recovered = controller.evaluate(metrics(12), mode: .auto)
+        expect(recovered?.networkState == .stable, "slow increase resumes after cooldown")
+
+        let deficit = controller.evaluate(metrics(14, encoded: 60, sent: 40), mode: .auto)
+        expect(deficit?.reason == "send-deficit", "sent/encoded deficit decreases")
+        let drop = controller.evaluate(metrics(16, macDrops: 1), mode: .auto)
+        expect(drop?.reason == "mac-drops", "new Mac drops decrease")
+        let queue = controller.evaluate(metrics(18, androidQueue: 2), mode: .auto)
+        expect(queue?.reason == "android-queue", "receiver queue decreases")
+        let trends = AdaptiveBitrateController(
+            initialBitrate: 80_000_000, bounds: 20_000_000...100_000_000)
+        _ = trends.evaluate(metrics(20, rtt: 8, age: 12), mode: .auto)
+        let risingAge = trends.evaluate(metrics(21, rtt: 8, age: 30), mode: .auto)
+        expect(risingAge?.reason == "frame-age-rising", "rising frame age decreases")
+        _ = trends.evaluate(metrics(23, rtt: 8, age: 30), mode: .auto)
+        let risingRTT = trends.evaluate(metrics(24, rtt: 20, age: 30), mode: .auto)
+        expect(risingRTT?.reason == "rtt-rising", "RTT jump decreases")
+        let androidDrop = trends.evaluate(metrics(26, androidDrops: 1), mode: .auto)
+        expect(androidDrop?.reason == "android-drops", "Android drops decrease")
+
+        let floor = AdaptiveBitrateController(
+            initialBitrate: 21_000_000, bounds: 20_000_000...100_000_000)
+        let floorDecision = floor.evaluate(metrics(0, pending: 2), mode: .auto)
+        expect(floorDecision?.newBitrate == 20_000_000, "decrease clamps to minimum")
+
+        let fixed = AdaptiveBitrateController(
+            initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
+        expect(fixed.evaluate(metrics(0, pending: 3), mode: .manual) == nil,
+               "Manual never adapts")
+        expect(fixed.evaluate(metrics(1, pending: 3), mode: .benchmark) == nil,
+               "Benchmark never adapts")
+        print("AdaptiveBitrateControllerSelfTest PASS")
+    }
+}
