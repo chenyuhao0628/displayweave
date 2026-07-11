@@ -61,7 +61,7 @@ Mac ZIP 只能标为本地开发预览。正式公开发行需配置 Developer I
 | 0.5/1/2/4/8 秒有限恢复 | 自动化通过 |
 | install ID 相同才回退 WiFi | 自动化通过 |
 | USB HEVC / H.264 fallback | 单设备基础通过；长时画面待验证 |
-| USB Touch 输入 / Android FPS 统计 | Touch 真机通过：ADB 注入 Surface 触摸后 Mac 光标由 `(730,486)` 移至 Android 虚拟显示 `(-1258,152)`；双指滚动视觉确认待人工 |
+| USB Touch / 双指滚动输入 | 真机通过：ADB 注入 Surface 触摸后 Mac 光标由 `(730,486)` 移至 Android 虚拟显示 `(-1258,152)`；维护者确认双指滚动正常 |
 | Android 返回桌面 / 重开 App 自动恢复 | 单设备真机通过；无需 Mac 切换扩展/镜像 |
 | ADB server 重启恢复 | 单设备真机通过；协议级确认后恢复，未错误回退 WiFi |
 | USB 物理拔插 / mapping 清理 | 单设备真机通过；拔线后有线 row 与旧 forward 消失，插回后新动态端口建立 |
@@ -92,7 +92,7 @@ Mac ZIP 只能标为本地开发预览。正式公开发行需配置 Developer I
 
 当前可作为明确标注限制的开发预览交付，但不能写成完整发布验收完成。剩余项目：
 
-1. Android 双指滚动视觉确认与两 Android 验证；
+1. 两 Android USB 并发验证（当前没有第二台 Android，已用当前 iPhone WiFi + Android USB 验证跨平台隔离）；
 2. 用户执行 30 分钟稳定性及 2 小时耐久测试；
 3. 按 `docs/usb-vs-wifi-benchmark.md` 执行同条件 Benchmark；
 4. 发布页醒目标明 Mac ad-hoc 未公证、iOS IPA 需要用户自签；
