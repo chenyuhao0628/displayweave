@@ -133,6 +133,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var keyframesWindow = 0
     private var keyframeBytesWindow = 0
     private var peakFrameBytesWindow = 0
+    private var keyframeQueueDepthWindow = 0
+    private var lastKeyframeCount = 0
+    private var lastAverageKeyframeSize = 0
+    private var lastPeakFrameSize = 0
+    private var lastKeyframeQueueDepth = 0
+    private var decoderRecoveryEvent: String?
 
     private var framesSent = 0
     private var bytesSent = 0
@@ -898,12 +904,14 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             // The phone's decoder lost sync (e.g. it attached mid-GOP and
             // periodic keyframes are off) — force an IDR on the next frame.
             Log.info("phone requested keyframe")
+            decoderRecoveryEvent = "receiver-kf"
             needsKeyframe = true
         case "codecFailure":
             let failedCodec = (obj["codec"] as? String)?.lowercased() ?? "unknown"
             let message = obj["message"] as? String ?? "unspecified codec failure"
             Log.info("phone reported codec failure: codec=\(failedCodec) message=\(message)")
             if failedCodec == StreamCodec.hevc.rawValue, streamCodec == .hevc {
+                decoderRecoveryEvent = "codec-fallback"
                 if let encoder { VTCompressionSessionInvalidate(encoder) }
                 encoder = nil
                 setupEncoder(width: max(activeStreamWidth, 2),
@@ -975,10 +983,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             : kVTProfileLevel_H264_High_AutoLevel
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_ProfileLevel, value: profile)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_MaxKeyFrameInterval,
-                             value: StreamEncodingPolicy.keyframeInterval(
+                             value: KeyframePolicy.frameInterval(
                                 fps: finalFps, transport: bitrateTransport) as CFNumber)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration,
-                             value: (bitrateTransport == .wifi ? 2 : 1) as CFNumber)
+                             value: KeyframePolicy.defaultSeconds(transport: bitrateTransport) as CFNumber)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: 0 as CFNumber)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_AverageBitRate, value: streamBitrate as CFNumber)
         let bytesPerSecond = max(streamBitrate / 8, 1)
@@ -995,7 +1003,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             : nil
         lastAdaptiveDecision = nil
         Task { @MainActor in onTargetBitrate?(Double(streamBitrate) / 1_000_000) }
-        Log.info("encoder ready: \(width)x\(height) \(streamCodec.label) fps=\(finalFps) bitrate=\(streamBitrate / 1_000_000)Mbps keyframeInterval=\(StreamEncodingPolicy.keyframeInterval(fps: finalFps, transport: bitrateTransport)) quality=\(quality.rawValue) lowLatencyRC=\(lowLatency)")
+        Log.info("encoder ready: \(width)x\(height) \(streamCodec.label) fps=\(finalFps) bitrate=\(streamBitrate / 1_000_000)Mbps keyframeInterval=\(KeyframePolicy.frameInterval(fps: finalFps, transport: bitrateTransport)) quality=\(quality.rawValue) lowLatencyRC=\(lowLatency)")
     }
 
     private func createEncoder(width: Int, height: Int, codec: StreamCodec,
@@ -1038,9 +1046,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
         // No receiver, or the socket is backed up: skip this frame entirely.
         guard connectionReady else { return }
-        if SendQueuePolicy.shouldDrop(pendingSends: pendingSends, budget: maxPendingSends) {
-            needsKeyframe = true   // dropped frames break the P-frame chain
-            dropsThisWindow += 1
+        let queueDecision = SendQueuePolicy.decision(
+            pendingSends: pendingSends, budget: maxPendingSends,
+            currentDroppedFrames: dropsThisWindow)
+        if queueDecision.shouldDrop {
+            needsKeyframe = queueDecision.forceKeyframe
+            dropsThisWindow = queueDecision.droppedFrames
             dropsTotal += 1
             return
         }
@@ -1116,6 +1127,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         if isKeyframe {
             keyframesWindow += 1
             keyframeBytesWindow += bytes
+            keyframeQueueDepthWindow = max(keyframeQueueDepthWindow, pendingSends)
         }
         encodeLatencyMsWindow.append(latencyMs)
         let elapsed = Date().timeIntervalSince(encodeStatsWindowStart)
@@ -1128,9 +1140,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         lastEncodedFps = Int(fps.rounded())
         lastAverageFrameSize = avgFrame
         lastEncodeLatencyMs = avgLatency
+        lastKeyframeCount = keyframesWindow
+        lastAverageKeyframeSize = keyframesWindow > 0 ? keyframeBytesWindow / keyframesWindow : 0
+        lastPeakFrameSize = peakFrameBytesWindow
+        lastKeyframeQueueDepth = keyframeQueueDepthWindow
         if settings.enableDebugStats {
             let averageKeyframeSize = keyframesWindow > 0 ? keyframeBytesWindow / keyframesWindow : 0
-            Log.info("ENC-STATS codec=\(streamCodec.rawValue) encodedFps=\(String(format: "%.1f", fps)) encodeLatencyMs=\(String(format: "%.1f", avgLatency)) bitrate=\(streamBitrate) keyframeInterval=\(StreamEncodingPolicy.keyframeInterval(fps: requestedCaptureFps, transport: bitrateTransport)) keyframeCount=\(keyframesWindow) averageKeyframeSize=\(averageKeyframeSize) peakFrameSize=\(peakFrameBytesWindow) queueAtWindowEnd=\(pendingSends) averageFrameSize=\(avgFrame)")
+            Log.info("ENC-STATS codec=\(streamCodec.rawValue) encodedFps=\(String(format: "%.1f", fps)) encodeLatencyMs=\(String(format: "%.1f", avgLatency)) bitrate=\(streamBitrate) keyframeInterval=\(KeyframePolicy.frameInterval(fps: requestedCaptureFps, transport: bitrateTransport)) keyframeCount=\(keyframesWindow) averageKeyframeSize=\(averageKeyframeSize) peakFrameSize=\(peakFrameBytesWindow) queueAtWindowEnd=\(pendingSends) averageFrameSize=\(avgFrame)")
         }
         encodedFramesWindow = 0
         encodedBytesWindow = 0
@@ -1138,6 +1154,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         keyframesWindow = 0
         keyframeBytesWindow = 0
         peakFrameBytesWindow = 0
+        keyframeQueueDepthWindow = 0
         encodeStatsWindowStart = Date()
     }
 
@@ -1364,6 +1381,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             newBitrateMbps: lastAdaptiveDecision.map { Double($0.newBitrate) / 1_000_000 },
             bitrateChangeReason: lastAdaptiveDecision?.reason,
             networkState: lastAdaptiveDecision?.networkState.rawValue,
+            keyframeCount: Double(lastKeyframeCount),
+            averageKeyframeSize: lastAverageKeyframeSize > 0 ? Double(lastAverageKeyframeSize) : nil,
+            peakFrameSize: lastPeakFrameSize > 0 ? Double(lastPeakFrameSize) : nil,
+            keyframeQueueDepth: Double(lastKeyframeQueueDepth),
+            keyframeFrameAgeP95Ms: lastKeyframeCount > 0 ? receiver.frameAgeP95Ms : nil,
+            decoderRecoveryEvent: decoderRecoveryEvent,
             averageFrameSize: lastAverageFrameSize > 0 ? Double(lastAverageFrameSize) : nil,
             encodeLatencyMs: lastEncodeLatencyMs, pendingSends: Double(pendingSends),
             macQueue: Double(pendingSends), macDrops: Double(lastMacDropsSnapshot),
@@ -1371,6 +1394,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         do {
             try recorder.append(sample)
             lastAdaptiveDecision = nil
+            decoderRecoveryEvent = nil
             Task { @MainActor in
                 onBenchmarkStatus?("\(phase.rawValue) · \(scene.label) · \(runId)")
             }

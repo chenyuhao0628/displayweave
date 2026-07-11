@@ -94,6 +94,12 @@ struct BenchmarkSample {
     var newBitrateMbps: Double?
     var bitrateChangeReason: String?
     var networkState: String?
+    var keyframeCount: Double?
+    var averageKeyframeSize: Double?
+    var peakFrameSize: Double?
+    var keyframeQueueDepth: Double?
+    var keyframeFrameAgeP95Ms: Double?
+    var decoderRecoveryEvent: String?
 
     init(timestamp: Date, monotonicElapsed: ContinuousClock.Duration,
          runId: String, sessionId: String,
@@ -104,6 +110,9 @@ struct BenchmarkSample {
          actualBitrateMbps: Double? = nil,
          previousBitrateMbps: Double? = nil, newBitrateMbps: Double? = nil,
          bitrateChangeReason: String? = nil, networkState: String? = nil,
+         keyframeCount: Double? = nil, averageKeyframeSize: Double? = nil,
+         peakFrameSize: Double? = nil, keyframeQueueDepth: Double? = nil,
+         keyframeFrameAgeP95Ms: Double? = nil, decoderRecoveryEvent: String? = nil,
          averageFrameSize localAverageFrameSize: Double? = nil,
          encodeLatencyMs: Double?,
          pendingSends: Double?, macQueue: Double?,
@@ -133,6 +142,12 @@ struct BenchmarkSample {
         self.newBitrateMbps = newBitrateMbps
         self.bitrateChangeReason = bitrateChangeReason
         self.networkState = networkState
+        self.keyframeCount = keyframeCount
+        self.averageKeyframeSize = averageKeyframeSize
+        self.peakFrameSize = peakFrameSize
+        self.keyframeQueueDepth = keyframeQueueDepth
+        self.keyframeFrameAgeP95Ms = keyframeFrameAgeP95Ms
+        self.decoderRecoveryEvent = decoderRecoveryEvent
         averageFrameSize = localAverageFrameSize ?? receiver.averageFrameSize
         self.encodeLatencyMs = encodeLatencyMs
         sendToRenderEstimatedMs = receiver.sendToRenderEstimatedMs
@@ -168,7 +183,8 @@ struct BenchmarkSample {
         "frameAgeP95Ms", "frameAgeP99Ms", "estimatedE2ELatencyMs", "pendingSends",
         "macQueue", "androidQueue", "macDrops", "androidDrops", "inputP50Ms", "inputP95Ms",
         "macCPU", "macMemory", "previousBitrateMbps", "newBitrateMbps",
-        "bitrateChangeReason", "networkState"
+        "bitrateChangeReason", "networkState", "keyframeCount", "averageKeyframeSize",
+        "peakFrameSize", "keyframeQueueDepth", "keyframeFrameAgeP95Ms", "decoderRecoveryEvent"
     ]
 
     var csvFields: [String] {
@@ -185,7 +201,10 @@ struct BenchmarkSample {
          number(pendingSends), number(macQueue), number(androidQueue), number(macDrops),
          number(androidDrops), number(inputP50Ms), number(inputP95Ms), number(macCPU),
          number(macMemory), number(previousBitrateMbps), number(newBitrateMbps),
-         bitrateChangeReason ?? Self.notAvailable, networkState ?? Self.notAvailable]
+         bitrateChangeReason ?? Self.notAvailable, networkState ?? Self.notAvailable,
+         number(keyframeCount), number(averageKeyframeSize), number(peakFrameSize),
+         number(keyframeQueueDepth), number(keyframeFrameAgeP95Ms),
+         decoderRecoveryEvent ?? Self.notAvailable]
     }
 
     func csv(includeHeader: Bool) -> String {
@@ -225,7 +244,11 @@ struct BenchmarkSample {
             "androidDrops": androidDrops, "inputP50Ms": inputP50Ms, "inputP95Ms": inputP95Ms,
             "macCPU": macCPU, "macMemory": macMemory,
             "previousBitrateMbps": previousBitrateMbps, "newBitrateMbps": newBitrateMbps,
-            "bitrateChangeReason": bitrateChangeReason, "networkState": networkState
+            "bitrateChangeReason": bitrateChangeReason, "networkState": networkState,
+            "keyframeCount": keyframeCount, "averageKeyframeSize": averageKeyframeSize,
+            "peakFrameSize": peakFrameSize, "keyframeQueueDepth": keyframeQueueDepth,
+            "keyframeFrameAgeP95Ms": keyframeFrameAgeP95Ms,
+            "decoderRecoveryEvent": decoderRecoveryEvent
         ]
         for (key, value) in optional {
             if let number = value as? Double {

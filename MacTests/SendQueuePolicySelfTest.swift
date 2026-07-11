@@ -9,6 +9,9 @@ enum SendQueuePolicySelfTest {
         precondition(!SendQueuePolicy.shouldDrop(pendingSends: 0, budget: 1))
         precondition(SendQueuePolicy.shouldDrop(pendingSends: 1, budget: 1))
         precondition(SendQueuePolicy.shouldDrop(pendingSends: 3, budget: 3))
+        let decision = SendQueuePolicy.decision(
+            pendingSends: 2, budget: 2, currentDroppedFrames: 4)
+        precondition(decision.shouldDrop && decision.droppedFrames == 5 && decision.forceKeyframe)
         print("SendQueuePolicySelfTest PASS")
     }
 }

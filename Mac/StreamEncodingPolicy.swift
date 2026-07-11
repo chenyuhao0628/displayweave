@@ -85,11 +85,6 @@ enum StreamEncodingPolicy {
         RefreshRatePolicy.sanitize(fps)
     }
 
-    /// Candidate defaults pending physical-device GOP A/B validation.
-    static func keyframeInterval(fps: Int, transport: BitrateTransport) -> Int {
-        RefreshRatePolicy.sanitize(fps) * (transport == .wifi ? 2 : 1)
-    }
-
     static func frameDurationTimescale(fps: Int) -> Int {
         RefreshRatePolicy.sanitize(fps)
     }
