@@ -18,7 +18,7 @@
 | 独立 release 签名身份 | 通过 | 仓库外 `android-preview.jks`，alias `displayweave-preview`；密码存入 macOS Keychain |
 | 签名证书 SHA-256 | 已记录 | `89:80:5F:04:58:00:EA:18:B5:6B:84:B3:2E:8E:31:B1:71:0A:3C:7B:F3:C8:5F:DA:54:D2:60:D1:FC:6D:58:9D` |
 | APK 签名验证 | 通过 | `apksigner verify --verbose --print-certs`：v2 true、1 signer、证书摘要与记录一致 |
-| APK SHA-256 | 已记录 | `3a6df0677ecda5c07f2bd0b95939ccb3efb233c88c901392a074ca052323a9c4` |
+| APK SHA-256 | 已记录 | `1a475ba836f5e5fefee4a52cdadbc4e5b7e306abc8785297a21d7794469aed3d` |
 | 安装测试 | 通过 | OPD2413 卸载旧 debug 包后首次安装成功；随后 `adb install -r` 覆盖安装成功；release 包不可 `run-as`，并能启动 Activity |
 | Android USB 视频/codec | 基础通过 | OPD2413 建立 HEVC/120 与 H.264/60 USB 流程；前后台与强停重开自动恢复；输入仍待人工验收 |
 | 两台 Android USB | 无设备条件 | 当前只有一台 Android，不能验证两条 ADB USB；已用当前 iPhone WiFi + Android USB 验证跨平台并发与 session 隔离 |
@@ -34,7 +34,7 @@
 | Release xcodebuild | 通过 | Release universal app，`MARKETING_VERSION=0.1.0`，退出码 0 |
 | 可运行 App | 通过（Preview entitlement） | Release 可执行文件持续运行并建立 Android USB session；默认空 entitlement 的 ad-hoc build 会被 Sparkle library validation 拒绝，已拆分专用 entitlement |
 | Release ZIP | 通过 | `build/preview-0.1/DisplayWeave-Preview-0.1-macOS.zip` |
-| ZIP SHA-256 | 已记录 | `4f19007790f3aab9b2017133badfed453d61288b44cf42d780f187bf76e47128` |
+| ZIP SHA-256 | 已记录 | `b26903c55a0a8649fe0a8e6d1a27cc31bf03b41b040c1f71f40a7a0706a7aa60` |
 | Code signature | 开发预览限制 | `Signature=adhoc`、`TeamIdentifier=not set`；仅含 preview 专用 `disable-library-validation` entitlement，未注入 `get-task-allow`；Xcode Personal Team 仅是 Apple Development，不是 Developer ID |
 | Developer ID / notarization | 阻塞正式发布 | 未签名、未公证；不能描述为 Gatekeeper-ready production package |
 | 权限说明 | 通过 | README/UI 说明 Screen Recording、Accessibility、Local Network 和 Android USB debugging |
@@ -46,7 +46,7 @@ Mac ZIP 只能标为本地开发预览。正式公开发行需配置 Developer I
 | 项目 | 状态 | 证据 / 下一步 |
 | --- | --- | --- |
 | unsigned device payload | 通过 | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` 仅含 `Payload/DisplayWeave.app`，无 `._`/`__MACOSX` |
-| IPA SHA-256 | 已记录 | `75bae206c88d8870a2b78fa6f530960ed32f212a8f4618782301e8339d8b4240` |
+| IPA SHA-256 | 已记录 | `83a5ea5f29317e7ad4084b66960f091664fa2229c5bb22d3e074e3e0716c4ccf` |
 | 本机 Personal Team 真机构建 | 通过 | Team `33QY9GJ2FJ` 自动签名，DisplayWeave `0.1.0 (1)` 覆盖安装并启动于已配对 iPhone |
 | 面向他人直接分发 | 不支持 | 免费 Personal Team 产物绑定登记设备且短期有效；公开 IPA 仍需用户自行重签，或使用付费 Apple Developer 分发方式 |
 

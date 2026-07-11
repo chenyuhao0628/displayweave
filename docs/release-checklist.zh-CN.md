@@ -16,6 +16,12 @@
 - `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa`
 - `SHA256SUMS.txt`
 
+最终 SHA-256：
+
+- macOS ZIP：`b26903c55a0a8649fe0a8e6d1a27cc31bf03b41b040c1f71f40a7a0706a7aa60`
+- Android APK：`1a475ba836f5e5fefee4a52cdadbc4e5b7e306abc8785297a21d7794469aed3d`
+- iOS unsigned input：`83a5ea5f29317e7ad4084b66960f091664fa2229c5bb22d3e074e3e0716c4ccf`
+
 ## 本地门槛
 
 1. 7 个 Swift policy/self-test 与 4 个 Android standalone self-test 全部 PASS。
