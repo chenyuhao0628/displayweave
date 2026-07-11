@@ -44,7 +44,11 @@ struct BenchmarkSample {
     static let notAvailable = "notAvailable"
 
     var timestamp: Date
-    var monotonicElapsedMs: Double
+    var monotonicElapsed: ContinuousClock.Duration
+    var monotonicElapsedMs: Double {
+        let parts = monotonicElapsed.components
+        return Double(parts.seconds) * 1_000 + Double(parts.attoseconds) / 1_000_000_000_000_000
+    }
     var runId: String
     var sessionId: String
     var scene: String
@@ -87,7 +91,8 @@ struct BenchmarkSample {
     var macCPU: Double?
     var macMemory: Double?
 
-    init(timestamp: Date, monotonicElapsedMs: Double, runId: String, sessionId: String,
+    init(timestamp: Date, monotonicElapsed: ContinuousClock.Duration,
+         runId: String, sessionId: String,
          scene: String, phase: String, deviceModel: String, transport: String,
          codec: String, resolution: BenchmarkResolution, requestedFps: Double,
          actualVirtualDisplayRefreshRate: Double?, captureFps: Double?, encodedFps: Double?,
@@ -95,7 +100,7 @@ struct BenchmarkSample {
          encodeLatencyMs: Double?, pendingSends: Double?, macQueue: Double?,
          macDrops: Double?, macCPU: Double?, macMemory: Double?) {
         self.timestamp = timestamp
-        self.monotonicElapsedMs = monotonicElapsedMs
+        self.monotonicElapsed = monotonicElapsed
         self.runId = runId
         self.sessionId = sessionId
         self.scene = scene
@@ -177,7 +182,7 @@ struct BenchmarkSample {
     func jsonLine() throws -> String {
         var object: [String: Any] = [
             "timestamp": isoTimestamp,
-            "monotonicElapsedMs": monotonicElapsedMs,
+            "monotonicElapsedMs": Self.jsonNumber(monotonicElapsedMs),
             "runId": runId,
             "sessionId": sessionId,
             "scene": scene,
@@ -186,7 +191,7 @@ struct BenchmarkSample {
             "transport": transport,
             "codec": codec,
             "resolution": ["width": resolution.width, "height": resolution.height],
-            "requestedFps": requestedFps
+            "requestedFps": Self.jsonNumber(requestedFps)
         ]
         let optional: [String: Any?] = [
             "actualVirtualDisplayRefreshRate": actualVirtualDisplayRefreshRate,
@@ -205,7 +210,13 @@ struct BenchmarkSample {
             "androidDrops": androidDrops, "inputP50Ms": inputP50Ms, "inputP95Ms": inputP95Ms,
             "macCPU": macCPU, "macMemory": macMemory
         ]
-        for (key, value) in optional { object[key] = value ?? NSNull() }
+        for (key, value) in optional {
+            if let number = value as? Double {
+                object[key] = Self.jsonNumber(number)
+            } else {
+                object[key] = value ?? NSNull()
+            }
+        }
         let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         return String(decoding: data, as: UTF8.self)
     }
@@ -225,5 +236,9 @@ struct BenchmarkSample {
         guard value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r")
         else { return value }
         return "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+    }
+
+    private static func jsonNumber(_ value: Double) -> Any {
+        value.isFinite ? value : NSNull()
     }
 }

@@ -94,7 +94,7 @@ expect(stats.inputP95Ms == nil, "explicit JSON null remains nil")
 
 let sample = BenchmarkSample(
     timestamp: Date(timeIntervalSince1970: 1_700_000_000.125),
-    monotonicElapsedMs: 1234.5,
+    monotonicElapsed: .seconds(1.2345),
     runId: "run,\"one\"",
     sessionId: "session\nline",
     scene: "desktop",
@@ -131,9 +131,16 @@ expect(sample.csvFields.contains(BenchmarkSample.notAvailable), "nil writes notA
 expect(BenchmarkSample.csvHeader.first == "timestamp", "fixed header starts with timestamp")
 expect(BenchmarkSample.csvHeader.last == "macMemory", "fixed header ends with macMemory")
 var nonFiniteSample = sample
-nonFiniteSample.macCPU = .infinity
+nonFiniteSample.macCPU = Double.infinity
 expect(nonFiniteSample.csvFields[BenchmarkSample.csvHeader.firstIndex(of: "macCPU")!] == BenchmarkSample.notAvailable,
        "nonfinite CSV values write notAvailable")
+nonFiniteSample.actualBitrateMbps = -Double.infinity
+nonFiniteSample.requestedFps = Double.nan
+let nonFiniteJSON = try nonFiniteSample.jsonLine()
+let nonFiniteObject = try JSONSerialization.jsonObject(with: Data(nonFiniteJSON.utf8)) as! [String: Any]
+expect(nonFiniteObject["macCPU"] is NSNull, "positive infinity writes JSON null")
+expect(nonFiniteObject["actualBitrateMbps"] is NSNull, "negative infinity writes JSON null")
+expect(nonFiniteObject["requestedFps"] is NSNull, "required NaN writes JSON null")
 
 let jsonLine = try sample.jsonLine()
 let jsonObject = try JSONSerialization.jsonObject(with: Data(jsonLine.utf8)) as! [String: Any]
