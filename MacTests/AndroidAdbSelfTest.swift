@@ -30,12 +30,41 @@ struct AndroidAdbSelfTest {
         let devices = AndroidAdbDeviceList.parse(output)
         expect(devices.count == 3, "all ADB device rows should be parsed")
         expect(devices[0] == AndroidAdbDevice(serial: "R58M123", state: .device,
-                                              model: "Pixel 8"),
+                                              model: "Pixel 8", connectionKind: .unknown,
+                                              product: "foo"),
                "ready device should preserve serial and normalize model name")
         expect(devices[1].serial == "ABC" && devices[1].state == .unauthorized,
                "unauthorized device should be classified")
+        expect(devices[1].connectionKind == .usb,
+               "unauthorized USB devices must remain identifiable as wired")
         expect(devices[2].serial == "XYZ" && devices[2].state == .offline,
                "offline device should be classified")
+
+        let dualEndpointOutput = """
+        List of devices attached
+        HA2AE8R5 device usb:1-2 product:OPD2413 model:OPD2413 device:OP615EL1 transport_id:639
+        adb-HA2AE8R5-C1o9Bn._adb-tls-connect._tcp device product:OPD2413 model:OPD2413 device:OP615EL1 transport_id:2
+
+        """
+        let dualEndpoints = AndroidAdbDeviceList.parse(dualEndpointOutput)
+        expect(dualEndpoints.map(\.connectionKind) == [.usb, .wirelessDebugging],
+               "ADB rows must preserve their physical connection kind")
+        expect(AndroidAdbDeviceSelection.usbDevices(from: dualEndpoints).map(\.serial)
+               == ["HA2AE8R5"],
+               "wireless debugging must never create a second AdbUsbTransport session")
+
+        let twoUsbOutput = """
+        List of devices attached
+        USB-A device usb:1-2 product:a model:Tablet_A device:a transport_id:1
+        USB-B device usb:1-3 product:b model:Tablet_B device:b transport_id:2
+
+        """
+        let twoUsb = AndroidAdbDeviceSelection.usbDevices(
+            from: AndroidAdbDeviceList.parse(twoUsbOutput))
+        expect(twoUsb.map(\.serial) == ["USB-A", "USB-B"],
+               "two physical USB devices must remain independently connectable")
+        expect(twoUsb.map(\.product) == ["a", "b"] && twoUsb.map(\.device) == ["a", "b"],
+               "ADB product and device metadata should be preserved")
 
         expect(AndroidAdbFailure.executableNotFound(["/missing/adb"])
             .localizedDescription.contains("ADB"),

@@ -1,18 +1,44 @@
 import Foundation
 
-enum AndroidAdbState: Equatable {
+enum AndroidAdbState: Equatable, Sendable {
     case device
     case unauthorized
     case offline
     case unknown(String)
 }
 
-struct AndroidAdbDevice: Equatable, Identifiable {
+enum AndroidAdbConnectionKind: Equatable, Sendable {
+    case usb
+    case wirelessDebugging
+    case unknown
+}
+
+struct AndroidAdbDevice: Equatable, Identifiable, Sendable {
     let serial: String
     let state: AndroidAdbState
     let model: String?
+    let connectionKind: AndroidAdbConnectionKind
+    let product: String?
+    let device: String?
 
     var id: String { serial }
+
+    init(serial: String, state: AndroidAdbState, model: String?,
+         connectionKind: AndroidAdbConnectionKind = .unknown,
+         product: String? = nil, device: String? = nil) {
+        self.serial = serial
+        self.state = state
+        self.model = model
+        self.connectionKind = connectionKind
+        self.product = product
+        self.device = device
+    }
+}
+
+enum AndroidAdbDeviceSelection {
+    static func usbDevices(from devices: [AndroidAdbDevice]) -> [AndroidAdbDevice] {
+        devices.filter { $0.connectionKind == .usb }
+    }
 }
 
 struct AndroidAdbPresentation: Equatable, Sendable {
@@ -75,7 +101,17 @@ enum AndroidAdbDeviceList {
                 metadata[key] = value
             }
             let model = metadata["model"]?.replacingOccurrences(of: "_", with: " ")
-            return AndroidAdbDevice(serial: fields[0], state: state, model: model)
+            let connectionKind: AndroidAdbConnectionKind
+            if metadata["usb"] != nil {
+                connectionKind = .usb
+            } else if fields[0].contains("._adb-tls-connect._tcp") {
+                connectionKind = .wirelessDebugging
+            } else {
+                connectionKind = .unknown
+            }
+            return AndroidAdbDevice(serial: fields[0], state: state, model: model,
+                                    connectionKind: connectionKind,
+                                    product: metadata["product"], device: metadata["device"])
         }
     }
 }
