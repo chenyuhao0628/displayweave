@@ -25,6 +25,7 @@ export default function App({ initialLocale = "en" }: { initialLocale?: Locale }
       <a className="skip-link" href="#main">Skip to content</a>
       <div className="shell nav-shell">
         <a className="brand" href={initialLocale === "zh" ? "zh.html" : "./"}><img src="icon-256.png" alt="" /><span>DisplayWeave</span></a>
+        <a className="mobile-language" href={languageHref}>{c.language}</a>
         <nav aria-label="Primary">
           <a href="#status">{c.nav.status}</a><a href="#transport">{c.nav.transport}</a><a href="#evidence">{c.nav.evidence}</a><a href="#trust">{c.nav.trust}</a><a href="#faq">{c.nav.faq}</a>
         </nav>
@@ -35,7 +36,7 @@ export default function App({ initialLocale = "en" }: { initialLocale?: Locale }
     <main id="main">
       <section className="hero-section">
         <div className="shell hero-grid">
-          <div className="hero-copy"><div className="version-line"><span>{releaseTag}</span><i />LOCAL DISPLAY FABRIC</div><h1>{c.hero.title} <em>{c.hero.accent}</em></h1><p>{c.hero.body}</p><div className="hero-actions"><a className="button" href="#download">{c.hero.primary}</a><a className="text-link" href="https://github.com/chenyuhao0628/displayweave">{c.hero.secondary}<span aria-hidden="true">↗</span></a></div><div className="compat-line"><span>macOS 14+</span><span>iOS / iPadOS 17+</span><span>Android 8+</span><span>GPL-3.0</span></div></div>
+          <div className="hero-copy"><div className="version-line"><span>{releaseTag}</span><i />LOCAL DISPLAY FABRIC</div><h1>{c.hero.titleLines.map(line => <span key={line}>{line}</span>)}<em>{c.hero.accent}</em></h1><p>{c.hero.body}</p><div className="hero-actions"><a className="button" href="#download">{c.hero.primary}</a><a className="text-link" href="https://github.com/chenyuhao0628/displayweave">{c.hero.secondary}<span aria-hidden="true">↗</span></a></div><div className="compat-line"><span>macOS 14+</span><span>iOS / iPadOS 17+</span><span>Android 8+</span><span>GPL-3.0</span></div></div>
           <div className="hero-map"><span className="map-label">{c.hero.live}</span><SignalTopology copy={c.topology} /></div>
         </div>
       </section>

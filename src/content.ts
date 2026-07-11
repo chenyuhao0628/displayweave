@@ -22,7 +22,7 @@ export type EvidenceItem = {
 export type SiteCopy = {
   language: string
   nav: { status: string; transport: string; evidence: string; trust: string; faq: string; download: string }
-  hero: { title: string; accent: string; body: string; primary: string; secondary: string; live: string }
+  hero: { titleLines: string[]; accent: string; body: string; primary: string; secondary: string; live: string }
   topology: { mac: string; source: string; android: string; apple: string; usb: string; wifi: string; fallback: string; active: string }
   release: { label: string; title: string; intro: string; warning: string; checksum: string; assets: ReleaseAsset[] }
   status: { label: string; title: string; intro: string; names: Record<EvidenceState, string>; items: EvidenceItem[] }
@@ -49,7 +49,7 @@ export const copy: Record<Locale, SiteCopy> = {
   en: {
     language: "中文",
     nav: { status: "Status", transport: "Transport", evidence: "Evidence", trust: "Trust", faq: "FAQ", download: "Download Preview" },
-    hero: { title: "Weave every spare screen into your", accent: "Mac workspace.", body: "DisplayWeave turns iPhone, iPad, and Android devices into local extended displays—with Apple USB/WiFi, Android ADB USB, automatic WiFi fallback, touch input, HEVC, and experimental high refresh.", primary: "Get Preview 2", secondary: "Read the source", live: "Live transport map" },
+    hero: { titleLines: ["Weave every", "spare screen", "into your"], accent: "Mac workspace.", body: "DisplayWeave turns iPhone, iPad, and Android devices into local extended displays—with Apple USB/WiFi, Android ADB USB, automatic WiFi fallback, touch input, HEVC, and experimental high refresh.", primary: "Get Preview 2", secondary: "Read the source", live: "Live transport map" },
     topology: { mac: "Mac sender", source: "Capture · Encode", android: "Android receiver", apple: "Apple receiver", usb: "ADB USB", wifi: "Local WiFi", fallback: "AUTO FALLBACK", active: "ACTIVE" },
     release: { label: "Preview release", title: "Choose the sender and receiver you need.", intro: "Every package is distributed directly from GitHub. Read the signing boundary before installing.", warning: "Development preview — no App Store, Google Play, Developer ID notarization, or universal iOS signing.", checksum: "Verify all downloads with SHA256SUMS.txt", assets: enAssets },
     status: { label: "Evidence, not promises", title: "A release status board with the edges left visible.", intro: "Verified means exercised on available physical hardware. Experimental means implemented with hardware-dependent performance. Deferred work is stated plainly.", names: { verified: "Verified", experimental: "Experimental", deferred: "Deferred" }, items: [
@@ -90,7 +90,7 @@ export const copy: Record<Locale, SiteCopy> = {
   zh: {
     language: "English",
     nav: { status: "状态", transport: "传输", evidence: "实测", trust: "边界", faq: "问答", download: "下载预览版" },
-    hero: { title: "把每一块闲置屏幕，编入你的", accent: "Mac 工作空间。", body: "DisplayWeave 将 iPhone、iPad 和 Android 设备变成本地扩展显示器，支持 Apple USB/WiFi、Android ADB USB、自动 WiFi 回退、触摸、HEVC 与实验性高刷新。", primary: "获取 Preview 2", secondary: "查看源代码", live: "实时传输拓扑" },
+    hero: { titleLines: ["把每一块闲置屏幕，", "编入你的"], accent: "Mac 工作空间。", body: "DisplayWeave 将 iPhone、iPad 和 Android 设备变成本地扩展显示器，支持 Apple USB/WiFi、Android ADB USB、自动 WiFi 回退、触摸、HEVC 与实验性高刷新。", primary: "获取 Preview 2", secondary: "查看源代码", live: "实时传输拓扑" },
     topology: { mac: "Mac 发送端", source: "采集 · 编码", android: "Android 接收端", apple: "Apple 接收端", usb: "ADB USB", wifi: "本地 WiFi", fallback: "自动回退", active: "已连接" },
     release: { label: "预览发布", title: "选择需要的发送端与接收端。", intro: "所有文件均由 GitHub 直接分发。安装前请先阅读签名边界。", warning: "开发预览版——未通过 App Store、Google Play、Developer ID 公证或通用 iOS 签名分发。", checksum: "使用 SHA256SUMS.txt 验证全部下载", assets: zhAssets },
     status: { label: "证据，而不是口号", title: "保留真实边界的版本状态板。", intro: "“已验证”表示在现有真机上完成；“实验性”表示已实现但性能依赖硬件；未完成工作会明确列出。", names: { verified: "已验证", experimental: "实验性", deferred: "待完成" }, items: [
