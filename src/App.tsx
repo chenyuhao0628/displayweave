@@ -16,7 +16,7 @@ const copy = {
     heroLead: "Use your",
     heroTail: "as your Mac's",
     heroAccent: "second monitor",
-    tagline: "Turn an iPhone, iPad, or Android device into a true extended display for your Mac. Apple receivers connect over USB or WiFi; Android currently connects over WiFi with touch input, HEVC, and experimental high refresh.",
+    tagline: "Turn an iPhone, iPad, or Android device into a true extended display for your Mac. Apple receivers use USB or WiFi; Android supports WiFi and experimental ADB-forward USB with touch, HEVC, and high refresh.",
     downloadsIntro: "Choose the Mac sender and the receiver for your device.",
     downloads: [
       {
@@ -36,7 +36,7 @@ const copy = {
       {
         step: "Android receiver",
         title: "Installable Debug APK",
-        description: "WiFi receiver. Android USB/ADB reverse is planned and not included.",
+        description: "WiFi receiver. ADB-forward USB is implemented in the new Mac sender but still awaits physical-device validation.",
         button: "Download Android APK",
         href: `${releaseBase}/DisplayWeave-Android-debug.apk`,
       },
@@ -53,7 +53,7 @@ const copy = {
       ["Experimental high refresh", "Android supports HEVC, H.264 fallback, and dynamic 30/60/90/120fps negotiation. One OnePlus 120Hz device measured about 109-111 FPS end to end over WiFi; stable 120 FPS is not guaranteed."],
       ["Multiple receiver potential", "The inherited Apple path supports multiple receivers. Broader DisplayWeave mixed Apple/Android validation is still ongoing."],
       ["Retina and HiDPI", "Virtual display profiles match receiver geometry and support sharp HiDPI presentation."],
-      ["Apple USB support", "iPhone and iPad can use macOS usbmuxd. Android currently uses WiFi; ADB reverse is planned."],
+      ["USB transport", "iPhone and iPad use macOS usbmuxd. Android uses per-device ADB forward mappings; Android USB physical validation is still pending."],
       ["Cross-device WiFi", "Apple and Android receivers advertise locally and stream directly over the LAN."],
       ["Touch and scroll", "Tap, drag, cursor, and two-finger scrolling return input to the Mac."],
       ["Runtime metrics", "Capture, encode, send, receive, decode, render, queue, drop, and latency data expose the real pipeline."],
@@ -71,7 +71,7 @@ const copy = {
     tableHeaders: ["Capability", "DisplayWeave", "Current limit"],
     tableRows: [
       ["Apple receivers", "USB + WiFi", "H.264 path"],
-      ["Android receiver", "WiFi + HEVC/H.264", "USB/ADB planned"],
+      ["Android receiver", "WiFi + experimental ADB USB", "USB physical validation pending"],
       ["Android high refresh", "30/60/90/120fps negotiation", "Experimental; about 109-111 FPS measured"],
       ["iOS/iPadOS high refresh", "H.264 receiver", "120Hz not implemented"],
       ["Release packages", "Development previews", "No Developer ID signing or notarization"],
@@ -81,7 +81,7 @@ const copy = {
     faqItems: [
       ["How does it work?", "The Mac creates or mirrors a display, captures it with ScreenCaptureKit, encodes with VideoToolbox, and sends framed video over a direct local connection. Apple receivers render H.264; Android negotiates HEVC or H.264 and renders through MediaCodec."],
       ["Are production release packages available?", "Not yet. The downloadable files are development previews. macOS is only ad-hoc signed for local testing and is not notarized, iOS is Simulator-only, and Android is a Debug APK."],
-      ["Does Android work over USB?", "Not yet. Android currently connects over local WiFi. USB via ADB reverse is planned. iPhone and iPad already support USB through macOS usbmuxd."],
+      ["Does Android work over USB?", "The Mac sender now implements USB with per-device ADB forward mappings and Auto/WiFi fallback. It still needs the Preview 0.1 physical-device, unplug/replug, and multi-device validation matrix, so it remains experimental. iPhone and iPad use macOS usbmuxd."],
       ["Does 120Hz mean stable 120 FPS?", "No. A 120fps request and an active 120Hz panel do not prove 120 rendered frames. The validated OnePlus HEVC/120 WiFi run measured about 109-111 FPS end to end, so high refresh remains experimental."],
       ["Is WiFi encrypted?", "Not yet. Video and control data use direct local TCP without production-grade encrypted pairing. Use a trusted LAN."],
       ["Can I use multiple devices?", "The inherited Apple path supports multiple receivers, but broad mixed-platform DisplayWeave validation is still in progress."],
@@ -103,7 +103,7 @@ const copy = {
     heroLead: "让你的",
     heroTail: "成为 Mac 的",
     heroAccent: "第二块屏幕",
-    tagline: "把 iPhone、iPad 或 Android 设备变成 Mac 的扩展显示器。Apple 接收端支持 USB 和 WiFi；Android 当前使用 WiFi，支持触摸、HEVC 与实验性高刷新链路。",
+    tagline: "把 iPhone、iPad 或 Android 设备变成 Mac 的扩展显示器。Apple 接收端支持 USB 和 WiFi；Android 支持 WiFi 与实验性 ADB forward USB，以及触摸、HEVC 和高刷新链路。",
     downloadsIntro: "下载 Mac 发送端，以及与你设备对应的接收端。",
     downloads: [
       {
@@ -123,7 +123,7 @@ const copy = {
       {
         step: "Android 接收端",
         title: "可安装 Debug APK",
-        description: "当前使用 WiFi；Android USB/ADB reverse 尚未实现。",
+        description: "WiFi 接收端；新版 Mac 发送端已实现 ADB forward USB，但仍待真机验收。",
         button: "下载 Android APK",
         href: `${releaseBase}/DisplayWeave-Android-debug.apk`,
       },
@@ -140,7 +140,7 @@ const copy = {
       ["实验性高刷新", "Android 支持 HEVC、H.264 回退和动态 30/60/90/120fps 协商。一台 OnePlus 120Hz 设备通过 WiFi 实测约 109-111 FPS，不代表稳定满 120 FPS。"],
       ["多设备潜力", "继承的 Apple 链路支持多个接收端；DisplayWeave 的 Apple/Android 混合多设备场景仍在扩大验证。"],
       ["Retina 与 HiDPI", "虚拟显示配置匹配接收端尺寸，并支持清晰的 HiDPI 显示。"],
-      ["Apple USB", "iPhone 和 iPad 可通过 macOS usbmuxd 连接；Android 当前使用 WiFi，ADB reverse 仍在规划中。"],
+      ["USB 传输", "iPhone 和 iPad 使用 macOS usbmuxd；Android 使用每设备独立 ADB forward 映射，USB 真机验收仍待完成。"],
       ["跨设备 WiFi", "Apple 与 Android 接收端在局域网内发现，并通过本地连接直接传输。"],
       ["触摸与滚动", "轻点、拖动、光标和双指滚动可以回传到 Mac。"],
       ["运行时统计", "采集、编码、发送、接收、解码、渲染、队列、丢帧和延迟数据可用于判断真实性能。"],
@@ -158,7 +158,7 @@ const copy = {
     tableHeaders: ["能力", "DisplayWeave 当前状态", "当前限制"],
     tableRows: [
       ["Apple 接收端", "USB + WiFi", "H.264 链路"],
-      ["Android 接收端", "WiFi + HEVC/H.264", "USB/ADB 尚未实现"],
+      ["Android 接收端", "WiFi + 实验性 ADB USB", "USB 真机验收待完成"],
       ["Android 高刷新", "30/60/90/120fps 协商", "实验性；实测约 109-111 FPS"],
       ["iOS/iPadOS 高刷新", "H.264 接收端", "120Hz 尚未实现"],
       ["发布安装包", "开发预览版", "无 Developer ID 签名与公证"],
@@ -168,7 +168,7 @@ const copy = {
     faqItems: [
       ["DisplayWeave 如何工作？", "Mac 创建或镜像显示器，通过 ScreenCaptureKit 采集、VideoToolbox 编码，再经本地连接发送分帧视频。Apple 接收端渲染 H.264；Android 协商 HEVC 或 H.264，并通过 MediaCodec 渲染。"],
       ["已经有正式安装包了吗？", "还没有。本站下载的是开发预览文件：macOS 仅作 ad-hoc 本地签名且未公证，iOS 仅支持 Simulator，Android 为 Debug APK。"],
-      ["Android 支持 USB 吗？", "目前不支持。Android 当前通过局域网 WiFi 连接，ADB reverse USB 仍在规划中；iPhone 和 iPad 已支持 macOS usbmuxd USB。"],
+      ["Android 支持 USB 吗？", "Mac 发送端已通过每设备独立的 ADB forward 映射实现 USB，并支持 Auto/WiFi 回退；但 Preview 0.1 的拔插、多设备和长时间真机验收尚未完成，因此仍属实验功能。iPhone 和 iPad 使用 macOS usbmuxd。"],
       ["120Hz 等于稳定 120 FPS 吗？", "不等于。请求 120fps 和启用 120Hz 面板不能证明渲染了 120 帧。OnePlus HEVC/120 WiFi 实测约 109-111 FPS，因此高刷新仍属于实验功能。"],
       ["WiFi 传输已经加密了吗？", "还没有。当前视频和控制数据使用本地 TCP，尚无生产级加密配对，请仅在可信局域网使用。"],
       ["可以同时使用多台设备吗？", "继承的 Apple 链路支持多个接收端，但 DisplayWeave 的跨平台混合多设备验证仍在进行。"],

@@ -1,6 +1,6 @@
 # Android USB vs WiFi Benchmark
 
-状态：**待真机执行**（2026-07-11 自动探测时 `adb devices -l` 没有列出设备）。
+状态：**受控对比仍待执行**。2026-07-11 已完成单台 OnePlus OPD2413 的约 11 分钟 USB 基础观察，但测试期间内容与配置发生变化，不能填入 WiFi/USB 对照表。
 
 本文是 DisplayWeave Preview 0.1 的受控 Benchmark 记录。不得把未执行项目写成通过，也不预设 USB 一定提高 FPS。
 
@@ -22,7 +22,9 @@
 
 ## 结果
 
-当前没有连接 Android 真机，因此下表全部为“待人工验证”，没有填入推测值。
+当前没有满足“相同内容、相同配置、WiFi/USB 成对运行”的数据，因此下表全部为“待人工验证”，没有填入推测值。
+
+非 Benchmark 观察：USB 已实际建立 3040×1904 HEVC/120/80 Mbps 和 1470×956 H.264/60/8 Mbps 流程。编码 FPS 随桌面内容变化显著，且交互重建阶段出现短暂 peer reset；这些日志只证明功能路径和恢复行为，不证明平均 FPS、1% low 或延迟优势。
 
 | 指标 | WiFi 10 min | USB 10 min | WiFi 30 min | USB 30 min |
 | --- | ---: | ---: | ---: | ---: |
@@ -62,4 +64,3 @@
 ## 已有但不可代替本测试的证据
 
 OnePlus OPD2413 的历史 HEVC/120 WiFi 真机结果约为 109–111 FPS，记录在 `docs/120hz-migration-plan.md`。该结果证明既有 WiFi 高刷新链路，不构成 USB 性能证据，也不能作为本表的 USB 对照数据。
-

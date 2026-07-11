@@ -3,10 +3,11 @@
 ## 中文摘要
 
 DisplayWeave 由 macOS 发送端、iOS/iPadOS 接收端和 Android 接收端组成。
-Apple 接收端当前支持 USB 与 WiFi，使用 H.264；Android 当前使用 WiFi，
+Apple 接收端当前支持 USB 与 WiFi，使用 H.264；Android 支持 WiFi，并已实现
+待真机验证的 ADB forward USB，
 通过可选能力字段和 `streamConfig` 协商 HEVC/H.264、30/60/90/120fps、
 分辨率与码率。HEVC 失败时自动回退 H.264，旧接收端继续走 H.264/60fps
-兼容路径。Android USB/ADB reverse、加密配对和 iOS 120Hz 尚未实现。
+兼容路径。加密 WiFi 配对和 iOS/iPadOS 120Hz 尚未实现。
 
 DisplayWeave is split into sender and receiver apps. The Mac app owns display
 creation, capture, encoding, transport, and input injection. Receiver apps own
@@ -31,7 +32,7 @@ iOS receiver
 
 Android receiver
   discovery: Android NSD
-  transport: WiFi TCP ServerSocket
+  transport: TCP ServerSocket over WiFi or Mac-side ADB forward
   decode/render: H.264 or HEVC via MediaCodec + SurfaceView
   input: Android touch events
 ```
@@ -40,7 +41,7 @@ Android receiver
 
 1. The receiver advertises or listens on port `9000`.
 2. The Mac discovers an Apple receiver through USB or WiFi, or an Android
-   receiver through WiFi.
+   receiver through WiFi NSD / `adb devices -l`.
 3. The receiver sends a JSON `hello` message with display, device, codec, and
    frame-rate capability metadata where supported.
 4. The Mac chooses mirror or extend mode.
@@ -58,7 +59,7 @@ Current transport support is platform-specific:
 | Receiver | USB | WiFi |
 | --- | --- | --- |
 | iPhone / iPad | Supported through macOS `usbmuxd` | Supported through Bonjour + TCP |
-| Android | Not implemented; ADB reverse is planned | Supported through Android NSD + TCP |
+| Android | Implemented through per-serial `adb forward`; physical validation pending | Supported through Android NSD + TCP |
 
 All receiver payloads use the same frame format:
 
@@ -98,7 +99,9 @@ creating an Android-only replacement protocol.
 
 Important responsibilities:
 
-- discover Apple receivers over USB or WiFi and Android receivers over WiFi
+- discover Apple receivers over USB or WiFi and Android receivers over WiFi or ADB
+- allocate one loopback ADB-forward port and independent session per Android serial
+- prefer Android USB in Auto, use finite recovery, and fall back only to a WiFi install-ID match
 - create or select the display source
 - keep virtual-display geometry in sync with receiver dimensions
 - capture via ScreenCaptureKit
@@ -135,7 +138,11 @@ platform APIs:
 - `DisplayProfile` controls the advertised resolution profile
 
 Android control writes are kept off the UI thread to avoid runtime crashes.
-Android currently has no USB/ADB reverse transport; that remains planned work.
+Android USB deliberately keeps the existing Mac-client/Android-server direction:
+`adb -s <serial> forward tcp:<dynamic-local-port> tcp:9000`. It does not use
+`adb reverse` and does not change the length-prefixed protocol or decoder.
+The implementation and automated multi-session isolation tests are complete;
+physical USB, unplug/replug, and simultaneous-device validation remain open.
 The high-refresh path is experimental and has measured about 109-111 FPS on the
 validated OnePlus 120Hz device, not a guaranteed sustained 120 rendered FPS.
 

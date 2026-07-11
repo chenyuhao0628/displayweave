@@ -14,6 +14,15 @@ private actor RecordingAdbRunner: AndroidAdbProcessRunning {
     }
 }
 
+private actor MissingListenerRunner: AndroidAdbProcessRunning {
+    func run(executable: URL, arguments: [String], timeout: Duration) async throws
+        -> AndroidAdbCommandResult {
+        AndroidAdbCommandResult(stdout: "",
+                                stderr: "adb: error: listener 'tcp:19005' not found",
+                                exitCode: 1)
+    }
+}
+
 private struct SequencePortAllocator: AndroidAdbPortAllocating {
     let ports: [UInt16]
     private let index = LockedIndex()
@@ -36,15 +45,37 @@ private final class LockedIndex: @unchecked Sendable {
     }
 }
 
+private actor MemoryForwardStore: AndroidAdbForwardRecordStoring {
+    private var records: [AndroidAdbForward]
+
+    init(_ records: [AndroidAdbForward] = []) {
+        self.records = records
+    }
+
+    func records() async -> [AndroidAdbForward] { records }
+
+    func upsert(_ mapping: AndroidAdbForward) async {
+        records.removeAll { $0.sessionID == mapping.sessionID }
+        records.append(mapping)
+        records.sort { $0.localPort < $1.localPort }
+    }
+
+    func remove(sessionID: UUID) async {
+        records.removeAll { $0.sessionID == sessionID }
+    }
+}
+
 @main
 struct AndroidAdbForwardSelfTest {
     static func main() async throws {
         let runner = RecordingAdbRunner()
         let client = AndroidAdbClient(executable: URL(fileURLWithPath: "/fake/adb"),
                                       runner: runner)
+        let store = MemoryForwardStore()
         let manager = AndroidAdbForwardManager(
             client: client,
-            portAllocator: SequencePortAllocator(ports: [19001, 19002]))
+            portAllocator: SequencePortAllocator(ports: [19001, 19002]),
+            recordStore: store)
 
         let first = try await manager.create(serial: "A")
         let second = try await manager.create(serial: "B")
@@ -59,6 +90,9 @@ struct AndroidAdbForwardSelfTest {
                 "each Android device should receive an independent local port")
         require(first.remotePort == 9000 && second.remotePort == 9000,
                 "both mappings should target the existing Android receiver port")
+        let persistedAfterCreate = await store.records()
+        require(persistedAfterCreate == [first, second],
+                "owned mappings should remain persisted after installation")
         var calls = await runner.calls
         require(calls[0] == ["-s", "A", "forward", "tcp:19001", "tcp:9000"],
                 "first mapping should be scoped to serial A")
@@ -74,6 +108,57 @@ struct AndroidAdbForwardSelfTest {
         let remaining = await manager.ownedMappings()
         require(remaining == [second],
                 "removing A must leave B owned and active")
+        let persistedAfterRemove = await store.records()
+        require(persistedAfterRemove == [second],
+                "normal cleanup should remove only A from persistent ownership")
+
+        let stale = AndroidAdbForward(sessionID: UUID(), serial: "STALE",
+                                      localPort: 19003, remotePort: 9000)
+        let staleStore = MemoryForwardStore([stale])
+        let staleRunner = RecordingAdbRunner()
+        let staleClient = AndroidAdbClient(executable: URL(fileURLWithPath: "/fake/adb"),
+                                           runner: staleRunner)
+        let staleManager = AndroidAdbForwardManager(
+            client: staleClient,
+            portAllocator: SequencePortAllocator(ports: [19004]),
+            recordStore: staleStore)
+        await staleManager.cleanupPersistedMappings()
+        let staleCalls = await staleRunner.calls
+        require(staleCalls == [["-s", "STALE", "forward", "--remove", "tcp:19003"]],
+                "next launch should remove each persisted mapping exactly")
+        let persistedAfterRecovery = await staleStore.records()
+        require(persistedAfterRecovery.isEmpty,
+                "successfully reclaimed mappings should be removed from persistence")
+        require(!staleCalls.flatMap { $0 }.contains("--remove-all"),
+                "crash recovery must never remove mappings owned by other tools")
+
+        let missing = AndroidAdbForward(sessionID: UUID(), serial: "GONE",
+                                        localPort: 19005, remotePort: 9000)
+        let missingStore = MemoryForwardStore([missing])
+        let missingManager = AndroidAdbForwardManager(
+            client: AndroidAdbClient(executable: URL(fileURLWithPath: "/fake/adb"),
+                                     runner: MissingListenerRunner()),
+            portAllocator: SequencePortAllocator(ports: [19006]),
+            recordStore: missingStore)
+        await missingManager.cleanupPersistedMappings()
+        let missingRecords = await missingStore.records()
+        require(missingRecords.isEmpty,
+                "an already absent exact listener should count as successfully reclaimed")
+
+        let failedStore = MemoryForwardStore()
+        let failedManager = AndroidAdbForwardManager(
+            client: AndroidAdbClient(executable: URL(fileURLWithPath: "/fake/adb"),
+                                     runner: MissingListenerRunner()),
+            portAllocator: SequencePortAllocator(ports: [19007]),
+            recordStore: failedStore)
+        do {
+            _ = try await failedManager.create(serial: "FAIL")
+            fatalError("a failed adb forward command must fail session creation")
+        } catch {
+            let failedRecords = await failedStore.records()
+            require(failedRecords.isEmpty,
+                    "a synchronous install failure should roll back its ownership record")
+        }
 
         print("AndroidAdbForwardSelfTest PASS")
     }

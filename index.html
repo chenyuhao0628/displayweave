@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>DisplayWeave — Local second displays for Mac, iPhone, iPad, and Android</title>
-  <meta name="description" content="DisplayWeave turns iPhone, iPad, and Android devices into local second displays for macOS. Apple supports USB/WiFi; Android supports WiFi with HEVC and experimental high refresh." />
+  <meta name="description" content="DisplayWeave turns iPhone, iPad, and Android devices into local second displays for macOS. Android supports WiFi and experimental ADB-forward USB with HEVC high refresh." />
   <meta name="keywords" content="Android second monitor,iPad external display,iPhone second monitor,macOS virtual display,HEVC,120Hz,open source" />
   <link rel="icon" type="image/png" href="./icon-256.png" />
   <link rel="canonical" href="https://chenyuhao0628.github.io/displayweave/" />
@@ -22,7 +22,7 @@
   <meta property="og:image:alt" content="DisplayWeave — open-source cross-device second displays for macOS." />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="DisplayWeave — One Mac. Every screen." />
-  <meta name="twitter:description" content="Open-source local second displays: Apple receivers over USB/WiFi, Android over WiFi with experimental HEVC high refresh." />
+  <meta name="twitter:description" content="Open-source local second displays: Apple over USB/WiFi; Android over WiFi or experimental ADB-forward USB with HEVC high refresh." />
   <meta name="twitter:image" content="https://chenyuhao0628.github.io/displayweave/og.png" />
   <meta name="twitter:image:alt" content="DisplayWeave — open-source cross-device second displays for macOS." />
 
@@ -34,11 +34,12 @@
     "operatingSystem": "macOS 14+, iPadOS 17+, iOS 17+, Android 8+",
     "applicationCategory": "UtilitiesApplication",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-    "description": "Independent, open-source, local-first second-display platform for macOS with iPhone, iPad, and Android receivers. Apple receivers support USB and WiFi; Android currently supports WiFi with HEVC and experimental high refresh.",
+    "description": "Independent, open-source, local-first second-display platform for macOS with iPhone, iPad, and Android receivers. Apple supports USB and WiFi; Android supports WiFi and experimental ADB-forward USB with HEVC high refresh.",
     "featureList": [
       "True extended display via a virtual monitor (not just mirroring)",
       "Wired USB streaming for iPhone and iPad receivers",
       "Local WiFi discovery for Apple and Android receivers",
+      "Experimental per-device ADB-forward USB transport for Android",
       "Retina / HiDPI (@2x) display matching the device panel",
       "Touch input: tap to click, drag, two-finger scroll",
       "Portrait or landscape virtual display",
@@ -88,7 +89,7 @@
         "name": "Does Android work over USB?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Not yet. Android currently connects over local WiFi. USB via ADB reverse is planned, while iPhone and iPad receivers already support USB through macOS usbmuxd."
+          "text": "The Mac sender implements Android USB with per-device ADB forward mappings and identity-safe Auto/WiFi fallback. Preview 0.1 physical-device, unplug/replug, and multi-device validation is still pending, so Android USB remains experimental. iPhone and iPad use macOS usbmuxd."
         }
       },
       {

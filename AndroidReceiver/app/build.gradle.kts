@@ -4,6 +4,17 @@ plugins {
     id("com.android.application")
 }
 
+val releaseKeystore = providers.environmentVariable("DISPLAYWEAVE_ANDROID_KEYSTORE")
+val releaseStorePassword = providers.environmentVariable("DISPLAYWEAVE_ANDROID_STORE_PASSWORD")
+val releaseKeyAlias = providers.environmentVariable("DISPLAYWEAVE_ANDROID_KEY_ALIAS")
+val releaseKeyPassword = providers.environmentVariable("DISPLAYWEAVE_ANDROID_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseKeystore,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { it.isPresent }
+
 android {
     namespace = "app.opendisplay.android"
     compileSdk = 36
@@ -19,6 +30,23 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("previewRelease") {
+                storeFile = file(releaseKeystore.get())
+                storePassword = releaseStorePassword.get()
+                keyAlias = releaseKeyAlias.get()
+                keyPassword = releaseKeyPassword.get()
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            signingConfigs.findByName("previewRelease")?.let { signingConfig = it }
+        }
     }
 }
 

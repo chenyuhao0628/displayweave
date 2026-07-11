@@ -4,7 +4,8 @@
 
 DisplayWeave 不使用项目运营的云端视频中转，但当前 WiFi TCP 尚未实现
 生产级加密配对，请仅在可信局域网使用。Apple 接收端支持 USB；Android
-当前仅支持 WiFi，USB/ADB reverse 尚未实现。现有下载文件是开发预览：
+已实现通过 ADB forward 的实验性 USB，但尚待真机稳定性验证。Android USB
+调试授权是设备对整台 Mac 的广泛调试信任。现有下载文件是开发预览：
 macOS 仅作 ad-hoc 本地签名且未公证，iOS 仅供 Simulator，Android 为 Debug APK。
 
 DisplayWeave is designed for local use. It captures your Mac display and sends
@@ -14,8 +15,8 @@ frames directly to a receiver on USB or the local network.
 
 - No project-operated relay server is used for screen content.
 - WiFi mode uses local-network discovery and a direct TCP connection.
-- Apple-receiver USB mode uses local `usbmuxd` transport. Android currently
-  uses WiFi only; Android USB/ADB reverse is not implemented.
+- Apple-receiver USB mode uses local `usbmuxd` transport. Android USB uses a
+  loopback-only, per-device `adb forward` mapping to the receiver's TCP port 9000.
 - macOS Screen Recording permission is required for capture.
 - macOS Accessibility permission is required for injected touch and scroll input.
 
@@ -28,6 +29,10 @@ frames directly to a receiver on USB or the local network.
   latency.
 - Android receiver behavior depends on device vendor networking and decoder
   implementations.
+- Enabling Android USB debugging trusts the Mac for broad ADB operations;
+  DisplayWeave never bypasses the Android RSA authorization prompt.
+- ADB is executed by absolute path with an argument array. DisplayWeave removes
+  only mappings it owns and never invokes `adb forward --remove-all`.
 - DisplayWeave does not currently provide signed and notarized release
   packages. Source builds and locally signed artifacts carry the trust of the
   local toolchain and signing identity used to produce them.

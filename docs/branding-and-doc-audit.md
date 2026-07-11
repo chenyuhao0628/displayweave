@@ -1,5 +1,10 @@
 # DisplayWeave Brand and Documentation Audit
 
+> 2026-07-11 更新：本文记录早期审计历史。Android USB 已改为 Mac 端
+> `adb forward` 实现（不是 `adb reverse`），但真机、多设备和耐久验收仍
+> 待完成。当前资源清单与缺失的透明/深色 master 以 `docs/brand-assets.md`
+> 为准；下文“Android WiFi-only/USB planned”属于此前状态，不应作为当前声明。
+
 Audit date: 2026-07-10
 
 ## Second-Round Resolution

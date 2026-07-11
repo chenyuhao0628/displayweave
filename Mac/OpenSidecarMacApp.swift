@@ -275,8 +275,16 @@ final class SenderController: ObservableObject {
         if androidAdbClient?.executable != executable {
             let client = AndroidAdbClient(executable: executable,
                                           runner: FoundationAdbProcessRunner())
+            let manager = AndroidAdbForwardManager(client: client)
+            let hasActiveAndroidSession = sessions.contains {
+                if case .androidAdb = $0.target { return true }
+                return false
+            }
+            if !hasActiveAndroidSession {
+                await manager.cleanupPersistedMappings()
+            }
             androidAdbClient = client
-            androidForwardManager = AndroidAdbForwardManager(client: client)
+            androidForwardManager = manager
         }
         guard let androidAdbClient else { return }
         do {

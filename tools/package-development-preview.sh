@@ -19,6 +19,8 @@ xcodebuild -quiet \
   -configuration Debug \
   -derivedDataPath "$MAC_DERIVED" \
   -clonedSourcePackagesDirPath "$MAC_DERIVED/SourcePackages" \
+  CODE_SIGN_ENTITLEMENTS=Mac/OpenSidecarMacAdHoc.entitlements \
+  CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
   build
 
 xcodebuild -quiet \
