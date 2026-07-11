@@ -38,6 +38,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // Status surfaced to the UI (updated on main thread).
     @MainActor var onStatus: ((String) -> Void)?
     @MainActor var onStats: ((Int, Double) -> Void)?   // framesSent, mbps
+    @MainActor var onBenchmarkStatus: ((String) -> Void)?
     // Fired when a previously connected device stays gone past the grace
     // period — the controller ends the session (capture, virtual display,
     // recording indicator all torn down) instead of dialing forever or
@@ -133,6 +134,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var bytesSent = 0
     private var statsWindowStart = Date()
     private var lastSentFps = 0
+    private var lastCaptureFps = 0
+    private var lastActualBitrateMbps: Double = 0
+
+    private let benchmarkClock = ContinuousClock()
+    private var benchmarkRecorder: BenchmarkRecorder?
+    private var benchmarkStartedAt: ContinuousClock.Instant?
+    private var benchmarkPhasePolicy: BenchmarkPhasePolicy?
+    private var benchmarkRunId: String?
+    private var benchmarkSessionId: String?
+    private var benchmarkScene: BenchmarkScene?
 
     // ScreenCaptureKit emits frames only when content changes. After a
     // reconnect on a static screen there is nothing to hang the forced
@@ -387,10 +398,35 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         encoder = nil
         virtualDisplay = nil   // releasing it removes the display
         queue.async { [weak self] in
+            self?.finishBenchmarkOnQueue(message: "Benchmark stopped with session")
             // Unblock a start() that is still waiting for the hello.
             self?.helloContinuation?.resume(throwing: CancellationError())
             self?.helloContinuation = nil
         }
+    }
+
+    func startBenchmark(scene: BenchmarkScene, duration: BenchmarkDuration) throws {
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("DisplayWeave/Benchmarks", isDirectory: true)
+        let recorder = BenchmarkRecorder(rootURL: root)
+        let runId = UUID().uuidString.lowercased()
+        try recorder.start(runId: runId)
+        queue.sync {
+            finishBenchmarkOnQueue(message: nil)
+            benchmarkRecorder = recorder
+            benchmarkStartedAt = benchmarkClock.now
+            benchmarkPhasePolicy = BenchmarkPhasePolicy(runSeconds: TimeInterval(duration.rawValue))
+            benchmarkRunId = runId
+            benchmarkSessionId = UUID().uuidString.lowercased()
+            benchmarkScene = scene
+        }
+        Task { @MainActor in
+            onBenchmarkStatus?("Warm-up 30s · \(scene.label) · run \(runId)")
+        }
+    }
+
+    func stopBenchmark() {
+        queue.async { [weak self] in self?.finishBenchmarkOnQueue(message: "Benchmark stopped") }
     }
 
     /// Drop the current connection and dial again — fresh TCP through the
@@ -589,6 +625,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 // Liveness + send-side health for the phone's overlay.
                 let elapsed = Date().timeIntervalSince(self.capWindowStart)
                 let capFps = elapsed > 0 ? Int(Double(self.capFrames) / elapsed) : 0
+                self.lastCaptureFps = capFps
+                if let virtualDisplay = self.virtualDisplay {
+                    Task { @MainActor [weak self, weak virtualDisplay] in
+                        guard let self, let virtualDisplay else { return }
+                        let refreshed = virtualDisplay.refreshActualRefreshRate()
+                        self.queue.async { [weak self] in
+                            self?.actualVirtualDisplayRefreshRate = refreshed
+                        }
+                    }
+                }
                 self.capFrames = 0
                 self.capWindowStart = Date()
                 self.logCaptureFpsIfLimited(actualFps: capFps)
@@ -765,8 +811,14 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             // Echo with our clock so the phone can estimate the offset
             // (NTP-style) and compute true end-to-end frame latency.
             if let t = obj["t"] as? Double {
-                let mt = Date().timeIntervalSince1970 * 1000
-                sendJSONFrame("{\"type\":\"pong\",\"t\":\(t),\"mt\":\(mt)}")
+                let received = Date().timeIntervalSince1970 * 1000
+                let sent = Date().timeIntervalSince1970 * 1000
+                if let pong = try? BenchmarkControlPolicy.pongData(
+                    pingTimestamp: t,
+                    macReceivedTimestamp: received,
+                    macSentTimestamp: sent) {
+                    sendJSONFrame(String(decoding: pong, as: UTF8.self))
+                }
             }
         case "stats":
             // Aggregated pipeline health measured on the phone — logged here
@@ -774,6 +826,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             if let json = try? JSONSerialization.data(withJSONObject: obj),
                let line = String(data: json, encoding: .utf8) {
                 Log.info("PHONE-STATS \(line) | mac drops=\(dropsThisWindow) pending=\(pendingSends)")
+            }
+            if let receiver = try? BenchmarkControlPolicy.receiverStats(from: payload) {
+                appendBenchmarkSample(receiver: receiver)
             }
         case "hello":
             if let info = try? JSONDecoder().decode(PhoneInfo.self, from: payload) {
@@ -1162,6 +1217,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             let elapsed = Date().timeIntervalSince(self.statsWindowStart)
             if elapsed >= 1.0 {
                 let mbps = Double(self.bytesSent) * 8 / elapsed / 1_000_000
+                self.lastActualBitrateMbps = mbps
                 let frames = self.framesSent
                 self.lastSentFps = Int((Double(self.framesSent) / elapsed).rounded())
                 self.framesSent = 0
@@ -1176,6 +1232,84 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     private func status(_ text: String) async {
         await MainActor.run { onStatus?(text) }
+    }
+
+    private var activeTransportName: String {
+        switch transport {
+        case .tcp: return "wifi"
+        case .usb: return "apple-usb"
+        case .androidAdb: return "android-adb-usb"
+        }
+    }
+
+    private func appendBenchmarkSample(receiver: ReceiverStats) {
+        guard let recorder = benchmarkRecorder,
+              BenchmarkRecordingGate.shouldAppend(
+                isRecorderActive: recorder.isActive, hasReceiverStats: true),
+              let startedAt = benchmarkStartedAt,
+              let policy = benchmarkPhasePolicy,
+              let runId = benchmarkRunId,
+              let sessionId = benchmarkSessionId,
+              let scene = benchmarkScene else { return }
+        let elapsed = startedAt.duration(to: benchmarkClock.now)
+        let elapsedSeconds = elapsed.components.seconds
+        let phase = policy.phase(elapsedSeconds: TimeInterval(elapsedSeconds))
+        guard phase != .finished else {
+            finishBenchmarkOnQueue(message: "Benchmark completed")
+            return
+        }
+        let sample = BenchmarkSample(
+            timestamp: Date(), monotonicElapsed: elapsed,
+            runId: runId, sessionId: sessionId, scene: scene.rawValue, phase: phase.rawValue,
+            deviceModel: lastHello?.negotiatedDeviceModel ?? receiver.deviceModel ?? "notAvailable",
+            transport: activeTransportName, codec: streamCodec.rawValue,
+            resolution: BenchmarkResolution(width: activeStreamWidth, height: activeStreamHeight),
+            requestedFps: Double(requestedCaptureFps),
+            actualVirtualDisplayRefreshRate: Double(actualVirtualDisplayRefreshRate),
+            captureFps: Double(lastCaptureFps), encodedFps: Double(lastEncodedFps),
+            sentFps: Double(lastSentFps), receiver: receiver,
+            targetBitrateMbps: Double(streamBitrate) / 1_000_000,
+            actualBitrateMbps: lastActualBitrateMbps > 0 ? lastActualBitrateMbps : nil,
+            encodeLatencyMs: lastEncodeLatencyMs, pendingSends: Double(pendingSends),
+            macQueue: Double(pendingSends), macDrops: Double(dropsThisWindow),
+            macCPU: nil, macMemory: Self.residentMemoryMB())
+        do {
+            try recorder.append(sample)
+            Task { @MainActor in
+                onBenchmarkStatus?("\(phase.rawValue) · \(scene.label) · \(runId)")
+            }
+        } catch {
+            finishBenchmarkOnQueue(message: "Benchmark failed: \(error)")
+        }
+    }
+
+    private func finishBenchmarkOnQueue(message: String?) {
+        guard let recorder = benchmarkRecorder else { return }
+        benchmarkRecorder = nil
+        benchmarkStartedAt = nil
+        benchmarkPhasePolicy = nil
+        benchmarkRunId = nil
+        benchmarkSessionId = nil
+        benchmarkScene = nil
+        let result = try? recorder.stop()
+        let finalMessage = message.map { prefix in
+            result.map { "\(prefix) · \($0.csvURL.deletingLastPathComponent().path)" } ?? prefix
+        }
+        if let finalMessage {
+            Task { @MainActor in onBenchmarkStatus?(finalMessage) }
+        }
+    }
+
+    private static func residentMemoryMB() -> Double? {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return nil }
+        return Double(info.resident_size) / 1_048_576
     }
 
 }

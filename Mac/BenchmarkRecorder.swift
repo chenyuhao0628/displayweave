@@ -43,6 +43,10 @@ final class BenchmarkRecorder {
         self.fileManager = fileManager
     }
 
+    var isActive: Bool { queue.sync { active != nil } }
+
+    var activeRunId: String? { queue.sync { active?.runId } }
+
     func start(runId: String) throws {
         try queue.sync {
             guard active == nil else { throw BenchmarkRecorderError.alreadyStarted }

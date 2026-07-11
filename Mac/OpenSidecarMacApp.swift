@@ -127,6 +127,7 @@ final class DeviceSession: ObservableObject, Identifiable {
     @Published var status = "正在启动…"
     @Published var framesSent = 0
     @Published var mbps = 0.0
+    @Published var benchmarkStatus = "Idle"
     // Receiver's per-install identity (from hello) — the key for recognizing
     // the same physical device across USB and WiFi.
     var deviceID: String?
@@ -580,6 +581,9 @@ final class SenderController: ObservableObject {
             session?.framesSent = frames
             session?.mbps = mbps
         }
+        sender.onBenchmarkStatus = { [weak session] status in
+            session?.benchmarkStatus = status
+        }
         sender.onDisconnected = { [weak self, weak session] in
             guard let self, let session else { return }
             if case .androidAdb(let mapping) = session.target {
@@ -604,6 +608,19 @@ final class SenderController: ObservableObject {
                 }
             }
         }
+    }
+
+    func startBenchmark(scene: BenchmarkScene, duration: BenchmarkDuration) {
+        guard sessions.count == 1, let session = sessions.first else { return }
+        do {
+            try session.sender.startBenchmark(scene: scene, duration: duration)
+        } catch {
+            session.benchmarkStatus = "Benchmark failed: \(error.localizedDescription)"
+        }
+    }
+
+    func stopBenchmark() {
+        sessions.first?.sender.stopBenchmark()
     }
 
     private func connectAndroidAdb(serial: String, userInitiated: Bool) {
@@ -898,6 +915,8 @@ final class PermissionMonitor: ObservableObject {
 struct ContentView: View {
     @ObservedObject var controller: SenderController
     @StateObject private var permissions = PermissionMonitor()
+    @State private var benchmarkScene = BenchmarkScene.staticDesktop
+    @State private var benchmarkDuration = BenchmarkDuration.standard
     // Optional so the view still compiles/previews without an updater (e.g.
     // if Sparkle ever fails to start); the button just disables itself then.
     let updater: SPUStandardUpdaterController?
@@ -1041,6 +1060,42 @@ struct ContentView: View {
 
                 Toggle("Debug Stats", isOn: $controller.settings.enableDebugStats)
                     .onChange(of: controller.settings.enableDebugStats) { _, _ in controller.restartAll() }
+
+#if DEBUG
+                DisclosureGroup("Short Benchmark (Experimental)") {
+                    Picker("Scene", selection: $benchmarkScene) {
+                        ForEach(BenchmarkScene.allCases, id: \.self) { scene in
+                            Text(scene.label).tag(scene)
+                        }
+                    }
+                    Picker("Duration", selection: $benchmarkDuration) {
+                        ForEach(BenchmarkDuration.allCases, id: \.self) { duration in
+                            Text(duration.label).tag(duration)
+                        }
+                    }
+                    HStack {
+                        Button("Start (30s warm-up)") {
+                            controller.startBenchmark(
+                                scene: benchmarkScene, duration: benchmarkDuration)
+                        }
+                        .disabled(controller.sessions.count != 1)
+                        Button("Stop") { controller.stopBenchmark() }
+                            .disabled(controller.sessions.isEmpty)
+                    }
+                    if let session = controller.sessions.first {
+                        Text(session.benchmarkStatus)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                    } else {
+                        Text("Connect exactly one receiver before recording.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Development Preview · writes real CSV/JSONL samples only; it does not automate the physical scene.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+#endif
 
                 VStack(alignment: .leading, spacing: 4) {
                     Picker("显示位置", selection: $controller.presentation) {

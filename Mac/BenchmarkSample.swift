@@ -97,7 +97,8 @@ struct BenchmarkSample {
          codec: String, resolution: BenchmarkResolution, requestedFps: Double,
          actualVirtualDisplayRefreshRate: Double?, captureFps: Double?, encodedFps: Double?,
          sentFps: Double?, receiver: ReceiverStats, targetBitrateMbps: Double?,
-         encodeLatencyMs: Double?, pendingSends: Double?, macQueue: Double?,
+         actualBitrateMbps: Double? = nil, encodeLatencyMs: Double?,
+         pendingSends: Double?, macQueue: Double?,
          macDrops: Double?, macCPU: Double?, macMemory: Double?) {
         self.timestamp = timestamp
         self.monotonicElapsed = monotonicElapsed
@@ -119,7 +120,7 @@ struct BenchmarkSample {
         decodedFps = receiver.decodedFps
         renderedFps = receiver.renderedFps
         self.targetBitrateMbps = targetBitrateMbps
-        actualBitrateMbps = receiver.actualBitrateMbps
+        self.actualBitrateMbps = actualBitrateMbps ?? receiver.actualBitrateMbps
         averageFrameSize = receiver.averageFrameSize
         self.encodeLatencyMs = encodeLatencyMs
         sendToRenderEstimatedMs = receiver.sendToRenderEstimatedMs
