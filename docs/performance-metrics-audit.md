@@ -1,4 +1,6 @@
-# DisplayWeave 性能指标覆盖审计
+[English](performance-metrics-audit.md) | [简体中文](performance-metrics-audit.zh-CN.md)
+
+# DisplayWeave Performance Metrics Audit
 
 审计日期：2026-07-11
 依据：`DisplayWeave 下一阶段优化计划（低延迟 + 高刷新率 + 高码率）V1.0`

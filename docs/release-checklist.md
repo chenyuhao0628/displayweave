@@ -1,3 +1,5 @@
+[English](release-checklist.md) | [简体中文](release-checklist.zh-CN.md)
+
 # DisplayWeave Preview 0.1 Release Checklist
 
 审计日期：2026-07-11

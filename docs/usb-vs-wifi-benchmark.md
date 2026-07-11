@@ -1,3 +1,5 @@
+[English](usb-vs-wifi-benchmark.md) | [简体中文](usb-vs-wifi-benchmark.zh-CN.md)
+
 # Android USB vs WiFi Benchmark
 
 状态：**受控对比待执行**。本文按《DisplayWeave 下一阶段优化计划（低延迟 + 高刷新率 + 高码率）》建立测量协议；已有约 11 分钟 USB 观察因内容和配置变化，只作为功能证据，不进入对照结果。

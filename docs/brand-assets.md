@@ -1,3 +1,5 @@
+[English](brand-assets.md) | [简体中文](brand-assets.zh-CN.md)
+
 # DisplayWeave Brand Assets
 
 审计日期：2026-07-11

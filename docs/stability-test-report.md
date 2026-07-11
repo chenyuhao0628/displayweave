@@ -1,3 +1,5 @@
+[English](stability-test-report.md) | [简体中文](stability-test-report.zh-CN.md)
+
 # DisplayWeave Preview 0.1 Stability Test Report
 
 日期：2026-07-11  

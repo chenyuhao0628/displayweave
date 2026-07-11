@@ -1,3 +1,5 @@
+[English](branding-and-doc-audit.md) | [简体中文](branding-and-doc-audit.zh-CN.md)
+
 # DisplayWeave Brand and Documentation Audit
 
 > 2026-07-11 更新：本文记录早期审计历史。Android USB 已改为 Mac 端

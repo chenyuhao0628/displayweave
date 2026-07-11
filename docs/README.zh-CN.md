@@ -1,0 +1,29 @@
+[English](README.md) | [简体中文](README.zh-CN.md)
+
+# DisplayWeave 文档
+
+## 当前用户指南
+
+- [开发预览分发](development-preview.zh-CN.md)
+- [Preview 0.1 / Preview 2 发布说明](release-notes-preview-0.1.zh-CN.md)
+- [发布检查清单](release-checklist.zh-CN.md)
+- [稳定性与真机证据](stability-test-report.zh-CN.md)
+- [性能指标审计](performance-metrics-audit.zh-CN.md)
+- [USB/WiFi Benchmark 规程](usb-vs-wifi-benchmark.zh-CN.md)
+- [路线图与验收](roadmap-and-acceptance.zh-CN.md)
+- [Android 高刷新迁移证据](120hz-migration-plan.zh-CN.md)
+- [品牌资源](brand-assets.zh-CN.md)与[品牌/文档审计](branding-and-doc-audit.zh-CN.md)
+
+根目录指南包括[架构](../ARCHITECTURE.zh-CN.md)、[安全](../SECURITY.zh-CN.md)、[贡献说明](../CONTRIBUTING.zh-CN.md)和 [Android 接收端](../AndroidReceiver/README.zh-CN.md)。
+
+## 历史/内部记录
+
+`docs/superpowers/specs/`、`docs/superpowers/plans/` 及 `android-usb-transport-design.md` 记录设计与实施决策，可以保留原语言，但不能作为唯一的当前用户说明。
+
+## 状态词汇
+
+- **已验证：** 在报告点名的硬件上实际执行。
+- **实验性：** 已实现，但性能或兼容性依赖硬件。
+- **待完成：** 尚未完成，也不会对外宣称已完成。
+
+Preview 2 仍未完成双 Android 并发、同条件 USB/WiFi 受控 Benchmark，以及 30 分钟/2 小时耐久测试。

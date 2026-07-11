@@ -1,3 +1,5 @@
+[English](120hz-migration-plan.md) | [简体中文](120hz-migration-plan.zh-CN.md)
+
 # DisplayWeave Android High-Refresh Migration Record
 
 ## 中文摘要
