@@ -71,6 +71,12 @@ struct TransportSelectionPolicySelfTest {
         check([.forceKeyframe],
               ReconnectHandshakePolicy.actions(hasConfiguredStream: false),
               "an initial connection has no stream config to resend yet")
+        check(false,
+              ReconnectPeerReadinessPolicy.clearsDisconnectGrace(for: .socketReady),
+              "ADB loopback readiness must not prove the Android Receiver is alive")
+        check(true,
+              ReconnectPeerReadinessPolicy.clearsDisconnectGrace(for: .peerMessage),
+              "a protocol message proves the Receiver is alive")
 
         print("TransportSelectionPolicySelfTest PASS")
     }

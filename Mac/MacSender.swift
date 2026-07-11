@@ -450,7 +450,6 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         Log.info("connection ready to \(endpointName)")
         connectionReady = true
         everConnected = true
-        disconnectedSince = nil
         let hasConfiguredStream = encoder != nil
             && activeStreamWidth > 0 && activeStreamHeight > 0
         for action in ReconnectHandshakePolicy.actions(
@@ -753,6 +752,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     private func handleControl(_ payload: Data) {
         lastReceived = Date()
+        if ReconnectPeerReadinessPolicy.clearsDisconnectGrace(for: .peerMessage) {
+            disconnectedSince = nil
+        }
         guard let obj = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
               let type = obj["type"] as? String else {
             Log.info("unparseable control message (\(payload.count) bytes)")

@@ -45,6 +45,17 @@ enum ReconnectHandshakePolicy {
     }
 }
 
+enum ReconnectPeerReadinessEvent: Equatable, Sendable {
+    case socketReady
+    case peerMessage
+}
+
+enum ReconnectPeerReadinessPolicy {
+    static func clearsDisconnectGrace(for event: ReconnectPeerReadinessEvent) -> Bool {
+        event == .peerMessage
+    }
+}
+
 enum AndroidUsbRecoveryState: Equatable, Sendable {
     case connected
     case waiting(attempt: Int, delay: Double)
