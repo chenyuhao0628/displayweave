@@ -24,7 +24,7 @@ export default function App({ initialLocale = "en" }: { initialLocale?: Locale }
     <header className="site-header">
       <a className="skip-link" href="#main">Skip to content</a>
       <div className="shell nav-shell">
-        <a className="brand" href={initialLocale === "zh" ? "zh.html" : "./"}><img src="logo.png" alt="" /><span>DisplayWeave</span></a>
+        <a className="brand" href={initialLocale === "zh" ? "zh.html" : "./"}><img src="icon-256.png" alt="" /><span>DisplayWeave</span></a>
         <nav aria-label="Primary">
           <a href="#status">{c.nav.status}</a><a href="#transport">{c.nav.transport}</a><a href="#evidence">{c.nav.evidence}</a><a href="#trust">{c.nav.trust}</a><a href="#faq">{c.nav.faq}</a>
         </nav>
@@ -51,6 +51,6 @@ export default function App({ initialLocale = "en" }: { initialLocale?: Locale }
       <section className="faq-section" id="faq"><div className="shell faq-layout"><header className="section-heading"><span className="section-label">{c.faq.label}</span><h2>{c.faq.title}</h2></header><div className="faq-list">{c.faq.items.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></div></section>
     </main>
 
-    <footer><div className="shell footer-grid"><div><a className="brand footer-brand" href="./"><img src="logo.png" alt="" /><span>DisplayWeave</span></a><p>{c.footer.line}</p></div><div><a href="docs/">{c.footer.docs}</a><a href="https://github.com/chenyuhao0628/displayweave/issues">{c.footer.issues}</a><a href="https://github.com/chenyuhao0628/displayweave">{c.footer.source}</a></div><span>© 2026 · GPL-3.0</span></div></footer>
+    <footer><div className="shell footer-grid"><div><a className="brand footer-brand" href="./"><img src="icon-256.png" alt="" /><span>DisplayWeave</span></a><p>{c.footer.line}</p></div><div><a href="docs/">{c.footer.docs}</a><a href="https://github.com/chenyuhao0628/displayweave/issues">{c.footer.issues}</a><a href="https://github.com/chenyuhao0628/displayweave">{c.footer.source}</a></div><span>© 2026 · GPL-3.0</span></div></footer>
   </>
 }

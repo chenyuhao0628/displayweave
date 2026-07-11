@@ -1,5 +1,4 @@
-# DisplayWeave — free, open-source Sidecar/Duet alternative
-# Allow all crawlers full access.
+# DisplayWeave Preview 2 — local cross-device second displays
 User-agent: *
 Allow: /
 
