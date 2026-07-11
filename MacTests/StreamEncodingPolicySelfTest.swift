@@ -89,6 +89,12 @@ struct StreamEncodingPolicySelfTest {
                     StreamEncodingPolicy.keyframeInterval(fps: 120),
                     "keyframe interval tracks one second of frames")
         assertEqual(120,
+                    StreamEncodingPolicy.keyframeInterval(fps: 60, transport: .wifi),
+                    "WiFi candidate uses a two-second GOP")
+        assertEqual(120,
+                    StreamEncodingPolicy.keyframeInterval(fps: 120, transport: .usb),
+                    "USB candidate uses a one-second GOP")
+        assertEqual(120,
                     StreamEncodingPolicy.frameDurationTimescale(fps: 120),
                     "frame duration timescale tracks final fps")
 

@@ -69,7 +69,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // frames instead of queueing latency, then force a keyframe to resync.
     // Kept tight: at 60fps each queued send is ~17ms of added latency.
     private var pendingSends = 0
-    private let maxPendingSends = 3
+    private var maxPendingSends: Int { SendQueuePolicy.budget(quality: quality) }
     private var dropsThisWindow = 0
     private var needsKeyframe = true
     private var connectionReady = false
@@ -130,6 +130,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var lastEncodedFps = 0
     private var lastAverageFrameSize = 0
     private var lastEncodeLatencyMs: Double = 0
+    private var keyframesWindow = 0
+    private var keyframeBytesWindow = 0
+    private var peakFrameBytesWindow = 0
 
     private var framesSent = 0
     private var bytesSent = 0
@@ -972,8 +975,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             : kVTProfileLevel_H264_High_AutoLevel
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_ProfileLevel, value: profile)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_MaxKeyFrameInterval,
-                             value: StreamEncodingPolicy.keyframeInterval(fps: finalFps) as CFNumber)
-        VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 1 as CFNumber)
+                             value: StreamEncodingPolicy.keyframeInterval(
+                                fps: finalFps, transport: bitrateTransport) as CFNumber)
+        VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration,
+                             value: (bitrateTransport == .wifi ? 2 : 1) as CFNumber)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: 0 as CFNumber)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_AverageBitRate, value: streamBitrate as CFNumber)
         let bytesPerSecond = max(streamBitrate / 8, 1)
@@ -990,7 +995,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             : nil
         lastAdaptiveDecision = nil
         Task { @MainActor in onTargetBitrate?(Double(streamBitrate) / 1_000_000) }
-        Log.info("encoder ready: \(width)x\(height) \(streamCodec.label) fps=\(finalFps) bitrate=\(streamBitrate / 1_000_000)Mbps keyframeInterval=\(StreamEncodingPolicy.keyframeInterval(fps: finalFps)) quality=\(quality.rawValue) lowLatencyRC=\(lowLatency)")
+        Log.info("encoder ready: \(width)x\(height) \(streamCodec.label) fps=\(finalFps) bitrate=\(streamBitrate / 1_000_000)Mbps keyframeInterval=\(StreamEncodingPolicy.keyframeInterval(fps: finalFps, transport: bitrateTransport)) quality=\(quality.rawValue) lowLatencyRC=\(lowLatency)")
     }
 
     private func createEncoder(width: Int, height: Int, codec: StreamCodec,
@@ -1033,7 +1038,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
         // No receiver, or the socket is backed up: skip this frame entirely.
         guard connectionReady else { return }
-        if pendingSends > maxPendingSends {
+        if SendQueuePolicy.shouldDrop(pendingSends: pendingSends, budget: maxPendingSends) {
             needsKeyframe = true   // dropped frames break the P-frame chain
             dropsThisWindow += 1
             dropsTotal += 1
@@ -1075,7 +1080,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 let sndMs = Int64(Date().timeIntervalSince1970 * 1000)
                 var framed = Data("{\"cap\":\(capturedAtMs),\"snd\":\(sndMs)}".utf8)
                 framed.append(data)
-                self.recordEncodedFrame(bytes: data.count,
+                self.recordEncodedFrame(bytes: data.count, isKeyframe: Self.isKeyframe(buffer),
                                         latencyMs: Date().timeIntervalSince(encodeStart) * 1000)
                 self.sendFramed(framed)
             }
@@ -1097,9 +1102,21 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         needsKeyframe = true
     }
 
-    private func recordEncodedFrame(bytes: Int, latencyMs: Double) {
+    private static func isKeyframe(_ sample: CMSampleBuffer) -> Bool {
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(
+            sample, createIfNecessary: false) as? [[CFString: Any]],
+              let first = attachments.first else { return false }
+        return first[kCMSampleAttachmentKey_NotSync] == nil
+    }
+
+    private func recordEncodedFrame(bytes: Int, isKeyframe: Bool, latencyMs: Double) {
         encodedFramesWindow += 1
         encodedBytesWindow += bytes
+        peakFrameBytesWindow = max(peakFrameBytesWindow, bytes)
+        if isKeyframe {
+            keyframesWindow += 1
+            keyframeBytesWindow += bytes
+        }
         encodeLatencyMsWindow.append(latencyMs)
         let elapsed = Date().timeIntervalSince(encodeStatsWindowStart)
         guard elapsed >= 1 else { return }
@@ -1112,11 +1129,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         lastAverageFrameSize = avgFrame
         lastEncodeLatencyMs = avgLatency
         if settings.enableDebugStats {
-            Log.info("ENC-STATS codec=\(streamCodec.rawValue) encodedFps=\(String(format: "%.1f", fps)) encodeLatencyMs=\(String(format: "%.1f", avgLatency)) bitrate=\(streamBitrate) keyframeInterval=\(StreamEncodingPolicy.keyframeInterval(fps: requestedCaptureFps)) averageFrameSize=\(avgFrame)")
+            let averageKeyframeSize = keyframesWindow > 0 ? keyframeBytesWindow / keyframesWindow : 0
+            Log.info("ENC-STATS codec=\(streamCodec.rawValue) encodedFps=\(String(format: "%.1f", fps)) encodeLatencyMs=\(String(format: "%.1f", avgLatency)) bitrate=\(streamBitrate) keyframeInterval=\(StreamEncodingPolicy.keyframeInterval(fps: requestedCaptureFps, transport: bitrateTransport)) keyframeCount=\(keyframesWindow) averageKeyframeSize=\(averageKeyframeSize) peakFrameSize=\(peakFrameBytesWindow) queueAtWindowEnd=\(pendingSends) averageFrameSize=\(avgFrame)")
         }
         encodedFramesWindow = 0
         encodedBytesWindow = 0
         encodeLatencyMsWindow.removeAll(keepingCapacity: true)
+        keyframesWindow = 0
+        keyframeBytesWindow = 0
+        peakFrameBytesWindow = 0
         encodeStatsWindowStart = Date()
     }
 
