@@ -37,7 +37,9 @@
 
 当前 iPhone 上的旧 OpenDisplay 结果已排除。随后使用 Xcode Personal Team 构建、安装并启动当前 DisplayWeave 0.1.0：Android ADB USB 建立显示 79（3040×1904、HEVC、120 请求/实际刷新率 120、80 Mbps），iPhone WiFi 建立显示 80（1320×2868、H.264、60、23 Mbps，旋转后显示 81）。Android 返回桌面并进入恢复流程期间，iPhone 仍持续回传 WiFi stats，证明两个 session 的 transport、显示和统计相互独立。
 
-物理拔插随后完成两轮验证。拔线后有线 ADB row 与旧 forward 均消失，无线调试 row 不会被当作 USB；Android App WiFi 以同 install ID 建立 HEVC/120 session。首轮插线暴露 WiFi session 未先让位、USB 客户端反复 watchdog 的缺陷；新增 handover policy 与回归测试后重测，日志在 14:30:29 记录 `upgrading same-install-ID session from wifi:DisplayWeave Android`，约 0.33 秒后 USB 收到 hello、建立显示 88 并发送 `transport=usb` 的 HEVC/120 streamConfig。最终仅有一个 `HA2AE8R5 tcp:53341 tcp:9000` forward；iPhone WiFi 显示 86 和 stats 持续。
+物理拔插随后完成多轮验证。拔线后有线 ADB row 与旧 forward 均消失，无线调试 row 不会被当作 USB。首轮插线暴露 WiFi session 未先让位、USB 客户端反复 watchdog 的缺陷；新增 handover policy 与回归测试后重测，日志在 14:30:29 记录 `upgrading same-install-ID session from wifi:DisplayWeave Android`，约 0.33 秒后 USB 收到 hello、建立显示 88 并发送 `transport=usb` 的 HEVC/120 streamConfig。最终仅有一个 `HA2AE8R5 tcp:53341 tcp:9000` forward；iPhone WiFi 显示 86 和 stats 持续。
+
+真正的 USB→WiFi Auto 回退也单独验证：14:33:27 USB socket reset，14:33:37 协议级 10 秒宽限结束，随后执行 0.5/1/2/4/8 秒有限恢复；14:33:53 仅连接同 install ID 的 `wifi:DisplayWeave Android`，建立显示 91 并发送 `transport=wifi` 的 HEVC/120 streamConfig，总恢复约 26 秒。回退完成后 ADB 只剩无线调试 row 且 `forward --list` 为空；iPhone WiFi 显示 90 与 stats 全程持续。
 
 本轮仍不能证明 30 分钟稳定、2 小时耐久、授权取消/重授权、两 Android 并发或 USB 性能优于 WiFi。
 

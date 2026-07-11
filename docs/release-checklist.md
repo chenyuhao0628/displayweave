@@ -65,7 +65,7 @@ Mac ZIP 只能标为本地开发预览。正式公开发行需配置 Developer I
 | Android 返回桌面 / 重开 App 自动恢复 | 单设备真机通过；无需 Mac 切换扩展/镜像 |
 | ADB server 重启恢复 | 单设备真机通过；协议级确认后恢复，未错误回退 WiFi |
 | USB 物理拔插 / mapping 清理 | 单设备真机通过；拔线后有线 row 与旧 forward 消失，插回后新动态端口建立 |
-| Auto 同设备 WiFi 回退基线 / USB 再优先 | 单设备真机通过；Android App WiFi 持续，插线后按 install ID 先结束 WiFi 再建立 USB；iPhone 不受影响 |
+| Auto 同设备 WiFi 回退 / USB 再优先 | 单设备真机通过；USB 断开后 10 秒协议宽限 + 0.5/1/2/4/8 秒有限恢复，约 26 秒切到同 install ID App WiFi；插线后先结束 WiFi 再建立 USB；iPhone 不受影响 |
 | USB 调试授权取消 / 重授权 | 待人工验证 |
 | 50 次连接断开 | 待人工验证 |
 | 10 分钟 Benchmark | 待人工验证 |
