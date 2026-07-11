@@ -65,6 +65,13 @@ struct TransportSelectionPolicySelfTest {
               autoRecovery.reduce(state: .waiting(attempt: 2, delay: 2), event: .cancelled),
               "user cancellation should stop all scheduled recovery")
 
+        check([.sendStreamConfig, .forceKeyframe],
+              ReconnectHandshakePolicy.actions(hasConfiguredStream: true),
+              "a configured stream must resend config before its reconnect keyframe")
+        check([.forceKeyframe],
+              ReconnectHandshakePolicy.actions(hasConfiguredStream: false),
+              "an initial connection has no stream config to resend yet")
+
         print("TransportSelectionPolicySelfTest PASS")
     }
 }

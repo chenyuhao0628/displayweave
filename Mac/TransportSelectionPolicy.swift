@@ -34,6 +34,17 @@ struct TransportSelectionPolicy: Sendable {
     }
 }
 
+enum ReconnectHandshakeAction: Equatable, Sendable {
+    case sendStreamConfig
+    case forceKeyframe
+}
+
+enum ReconnectHandshakePolicy {
+    static func actions(hasConfiguredStream: Bool) -> [ReconnectHandshakeAction] {
+        hasConfiguredStream ? [.sendStreamConfig, .forceKeyframe] : [.forceKeyframe]
+    }
+}
+
 enum AndroidUsbRecoveryState: Equatable, Sendable {
     case connected
     case waiting(attempt: Int, delay: Double)

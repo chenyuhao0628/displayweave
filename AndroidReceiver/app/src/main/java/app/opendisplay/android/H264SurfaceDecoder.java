@@ -4,6 +4,7 @@ import android.media.MediaCodec;
 import android.media.MediaFormat;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.util.Log;
 import android.view.Surface;
 
 import java.io.IOException;
@@ -16,6 +17,7 @@ import app.opendisplay.android.protocol.AnnexB;
 import app.opendisplay.android.protocol.SpsParser;
 
 public final class H264SurfaceDecoder {
+    private static final String LOG_TAG = "DisplayWeaveDecoder";
     private final Surface surface;
     private final Listener listener;
     private MediaCodec codec;
@@ -26,6 +28,7 @@ public final class H264SurfaceDecoder {
     private final Queue<VideoFrameTelemetry> pendingTelemetry = new ArrayDeque<>();
     private final ConcurrentMap<Long, VideoFrameTelemetry> renderedTelemetry = new ConcurrentHashMap<>();
     private HandlerThread renderedCallbackThread;
+    private long lastMissingParameterLogMs;
 
     public interface Listener {
         void onDecoderStatus(String status);
@@ -64,6 +67,13 @@ public final class H264SurfaceDecoder {
         byte[] pps = AnnexB.findNalUnit(payload, streamConfig.ppsNalType(), hevc);
         if (codec == null) {
             if (sps == null) {
+                long now = System.currentTimeMillis();
+                if (now - lastMissingParameterLogMs >= 1000) {
+                    lastMissingParameterLogMs = now;
+                    Log.w(LOG_TAG, "decoder has no SPS; codec=" + streamConfig.codec
+                            + " bytes=" + payload.length
+                            + " nalTypes=" + describeNalTypes(payload, hevc));
+                }
                 listener.onDecoderNeedsKeyframe();
                 return;
             }
@@ -209,5 +219,24 @@ public final class H264SurfaceDecoder {
             }
         }
         return false;
+    }
+
+    private static String describeNalTypes(byte[] payload, boolean hevc) {
+        StringBuilder result = new StringBuilder();
+        int count = 0;
+        for (byte[] unit : AnnexB.nalUnits(payload)) {
+            if (unit.length == 0) {
+                continue;
+            }
+            if (count > 0) {
+                result.append(',');
+            }
+            result.append(hevc ? ((unit[0] >> 1) & 0x3F) : (unit[0] & 0x1F));
+            count++;
+            if (count == 12) {
+                break;
+            }
+        }
+        return result.toString();
     }
 }

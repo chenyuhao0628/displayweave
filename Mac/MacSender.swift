@@ -451,7 +451,17 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         connectionReady = true
         everConnected = true
         disconnectedSince = nil
-        needsKeyframe = true   // new peer needs SPS/PPS + IDR
+        let hasConfiguredStream = encoder != nil
+            && activeStreamWidth > 0 && activeStreamHeight > 0
+        for action in ReconnectHandshakePolicy.actions(
+            hasConfiguredStream: hasConfiguredStream) {
+            switch action {
+            case .sendStreamConfig:
+                sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
+            case .forceKeyframe:
+                needsKeyframe = true   // new peer needs SPS/PPS + IDR
+            }
+        }
         // A reconnect can recreate the phone's video view with no cursor
         // sprite; the sprite is otherwise only sent on shape change, so the
         // cursor would stay invisible until the user hovers something that

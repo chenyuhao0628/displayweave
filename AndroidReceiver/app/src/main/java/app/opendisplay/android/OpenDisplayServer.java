@@ -24,6 +24,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
     private final String installId;
     private final NsdAdvertiser advertiser;
     private final ReceiverTransport transport;
+    private final ReceiverConnectionCoordinator connectionCoordinator;
     private volatile DisplaySpec displaySpec;
     private volatile boolean running;
     private H264SurfaceDecoder decoder;
@@ -54,7 +55,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
     private VideoStreamConfig currentStreamConfig = VideoStreamConfig.DEFAULT;
     private byte[] latestVideoFrame;
     private VideoFrameTelemetry latestVideoFrameTelemetry;
-    private boolean decoderScheduled;
+    private final DecodeWorkerState decodeWorkerState = new DecodeWorkerState();
 
     public interface Listener {
         void onStatus(String status);
@@ -79,6 +80,31 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
         this.transport = transport;
         this.installId = InstallId.get(context);
         this.advertiser = new NsdAdvertiser(context, this);
+        this.connectionCoordinator = new ReceiverConnectionCoordinator(
+                new ReceiverConnectionCoordinator.Actions() {
+                    @Override
+                    public void resetQueuedFrames() {
+                        OpenDisplayServer.this.resetQueuedFrames();
+                    }
+
+                    @Override
+                    public void releaseDecoder() {
+                        H264SurfaceDecoder activeDecoder = decoder;
+                        if (activeDecoder != null) {
+                            activeDecoder.release();
+                        }
+                    }
+
+                    @Override
+                    public void setConnected(boolean connected) {
+                        listener.onConnected(connected);
+                    }
+
+                    @Override
+                    public void stopStreaming() {
+                        listener.onStreaming(false);
+                    }
+                });
     }
 
     public void start(Surface surface) {
@@ -97,8 +123,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
 
             @Override
             public void onConnected(String peer) {
-                resetQueuedFrames();
-                listener.onConnected(true);
+                connectionCoordinator.onConnected();
                 listener.onStatus("Mac 已连接：" + peer);
                 sendHello();
             }
@@ -110,9 +135,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
 
             @Override
             public void onDisconnected() {
-                resetQueuedFrames();
-                listener.onConnected(false);
-                listener.onStreaming(false);
+                connectionCoordinator.onDisconnected();
             }
 
             @Override
@@ -168,8 +191,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
             latestVideoFrame = payload;
             latestVideoFrameTelemetry = telemetry;
             queueDepthAndroid = 1;
-            if (!decoderScheduled) {
-                decoderScheduled = true;
+            if (decodeWorkerState.markFrameAvailable()) {
                 decoderWorker.execute(this::drainLatestVideoFrames);
             }
         }
@@ -186,7 +208,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
                 latestVideoFrameTelemetry = null;
                 queueDepthAndroid = 0;
                 if (frame == null) {
-                    decoderScheduled = false;
+                    decodeWorkerState.markIdle();
                     return;
                 }
             }
@@ -196,7 +218,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
             }
         }
         synchronized (this) {
-            decoderScheduled = false;
+            decodeWorkerState.markIdle();
         }
     }
 
@@ -302,7 +324,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
         latestVideoFrame = null;
         latestVideoFrameTelemetry = null;
         queueDepthAndroid = 0;
-        decoderScheduled = false;
+        decodeWorkerState.markQueueReset();
     }
 
     @Override
