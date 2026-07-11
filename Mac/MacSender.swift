@@ -1270,6 +1270,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             sentFps: Double(lastSentFps), receiver: receiver,
             targetBitrateMbps: Double(streamBitrate) / 1_000_000,
             actualBitrateMbps: lastActualBitrateMbps > 0 ? lastActualBitrateMbps : nil,
+            averageFrameSize: lastAverageFrameSize > 0 ? Double(lastAverageFrameSize) : nil,
             encodeLatencyMs: lastEncodeLatencyMs, pendingSends: Double(pendingSends),
             macQueue: Double(pendingSends), macDrops: Double(dropsThisWindow),
             macCPU: nil, macMemory: Self.residentMemoryMB())

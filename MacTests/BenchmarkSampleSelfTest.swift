@@ -111,6 +111,7 @@ let sample = BenchmarkSample(
     receiver: stats,
     targetBitrateMbps: 20,
     actualBitrateMbps: 18.25,
+    averageFrameSize: 41_234.5,
     encodeLatencyMs: 4.25,
     pendingSends: 1,
     macQueue: 2,
@@ -149,6 +150,7 @@ expect(jsonObject["macMemory"] is NSNull, "nil writes JSON null")
 expect(jsonObject["sendToRenderEstimatedMs"] as? Double == 31.25, "JSONL uses canonical send-to-render field")
 expect(jsonObject["targetBitrateMbps"] as? Double == 20, "target bitrate stays configured")
 expect(jsonObject["actualBitrateMbps"] as? Double == 18.25, "actual bitrate stays measured")
+expect(jsonObject["averageFrameSize"] as? Double == 41_234.5, "local frame size stays measured")
 expect((jsonObject["resolution"] as? [String: Any])?["width"] as? Int == 1920, "JSONL contains resolution")
 expect((jsonObject["timestamp"] as? String)?.hasSuffix("Z") == true, "wall timestamp is ISO8601")
 expect(jsonObject["monotonicElapsedMs"] as? Double == 1234.5, "monotonic elapsed is caller supplied")
