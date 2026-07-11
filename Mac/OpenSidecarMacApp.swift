@@ -127,6 +127,7 @@ final class DeviceSession: ObservableObject, Identifiable {
     @Published var status = "正在启动…"
     @Published var framesSent = 0
     @Published var mbps = 0.0
+    @Published var targetMbps = 0.0
     @Published var benchmarkStatus = "Idle"
     // Receiver's per-install identity (from hello) — the key for recognizing
     // the same physical device across USB and WiFi.
@@ -581,6 +582,9 @@ final class SenderController: ObservableObject {
             session?.framesSent = frames
             session?.mbps = mbps
         }
+        sender.onTargetBitrate = { [weak session] mbps in
+            session?.targetMbps = mbps
+        }
         sender.onBenchmarkStatus = { [weak session] status in
             session?.benchmarkStatus = status
         }
@@ -925,6 +929,13 @@ struct ContentView: View {
     // if Sparkle ever fails to start); the button just disables itself then.
     let updater: SPUStandardUpdaterController?
 
+    private var bitratePresets: [BitratePreset] {
+        let codec: StreamCodec = controller.settings.codecMode == .h264 ? .h264 : .hevc
+        let transport: BitrateTransport = controller.settings.transportMode == .wifi ? .wifi : .usb
+        return StreamEncodingPolicy.availablePresets(
+            mode: controller.settings.bitrateMode, codec: codec, transport: transport)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -1035,6 +1046,41 @@ struct ContentView: View {
                     Text(controller.settings.quality.explanation)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Picker("Bitrate", selection: $controller.settings.bitrateMode) {
+                        ForEach(BitrateMode.allCases, id: \.self) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: controller.settings.bitrateMode) { _, _ in
+                        if let first = bitratePresets.first,
+                           !bitratePresets.contains(controller.settings.bitratePreset) {
+                            controller.settings.bitratePreset = first
+                        }
+                        controller.restartAll()
+                    }
+                    if controller.settings.bitrateMode != .auto {
+                        Picker("Target Bitrate", selection: $controller.settings.bitratePreset) {
+                            ForEach(bitratePresets, id: \.self) { preset in
+                                Text(preset.label).tag(preset)
+                            }
+                        }
+                        .onChange(of: controller.settings.bitratePreset) { _, _ in
+                            controller.restartAll()
+                        }
+                    }
+                    if controller.settings.bitrateMode == .benchmark {
+                        Text("Experimental · May increase latency · May cause queueing · For local benchmark only")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    } else if controller.settings.bitrateMode == .auto {
+                        Text("Target Bitrate adapts to measured queueing, drops, RTT and frame age.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -1272,8 +1318,8 @@ struct SessionRow: View {
                     .lineLimit(2)
             }
             Spacer()
-            if session.mbps > 0 {
-                Text("\(String(format: "%.1f", session.mbps)) Mbit/s")
+            if session.targetMbps > 0 || session.mbps > 0 {
+                Text("Target \(String(format: "%.1f", session.targetMbps)) · Actual \(String(format: "%.1f", session.mbps)) Mbps")
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
             }

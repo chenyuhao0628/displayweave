@@ -90,6 +90,10 @@ struct BenchmarkSample {
     var inputP95Ms: Double?
     var macCPU: Double?
     var macMemory: Double?
+    var previousBitrateMbps: Double?
+    var newBitrateMbps: Double?
+    var bitrateChangeReason: String?
+    var networkState: String?
 
     init(timestamp: Date, monotonicElapsed: ContinuousClock.Duration,
          runId: String, sessionId: String,
@@ -98,6 +102,8 @@ struct BenchmarkSample {
          actualVirtualDisplayRefreshRate: Double?, captureFps: Double?, encodedFps: Double?,
          sentFps: Double?, receiver: ReceiverStats, targetBitrateMbps: Double?,
          actualBitrateMbps: Double? = nil,
+         previousBitrateMbps: Double? = nil, newBitrateMbps: Double? = nil,
+         bitrateChangeReason: String? = nil, networkState: String? = nil,
          averageFrameSize localAverageFrameSize: Double? = nil,
          encodeLatencyMs: Double?,
          pendingSends: Double?, macQueue: Double?,
@@ -123,6 +129,10 @@ struct BenchmarkSample {
         renderedFps = receiver.renderedFps
         self.targetBitrateMbps = targetBitrateMbps
         self.actualBitrateMbps = actualBitrateMbps ?? receiver.actualBitrateMbps
+        self.previousBitrateMbps = previousBitrateMbps
+        self.newBitrateMbps = newBitrateMbps
+        self.bitrateChangeReason = bitrateChangeReason
+        self.networkState = networkState
         averageFrameSize = localAverageFrameSize ?? receiver.averageFrameSize
         self.encodeLatencyMs = encodeLatencyMs
         sendToRenderEstimatedMs = receiver.sendToRenderEstimatedMs
@@ -157,7 +167,8 @@ struct BenchmarkSample {
         "clockState", "frameAgeAvgMs", "frameAgeLatestMs", "frameAgeP50Ms",
         "frameAgeP95Ms", "frameAgeP99Ms", "estimatedE2ELatencyMs", "pendingSends",
         "macQueue", "androidQueue", "macDrops", "androidDrops", "inputP50Ms", "inputP95Ms",
-        "macCPU", "macMemory"
+        "macCPU", "macMemory", "previousBitrateMbps", "newBitrateMbps",
+        "bitrateChangeReason", "networkState"
     ]
 
     var csvFields: [String] {
@@ -173,7 +184,8 @@ struct BenchmarkSample {
          number(frameAgeP95Ms), number(frameAgeP99Ms), number(estimatedE2ELatencyMs),
          number(pendingSends), number(macQueue), number(androidQueue), number(macDrops),
          number(androidDrops), number(inputP50Ms), number(inputP95Ms), number(macCPU),
-         number(macMemory)]
+         number(macMemory), number(previousBitrateMbps), number(newBitrateMbps),
+         bitrateChangeReason ?? Self.notAvailable, networkState ?? Self.notAvailable]
     }
 
     func csv(includeHeader: Bool) -> String {
@@ -211,7 +223,9 @@ struct BenchmarkSample {
             "estimatedE2ELatencyMs": estimatedE2ELatencyMs, "pendingSends": pendingSends,
             "macQueue": macQueue, "androidQueue": androidQueue, "macDrops": macDrops,
             "androidDrops": androidDrops, "inputP50Ms": inputP50Ms, "inputP95Ms": inputP95Ms,
-            "macCPU": macCPU, "macMemory": macMemory
+            "macCPU": macCPU, "macMemory": macMemory,
+            "previousBitrateMbps": previousBitrateMbps, "newBitrateMbps": newBitrateMbps,
+            "bitrateChangeReason": bitrateChangeReason, "networkState": networkState
         ]
         for (key, value) in optional {
             if let number = value as? Double {
