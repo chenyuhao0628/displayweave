@@ -21,6 +21,8 @@ public final class VideoStreamPolicySelfTest {
         testStreamMetricsLatencyFields();
         testMetricDistribution();
         testClockOffsetEstimator();
+        testStatsPublicationWindowBoundary();
+        testMacPingMetricsParsing();
         testCodecFallbackStatus();
         testWifiTransportCarriesFramedPayloads();
         testWifiTransportIgnoresSendAfterStop();
@@ -158,6 +160,20 @@ public final class VideoStreamPolicySelfTest {
         assertEquals(4, estimator.sampleCount());
         assertEquals(11L, estimator.offsetMs());
         assertEquals(1L, estimator.confidenceMs());
+    }
+
+    private static void testStatsPublicationWindowBoundary() {
+        assertFalse(OpenDisplayServer.shouldPublishStats(999));
+        assertTrue(OpenDisplayServer.shouldPublishStats(1000));
+    }
+
+    private static void testMacPingMetricsParsing() {
+        OpenDisplayServer.MacPingMetrics metrics = OpenDisplayServer.MacPingMetrics.parse(
+                "{\"type\":\"ping\",\"inp50\":3.5,\"inputP95Ms\":8.25,\"requestedFps\":120}",
+                0, 0, 60);
+        assertEquals(3.5, metrics.inputP50Ms);
+        assertEquals(8.25, metrics.inputP95Ms);
+        assertEquals(120, metrics.requestedFps);
     }
 
     private static void testWifiTransportCarriesFramedPayloads() {

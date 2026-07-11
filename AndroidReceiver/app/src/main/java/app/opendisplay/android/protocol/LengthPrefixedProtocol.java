@@ -144,7 +144,9 @@ public final class LengthPrefixedProtocol {
         for (Map.Entry<String, Object> entry : values.entrySet()) {
             out.append(",\"").append(escape(entry.getKey())).append("\":");
             Object value = entry.getValue();
-            if (value instanceof Number || value instanceof Boolean) {
+            if (value == null) {
+                out.append("null");
+            } else if (value instanceof Number || value instanceof Boolean) {
                 out.append(value);
             } else {
                 out.append("\"").append(escape(String.valueOf(value))).append("\"");

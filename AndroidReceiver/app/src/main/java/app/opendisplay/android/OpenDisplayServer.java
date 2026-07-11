@@ -31,6 +31,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
     private volatile boolean running;
     private H264SurfaceDecoder decoder;
     private Double clockOffsetMs;
+    private final ClockOffsetEstimator clockEstimator = new ClockOffsetEstimator(8);
     private int renderedFrames;
     private int decodedFrames;
     private int receivedFrames;
@@ -38,6 +39,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
     private int queueDepthAndroid;
     private long latestFrameAgeMsSum;
     private int latestFrameAgeSamples;
+    private MetricDistribution frameAgeDistribution = new MetricDistribution(240);
     private long endToEndLatencyMsSum;
     private int endToEndLatencySamples;
     private long decodeLatencyMsSum;
@@ -45,6 +47,8 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
     private long metricsWindowStartMs;
     private double lastRttMs;
     private double lastInputP50Ms;
+    private double lastInputP95Ms;
+    private int lastMacRequestedFps = 60;
     private int lastMacCaptureFps;
     private int lastMacActualVirtualDisplayRefreshRate = 60;
     private int lastMacEncodedFps;
@@ -272,7 +276,11 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
             String type = object.optString("type", "");
             if ("ping".equals(type)) {
                 double t = object.optDouble("t", 0);
-                lastInputP50Ms = object.optDouble("inp50", lastInputP50Ms);
+                MacPingMetrics macMetrics = MacPingMetrics.parse(
+                        json, lastInputP50Ms, lastInputP95Ms, lastMacRequestedFps);
+                lastInputP50Ms = macMetrics.inputP50Ms;
+                lastInputP95Ms = macMetrics.inputP95Ms;
+                lastMacRequestedFps = macMetrics.requestedFps;
                 lastMacCaptureFps = object.optInt("capFps", lastMacCaptureFps);
                 lastMacActualVirtualDisplayRefreshRate = object.optInt(
                         "actualVirtualDisplayRefreshRate",
@@ -297,6 +305,13 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
                 if (rtt >= 0 && rtt < 2000) {
                     clockOffsetMs = mt - (t1 + t2) / 2.0;
                     lastRttMs = rtt;
+                }
+                if (object.has("mr") && object.has("ms")) {
+                    clockEstimator.addSample(
+                            t1, object.optDouble("mr"), object.optDouble("ms"), t2);
+                    if (clockEstimator.state() == ClockOffsetEstimator.State.STABLE) {
+                        clockOffsetMs = (double) clockEstimator.offsetMs();
+                    }
                 }
             } else if ("cursor".equals(type)) {
                 MacControlMessage cursor = MacControlMessage.parse(json);
@@ -400,8 +415,10 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
         renderedFrames++;
         long now = System.currentTimeMillis();
         if (telemetry != null) {
-            latestFrameAgeMsSum += telemetry.latestFrameAgeMs(now);
+            long frameAgeMs = telemetry.latestFrameAgeMs(now);
+            latestFrameAgeMsSum += frameAgeMs;
             latestFrameAgeSamples++;
+            frameAgeDistribution.add(frameAgeMs);
             long endToEndLatencyMs = telemetry.endToEndLatencyMs(now, clockOffsetMs);
             if (endToEndLatencyMs >= 0) {
                 this.endToEndLatencyMsSum += endToEndLatencyMs;
@@ -414,7 +431,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
             }
         }
         long elapsed = now - metricsWindowStartMs;
-        if (elapsed >= 1000) {
+        if (shouldPublishStats(elapsed)) {
             int renderedFps = (int) Math.round(renderedFrames * 1000.0 / elapsed);
             int decodedFps = (int) Math.round(decodedFrames * 1000.0 / elapsed);
             int receivedFps = (int) Math.round(receivedFrames * 1000.0 / elapsed);
@@ -422,11 +439,14 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
             int latestFrameAgeMs = averageAndResetLatestFrameAge();
             int endToEndLatencyMs = averageAndResetEndToEndLatency();
             int decodeLatencyMs = averageAndResetDecodeLatency();
+            MetricDistribution completedFrameAges = frameAgeDistribution;
+            frameAgeDistribution = new MetricDistribution(240);
             renderedFrames = 0;
             decodedFrames = 0;
             receivedFrames = 0;
             droppedFramesAndroid = 0;
             metricsWindowStartMs = now;
+            float actualAndroidHz = listener.currentDisplayRefreshRate();
             listener.onMetrics(new StreamMetrics(
                     receivedFps,
                     renderedFps,
@@ -439,7 +459,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
                     currentStreamConfig.bitrate,
                     dropped,
                     queueDepthAndroid,
-                    listener.currentDisplayRefreshRate(),
+                    actualAndroidHz,
                     latestFrameAgeMs,
                     endToEndLatencyMs,
                     decodeLatencyMs,
@@ -451,6 +471,92 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
                     lastMacQueueDepth,
                     lastMacDroppedFrames,
                     lastMacTransport));
+            boolean stableClock = clockEstimator.state() == ClockOffsetEstimator.State.STABLE;
+            DisplaySpec spec = displaySpec;
+            ReceiverStatsSnapshot snapshot = new ReceiverStatsSnapshot(
+                    now,
+                    spec == null ? "" : spec.deviceModel,
+                    lastMacTransport,
+                    currentStreamConfig.codec,
+                    currentStreamConfig.width,
+                    currentStreamConfig.height,
+                    lastMacRequestedFps,
+                    actualAndroidHz,
+                    receivedFps,
+                    decodedFps,
+                    renderedFps,
+                    lastRttMs,
+                    stableClock ? (double) clockEstimator.offsetMs() : null,
+                    stableClock ? (double) clockEstimator.confidenceMs() : null,
+                    stableClock ? lastRttMs : null,
+                    stableClock ? "stable" : "estimating",
+                    completedFrameAges.size() == 0 ? null : (double) latestFrameAgeMs,
+                    missingAsNull(completedFrameAges.latest()),
+                    missingAsNull(completedFrameAges.p50()),
+                    missingAsNull(completedFrameAges.p95()),
+                    missingAsNull(completedFrameAges.p99()),
+                    stableClock && endToEndLatencyMs > 0 ? (double) endToEndLatencyMs : null,
+                    stableClock && decodeLatencyMs > 0 ? (double) decodeLatencyMs : null,
+                    queueDepthAndroid,
+                    dropped,
+                    lastInputP50Ms > 0 ? lastInputP50Ms : null,
+                    lastInputP95Ms > 0 ? lastInputP95Ms : null);
+            sendJson(snapshot.toJson());
+        }
+    }
+
+    static boolean shouldPublishStats(long elapsedMs) {
+        return elapsedMs >= 1000;
+    }
+
+    private static Long missingAsNull(long value) {
+        return value == MetricDistribution.MISSING_MS ? null : value;
+    }
+
+    static final class MacPingMetrics {
+        final double inputP50Ms;
+        final double inputP95Ms;
+        final int requestedFps;
+
+        MacPingMetrics(double inputP50Ms, double inputP95Ms, int requestedFps) {
+            this.inputP50Ms = inputP50Ms;
+            this.inputP95Ms = inputP95Ms;
+            this.requestedFps = requestedFps;
+        }
+
+        static MacPingMetrics parse(String json, double previousP50,
+                                    double previousP95, int previousRequestedFps) {
+            double p50 = number(json, "inputP50Ms", number(json, "inp50", previousP50));
+            double p95 = number(json, "inputP95Ms", number(json, "inp95", previousP95));
+            int requestedFps = (int) Math.round(number(
+                    json, "requestedFps", previousRequestedFps));
+            return new MacPingMetrics(p50, p95, requestedFps);
+        }
+
+        private static double number(String json, String field, double fallback) {
+            String key = "\"" + field + "\":";
+            int start = json.indexOf(key);
+            if (start < 0) {
+                return fallback;
+            }
+            start += key.length();
+            while (start < json.length() && Character.isWhitespace(json.charAt(start))) {
+                start++;
+            }
+            int end = start;
+            while (end < json.length()) {
+                char c = json.charAt(end);
+                if ((c < '0' || c > '9') && c != '-' && c != '+' && c != '.'
+                        && c != 'e' && c != 'E') {
+                    break;
+                }
+                end++;
+            }
+            try {
+                return end == start ? fallback : Double.parseDouble(json.substring(start, end));
+            } catch (NumberFormatException ignored) {
+                return fallback;
+            }
         }
     }
 

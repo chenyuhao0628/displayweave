@@ -534,8 +534,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         if (lastMetrics.renderedFps > 0) {
             value.append(" · 渲 ").append(lastMetrics.renderedFps).append(" FPS");
         }
-        if (requestedSurfaceRefreshRate > 0) {
-            value.append(" · 屏幕 ").append(Math.round(requestedSurfaceRefreshRate)).append("Hz");
+        if (lastMetrics.androidDisplayRefreshRate > 0) {
+            value.append(" · 屏幕实际 ")
+                    .append(Math.round(lastMetrics.androidDisplayRefreshRate)).append("Hz");
         }
         if (lastMetrics.droppedFramesAndroid > 0) {
             value.append(" · Android丢 ").append(lastMetrics.droppedFramesAndroid);
