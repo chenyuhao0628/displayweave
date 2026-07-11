@@ -48,6 +48,10 @@ public final class ClockOffsetEstimator {
         return samples.size();
     }
 
+    public synchronized void reset() {
+        samples.clear();
+    }
+
     public synchronized State state() {
         return samples.size() >= MIN_STABLE_SAMPLES ? State.STABLE : State.ESTIMATING;
     }

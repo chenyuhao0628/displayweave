@@ -166,6 +166,11 @@ public final class VideoStreamPolicySelfTest {
         estimating.addSample(2000, 2014, 2016, 2008);
         estimating.addSample(3000, 3014, 3016, 3010);
         assertEquals(11.0, OpenDisplayServer.stableOffsetOrNull(estimating));
+        estimating.reset();
+        assertEquals(0, estimating.sampleCount());
+        assertEquals(ClockOffsetEstimator.State.ESTIMATING, estimating.state());
+        assertEquals(ClockOffsetEstimator.MISSING_MS, estimating.offsetMs());
+        assertEquals(null, OpenDisplayServer.stableOffsetOrNull(estimating));
     }
 
     private static void testStatsPublicationWindowBoundary() {

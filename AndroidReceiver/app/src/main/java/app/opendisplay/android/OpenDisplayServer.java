@@ -144,6 +144,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
 
             @Override
             public void onConnected(String peer) {
+                resetClockSynchronization();
                 connectionCoordinator.onConnected();
                 listener.onStatus("Mac 已连接：" + peer);
                 sendHello();
@@ -156,6 +157,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
 
             @Override
             public void onDisconnected() {
+                resetClockSynchronization();
                 connectionCoordinator.onDisconnected();
             }
 
@@ -366,6 +368,12 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
 
     private void sendPingIfConnected() {
         sendJson(LengthPrefixedProtocol.pingJson(LengthPrefixedProtocol.nowMs()));
+    }
+
+    private synchronized void resetClockSynchronization() {
+        clockEstimator.reset();
+        clockOffsetMs = null;
+        lastRttMs = 0;
     }
 
     private void sendJson(String json) {
