@@ -19,6 +19,8 @@ public final class VideoStreamPolicySelfTest {
         testFrameClassifier();
         testFrameTelemetry();
         testStreamMetricsLatencyFields();
+        testMetricDistribution();
+        testClockOffsetEstimator();
         testCodecFallbackStatus();
         testWifiTransportCarriesFramedPayloads();
         testWifiTransportIgnoresSendAfterStop();
@@ -111,6 +113,51 @@ public final class VideoStreamPolicySelfTest {
         assertEquals("HEVC 不可用，已请求回退 H.264",
                 CodecFallbackStatus.messageForCodecFailure("hevc"));
         assertEquals(null, CodecFallbackStatus.messageForCodecFailure("h264"));
+    }
+
+    private static void testMetricDistribution() {
+        MetricDistribution distribution = new MetricDistribution(4);
+        assertEquals(MetricDistribution.MISSING_MS, distribution.latest());
+        assertEquals(MetricDistribution.MISSING_MS, distribution.p50());
+        assertEquals(MetricDistribution.MISSING_MS, distribution.p95());
+        assertEquals(MetricDistribution.MISSING_MS, distribution.p99());
+
+        distribution.add(40);
+        distribution.add(10);
+        distribution.add(30);
+        distribution.add(20);
+        assertEquals(20L, distribution.latest());
+        assertEquals(20L, distribution.p50());
+        assertEquals(40L, distribution.p95());
+        assertEquals(40L, distribution.p99());
+
+        distribution.add(5);
+        assertEquals(4, distribution.size());
+        assertEquals(5L, distribution.latest());
+        assertEquals(10L, distribution.p50());
+        assertEquals(30L, distribution.p95());
+    }
+
+    private static void testClockOffsetEstimator() {
+        ClockOffsetEstimator estimator = new ClockOffsetEstimator(4);
+        assertEquals(ClockOffsetEstimator.State.ESTIMATING, estimator.state());
+        assertFalse(estimator.addSample(0, 300, 300, 300));
+        assertFalse(estimator.addSample(300, 0, 0, 0));
+        assertEquals(0, estimator.sampleCount());
+
+        assertTrue(estimator.addSample(1000, 1012, 1014, 1006)); // offset 10, RTT 4
+        assertTrue(estimator.addSample(2000, 2014, 2016, 2008)); // offset 11, RTT 6
+        assertEquals(ClockOffsetEstimator.State.ESTIMATING, estimator.state());
+        assertTrue(estimator.addSample(3000, 3014, 3016, 3010)); // offset 10, RTT 8
+        assertEquals(ClockOffsetEstimator.State.STABLE, estimator.state());
+        assertEquals(10L, estimator.offsetMs());
+        assertEquals(1L, estimator.confidenceMs());
+
+        assertTrue(estimator.addSample(4000, 4102, 4104, 4200)); // offset 1, RTT 198
+        assertTrue(estimator.addSample(5000, 5022, 5024, 5020)); // offset 11, RTT 18; evicts first
+        assertEquals(4, estimator.sampleCount());
+        assertEquals(10L, estimator.offsetMs());
+        assertEquals(1L, estimator.confidenceMs());
     }
 
     private static void testWifiTransportCarriesFramedPayloads() {
