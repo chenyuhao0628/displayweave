@@ -169,6 +169,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_NEARBY_WIFI && hasNearbyWifiPermission()) {
+            if (server != null) {
+                server.enableWifiAdvertising();
+            }
             receiverLifecycle.reevaluate();
         } else if (requestCode == REQUEST_NEARBY_WIFI) {
             setStatus("需要附近设备权限才能在 WiFi 中被 Mac 发现");
@@ -396,12 +399,14 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         if (activeSurface == null) {
             return false;
         }
-        if (!hasNearbyWifiPermission()) {
-            setStatus("正在等待附近设备权限…");
-            return false;
-        }
-        server = new OpenDisplayServer(MainActivity.this, currentDisplaySpec(), MainActivity.this);
+        boolean advertiseWifi = ReceiverPermissionPolicy.shouldAdvertiseWifi(
+                hasNearbyWifiPermission());
+        server = new OpenDisplayServer(MainActivity.this, currentDisplaySpec(),
+                MainActivity.this, advertiseWifi);
         server.start(activeSurface.getSurface());
+        if (!advertiseWifi) {
+            setStatus("USB 已就绪；授予附近设备权限后可使用 WiFi 发现");
+        }
         return true;
     }
 

@@ -25,6 +25,8 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
     private final NsdAdvertiser advertiser;
     private final ReceiverTransport transport;
     private final ReceiverConnectionCoordinator connectionCoordinator;
+    private volatile boolean wifiAdvertisingEnabled;
+    private volatile int listeningPort;
     private volatile DisplaySpec displaySpec;
     private volatile boolean running;
     private H264SurfaceDecoder decoder;
@@ -70,16 +72,28 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
     }
 
     public OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener) {
-        this(context, displaySpec, listener, new WifiTcpReceiverTransport(PORT));
+        this(context, displaySpec, listener, new WifiTcpReceiverTransport(PORT), true);
+    }
+
+    public OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener,
+                             boolean wifiAdvertisingEnabled) {
+        this(context, displaySpec, listener, new WifiTcpReceiverTransport(PORT),
+                wifiAdvertisingEnabled);
     }
 
     OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener,
                       ReceiverTransport transport) {
+        this(context, displaySpec, listener, transport, true);
+    }
+
+    OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener,
+                      ReceiverTransport transport, boolean wifiAdvertisingEnabled) {
         this.displaySpec = displaySpec;
         this.listener = listener;
         this.transport = transport;
         this.installId = InstallId.get(context);
         this.advertiser = new NsdAdvertiser(context, this);
+        this.wifiAdvertisingEnabled = wifiAdvertisingEnabled;
         this.connectionCoordinator = new ReceiverConnectionCoordinator(
                 new ReceiverConnectionCoordinator.Actions() {
                     @Override
@@ -117,7 +131,10 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
         transport.start(new ReceiverTransport.Listener() {
             @Override
             public void onListening(int port) {
-                advertiser.start("DisplayWeave Android", installId, port);
+                listeningPort = port;
+                if (wifiAdvertisingEnabled) {
+                    startWifiAdvertising(port);
+                }
                 listener.onStatus("正在监听 :" + port + " / " + transport.name());
             }
 
@@ -148,6 +165,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
 
     public void stop() {
         running = false;
+        listeningPort = 0;
         advertiser.stop();
         transport.stop();
         resetQueuedFrames();
@@ -161,6 +179,24 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
     public void updateDisplay(DisplaySpec spec) {
         displaySpec = spec;
         sendHello();
+    }
+
+    public synchronized void enableWifiAdvertising() {
+        if (wifiAdvertisingEnabled) {
+            return;
+        }
+        wifiAdvertisingEnabled = true;
+        if (running && listeningPort > 0) {
+            startWifiAdvertising(listeningPort);
+        }
+    }
+
+    private void startWifiAdvertising(int port) {
+        try {
+            advertiser.start("DisplayWeave Android", installId, port);
+        } catch (SecurityException error) {
+            listener.onStatus("WiFi 广播等待附近设备权限；USB 仍可使用");
+        }
     }
 
     public void sendTouch(String phase, double x, double y) {

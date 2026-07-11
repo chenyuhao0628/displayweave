@@ -30,6 +30,13 @@ public final class ReceiverLifecycleSelfTest {
     }
 
     public static void main(String[] args) {
+        require(ReceiverPermissionPolicy.canStartTcpServer(false),
+                "USB TCP server must not depend on nearby-WiFi permission");
+        require(!ReceiverPermissionPolicy.shouldAdvertiseWifi(false),
+                "NSD advertising must wait for nearby-WiFi permission");
+        require(ReceiverPermissionPolicy.shouldAdvertiseWifi(true),
+                "NSD advertising may start after nearby-WiFi permission is granted");
+
         RecordingActions blockedActions = new RecordingActions();
         blockedActions.allowStart = false;
         ReceiverLifecycleCoordinator blocked =
