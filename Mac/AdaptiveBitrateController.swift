@@ -153,8 +153,12 @@ final class AdaptiveBitrateController {
             && metrics.sentFps.isFinite
             && metrics.encodedFps > 0
             && metrics.sentFps >= 0
-            && (metrics.rttMs?.isFinite ?? true)
-            && (metrics.frameAgeP95Ms?.isFinite ?? true)
+            && metrics.pendingSends >= 0
+            && metrics.macDrops >= 0
+            && metrics.androidDrops >= 0
+            && metrics.androidQueueDepth >= 0
+            && (metrics.rttMs.map { $0.isFinite && $0 >= 0 } ?? true)
+            && (metrics.frameAgeP95Ms.map { $0.isFinite && $0 >= 0 } ?? true)
     }
 
     private var stableReason: String {

@@ -110,6 +110,10 @@ struct AdaptiveBitrateControllerSelfTest {
                "NaN FPS is ignored")
         expect(unhealthy.evaluate(metrics(8, rtt: .infinity), mode: .auto) == nil,
                "nonfinite optional metrics are ignored")
+        expect(unhealthy.evaluate(metrics(9, rtt: -1, age: -1, androidQueue: -1), mode: .auto) == nil,
+               "negative latency and queue metrics are ignored")
+        expect(unhealthy.evaluate(metrics(15, rtt: -1, age: -1, androidQueue: -1), mode: .auto) == nil,
+               "negative metrics never form a stable increase window")
 
         let rollback = AdaptiveBitrateController(
             initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
