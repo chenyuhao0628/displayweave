@@ -46,7 +46,7 @@ Each run is written under:
 `~/Library/Application Support/DisplayWeave/Benchmarks/<run-id>/`
 
 - `benchmark.csv`: RFC 4180 fields, CRLF records, `notAvailable` for unavailable values.
-- `benchmark.jsonl`: one JSON object per sample, `null` for unavailable values.
+- `benchmark.jsonl`: one JSON object per sample; unavailable optional numeric metrics use `null`, while required metadata uses an explicit fallback such as `notAvailable`.
 
 Both files identify `runId`, `sessionId`, `scene`, `phase`, wall `timestamp`, and monotonic elapsed milliseconds. The schema records:
 
@@ -59,10 +59,10 @@ Both files identify `runId`, `sessionId`, `scene`, `phase`, wall `timestamp`, an
 - pending sends, Mac and Android queue depth and drops;
 - input P50/P95, Mac CPU, and Mac memory.
 
-An unavailable producer is not zero. CSV uses `notAvailable`; JSONL uses `null`. Mac CPU currently remains unavailable because the recorder does not yet have a trustworthy interval sampler. A stopped run retains the samples already flushed. A flush failure is shown with its output path and must be treated as failed evidence.
+An unavailable producer is not zero. CSV uses `notAvailable`; optional JSONL metrics use `null`, and required metadata uses an explicit fallback string. Mac CPU currently remains unavailable because the recorder does not yet have a trustworthy interval sampler. A stopped run retains the samples already flushed. A flush failure is shown with its output path and must be treated as failed evidence.
 
 ## Comparing runs
 
-Use medians and P95 values across matched runs, not one favorable instant. Compare average/1%-low rendered FPS, frame-age distribution, RTT distribution, queue occupancy, classified drops, keyframe events, and visual stability. Target bitrate and actual bitrate are separate columns. Higher bitrate is a quality variable, not evidence of lower latency.
+Use medians and P95 values across matched runs, not one favorable instant. The current files support rendered FPS, frame-age distribution, RTT, queue snapshots, and aggregate Mac/Android drops. Target bitrate and actual bitrate are separate columns. Higher bitrate is a quality variable, not evidence of lower latency. Classified drop causes, keyframe events, 1%-low aggregation, and visual stability are not yet recorder fields; calculate or annotate them separately and mark unavailable when they were not observed.
 
 The physical 3-minute USB/WiFi A/B matrix is still pending until it is run on the available device. The presence of the recorder is not a benchmark result.

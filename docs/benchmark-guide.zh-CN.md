@@ -46,7 +46,7 @@ DisplayWeave 的 Debug-only Short Benchmark 只记录 Sender 与 Receiver 的真
 `~/Library/Application Support/DisplayWeave/Benchmarks/<run-id>/`
 
 - `benchmark.csv`：RFC 4180 字段、CRLF 行结束；不可用值写 `notAvailable`。
-- `benchmark.jsonl`：每个样本一个 JSON object；不可用值写 `null`。
+- `benchmark.jsonl`：每个样本一个 JSON object；不可用的可选数值指标写 `null`，必填 metadata 使用 `notAvailable` 等明确 fallback。
 
 两种文件都包含 `runId`、`sessionId`、`scene`、`phase`、wall `timestamp` 和 monotonic elapsed milliseconds。Schema 记录：
 
@@ -59,10 +59,10 @@ DisplayWeave 的 Debug-only Short Benchmark 只记录 Sender 与 Receiver 的真
 - pending sends、Mac/Android queue depth 和 drops；
 - input P50/P95、Mac CPU、Mac memory。
 
-Producer 不可用不等于零：CSV 使用 `notAvailable`，JSONL 使用 `null`。由于尚无可信的区间采样器，Mac CPU 当前保持不可用。停止的 run 保留已经 flush 的样本；flush 失败会连同输出路径显示，必须视为失败证据。
+Producer 不可用不等于零：CSV 使用 `notAvailable`；JSONL 的可选指标使用 `null`，必填 metadata 使用明确的 fallback 字符串。由于尚无可信的区间采样器，Mac CPU 当前保持不可用。停止的 run 保留已经 flush 的样本；flush 失败会连同输出路径显示，必须视为失败证据。
 
 ## 对比方法
 
-使用匹配 run 的 median 和 P95，不挑选单个有利瞬间。对比平均/1% low rendered FPS、Frame Age 分布、RTT 分布、队列占用、分类 drops、关键帧事件与视觉稳定性。Target Bitrate 与 Actual Bitrate 必须分列。更高码率是画质变量，不是更低延迟的证据。
+使用匹配 run 的 median 和 P95，不挑选单个有利瞬间。当前文件可对比 rendered FPS、Frame Age 分布、RTT、队列快照和 Mac/Android aggregate drops。Target Bitrate 与 Actual Bitrate 必须分列；更高码率是画质变量，不是更低延迟的证据。分类 drop 原因、关键帧事件、1% low 聚合和视觉稳定性尚不是 recorder 字段，应另行计算或人工标注；未观察时必须写不可用。
 
 现有设备上的 3 分钟 USB/WiFi A/B 矩阵仍待真实执行。Recorder 已存在不代表 Benchmark 已完成。
