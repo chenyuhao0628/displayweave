@@ -43,7 +43,11 @@ struct AdaptiveBitrateControllerSelfTest {
         expect(deficit?.reason == "send-deficit", "sent/encoded deficit decreases")
         let drop = controller.evaluate(metrics(16, macDrops: 1), mode: .auto)
         expect(drop?.reason == "mac-drops", "new Mac drops decrease")
-        let queue = controller.evaluate(metrics(18, androidQueue: 2), mode: .auto)
+        let receiverQueue = AdaptiveBitrateController(
+            initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
+        expect(receiverQueue.evaluate(metrics(18, androidQueue: 2), mode: .auto) == nil,
+               "one receiver queue spike is not sustained congestion")
+        let queue = receiverQueue.evaluate(metrics(19, androidQueue: 2), mode: .auto)
         expect(queue?.reason == "android-queue", "receiver queue decreases")
         let trends = AdaptiveBitrateController(
             initialBitrate: 80_000_000, bounds: 20_000_000...100_000_000)
@@ -84,13 +88,37 @@ struct AdaptiveBitrateControllerSelfTest {
         _ = cooldown.evaluate(metrics(1), mode: .auto)
         expect(cooldown.evaluate(metrics(3), mode: .auto) == nil,
                "independent cooldown blocks an otherwise stable increase")
-        expect(cooldown.evaluate(metrics(5), mode: .auto)?.networkState == .recovering,
+        let cooldownDecision = cooldown.evaluate(metrics(5), mode: .auto)
+        expect(cooldownDecision?.networkState == .recovering,
                "increase resumes when independent cooldown expires")
+        expect(cooldownDecision?.reason == "stable-2s", "reason reflects configured stable window")
+        expect(cooldown.evaluate(metrics(5), mode: .auto) == nil,
+               "same timestamp cannot emit a duplicate decision")
 
         let firstTrend = AdaptiveBitrateController(
             initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
         expect(firstTrend.evaluate(metrics(0, rtt: 200, age: 200), mode: .auto) == nil,
                "first trend sample establishes a baseline")
+
+        let unhealthy = AdaptiveBitrateController(
+            initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
+        expect(unhealthy.evaluate(metrics(0, encoded: 0, sent: 0), mode: .auto) == nil,
+               "zero FPS is not normal")
+        expect(unhealthy.evaluate(metrics(6, encoded: 0, sent: 0), mode: .auto) == nil,
+               "zero FPS never increases bitrate")
+        expect(unhealthy.evaluate(metrics(7, encoded: .nan, sent: 60), mode: .auto) == nil,
+               "NaN FPS is ignored")
+        expect(unhealthy.evaluate(metrics(8, rtt: .infinity), mode: .auto) == nil,
+               "nonfinite optional metrics are ignored")
+
+        let rollback = AdaptiveBitrateController(
+            initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
+        _ = rollback.evaluate(metrics(100), mode: .auto)
+        expect(rollback.evaluate(metrics(10), mode: .auto) == nil,
+               "timestamp rollback resets the temporal baseline")
+        _ = rollback.evaluate(metrics(11), mode: .auto)
+        expect(rollback.evaluate(metrics(16), mode: .auto) != nil,
+               "controller recovers after a new monotonic epoch")
 
         let fixed = AdaptiveBitrateController(
             initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)

@@ -34,6 +34,7 @@ final class AdaptiveBitrateController {
     private var normalSince: TimeInterval?
     private var lastChangeAt = -Double.greatestFiniteMagnitude
     private var hasCongested = false
+    private var consecutiveReceiverQueueWindows = 0
 
     init(initialBitrate: Int, bounds: ClosedRange<Int>,
          decreaseHoldSeconds: TimeInterval = 1,
@@ -48,22 +49,43 @@ final class AdaptiveBitrateController {
 
     func evaluate(_ metrics: AdaptiveBitrateMetrics,
                   mode: BitrateMode) -> AdaptiveBitrateDecision? {
+        guard metrics.timestamp.isFinite else {
+            resetTemporalBaseline()
+            return nil
+        }
+        if let previousMetrics, metrics.timestamp < previousMetrics.timestamp {
+            resetTemporalBaseline()
+            self.previousMetrics = metrics
+            return nil
+        }
+        guard valid(metrics) else {
+            resetTemporalBaseline(keepLastChange: true)
+            return nil
+        }
         guard mode == .auto else {
             previousMetrics = metrics
             normalSince = nil
+            consecutiveReceiverQueueWindows = 0
             return nil
+        }
+
+        if metrics.androidQueueDepth >= 2 {
+            consecutiveReceiverQueueWindows += 1
+        } else {
+            consecutiveReceiverQueueWindows = 0
         }
 
         if let reason = congestionReason(metrics),
            metrics.timestamp - lastChangeAt >= decreaseHoldSeconds {
             let previous = currentBitrate
-            currentBitrate = Self.clamp(
+            let decreased = Self.clamp(
                 Int((Double(previous) * 0.80).rounded()), to: bounds)
-            lastChangeAt = metrics.timestamp
-            hasCongested = true
             normalSince = nil
             previousMetrics = metrics
-            guard currentBitrate != previous else { return nil }
+            guard decreased != previous else { return nil }
+            currentBitrate = decreased
+            lastChangeAt = metrics.timestamp
+            hasCongested = true
             return AdaptiveBitrateDecision(
                 previousBitrate: previous, newBitrate: currentBitrate,
                 reason: reason, networkState: .congested)
@@ -85,7 +107,7 @@ final class AdaptiveBitrateController {
                 hasCongested = false
                 return AdaptiveBitrateDecision(
                     previousBitrate: previous, newBitrate: currentBitrate,
-                    reason: "stable-5s", networkState: state)
+                    reason: stableReason, networkState: state)
             }
         } else {
             normalSince = nil
@@ -98,7 +120,7 @@ final class AdaptiveBitrateController {
         if metrics.pendingSends >= 2 { return "pending-sends" }
         if metrics.macDrops > 0 { return "mac-drops" }
         if metrics.androidDrops > 0 { return "android-drops" }
-        if metrics.androidQueueDepth >= 2 { return "android-queue" }
+        if consecutiveReceiverQueueWindows >= 2 { return "android-queue" }
         if metrics.encodedFps > 0, metrics.sentFps / metrics.encodedFps < 0.85 {
             return "send-deficit"
         }
@@ -116,12 +138,37 @@ final class AdaptiveBitrateController {
     }
 
     private func isNormal(_ metrics: AdaptiveBitrateMetrics) -> Bool {
-        metrics.pendingSends == 0
+        metrics.encodedFps > 0
+            && metrics.sentFps >= 0
+            && metrics.pendingSends == 0
             && metrics.macDrops == 0
             && metrics.androidDrops == 0
             && metrics.androidQueueDepth <= 1
-            && (metrics.encodedFps <= 0 || metrics.sentFps / metrics.encodedFps >= 0.95)
+            && metrics.sentFps / metrics.encodedFps >= 0.95
             && congestionReason(metrics) == nil
+    }
+
+    private func valid(_ metrics: AdaptiveBitrateMetrics) -> Bool {
+        metrics.encodedFps.isFinite
+            && metrics.sentFps.isFinite
+            && metrics.encodedFps > 0
+            && metrics.sentFps >= 0
+            && (metrics.rttMs?.isFinite ?? true)
+            && (metrics.frameAgeP95Ms?.isFinite ?? true)
+    }
+
+    private var stableReason: String {
+        if stableIncreaseSeconds.rounded() == stableIncreaseSeconds {
+            return "stable-\(Int(stableIncreaseSeconds))s"
+        }
+        return "stable-\(stableIncreaseSeconds)s"
+    }
+
+    private func resetTemporalBaseline(keepLastChange: Bool = false) {
+        previousMetrics = nil
+        normalSince = nil
+        consecutiveReceiverQueueWindows = 0
+        if !keepLastChange { lastChangeAt = -Double.greatestFiniteMagnitude }
     }
 
     private static func clamp(_ value: Int, to bounds: ClosedRange<Int>) -> Int {
