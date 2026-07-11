@@ -1,59 +1,29 @@
-# Security
+[English](SECURITY.md) | [简体中文](SECURITY.zh-CN.md)
 
-## 中文说明
+# Security Policy
 
-DisplayWeave 不使用项目运营的云端视频中转，但当前 WiFi TCP 尚未实现
-生产级加密配对，请仅在可信局域网使用。Apple 接收端支持 USB；Android
-已实现通过 ADB forward 的实验性 USB，但尚待真机稳定性验证。Android USB
-调试授权是设备对整台 Mac 的广泛调试信任。现有下载文件是开发预览：
-macOS 仅作 ad-hoc 本地签名且未公证，iOS 仅供 Simulator，Android 为 Debug APK。
+## Supported release
 
-DisplayWeave is designed for local use. It captures your Mac display and sends
-frames directly to a receiver on USB or the local network.
+Security fixes target the latest `main` and the current Preview release. Preview packages are development artifacts and do not receive a long-term support promise.
 
-## Security Model
+## Reporting a vulnerability
 
-- No project-operated relay server is used for screen content.
-- WiFi mode uses local-network discovery and a direct TCP connection.
-- Apple-receiver USB mode uses local `usbmuxd` transport. Android USB uses a
-  loopback-only, per-device `adb forward` mapping to the receiver's TCP port 9000.
-- macOS Screen Recording permission is required for capture.
-- macOS Accessibility permission is required for injected touch and scroll input.
+Do not post an exploitable vulnerability in a public issue. Use GitHub's private vulnerability reporting for `chenyuhao0628/displayweave` when available, or contact the repository maintainer privately through the address shown in the maintainer's GitHub profile. Include affected commit/version, platform, prerequisites, impact, reproduction steps, and any proposed mitigation. Avoid collecting unrelated screen content or device data.
 
-## Current Caveats
+## Current trust boundaries
 
-- WiFi pairing and transport encryption are not production-grade in the current project.
-- Use trusted local networks.
-- Avoid exposing receiver ports outside your LAN.
-- VPN TUN mode, firewall tools, and network filters can affect discovery and
-  latency.
-- Android receiver behavior depends on device vendor networking and decoder
-  implementations.
-- Enabling Android USB debugging trusts the Mac for broad ADB operations;
-  DisplayWeave never bypasses the Android RSA authorization prompt.
-- ADB is executed by absolute path with an argument array. DisplayWeave removes
-  only mappings it owns and never invokes `adb forward --remove-all`.
-- DisplayWeave does not currently provide signed and notarized release
-  packages. Source builds and locally signed artifacts carry the trust of the
-  local toolchain and signing identity used to produce them.
+- WiFi video and control currently use direct local TCP without production-grade encryption or authenticated pairing. Use only a trusted LAN.
+- Android USB requires ADB RSA authorization. This grants the Mac broad debugging trust, including shell/install capabilities outside DisplayWeave. Revoke USB debugging authorizations when no longer needed.
+- The macOS Preview is ad-hoc signed and not notarized. Verify `SHA256SUMS.txt` and obtain packages only from the project Release.
+- The Android Preview APK is signed with an offline project keystore. Verify the SHA-256 certificate fingerprint documented in the release checklist before first install or update.
+- The iOS artifact is unsigned re-signing input and cannot be trusted or installed until the user supplies a valid signing identity. Third-party signing services add independent risk.
+- Screen capture, Accessibility input injection, Local Network, and USB debugging permissions are powerful. Grant only the permissions needed for the selected transport and revoke them after testing.
+- `CGVirtualDisplay` is a private API; platform changes can alter isolation or behavior.
 
-## Reporting Security Issues
+## Sensitive material
 
-If you find a security issue, avoid publishing exploit details in a public issue
-first. Open a minimal private contact path if available on the repository owner
-profile, or create a public issue with a high-level summary that does not
-include reproduction details.
+Never commit Android keystores/passwords, Apple certificates/private keys, provisioning profiles containing private material, device identifiers from private logs, or captured user screens. Release scripts keep the Android keystore outside the repository and retrieve its password from Keychain.
 
-Useful security reports include:
+## Release verification
 
-- affected platform and OS version
-- transport path: USB or WiFi
-- whether the issue requires local-network access
-- what permission state was active
-- impact and expected mitigation
-
-## Dependency And Build Trust
-
-Build locally from source when evaluating DisplayWeave. Generated build output,
-APK files, provisioning profiles, and signing credentials should not be
-committed to the repository.
+Follow [docs/release-checklist.md](docs/release-checklist.md). A valid Preview publication requires source/build checks, APK v2 verification, macOS bundle verification, IPA archive hygiene, and SHA-256 validation.

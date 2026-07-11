@@ -1,79 +1,41 @@
-# Contributing
+[English](CONTRIBUTING.md) | [简体中文](CONTRIBUTING.zh-CN.md)
 
-## 中文说明
+# Contributing to DisplayWeave
 
-欢迎提交可复现的问题和范围清晰的 Pull Request。用户可见名称统一使用
-DisplayWeave；`OpenSidecar` scheme、包名、Bundle ID、偏好键和
-`_opensidecar._tcp` 属于兼容标识，未经迁移设计不要仅为改名而修改。
-涉及协议或 Android 的改动至少运行 Gradle 构建与测试；涉及 Apple 端时
-重新生成 Xcode 工程并构建对应 target。继续保留 GPL-3.0 和上游署名。
+Focused bug reports, hardware evidence, documentation corrections, and small pull requests are welcome.
 
-Contributions are welcome when they keep DisplayWeave focused: Android receiver
-support, Chinese localization, local Mac/iOS usability, protocol clarity, and
-stability fixes.
+## Before changing code
 
-## Branch And Project Rules
+1. Read [ARCHITECTURE.md](ARCHITECTURE.md), [ROADMAP.md](ROADMAP.md), and the relevant acceptance document under `docs/`.
+2. Keep compatibility identifiers (`OpenSidecar.xcodeproj`, bundle/package IDs, preferences, Bonjour service) unless the change includes a migration design and tests.
+3. Do not weaken GPL-3.0 or third-party attribution.
+4. For user-facing behavior, update English and Simplified Chinese documentation together.
 
-- Keep work on feature branches, not directly on `main`.
-- If `project.yml` changes, run `./generate.sh` before building in Xcode.
-- Do not commit generated build products, APK files, DerivedData, logs, or
-  local signing configuration.
-- Prefer small changes that can be reviewed independently.
-- Preserve GPL-3.0 license notices and upstream attribution.
-- Keep DisplayWeave as the user-facing name. Treat `OpenSidecar` project/scheme
-  names, `app.opendisplay.android`, bundle IDs, preference keys, and
-  `_opensidecar._tcp` as compatibility identifiers unless a migration is
-  explicitly designed and tested.
-
-## Coding Guidelines
-
-- Follow the existing Swift style for Mac and iOS code.
-- Keep Android receiver classes narrow and platform-idiomatic.
-- Keep protocol changes backward compatible where possible.
-- Avoid blocking the Android UI thread with network writes.
-- Keep user-facing copy concise, clear, and consistent across platforms.
-
-## Documentation Guidelines
-
-- README should explain project value and scope.
-- Platform-specific details belong in the platform folder.
-- Architecture and protocol decisions belong in `ARCHITECTURE.md`.
-- Future work belongs in `ROADMAP.md`, not in scattered TODO comments.
-- Avoid promising store releases, notarization, or encryption until they exist.
-
-## Verification Expectations
-
-Use the smallest checks that prove the change:
+## Build and test
 
 ```bash
-xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac -configuration Debug -derivedDataPath build-run -clonedSourcePackagesDirPath build-run/SourcePackages build
+./generate.sh
+pnpm install --frozen-lockfile
+pnpm build
+pnpm run check:docs
+pnpm run check:release
+cd AndroidReceiver && ./gradlew clean test assembleDebug
 ```
 
-```bash
-xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecariOS -configuration Debug -sdk iphonesimulator -derivedDataPath build-verify-ios -clonedSourcePackagesDirPath build-verify-ios/SourcePackages build CODE_SIGNING_ALLOWED=NO
-```
+Run the relevant standalone Swift and Android protocol/policy self-tests listed in [docs/release-checklist.md](docs/release-checklist.md). Hardware claims need reproducible logs with device model, OS, transport, resolution, codec, target frame rate, duration, and observed rendered FPS.
 
-```bash
-cd AndroidReceiver
-./gradlew clean
-./gradlew assembleDebug
-./gradlew test
-```
+## Pull requests
 
-`AndroidReceiver/scripts/build_debug_apk.sh` remains an optional compatibility
-check for the legacy manual SDK-tools build path.
+- Keep one purpose per change.
+- Add a failing test before a behavior fix or feature, then show it passing.
+- Run `git diff --check` and the relevant builds/tests.
+- State what was verified, what remains inferred, and which hardware was unavailable.
+- Never commit signing secrets, personal captures, device identifiers, or generated build directories.
 
-## Good Issue Reports
+## Documentation language policy
 
-Useful reports include:
+Current user guides use an English canonical file and a `.zh-CN.md` peer with reciprocal links. Numeric results, commands, filenames, signing boundaries, and security warnings must match in both languages. Historical design/implementation records may remain in their authored language when the current guide explains the shipped behavior independently.
 
-- macOS version and Mac model
-- iOS/iPadOS or Android version
-- receiver device model
-- mirror or extend mode
-- USB or WiFi
-- whether VPN TUN mode is enabled
-- what permissions are granted
-- relevant logs or exact error text
+## Licensing
 
-See [SUPPORT.md](SUPPORT.md) for more detail.
+Contributions are distributed under the repository's [GPL-3.0 license](LICENSE). By contributing, you confirm you have the right to submit the work and preserve applicable notices. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

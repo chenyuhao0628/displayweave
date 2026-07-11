@@ -1,197 +1,93 @@
-<p align="center">
-  <img src="public/logo.png" width="420" alt="DisplayWeave logo" />
-</p>
-
-<p align="center">
-  <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a> ·
-  <a href="https://chenyuhao0628.github.io/displayweave/">Website</a> ·
-  <a href="https://chenyuhao0628.github.io/displayweave/zh.html">中文网站</a>
-</p>
+[English](README.md) | [简体中文](README.zh-CN.md)
 
 # DisplayWeave
 
-**One Mac. Every screen.**
+**One Mac. A woven field of useful screens.**
 
-[Architecture](ARCHITECTURE.md) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+DisplayWeave is an independently maintained, GPL-3.0, local-first second-display project derived from [OpenDisplay](https://github.com/peetzweg/opendisplay). It turns iPhone, iPad, and Android devices into extended or mirrored displays for a Mac.
 
-Turn your iPhone, iPad, or Android device into a second display for macOS.
+## Preview 2 capabilities
 
-DisplayWeave is an independent, open-source, local-first display extension
-platform for cross-device use. It is derived from OpenDisplay and now includes
-an Android receiver, Chinese localization, HEVC streaming, dynamic frame-rate
-negotiation, and experimental 60/90/120fps Android display modes.
+- Apple receivers: USB through `usbmuxd` and local WiFi, using the H.264 path.
+- Android receiver: local WiFi or per-device dynamic `adb forward` USB, HEVC/H.265 with H.264 fallback, and 30/60/90/120fps negotiation.
+- Transport selector: Auto, USB, or WiFi. Auto prefers wired USB, performs bounded recovery, falls back only to WiFi with the same install ID, and upgrades back to USB when the cable returns.
+- Input: tap, drag, cursor, and two-finger scrolling return to macOS.
+- Recovery: receiver foreground/surface return, cable unplug/replug, ADB restart, and authorization revoke/reallow were verified on the available OnePlus Android device.
+- Mixed receivers: one current DisplayWeave iPhone over WiFi and one Android receiver ran concurrently.
+- Runtime evidence: capture, encode, send, receive, decode, render, queue, drop, and latency metrics.
 
-> No cloud. No account. Your display stream stays on your local connection.
+Android high refresh remains experimental. One OnePlus HEVC/120 WiFi run measured about 109–111 rendered FPS; this does not guarantee stable 120 FPS on other devices or conditions.
 
-## 中文说明
+## Download `v0.1.0-preview.2`
 
-**一台 Mac，连接你的每一块屏幕。**
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.1.0-preview.2)
 
-让 iPhone、iPad 和 Android 设备成为 Mac 的第二块屏幕。
-
-DisplayWeave 是独立维护的开源、本地优先跨设备扩展显示项目。项目源自
-OpenDisplay，并已加入 Android 接收端、中文界面、HEVC 视频链路、动态
-帧率协商及实验性 Android 60/90/120fps 高刷新支持。
-
-> 无需云端，无需账号，显示数据保留在本地连接中。
-
-## Features
-
-- Use iPhone, iPad, or Android devices as a macOS second display
-- Extend or mirror the Mac desktop
-- Local USB and Wi-Fi support for Apple receivers
-- Local Wi-Fi streaming and experimental ADB-forward USB transport for Android
-- Android HEVC/H.265 hardware decoding with automatic H.264 fallback
-- Dynamic 30/60/90/120fps Android streaming and refresh-rate negotiation
-- Touch, drag, cursor, and scrolling support
-- Runtime capture, encode, transport, decode, render, queue, and latency stats
-- Chinese and English interfaces
-- Open-source and self-hosted
-
-## 主要功能
-
-- 将 iPhone、iPad 或 Android 设备作为 Mac 第二屏
-- 支持扩展桌面和镜像模式
-- Apple 接收端支持本地 USB 与 WiFi 连接
-- Android 支持局域网 WiFi 与实验性 ADB forward USB 传输
-- Android HEVC/H.265 硬件解码及 H.264 自动回退
-- Android 动态 30/60/90/120fps 模式和显示刷新率协商
-- 支持触摸、拖动、光标和滚动
-- 提供采集、编码、传输、解码、渲染、队列和延迟统计
-- 支持中文和英文界面
-- 免费、开源、本地运行
-
-## Current Status
-
-The Android high-refresh path has been validated on a OnePlus OPD2413 running
-Android SDK 36 over Wi-Fi. In HEVC/120 mode the measured pipeline sustained
-approximately 109-111 FPS across capture, encode, send, receive, decode, and
-render stages, while Android reported an active 120Hz display mode. Explicit
-H.264/60 fallback was also validated.
-
-High-refresh Android support remains experimental. Requesting 120fps does not
-guarantee a sustained 120 rendered frames per second on every Mac, network, or
-Android decoder. Android USB via `adb forward` is implemented but still awaits
-the Preview 0.1 physical-device validation matrix. iOS/iPadOS 120Hz is planned.
-
-Android 高刷新链路已在 OnePlus OPD2413、Android SDK 36 和 WiFi 环境下完成
-真机验证。HEVC/120 模式的采集、编码、发送、接收、解码和渲染约为
-109-111 FPS，Android 实际显示模式为 120Hz；H.264/60 回退也已验证。
-Android 高刷新目前仍属于实验功能，不代表所有设备都能稳定满 120 FPS。
-
-| Area | Current state |
-| --- | --- |
-| Apple receivers | H.264 over USB or local WiFi |
-| Android receiver | HEVC/H.265 or H.264 fallback over local WiFi or experimental ADB-forward USB |
-| Android frame rate | Dynamic 30/60/90/120fps negotiation; high refresh is experimental |
-| Verified result | About 109-111 FPS end to end on one OnePlus 120Hz device in HEVC/120 WiFi testing |
-| Not implemented | iOS/iPadOS 120Hz, encrypted WiFi pairing |
-| Distribution | Development previews available; no signed and notarized production package yet |
-
-## Development Preview Downloads
-
-Release: [`v0.1.0-preview.1`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.1.0-preview.1)
-
-| Platform | Download | Important limitation |
+| Platform | Asset | Distribution boundary |
 | --- | --- | --- |
-| macOS | `DisplayWeave-macOS-development-preview.zip` | Ad-hoc signed for local testing; not Developer ID signed or notarized |
-| iOS/iPadOS | `DisplayWeave-iOS-Simulator-development-preview.zip` | Simulator only; not installable on an iPhone or iPad |
-| Android | `DisplayWeave-Android-debug.apk` | Installable Debug APK; WiFi verified, ADB-forward USB awaiting physical validation |
+| macOS | `DisplayWeave-Preview-0.1-macOS.zip` | Universal ad-hoc signed app; not Developer ID signed or notarized |
+| Android | `DisplayWeave-Preview-0.1-Android.apk` | Offline release APK, v2-signed with the project Preview key; no Google Play account required |
+| iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | Unsigned re-signing input; cannot be installed directly |
+| Verification | `SHA256SUMS.txt` | SHA-256 for all three packages |
 
-These files are development previews. The source build instructions below
-remain the authoritative path until production signing and notarization exist.
+This is a development preview, not a production-signed store release. Verify the checksum before use. Android users should also compare the certificate fingerprint in the [release checklist](docs/release-checklist.md).
 
-## Requirements
+## Android USB quick start
 
-- macOS 14 or later for the Mac sender
-- iOS/iPadOS 17 or later for the Apple receiver
-- Android 8.0 / API 26 or later for the Android receiver
-- A local USB or Wi-Fi connection, depending on receiver platform
-- Screen Recording and Accessibility permissions on macOS
+1. Enable Developer options and USB debugging on the Android device.
+2. Connect a data-capable cable, open DisplayWeave Receiver, and allow the Mac's RSA debugging identity.
+3. Open DisplayWeave on the Mac and choose **Auto** (recommended) or **USB**.
+4. Auto uses only a true wired `usb:` ADB device. Wireless-debugging endpoints never create a USB session.
+5. If the cable is removed, Auto completes protocol grace and bounded recovery before falling back to the same app installation over WiFi. USB mode does not silently fall back.
 
-For Android Wi-Fi mode, keep both devices on the same local network and allow
-the requested local-network permissions. The current Android TCP transport is
-not encrypted, so use a trusted network.
+ADB authorization grants the Mac broad debugging access, not only DisplayWeave access. Revoke it in Android Developer options when it is no longer needed.
 
-For Android USB mode, enable Developer options and USB debugging, connect a
-data-capable cable, open the Android receiver, and approve the Mac in Android's
-RSA authorization prompt. DisplayWeave locates `adb` from its configured path,
-`PATH`, `ANDROID_HOME`, `ANDROID_SDK_ROOT`, the default macOS Android SDK, or
-Homebrew. Auto mode prefers USB and falls back only to a WiFi receiver with the
-same install ID. USB mode never silently falls back; WiFi mode does not create
-ADB mappings. Android's USB-debugging approval grants broad debugging trust to
-the Mac, not merely DisplayWeave access.
+## Build from source
 
-## Build From Source
-
-Generate and build the Apple project:
+Apple targets:
 
 ```bash
 ./generate.sh
-xcodebuild -project OpenSidecar.xcodeproj \
-  -scheme OpenSidecarMac \
-  -configuration Debug \
-  -derivedDataPath build-run \
-  -clonedSourcePackagesDirPath build-run/SourcePackages \
-  build
+xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac \
+  -configuration Debug -derivedDataPath build-run \
+  -clonedSourcePackagesDirPath build-run/SourcePackages build
 ```
 
-Build and test the Android receiver without a system Gradle installation:
+Android:
 
 ```bash
 cd AndroidReceiver
-./gradlew clean
-./gradlew assembleDebug
-./gradlew test
+./gradlew clean test assembleDebug
 ```
 
-The Android Debug APK is generated at:
+Create the complete offline Preview package set:
 
-```text
-AndroidReceiver/app/build/outputs/apk/debug/app-debug.apk
+```bash
+./tools/package-preview-0.1.sh
 ```
 
-The original manual Android SDK-tools builder remains available at
-`AndroidReceiver/scripts/build_debug_apk.sh` for compatibility and debugging.
+Android release signing uses a keystore stored outside the repository. See [development preview distribution](docs/development-preview.md).
 
-## Repository Layout
+## Documentation
 
-```text
-Mac/                 macOS sender, virtual display, capture, and encoder
-iOS/                 iPhone and iPad receiver
-AndroidReceiver/     Android receiver and standard Gradle Wrapper project
-MacTests/            standalone Mac policy and compatibility self-tests
-docs/                migration notes, roadmap, and acceptance documentation
-project.yml          XcodeGen project definition
-generate.sh          Xcode project generator
-```
-
-Useful documentation:
-
-- [Android receiver guide](AndroidReceiver/README.md)
-- [Android 120Hz migration and physical-device results](docs/120hz-migration-plan.md)
-- [Development roadmap and acceptance targets](docs/roadmap-and-acceptance.md)
-- [Brand and documentation audit](docs/branding-and-doc-audit.md)
+- [Documentation index](docs/README.md)
+- [Architecture](ARCHITECTURE.md)
+- [Roadmap](ROADMAP.md)
+- [Android receiver](AndroidReceiver/README.md)
+- [Release checklist](docs/release-checklist.md)
+- [Stability evidence](docs/stability-test-report.md)
+- [USB/WiFi benchmark protocol](docs/usb-vs-wifi-benchmark.md)
+- [Security policy](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-## Project Origin
+## Current limits
 
-DisplayWeave is an independent community project derived from
-[OpenDisplay](https://github.com/peetzweg/opendisplay).
+- iOS/iPadOS 120Hz is not implemented.
+- Current WiFi TCP video/control traffic is not production-encrypted; use a trusted LAN.
+- Two simultaneous Android devices, the controlled same-condition USB/WiFi benchmark, and 30-minute/2-hour endurance runs remain incomplete.
+- macOS uses private `CGVirtualDisplay` behavior that may change in future macOS versions.
+- Public macOS and iOS packages are not Developer ID/App Store signed.
 
-The project retains the applicable GPL-3.0 license requirements and
-attribution. Android high-refresh, HEVC, transport, and cross-device features
-are developed as extensions of the original project.
+## Origin and license
 
-Some implementation approaches were informed by the open-source
-[SideScreen](https://github.com/tranvuongquocdat/SideScreen) project. Relevant
-attribution and third-party license information is documented in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-DisplayWeave 是基于 OpenDisplay 演化形成的独立社区项目，继续遵守
-GPL-3.0 许可证及相应署名要求。部分高刷新链路设计思路参考了 MIT 许可的
-SideScreen 项目，详细说明见第三方声明。
-
-## License
-
-DisplayWeave is distributed under the [GNU General Public License v3.0](LICENSE).
+DisplayWeave preserves the applicable OpenDisplay history, copyright notices, and GPL-3.0 obligations. Some high-refresh and measurement approaches were informed by the MIT-licensed SideScreen project. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). DisplayWeave itself is distributed under [GPL-3.0](LICENSE).

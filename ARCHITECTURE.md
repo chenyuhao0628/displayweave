@@ -1,179 +1,58 @@
-# Architecture
+[English](ARCHITECTURE.md) | [简体中文](ARCHITECTURE.zh-CN.md)
 
-## 中文摘要
+# DisplayWeave Architecture
 
-DisplayWeave 由 macOS 发送端、iOS/iPadOS 接收端和 Android 接收端组成。
-Apple 接收端当前支持 USB 与 WiFi，使用 H.264；Android 支持 WiFi，并已实现
-待真机验证的 ADB forward USB，
-通过可选能力字段和 `streamConfig` 协商 HEVC/H.264、30/60/90/120fps、
-分辨率与码率。HEVC 失败时自动回退 H.264，旧接收端继续走 H.264/60fps
-兼容路径。加密 WiFi 配对和 iOS/iPadOS 120Hz 尚未实现。
+## System shape
 
-DisplayWeave is split into sender and receiver apps. The Mac app owns display
-creation, capture, encoding, transport, and input injection. Receiver apps own
-device discovery, decode, presentation, and user input collection.
-
-## System Shape
+DisplayWeave consists of a macOS sender and Apple/Android receiver applications. The Mac creates a virtual display with `CGVirtualDisplay`, captures it with ScreenCaptureKit, encodes it with VideoToolbox, and sends framed video over a direct local TCP connection. Input and receiver telemetry travel back on the same session.
 
 ```text
-Mac sender
-  display source
-    mirror: existing macOS display
-    extend: CGVirtualDisplay
-  capture: ScreenCaptureKit
-  encode: VideoToolbox H.264 or HEVC (capability-negotiated)
-  transport: length-prefixed TCP
-  input: CGEvent injection
-
-iOS receiver
-  transport: Network.framework listener
-  decode/render: AVSampleBufferDisplayLayer
-  input: UIKit touch events
-
-Android receiver
-  discovery: Android NSD
-  transport: TCP ServerSocket over WiFi or Mac-side ADB forward
-  decode/render: H.264 or HEVC via MediaCodec + SurfaceView
-  input: Android touch events
+macOS virtual display
+  -> ScreenCaptureKit
+  -> VideoToolbox H.264 / negotiated HEVC
+  -> framed TCP session
+     -> Apple receiver (usbmuxd USB or WiFi, H.264)
+     -> Android receiver (ADB-forward USB or WiFi, HEVC/H.264)
+  <- touch, scroll, codec status, metrics, lifecycle messages
 ```
 
-## Data Flow
+## Discovery and identity
 
-1. The receiver advertises or listens on port `9000`.
-2. The Mac discovers an Apple receiver through USB or WiFi, or an Android
-   receiver through WiFi NSD / `adb devices -l`.
-3. The receiver sends a JSON `hello` message with display, device, codec, and
-   frame-rate capability metadata where supported.
-4. The Mac chooses mirror or extend mode.
-5. The Mac captures frames and encodes H.264 for Apple/legacy receivers. For a
-   capable Android receiver, it sends `streamConfig` and may select HEVC plus a
-   negotiated 30/60/90/120fps target, with automatic H.264 fallback.
-6. The receiver decodes and presents frames.
-7. The receiver sends touch, scroll, ping, and keyframe-control JSON messages.
-8. The Mac maps input onto the active display and injects macOS events.
+Apple and Android WiFi receivers advertise the inherited `_opensidecar._tcp` Bonjour/NSD service for compatibility. An install ID identifies a receiver application instance across transports. Compatibility names such as `OpenSidecar.xcodeproj`, bundle IDs, Java package names, preference keys, and service names are migration-sensitive contracts, not current public branding.
 
-## Transport
+## Android USB
 
-Current transport support is platform-specific:
+The Mac locates ADB from an explicit preference, `PATH`, Android SDK environment variables, the default macOS SDK, or Homebrew. It parses `adb devices -l` and admits only rows in `device` state with wired `usb:` metadata. Wireless-debugging endpoints are excluded.
 
-| Receiver | USB | WiFi |
-| --- | --- | --- |
-| iPhone / iPad | Supported through macOS `usbmuxd` | Supported through Bonjour + TCP |
-| Android | Implemented through per-serial `adb forward`; physical validation pending | Supported through Android NSD + TCP |
-
-All receiver payloads use the same frame format:
+For every wired serial, the Mac allocates an unused loopback port and runs:
 
 ```text
-[4-byte big-endian length][payload bytes]
+adb -s <serial> forward tcp:<dynamic-local-port> tcp:9000
 ```
 
-Payload types:
+Each `DeviceSession` owns and removes only its own mapping. DisplayWeave never uses `adb forward --remove-all`. USB reuses the normal framed protocol, stream configuration, codec negotiation, input, and metrics path.
 
-- H.264 or HEVC Annex B video frame data, selected by receiver capability
-- JSON control messages such as `hello`, `streamConfig`, `codecFailure`,
-  `touch`, `scroll`, `ping`, `pong`, `kf`, `cursor`, and `cursorImg`
+## Auto handover
 
-This keeps the protocol simple enough for iOS and Android to share one sender
-implementation, while still allowing platform-specific receiver internals.
+Auto prefers USB. A protocol-level grace period and bounded 0.5/1/2/4/8-second recovery sequence run after failure. When exhausted, Auto may accept only the WiFi receiver with the same install ID. If USB returns, the same-install-ID WiFi session ends before USB connects, preventing the single-client Android receiver from being contested by two Mac sessions.
 
-## Capability Negotiation And Stream Configuration
+## Codec and frame-rate negotiation
 
-New Android receivers add optional fields to `hello`, including display refresh
-information, maximum FPS, codec support and preference, device metadata, and
-transport. The Mac applies `RefreshRatePolicy` and `StreamEncodingPolicy` to
-select a supported 30/60/90/120fps target, codec, bitrate, and display mode.
+Legacy Apple receivers use H.264. Android advertises codec and refresh capabilities, accepts `streamConfig`, and prefers HEVC when both sides support it. Codec failure produces a control message and falls back to H.264. Android negotiates 30/60/90/120fps targets and requests a compatible display mode; requested FPS is not proof of rendered FPS.
 
-Before video frames, the Mac sends an optional JSON `streamConfig` containing
-the selected codec, FPS, dimensions, bitrate, and transport. Android uses it to
-configure `MediaCodec`, frame timestamps, and the preferred display mode. HEVC
-is selected only when the receiver reports usable support. Encoder setup,
-runtime encoding, or Android decoder failures trigger `codecFailure` handling,
-an H.264 rebuild, a new `streamConfig`, and a forced keyframe.
+## Lifecycle and input
 
-Receivers that omit the new capability fields continue on the legacy
-H.264/60fps path. Unknown JSON fields and optional messages are ignored where
-possible, so protocol additions remain backward-compatible rather than
-creating an Android-only replacement protocol.
+The Android receiver owns a TCP server on port 9000 and restarts idempotently when the rendering surface returns. On reconnect, the Mac resends stream configuration before requesting a keyframe and treats a peer protocol message—not only TCP connect—as readiness.
 
-## Mac Sender
+Touch coordinates, drag state, cursor movement, and two-finger scroll are encoded as control JSON and injected on macOS. Accessibility permission is required for input injection.
 
-Important responsibilities:
+## Security boundaries
 
-- discover Apple receivers over USB or WiFi and Android receivers over WiFi or ADB
-- allocate one loopback ADB-forward port and independent session per Android serial
-- prefer Android USB in Auto, use finite recovery, and fall back only to a WiFi install-ID match
-- create or select the display source
-- keep virtual-display geometry in sync with receiver dimensions
-- capture via ScreenCaptureKit
-- encode with low-latency H.264 or HEVC settings and fall back to H.264 when
-  HEVC setup or runtime encoding fails
-- apply backpressure and request keyframes when needed
-- inject touch and scroll input through Accessibility APIs
-- expose user-facing state in the SwiftUI app
+- WiFi TCP is not production-encrypted; use a trusted LAN.
+- ADB RSA authorization trusts the Mac as a debugging host beyond DisplayWeave.
+- The macOS Preview is ad-hoc signed and not notarized.
+- The Android APK uses an offline project keystore stored outside Git.
+- The iOS public artifact is an unsigned re-signing input.
+- `CGVirtualDisplay` is a private API and can change across macOS releases.
 
-The Mac app needs Screen Recording for capture and Accessibility for injected
-input. Local Network permission is needed for WiFi discovery.
-
-## iOS Receiver
-
-The iOS receiver is the original receiver target. It keeps the app in the
-foreground, listens for the Mac, renders H.264 frames, and sends UIKit touch
-events back as normalized control messages. Its protocol path remains
-compatible with OpenDisplay while DisplayWeave evolves Android capability
-negotiation independently.
-
-## Android Receiver
-
-The Android receiver mirrors the iOS receiver contract while using Android
-platform APIs:
-
-- `NsdAdvertiser` publishes `_opensidecar._tcp`
-- `OpenDisplayServer` owns the TCP server and stream loop; the legacy class name
-  is retained as an internal compatibility identifier
-- `H264SurfaceDecoder` manages both AVC and HEVC `MediaCodec` sessions; its
-  legacy class name does not describe the full current codec support
-- `CursorOverlayView` draws the Mac cursor above the video surface
-- `TouchGestureCoordinator` maps tap and drag gestures
-- `ScrollGestureTracker` maps two-finger scroll
-- `DisplayProfile` controls the advertised resolution profile
-
-Android control writes are kept off the UI thread to avoid runtime crashes.
-Android USB deliberately keeps the existing Mac-client/Android-server direction:
-`adb -s <serial> forward tcp:<dynamic-local-port> tcp:9000`. It does not use
-`adb reverse` and does not change the length-prefixed protocol or decoder.
-The implementation and automated multi-session isolation tests are complete;
-physical USB, unplug/replug, and simultaneous-device validation remain open.
-The high-refresh path is experimental and has measured about 109-111 FPS on the
-validated OnePlus 120Hz device, not a guaranteed sustained 120 rendered FPS.
-
-## Queueing, Metrics, And Latency
-
-The sender and Android receiver favor recent frames over accumulating latency.
-The Mac limits pending sends; Android classifies keyframes and parameter sets,
-keeps a bounded latest-frame-oriented decode queue, and requests a keyframe
-when recovery requires one. Codec configuration and sync frames are preserved
-when ordinary frames are dropped.
-
-Runtime telemetry reports requested and selected settings plus capture,
-encode, send, receive, decode, and render rates. It also exposes queue depth,
-drops, bitrate/frame size, and available latency or frame-age measurements.
-These measurements are the acceptance signal: requesting a 120fps stream or
-activating a 120Hz Android display mode is not proof of sustained 120 FPS.
-
-## Design Constraints
-
-- The system is local-first and should not require external servers.
-- The sender should not grow Android-only assumptions when capability
-  negotiation can preserve iOS compatibility.
-- Any new protocol field should be optional or versioned.
-- Display and input changes should be verified in mirror and extend modes.
-- Build artifacts, generated projects, and APK outputs should stay out of Git.
-
-## Risk Areas
-
-- `CGVirtualDisplay` is a private macOS API and can change across macOS updates.
-- WiFi transport is latency-sensitive and can be affected by routers, VPN TUN
-  mode, multicast filtering, and Android vendor networking behavior.
-- Android hardware decoders differ by device.
-- Accessibility and Screen Recording permissions fail silently in some macOS
-  states, so user-facing diagnostics matter.
+See [SECURITY.md](SECURITY.md) and [docs/README.md](docs/README.md).
