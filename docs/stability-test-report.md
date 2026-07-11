@@ -2,7 +2,7 @@
 
 日期：2026-07-11  
 实现分支：`codex/android-adb-usb`  
-状态：自动化验证通过；完成一次约 11 分钟 Android USB 真机基础观察，30 分钟与 2 小时项目仍待执行。
+状态：自动化验证通过；完成 Android 前后台/重开、ADB 重启和当前 iPhone + Android 并发基础验证；30 分钟与 2 小时项目由用户另行执行。
 
 ## 自动化验证
 
@@ -13,7 +13,7 @@
 | AndroidAdbForwardSelfTest | 通过 | 两 serial 独立端口、精确删除、禁止 `--remove-all` |
 | TransportSelectionPolicySelfTest | 通过 | Auto/USB/WiFi、install ID 回退、0.5/1/2/4/8 秒恢复状态机 |
 | macOS Debug xcodebuild | 通过 | `OpenSidecarMac` 构建退出码 0 |
-| Android clean/test/assembleDebug | 通过 | 57 个 Gradle task 执行；ProtocolSelfTest 与 VideoStreamPolicySelfTest PASS；Debug APK 构建成功 |
+| Android clean/test/assembleDebug/Release | 通过 | Protocol、VideoStreamPolicy、ReceiverLifecycle、ReceiverConnection 四项 PASS；签名 Release APK 构建成功 |
 | `git diff --check` | 通过 | 无空白错误 |
 | ADB 真机探测 | 通过 | OnePlus OPD2413，ADB state `device`（serial 不在公开报告中记录） |
 
@@ -33,7 +33,11 @@
 - 强制终止测试暴露 mapping ownership 丢失更新，已改为原子持久 `upsert/remove` 并新增回归测试。
 - 随后的强制终止与跨启动恢复验证确认：旧自有端口与持久记录一致；下一次启动精确删除旧自有端口并创建新端口；同一设备上预先存在的外部端口保持不变。测试收尾后只保留该外部端口。
 
-本轮不能证明无黑屏/花屏、30 分钟稳定、2 小时耐久、拔插恢复、ADB server restart、多 Android 并发或 USB 性能优于 WiFi。
+后续针对原始“回桌面再进入需 Mac 切模式”的问题完成根因修复：同一设备同时出现有线与无线调试 ADB row 时只允许有线 row 建立 USB session；Receiver surface 恢复后幂等重开服务；重连先重发 codec 配置，且只有收到 peer 消息才清除断线宽限期。实测返回桌面再进入与强停重开均自动恢复，无需切换扩展/镜像；ADB daemon kill/restart 也在有限恢复流程内重新建立 HEVC/120。
+
+当前 iPhone 上的旧 OpenDisplay 结果已排除。随后使用 Xcode Personal Team 构建、安装并启动当前 DisplayWeave 0.1.0：Android ADB USB 建立显示 79（3040×1904、HEVC、120 请求/实际刷新率 120、80 Mbps），iPhone WiFi 建立显示 80（1320×2868、H.264、60、23 Mbps，旋转后显示 81）。Android 返回桌面并进入恢复流程期间，iPhone 仍持续回传 WiFi stats，证明两个 session 的 transport、显示和统计相互独立。
+
+本轮仍不能证明 30 分钟稳定、2 小时耐久、物理拔插、授权取消、实际 Auto WiFi 回退、两 Android 并发或 USB 性能优于 WiFi。
 
 ## 异常恢复与耐久矩阵
 
@@ -41,12 +45,12 @@
 
 | 项目 | 状态 | 通过标准 / 需记录证据 |
 | --- | --- | --- |
-| Android App 关闭后重新打开 | 待人工验证 | Auto/USB 恢复画面，streamConfig 重发，无长期黑屏 |
+| Android App 关闭后重新打开 | 通过 | 强停/重开后约 20 秒内协议级恢复，streamConfig 重发，无 Mac 模式切换 |
 | 拔出 USB 后重新插入 | 待人工验证 | 有限退避恢复；映射无残留；记录 reconnectTime |
 | USB 调试授权取消 | 待人工验证 | 显示 unauthorized 指引，不快速无限重试 |
-| ADB Server 重启 | 待人工验证 | 重新探测 exact serial 并恢复映射 |
+| ADB Server 重启 | 通过 | daemon kill/restart 后重新探测 exact serial、结束超时 session 并建立新 peer；未错误回退 WiFi |
 | Android 锁屏后解锁 | 待人工验证 | 解锁后关键帧恢复，无持续黑屏/花屏 |
-| Android App 切后台后恢复 | 待人工验证 | Receiver 重开监听后恢复 |
+| Android App 切后台后恢复 | 通过 | Home 后回 App 自动恢复；surface 就绪可能约 15 秒，无需 Mac 切模式 |
 | Mac 睡眠后唤醒 | 待人工验证 | 会话恢复或显示明确失败，不残留虚拟显示 |
 | WiFi 中断后恢复 | 待人工验证 | 既有 WiFi 行为无回归 |
 | HEVC 初始化失败 | 待人工验证 | 自动回退 H.264 并重发 streamConfig |
@@ -57,7 +61,7 @@
 | 连续运行 2 小时 | 待人工验证 | 无崩溃、黑屏、花屏、FPS 持续下降 |
 | 两台 Android 同时 USB | 待人工验证 | serial、本地端口、session、显示和统计独立 |
 | Android USB + Android WiFi | 待人工验证 | 同时工作，一台断开不影响另一台 |
-| Android + iPhone/iPad | 待人工验证 | Apple usbmuxd/WiFi 会话不受影响 |
+| Android + iPhone/iPad | 通过（当前构建） | DisplayWeave iOS 0.1.0 WiFi + Android USB 同时工作；Android 中断期间 iPhone stats 持续 |
 
 ## 泄漏检查清单
 
