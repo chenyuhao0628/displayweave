@@ -48,11 +48,23 @@ final class BenchmarkRecorder {
             guard active == nil else { throw BenchmarkRecorderError.alreadyStarted }
             guard Self.valid(runId: runId) else { throw BenchmarkRecorderError.invalidRunId }
             let directory = rootURL.appendingPathComponent(runId, isDirectory: true)
-            guard !fileManager.fileExists(atPath: directory.path) else {
-                throw BenchmarkRecorderError.runDirectoryExists
-            }
+            var ownsDirectory = false
+            var openedCSV: FileHandle?
+            var openedJSONL: FileHandle?
             do {
-                try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+                try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
+                do {
+                    try fileManager.createDirectory(
+                        at: directory, withIntermediateDirectories: false)
+                    ownsDirectory = true
+                } catch {
+                    let nsError = error as NSError
+                    if nsError.domain == NSCocoaErrorDomain,
+                       nsError.code == NSFileWriteFileExistsError {
+                        throw BenchmarkRecorderError.runDirectoryExists
+                    }
+                    throw error
+                }
                 let csvURL = directory.appendingPathComponent("benchmark.csv")
                 let jsonlURL = directory.appendingPathComponent("benchmark.jsonl")
                 guard fileManager.createFile(atPath: csvURL.path, contents: nil),
@@ -60,7 +72,9 @@ final class BenchmarkRecorder {
                     throw BenchmarkRecorderError.fileOperationFailed("could not create output files")
                 }
                 let csv = try FileHandle(forWritingTo: csvURL)
+                openedCSV = csv
                 let jsonl = try FileHandle(forWritingTo: jsonlURL)
+                openedJSONL = jsonl
                 let header = BenchmarkSample.csvHeader.joined(separator: ",") + "\r\n"
                 try csv.write(contentsOf: Data(header.utf8))
                 active = ActiveRun(
@@ -69,10 +83,14 @@ final class BenchmarkRecorder {
                     csv: csv,
                     jsonl: jsonl)
             } catch let error as BenchmarkRecorderError {
-                try? fileManager.removeItem(at: directory)
+                try? openedCSV?.close()
+                try? openedJSONL?.close()
+                if ownsDirectory { try? fileManager.removeItem(at: directory) }
                 throw error
             } catch {
-                try? fileManager.removeItem(at: directory)
+                try? openedCSV?.close()
+                try? openedJSONL?.close()
+                if ownsDirectory { try? fileManager.removeItem(at: directory) }
                 throw BenchmarkRecorderError.fileOperationFailed(error.localizedDescription)
             }
         }
@@ -83,11 +101,32 @@ final class BenchmarkRecorder {
             guard let active else { throw BenchmarkRecorderError.notStarted }
             guard sample.runId == active.runId else { throw BenchmarkRecorderError.runIdMismatch }
             do {
-                try active.csv.write(contentsOf: Data((sample.csv(includeHeader: false) + "\r\n").utf8))
-                try active.jsonl.write(contentsOf: Data((try sample.jsonLine() + "\n").utf8))
-            } catch let error as BenchmarkRecorderError {
-                throw error
+                let csvData = Data((sample.csv(includeHeader: false) + "\r\n").utf8)
+                let jsonlData = Data((try sample.jsonLine() + "\n").utf8)
+                let csvOffset = try active.csv.offset()
+                let jsonlOffset = try active.jsonl.offset()
+                do {
+                    try active.csv.write(contentsOf: csvData)
+                    try active.jsonl.write(contentsOf: jsonlData)
+                } catch {
+                    do {
+                        try active.csv.truncate(atOffset: csvOffset)
+                        try active.jsonl.truncate(atOffset: jsonlOffset)
+                        try active.csv.seek(toOffset: csvOffset)
+                        try active.jsonl.seek(toOffset: jsonlOffset)
+                    } catch let rollbackError {
+                        self.active = nil
+                        try? active.csv.close()
+                        try? active.jsonl.close()
+                        throw BenchmarkRecorderError.fileOperationFailed(
+                            "write failed and rollback failed: \(rollbackError.localizedDescription)")
+                    }
+                    throw error
+                }
             } catch {
+                if let recorderError = error as? BenchmarkRecorderError {
+                    throw recorderError
+                }
                 throw BenchmarkRecorderError.fileOperationFailed(error.localizedDescription)
             }
         }

@@ -87,6 +87,32 @@ static func main() throws {
     try Data("x".utf8).write(to: fileRoot)
     let broken = BenchmarkRecorder(rootURL: fileRoot)
     try expectRecorderError({ try broken.start(runId: "run") }, containing: "fileOperationFailed")
+
+    for iteration in 0..<20 {
+        let runId = "concurrent-\(iteration)"
+        let firstRecorder = BenchmarkRecorder(rootURL: root)
+        let secondRecorder = BenchmarkRecorder(rootURL: root)
+        let startGate = DispatchSemaphore(value: 0)
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var successes = 0
+        for concurrentRecorder in [firstRecorder, secondRecorder] {
+            group.enter()
+            DispatchQueue.global().async {
+                startGate.wait()
+                if (try? concurrentRecorder.start(runId: runId)) != nil {
+                    lock.lock(); successes += 1; lock.unlock()
+                }
+                group.leave()
+            }
+        }
+        startGate.signal(); startGate.signal(); group.wait()
+        try require(successes == 1, "Exactly one concurrent recorder may own a run directory")
+        if successes == 1 {
+            _ = try? firstRecorder.stop()
+            _ = try? secondRecorder.stop()
+        }
+    }
     print("BenchmarkRecorderSelfTest passed")
 }
 }
