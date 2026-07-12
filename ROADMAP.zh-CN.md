@@ -10,6 +10,7 @@
 - 在现有 OnePlus 真机验证 Android HEVC/120 与 H.264/60 USB。
 - 已检查拔插、ADB 重启、取消/恢复授权、触摸和双指滚动。
 - 离线 v2 签名 Android APK，以及当前 iPhone/Android 混合并发。
+- 短时 benchmark 记录、Target/Actual Bitrate 分离、Auto/Manual/Benchmark、自适应码率、受限发送队列和传输感知关键帧（自动验证完成；实体性能矩阵待测）。
 
 ## 下一步验证
 

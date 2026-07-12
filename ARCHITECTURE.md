@@ -6,6 +6,8 @@
 
 DisplayWeave consists of a macOS sender and Apple/Android receiver applications. The Mac creates a virtual display with `CGVirtualDisplay`, captures it with ScreenCaptureKit, encodes it with VideoToolbox, and sends framed video over a direct local TCP connection. Input and receiver telemetry travel back on the same session.
 
+Each connected device owns an independent sender pipeline and benchmark recorder. Runtime bitrate changes update VideoToolbox rate-control properties without rebuilding the encoder. Auto bitrate consumes per-session queue, drop, RTT, and frame-age evidence; send-queue and GOP policies remain bounded by quality and transport. Target bitrate is configuration intent, while actual bitrate is measured throughput.
+
 ```text
 macOS virtual display
   -> ScreenCaptureKit
