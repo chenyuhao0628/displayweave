@@ -50,6 +50,26 @@ enum BenchmarkDuration: Int, CaseIterable {
     var label: String { "\(rawValue / 60) min" }
 }
 
+struct BenchmarkLaunchOptions: Equatable {
+    var autoStart: Bool
+    var scene: BenchmarkScene
+    var duration: BenchmarkDuration
+
+    static func parse(_ arguments: [String]) -> BenchmarkLaunchOptions {
+        func value(after flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag),
+                  arguments.indices.contains(index + 1) else { return nil }
+            return arguments[index + 1]
+        }
+        return BenchmarkLaunchOptions(
+            autoStart: arguments.contains("-benchmark-auto"),
+            scene: value(after: "-benchmark-scene")
+                .flatMap(BenchmarkScene.init(rawValue:)) ?? .staticDesktop,
+            duration: value(after: "-benchmark-duration")
+                .flatMap(Int.init).flatMap(BenchmarkDuration.init(rawValue:)) ?? .standard)
+    }
+}
+
 struct BenchmarkPhasePolicy {
     var warmupSeconds: TimeInterval = 30
     var runSeconds: TimeInterval

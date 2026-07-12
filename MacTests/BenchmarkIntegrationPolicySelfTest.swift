@@ -7,6 +7,15 @@ private func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
 @main
 struct BenchmarkIntegrationPolicySelfTest {
     static func main() throws {
+        let launch = BenchmarkLaunchOptions.parse([
+            "DisplayWeave", "-benchmark-auto", "-benchmark-scene", "testPattern120",
+            "-benchmark-duration", "300"
+        ])
+        expect(launch == BenchmarkLaunchOptions(
+            autoStart: true, scene: .testPattern120, duration: .extended),
+            "benchmark launch arguments parse deterministically")
+        expect(!BenchmarkLaunchOptions.parse(["DisplayWeave"]).autoStart,
+               "benchmark does not auto-start without explicit flag")
         let statsData = Data(#"{"type":"stats","receivedFps":117.5,"actualBitrateMbps":42.25,"androidQueueDepth":2}"#.utf8)
         let decoded = try BenchmarkControlPolicy.receiverStats(from: statsData)
         expect(decoded?.receivedFps == 117.5, "stats controls decode as ReceiverStats")

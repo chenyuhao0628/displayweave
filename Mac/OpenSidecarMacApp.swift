@@ -202,6 +202,8 @@ final class SenderController: ObservableObject {
     private var androidConnectPending = Set<String>()
     private var androidRecoveryAttempt: [String: Int] = [:]
     private var androidRecoveryGeneration: [String: Int] = [:]
+    private let benchmarkLaunch = BenchmarkLaunchOptions.parse(ProcessInfo.processInfo.arguments)
+    private var didAutoStartBenchmark = false
 
     // Connection policy keeps one session per physical device. Apple
     // transports retain the existing explicit/no-mid-session-handover
@@ -563,6 +565,9 @@ final class SenderController: ObservableObject {
         sender.onStatus = { [weak session] text in
             session?.status = text
             Log.info("status[\(id)]: \(text)")
+            if text.hasPrefix("已连接") {
+                self.autoStartBenchmarkIfRequested()
+            }
         }
         sender.onHello = { [weak self, weak session] info in
             guard let self, let session else { return }
@@ -625,6 +630,14 @@ final class SenderController: ObservableObject {
         } catch {
             session.benchmarkStatus = "Benchmark failed: \(error.localizedDescription)"
         }
+    }
+
+    private func autoStartBenchmarkIfRequested() {
+        guard benchmarkLaunch.autoStart, !didAutoStartBenchmark,
+              sessions.count == 1 else { return }
+        didAutoStartBenchmark = true
+        startBenchmark(scene: benchmarkLaunch.scene, duration: benchmarkLaunch.duration)
+        Log.info("benchmark auto-start scene=\(benchmarkLaunch.scene.rawValue) duration=\(benchmarkLaunch.duration.rawValue)s")
     }
 
     func stopBenchmark() {
