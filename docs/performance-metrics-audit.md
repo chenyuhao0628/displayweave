@@ -1,74 +1,110 @@
 [English](performance-metrics-audit.md) | [简体中文](performance-metrics-audit.zh-CN.md)
 
-# DisplayWeave Performance Metrics Audit
+# DisplayWeave Preview 2.x Performance Metrics Audit
 
-审计日期：2026-07-11
-依据：`DisplayWeave 下一阶段优化计划（低延迟 + 高刷新率 + 高码率）V1.0`
+Audit date: 2026-07-11
 
-本文件把优化计划中的目标与 Preview 0.1 当前可观测能力分开。存在日志或 UI 字段不等于已达到性能目标；没有同条件原始数据时，不填写推测值。
+Baseline: `d5eb716`
 
-## 端到端字段审计
+Scope: macOS Sender and Android Receiver. This document records only semantics proven by the code. A value appearing in an overlay does not make it suitable for a formal benchmark.
 
-状态定义：`已验证` 表示本轮真机日志或 overlay 直接出现；`已实现待导出` 表示运行时有值，但没有统一原始时间序列导出；`缺失` 表示 Benchmark 前仍需实现。当前 Android 指标主要显示在本机 overlay，并没有像 iOS `stats` 消息那样全部回传到 Mac，因此不能把“UI 可见”写成“已经可导出”。
+## Classification
 
-| 指标 | 生产者 / 类型 | wire 字段与消费者 | 窗口 / 单位 | 时间序列导出 | 状态 |
+- **Measured:** derived from runtime events, byte counts, or callbacks.
+- **Configured:** a requested target, not proof of what the device achieved.
+- **Estimated:** depends on clocks on different devices or cannot isolate one pipeline stage.
+- **Exportable:** currently available as structured CSV/JSONL. UI-only values and free-form logs are not considered exportable.
+- The pipeline uses `Date` / `System.currentTimeMillis()` wall clocks rather than an end-to-end monotonic clock. Every cross-device value is exposed to system time adjustments, asymmetric paths, and clock-offset error.
+
+## Metric matrix
+
+| Metric | Source | Window / unit | Measurement and clock semantics | Current export | Benchmark suitability |
 | --- | --- | --- | --- | --- | --- |
-| requested / actual refresh | `MacSender.swift` session 配置；Android `currentDisplayRefreshRate()` | Mac `ping.requestedFps`、`actualVirtualDisplayRefreshRate` -> `OpenDisplayServer` -> `StreamMetrics` -> `MainActivity` overlay | 配置事件；Hz | 仅 Mac 日志 | 已验证 |
-| capture FPS | `MacSender.capFrames` | `ping.capFps` -> Android `lastMacCaptureFps` -> overlay | Mac ping 约 2 s；FPS | 仅周期日志/overlay，无 CSV | 已验证 |
-| encoded FPS | `MacSender` VideoToolbox completion window | `ping.encodedFps` -> Android overlay；Mac `ENC-STATS` | 约 1 s；FPS | Mac 文本日志可解析 | 已验证 |
-| sent FPS | `MacSender` video send window | `ping.sentFps` -> Android overlay | 约 1–2 s；FPS | 无结构化导出 | 已验证 |
-| received FPS | `OpenDisplayServer.receivedFrames` | 不回传；`StreamMetrics.receiverFps` -> Android overlay | `>=1000 ms`；FPS | 无 | 已验证、待导出 |
-| decoded FPS | decoder callback `onDecoderFrameDecoded` | 不回传；`StreamMetrics.decodedFps` -> Android overlay | `>=1000 ms`；FPS | 无 | 已验证、待导出 |
-| rendered FPS | decoder callback `onDecoderFrameRendered` | 不回传；`StreamMetrics.renderedFps` -> Android overlay | `>=1000 ms`；FPS | 无 | 已验证、待导出 |
-| configured / actual bitrate | `StreamEncodingPolicy` / encoded byte windows | `streamConfig.bitrate`、`ping.bitrate`; Android overlay | configured bps；实测需 bytes/time | configured 可见，实际时间序列缺失 | 已实现待导出 |
-| encode latency | `MacSender` capture PTS 到 encode completion | `ping.encodeLatencyMs` -> Android overlay；Mac `ENC-STATS` | 约 1 s 平均；ms | Mac 文本日志可解析 | 已验证 |
-| decode latency | `VideoFrameTelemetry.decodeLatencyMs` | 不回传；`StreamMetrics.decodeLatencyMs` -> Android overlay | `>=1000 ms` 平均；ms | 无 | 已验证、待导出 |
-| latest frame age | `VideoFrameTelemetry.latestFrameAgeMs` | 不回传；`StreamMetrics.latestFrameAgeMs` -> Android overlay | `>=1000 ms` 平均；ms | 无；当前也不是 latest 单样本 | 已实现，命名/导出待修正 |
-| estimated E2E latency | `VideoFrameTelemetry.endToEndLatencyMs` + clock offset | 不回传；`StreamMetrics.endToEndLatencyMs` -> Android overlay | `>=1000 ms` 平均；ms | 无 | 已验证、待导出 |
-| Mac queue depth | `MacSender.pendingSends` | `ping.queueDepthMac` -> Android overlay；Mac `PHONE-STATS` 后缀仅 iOS 完整 | ping 瞬时值；frames | 无统一导出 | 已验证 |
-| Android queue depth | `OpenDisplayServer.queueDepthAndroid` | 不回传；Android overlay | 瞬时值；frames | 无 | 已实现待导出 |
-| Mac dropped frames | `MacSender.dropsThisWindow` | `ping.droppedFramesMac` -> Android overlay，发送后清零 | 约 2 s 区间计数；frames | 无统一导出 | 已验证 |
-| Android dropped frames | receiver/decoder drop callbacks | 不回传；`StreamMetrics.droppedFramesAndroid` -> overlay，窗口后清零 | `>=1000 ms` 区间计数；frames | 无 | 已实现待导出 |
-| RTT | Android 处理 Mac `ping.t`、收到 `pong` 后计算 | `lastRttMs` -> Android overlay | 最近样本；ms | 无 | 已验证 |
-| input latency | Mac 输入事件时间窗；Android 仅显示 `inp50` | `ping.inp50`/`inp95` -> Android overlay | 约 2 s 分位数；ms | 无；不是光子到光子输入延迟 | 已实现但定义不足 |
-| reconnect time | Mac connection/status/peer-ready 日志 | 无固定 wire 字段 | event delta；ms | 需从文本日志计算 | 已验证但待结构化 |
-| CPU / memory / thermal | 当前没有 DisplayWeave producer | 无 | 建议 1 s；%、MB、°C | 无 | 缺失；用系统工具旁路采集 |
+| Capture FPS | `capFrames` in `MacSender.stream(_:didOutputSampleBuffer:)`, divided by elapsed time about every two seconds | ~2 s / FPS | Measured on the Mac clock. ScreenCaptureKit can legitimately produce fewer callbacks for static content | No; ping/overlay and low-FPS warning only | Suitable with a fixed dynamic source after structured export |
+| Encoded FPS | Counted after successful VideoToolbox completion and Annex B conversion | >=1 s / FPS | Measured on the Mac clock | Partial; Debug `ENC-STATS` text and ping | Suitable after receiver window alignment |
+| Sent FPS | Successful `contentProcessed` callbacks from `NWConnection.send` | >=1 s / FPS | Local send-completion measurement; it does not prove peer receipt | No; ping/overlay only | Suitable when named as local completion throughput |
+| Received FPS | Counted when Android receives a video payload and places it in the latest-frame slot | >=1 s window emitted by render callbacks / FPS | Measured on Android; no render means the window is not published | No; overlay only | Suitable after periodic structured publication |
+| Decoded FPS | Decoder callback after MediaCodec dequeues an output buffer | Android metrics window / FPS | Measured on Android | No; overlay only | Suitable after export |
+| Rendered FPS | MediaCodec `OnFrameRenderedListener` callback | Android metrics window / FPS | Measured callback, not proof of completed photon scanout | No; overlay only | Primary high-refresh metric after export |
+| Requested FPS | `requestedCaptureFps`, ScreenCaptureKit interval, and `streamConfig.fps` | Configuration event / FPS | Configured. Android uses `streamConfig.fps` and does not parse the same field from ping | Configuration log | Test condition only, never a result |
+| Actual virtual-display refresh | `CGDisplayCopyDisplayMode` when the virtual display is created | Creation event / Hz | Measured but can become stale because later HiDPI mode enforcement does not refresh the cached value | Creation log/ping | Suitable after periodic reread |
+| Android actual display refresh | `Display.getRefreshRate()` | Each Android metrics window / Hz | Measured. The overlay currently shows requested surface Hz instead of this actual value | No | Suitable after display/export correction |
+| Target bitrate | `StreamEncodingPolicy`, applied to VideoToolbox and sent as `streamConfig.bitrate` | Configuration event / bps | Configured; current clamps are HEVC 12–80 Mbps and H.264 8–30 Mbps | Configuration log | Test condition only |
+| Actual bitrate | Wire bytes completed by send multiplied by eight and divided by elapsed time | >=1 s / bps | Measured local wire throughput, including framing, telemetry, and Annex B | Transient Mac UI only | Must be persisted; encoded-payload bitrate must be separate |
+| Average frame size | Annex B encoded bytes divided by encoded frames | >=1 s / bytes/frame | Measured; excludes telemetry and framing | Debug text/ping, no CSV | Suitable if its byte scope is documented |
+| Encode latency | Immediately before `VTCompressionSessionEncodeFrame` through completion | >=1 s arithmetic mean / ms | Measured API latency; not capture PTS through completion | Debug text/ping, no CSV | Rename to `encodeApiLatencyAvgMs` and add percentiles |
+| Decode latency | Mac `snd` wall time through Android render wall time | >=1 s arithmetic mean / ms | Cross-clock estimate containing network, queueing, decode, and presentation; **not pure decode** | No | Current name is invalid for formal use; rename and measure MediaCodec stages separately |
+| RTT | Android t1 ping, Mac pong echo, Android t2 | Most recent ~2 s sample / ms | Measured round trip on Android, but with wall-clock timestamps | No; overlay only | Suitable after sample and P50/P95 export |
+| Clock offset | `Mac mt - (Android t1 + t2) / 2` | Replaced on each pong / ms | Single-sample NTP-style estimate with no low-RTT selection, filtering, confidence, or stable state | No | Insufficient for precise cross-device latency |
+| Frame age | Android receive time through render callback | >=1 s arithmetic mean / ms | Single-clock receive-to-render measurement. Despite its name, `latestFrameAgeMs` is neither latest nor full-pipeline age | No | Rename and add latest/P50/P95/P99 |
+| Estimated E2E | Mac `encode()` entry through Android render, after applying offset | >=1 s arithmetic mean / ms | Cross-clock estimate; the capture timestamp is not the SCStream callback entry | No | Comparative A/B only after stable offset and confidence reporting |
+| Mac pending sends / queue | Increment before send and decrement at completion | Ping snapshot / frames | Measured snapshot; capture currently drops only when the value is greater than three | No | Export a time series and P95/P99 |
+| Mac dropped frames | Pre-encode drops caused by backpressure | ~2 s interval / frames | Measured interval reset after ping; not every possible drop | No | Suitable with classified and cumulative counts |
+| Android queue depth | Latest-wins one-slot state, 0 or 1 | Metrics publication snapshot / frames | Measured snapshot likely to be zero at sampling time | No | Measure distribution and occupied time |
+| Android dropped frames | Latest-slot replacement/protection and MediaCodec input/oversize/error paths | >=1 s mixed interval / frames | Measured, but several causes are merged | No | Split causes before attribution |
+| Input P50 / P95 | Android touch with offset-derived Mac time through Mac `CGEvent.post` | Rolling sample set; when >240, first 120 removed / ms | Cross-clock estimate of Android send to Mac event post, not touch-to-photon. P95 is sent but discarded by Android | No; P50 overlay only | Useful as a control-path estimate after P95/export wiring; never label photon latency |
 
-### Benchmark 前必须补齐的采集闭环
+Primary code evidence: `Mac/MacSender.swift:585-615,935-993,1013-1033,1146-1171`, `Mac/StreamEncodingPolicy.swift:29-49,74-87`, `Mac/VirtualDisplay.swift:48-97`, `AndroidReceiver/.../OpenDisplayServer.java:211-330,388-475`, `VideoFrameTelemetry.java:18-47`, `H264SurfaceDecoder.java:99-191`, and `MainActivity.java:525-586,680-683`.
 
-1. Android 每秒发送结构化 `stats`（包含 receive/decode/render、frame age、E2E、decode latency、queue、drops 和显示 Hz）到 Mac；不得只留在 overlay。
-2. Mac 以 monotonic timestamp、session ID 和 transport 把本地 `ping` 字段与 Android `stats` 合并写入 CSV/JSONL。
-3. 把当前平均 frame age 明确命名为 `frameAgeAvgMs`，另增 latest、P50/P95/P99，避免字段含义与实现不一致。
-4. 增加实际编码/发送 bitrate、CPU、memory、thermal 采样，并记录采样方法与缺失值。
-5. 为断开、peer-ready、首帧分别输出结构化 event，才能可靠计算 reconnect time。
+## Reliable measurements, configuration values, and gaps
 
-## 优化计划功能状态
+### Existing runtime measurements
 
-| 计划项 | Preview 0.1 状态 | 本阶段处理 |
-| --- | --- | --- |
-| Debug Overlay 完整性能统计 | 大部分底层字段已有 | 先验证字段一致性和导出格式；UI 完整性另行验收 |
-| Frame Age | 已实现估算指标 | 在四个场景中作为核心指标采集 |
-| HEVC 120 Mbps / H.264 80 Mbps 上限 | 未作为本轮完成项 | 当前已验证配置上限不外推；先建立基线 |
-| Manual 10–120 Mbps | 未完成 | 后续按编码器、设备和热稳定性实现 |
-| Benchmark 最高 200 Mbps | 未完成 | 不应在普通用户模式开放 |
-| Auto 自适应码率 | 未完成 | 先用 RTT、queue、frame age、drop 数据验证阈值 |
-| Gaming/Balanced/High 队列模式 | 未完成 | Benchmark 可用实验构建分别测 1/2/3，但不得标作已发布功能 |
-| WiFi 2 秒 / USB 1 秒关键帧 | 未完成验收 | 重连/解码错误的强制关键帧已保留；周期策略需独立 A/B 测试 |
-| USB 120–160 Mbps 高性能模式 | 未完成 | ADB USB transport 已实现；高码率稳定性仍需测试 |
+Capture/encoded/sent/received/decoded/rendered FPS, actual virtual-display and Android display Hz, local actual send bitrate, average encoded frame size, encode API latency, RTT, Mac pending sends and backpressure drops, Android slot/decode drops, and receive-to-render frame age all have runtime producers.
 
-## 建议的实现与验证顺序
+Most are available only in an overlay, ping, or text log. They do not yet constitute a formal benchmark dataset.
 
-1. 固化 CSV/JSONL 导出字段、时间戳、session ID、transport 和测试场景标识。
-2. 对齐 Mac 与 Android 指标采样周期，验证计数器重置和 session 隔离。
-3. 在当前稳定码率下完成四场景 WiFi/USB 基线。
-4. 增加 Manual 码率并逐级测试 10、20、40、60、80、100、120 Mbps。
-5. 只在实验 Benchmark 模式逐级测试 140、160、180、200 Mbps，并设置温度、队列和 frame-age 停止条件。
-6. 用基线数据确定“快速下降、缓慢上升”的自适应阈值，再实现 Auto。
-7. 最后 A/B 测试 queue depth 与关键帧周期，避免多个变量同时变化而无法归因。
+### Configuration values
 
-## 性能目标的判定方式
+Requested FPS, target bitrate, codec, resolution, quality multiplier, transport, and VideoToolbox keyframe interval are requests. They must be reported separately from actual refresh, actual bitrate, rendered FPS, and observed keyframes.
 
-- WiFi `FrameAge < 30 ms`、USB `FrameAge < 20 ms` 是目标，不是 Preview 0.1 的既成事实。
-- 120Hz 通过必须同时满足实际显示刷新率、持续 capture/encode/render FPS 与稳定 frame age；仅协商到 120fps 不算通过。
-- “明显优于原版”必须使用同设备、同内容、同分辨率、同 codec、同码率的成对测试证明。
-- 30 分钟和 2 小时耐久由用户另行执行，本轮文档不伪造结果。
+### Estimates or misleading names
+
+- `decodeLatencyMs` is estimated send-to-render latency.
+- `latestFrameAgeMs` is a window average of receive-to-render latency.
+- `endToEndLatencyMs` depends on a single clock-offset sample.
+- Input P50/P95 covers only Android send through Mac `CGEvent.post`.
+
+### Missing capabilities
+
+1. Periodic structured Android-to-Mac stats. A `statsJson` helper exists, but the Android path does not call it.
+2. Session/run ID, scene, unified timeline, CSV, and JSONL.
+3. P50/P95/P99 for frame age, E2E, RTT, and queues.
+4. Separate MediaCodec queue-to-output and output-to-render latency.
+5. Persisted encoded-payload and wire bitrate with distinct scopes.
+6. Classified Android drops, cumulative Mac drops, and keyframe count/size.
+7. Mac CPU/memory and Android CPU/memory/thermal. Unavailable values must be `notAvailable`, never zero.
+8. Structured reconnect, peer-ready, and first-frame events.
+
+## Cross-device clock error
+
+The current ping/pong uses an NTP-style formula, but every valid sample replaces the previous offset. It rejects only RTT values below zero or at least 2000 ms. It has no multi-sample window, high-RTT outlier rejection, median/lowest-RTT selection, drift tracking, confidence, or `estimating`/`unavailable` state. Both devices use wall clocks, so system synchronization or manual clock changes can cause discontinuities.
+
+Until this is fixed, single-Android-clock measurements such as receive-to-render can support comparisons. E2E, send-to-render, and input latency must be labeled low-confidence estimates and must not display false precision.
+
+## Minimum changes required for a short benchmark
+
+1. Android sends structured stats at least once per second: receive/decode/render FPS, actual Hz, frame-age distribution, estimated E2E, RTT, offset state, queue, and classified drops.
+2. Mac merges local capture/encode/send, target/actual bitrate, frame size, encode latency, queue/drops, and Android stats by session/run/scene.
+3. Write both CSV and JSONL with wall timestamp, monotonic elapsed time, transport, codec, resolution, and requested settings. Missing fields use `notAvailable`.
+4. Correct misleading field names, periodically reread the virtual-display mode, show actual Android Hz, and preserve input P95.
+5. Debug Benchmark Mode fixes warm-up/run duration and scene; it records real samples and never synthesizes performance values.
+
+## Prerequisites for bitrate optimization
+
+- Fix device, commit, resolution, scale, codec, FPS, content, and thermal starting state; disable adaptation for the baseline.
+- Record target bitrate, encoded-payload bitrate, and wire bitrate separately.
+- Record rendered FPS, frame-age distribution, queue distribution, classified drops, CPU/memory, and thermal state together.
+- Establish a baseline under current caps before stepping through Manual rates. 140–200 Mbps is Benchmark Experimental only.
+- Preserve the failed sample and stop a run on thermal throttling, sustained frame-age growth, or the queue stop condition.
+- Do not change bitrate caps, adaptive bitrate, or send-queue policy until this measurement loop exists.
+
+## Verification and risks
+
+- Android: `./gradlew --no-daemon clean test assembleDebug`; four self-tests passed, 59 tasks, exit 0.
+- macOS: `xcodebuild ... OpenSidecarMac ... CODE_SIGNING_ALLOWED=NO`; exit 0.
+- Website/docs: production build, 17 bilingual document pairs, and release-link checks; exit 0.
+- This phase changes audit documents only, so there is no before/after performance improvement data. Inventing such values would defeat the audit.
+- Existing historical overlay values cannot reconstruct the missing time series; later phases must collect new samples.
+
+The next phase must implement Android stats return, a benchmark recorder, and corrected field semantics before any bitrate or queue policy change.

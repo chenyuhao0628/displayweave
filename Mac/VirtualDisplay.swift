@@ -16,6 +16,12 @@ final class VirtualDisplay {
 
     var displayID: CGDirectDisplayID { display.displayID }
 
+    func refreshActualRefreshRate() -> Int {
+        let refreshed = Self.currentRefreshRate(for: display.displayID, fallback: actualRefreshRate)
+        actualRefreshRate = refreshed
+        return refreshed
+    }
+
     /// Must be called on the main thread. `serialNum` must be unique per
     /// concurrent display AND stable per device — macOS keys saved display
     /// arrangement on vendor/product/serial, so a stable serial means each
@@ -83,6 +89,7 @@ final class VirtualDisplay {
                     guard let self else { return }
                     self.ensureNotMirrored()
                     if self.selectHiDPIMode(recover: settled) { settled = true }
+                    _ = self.refreshActualRefreshRate()
                 }
                 try? await Task.sleep(for: .milliseconds(settled ? 2000 : 200))
             }

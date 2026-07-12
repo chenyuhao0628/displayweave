@@ -59,6 +59,32 @@ struct StreamEncodingPolicySelfTest {
         assertTrue(lowBitrate < gamingBitrate && gamingBitrate < hevc1080p120,
                    "quality mode should tune bitrate without changing codec/fps negotiation")
 
+        assertEqual(12_000_000,
+                    StreamEncodingPolicy.bitrateBounds(codec: .hevc, transport: .wifi).lowerBound,
+                    "HEVC WiFi lower bound")
+        assertEqual(100_000_000,
+                    StreamEncodingPolicy.bitrateBounds(codec: .hevc, transport: .wifi).upperBound,
+                    "HEVC WiFi upper bound")
+        assertEqual(160_000_000,
+                    StreamEncodingPolicy.bitrateBounds(codec: .hevc, transport: .usb).upperBound,
+                    "HEVC USB upper bound")
+        assertEqual(60_000_000,
+                    StreamEncodingPolicy.bitrateBounds(codec: .h264, transport: .wifi).upperBound,
+                    "H.264 WiFi upper bound")
+        assertEqual(100_000_000,
+                    StreamEncodingPolicy.bitrateBounds(codec: .h264, transport: .usb).upperBound,
+                    "H.264 USB upper bound")
+        assertEqual(60_000_000,
+                    StreamEncodingPolicy.selectedBitrate(
+                        mode: .manual, preset: .mbps80, automatic: 20_000_000,
+                        codec: .h264, transport: .wifi),
+                    "manual values clamp to codec/transport bounds")
+        assertEqual(200_000_000,
+                    StreamEncodingPolicy.selectedBitrate(
+                        mode: .benchmark, preset: .mbps200, automatic: 20_000_000,
+                        codec: .hevc, transport: .usb),
+                    "benchmark mode alone permits 200 Mbps")
+
         assertEqual(120,
                     StreamEncodingPolicy.keyframeInterval(fps: 120),
                     "keyframe interval tracks one second of frames")

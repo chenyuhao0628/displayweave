@@ -38,6 +38,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // Status surfaced to the UI (updated on main thread).
     @MainActor var onStatus: ((String) -> Void)?
     @MainActor var onStats: ((Int, Double) -> Void)?   // framesSent, mbps
+    @MainActor var onTargetBitrate: ((Double) -> Void)?
+    @MainActor var onBenchmarkStatus: ((String) -> Void)?
     // Fired when a previously connected device stays gone past the grace
     // period — the controller ends the session (capture, virtual display,
     // recording indicator all torn down) instead of dialing forever or
@@ -67,7 +69,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // frames instead of queueing latency, then force a keyframe to resync.
     // Kept tight: at 60fps each queued send is ~17ms of added latency.
     private var pendingSends = 0
-    private let maxPendingSends = 3
+    private var maxPendingSends: Int { SendQueuePolicy.budget(quality: quality) }
     private var dropsThisWindow = 0
     private var needsKeyframe = true
     private var connectionReady = false
@@ -128,11 +130,35 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var lastEncodedFps = 0
     private var lastAverageFrameSize = 0
     private var lastEncodeLatencyMs: Double = 0
+    private var keyframesWindow = 0
+    private var keyframeBytesWindow = 0
+    private var peakFrameBytesWindow = 0
+    private var keyframeQueueDepthWindow = 0
+    private var lastKeyframeCount = 0
+    private var lastAverageKeyframeSize = 0
+    private var lastPeakFrameSize = 0
+    private var lastKeyframeQueueDepth = 0
+    private var decoderRecoveryEvent: String?
 
     private var framesSent = 0
     private var bytesSent = 0
     private var statsWindowStart = Date()
     private var lastSentFps = 0
+    private var lastCaptureFps = 0
+    private var lastActualBitrateMbps: Double = 0
+    private var adaptiveBitrateController: AdaptiveBitrateController?
+    private var lastAdaptiveDecision: AdaptiveBitrateDecision?
+    private var lastMacDropsSnapshot = 0
+
+    private let benchmarkClock = ContinuousClock()
+    private var benchmarkRecorder: BenchmarkRecorder?
+    private var benchmarkStartedAt: ContinuousClock.Instant?
+    private var benchmarkPhasePolicy: BenchmarkPhasePolicy?
+    private var benchmarkRunId: String?
+    private var benchmarkSessionId: String?
+    private var benchmarkScene: BenchmarkScene?
+    private var benchmarkFinishWorkItem: DispatchWorkItem?
+    private var benchmarkOutputDirectory: URL?
 
     // ScreenCaptureKit emits frames only when content changes. After a
     // reconnect on a static screen there is nothing to hang the forced
@@ -387,10 +413,49 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         encoder = nil
         virtualDisplay = nil   // releasing it removes the display
         queue.async { [weak self] in
+            self?.finishBenchmarkOnQueue(message: "Benchmark stopped with session")
             // Unblock a start() that is still waiting for the hello.
             self?.helloContinuation?.resume(throwing: CancellationError())
             self?.helloContinuation = nil
         }
+    }
+
+    @MainActor
+    func startBenchmark(scene: BenchmarkScene, duration: BenchmarkDuration) throws {
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("DisplayWeave/Benchmarks", isDirectory: true)
+        let recorder = BenchmarkRecorder(rootURL: root)
+        let runId = UUID().uuidString.lowercased()
+        try recorder.start(runId: runId)
+        queue.sync {
+            finishBenchmarkOnQueue(message: nil)
+            benchmarkRecorder = recorder
+            benchmarkStartedAt = benchmarkClock.now
+            benchmarkPhasePolicy = BenchmarkPhasePolicy(runSeconds: TimeInterval(duration.rawValue))
+            benchmarkRunId = runId
+            benchmarkSessionId = UUID().uuidString.lowercased()
+            benchmarkScene = scene
+            benchmarkOutputDirectory = root.appendingPathComponent(runId, isDirectory: true)
+            let finish = DispatchWorkItem { [weak self] in
+                self?.finishBenchmarkOnQueue(message: "Benchmark completed")
+            }
+            benchmarkFinishWorkItem = finish
+            queue.asyncAfter(
+                deadline: .now() + 30 + TimeInterval(duration.rawValue), execute: finish)
+        }
+        Task { @MainActor in
+            onBenchmarkStatus?("Warm-up 30s · \(scene.label) · run \(runId)")
+        }
+    }
+
+    @MainActor
+    func stopBenchmark() {
+        queue.async { [weak self] in self?.finishBenchmarkOnQueue(message: "Benchmark stopped") }
+    }
+
+    @MainActor
+    var isBenchmarkActive: Bool {
+        queue.sync { benchmarkRecorder != nil }
     }
 
     /// Drop the current connection and dial again — fresh TCP through the
@@ -589,6 +654,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 // Liveness + send-side health for the phone's overlay.
                 let elapsed = Date().timeIntervalSince(self.capWindowStart)
                 let capFps = elapsed > 0 ? Int(Double(self.capFrames) / elapsed) : 0
+                self.lastCaptureFps = capFps
+                if let virtualDisplay = self.virtualDisplay {
+                    Task { @MainActor [weak self, weak virtualDisplay] in
+                        guard let self, let virtualDisplay else { return }
+                        let refreshed = virtualDisplay.refreshActualRefreshRate()
+                        self.queue.async { [weak self] in
+                            self?.actualVirtualDisplayRefreshRate = refreshed
+                        }
+                    }
+                }
                 self.capFrames = 0
                 self.capWindowStart = Date()
                 self.logCaptureFpsIfLimited(actualFps: capFps)
@@ -609,6 +684,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                     inputP50Ms: inp50,
                     inputP95Ms: inp95)
                 self.sendJSONFrame(stats.pingJson(nowMs: Date().timeIntervalSince1970 * 1000))
+                self.lastMacDropsSnapshot = self.dropsThisWindow
                 self.dropsThisWindow = 0
             }
             self.schedulePing()
@@ -765,8 +841,14 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             // Echo with our clock so the phone can estimate the offset
             // (NTP-style) and compute true end-to-end frame latency.
             if let t = obj["t"] as? Double {
-                let mt = Date().timeIntervalSince1970 * 1000
-                sendJSONFrame("{\"type\":\"pong\",\"t\":\(t),\"mt\":\(mt)}")
+                let received = Date().timeIntervalSince1970 * 1000
+                let sent = Date().timeIntervalSince1970 * 1000
+                if let pong = try? BenchmarkControlPolicy.pongData(
+                    pingTimestamp: t,
+                    macReceivedTimestamp: received,
+                    macSentTimestamp: sent) {
+                    sendJSONFrame(String(decoding: pong, as: UTF8.self))
+                }
             }
         case "stats":
             // Aggregated pipeline health measured on the phone — logged here
@@ -774,6 +856,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             if let json = try? JSONSerialization.data(withJSONObject: obj),
                let line = String(data: json, encoding: .utf8) {
                 Log.info("PHONE-STATS \(line) | mac drops=\(dropsThisWindow) pending=\(pendingSends)")
+            }
+            if let receiver = try? BenchmarkControlPolicy.receiverStats(from: payload) {
+                updateAdaptiveBitrate(receiver: receiver)
+                appendBenchmarkSample(receiver: receiver)
             }
         case "hello":
             if let info = try? JSONDecoder().decode(PhoneInfo.self, from: payload) {
@@ -818,12 +904,14 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             // The phone's decoder lost sync (e.g. it attached mid-GOP and
             // periodic keyframes are off) — force an IDR on the next frame.
             Log.info("phone requested keyframe")
+            decoderRecoveryEvent = "receiver-kf"
             needsKeyframe = true
         case "codecFailure":
             let failedCodec = (obj["codec"] as? String)?.lowercased() ?? "unknown"
             let message = obj["message"] as? String ?? "unspecified codec failure"
             Log.info("phone reported codec failure: codec=\(failedCodec) message=\(message)")
             if failedCodec == StreamCodec.hevc.rawValue, streamCodec == .hevc {
+                decoderRecoveryEvent = "codec-fallback"
                 if let encoder { VTCompressionSessionInvalidate(encoder) }
                 encoder = nil
                 setupEncoder(width: max(activeStreamWidth, 2),
@@ -856,9 +944,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func setupEncoder(width: Int, height: Int, fps: Int, preferredCodec: StreamCodec) {
         let finalFps = RefreshRatePolicy.sanitize(fps)
         streamCodec = preferredCodec
-        streamBitrate = StreamEncodingPolicy.bitrate(
+        let automaticBitrate = StreamEncodingPolicy.bitrate(
             width: width, height: height, fps: finalFps, codec: preferredCodec,
             quality: quality)
+        streamBitrate = selectedBitrate(automatic: automaticBitrate, codec: preferredCodec)
         encodedFramesWindow = 0
         encodedBytesWindow = 0
         encodeLatencyMsWindow.removeAll(keepingCapacity: true)
@@ -875,9 +964,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         if created == nil, preferredCodec == .hevc {
             Log.info("HEVC encoder unavailable; falling back to H.264")
             streamCodec = .h264
-            streamBitrate = StreamEncodingPolicy.bitrate(
+            let fallbackAutomatic = StreamEncodingPolicy.bitrate(
                 width: width, height: height, fps: finalFps, codec: .h264,
                 quality: quality)
+            streamBitrate = selectedBitrate(automatic: fallbackAutomatic, codec: .h264)
             created = createEncoder(width: width, height: height, codec: .h264, spec: spec)
         }
         encoder = created
@@ -893,8 +983,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             : kVTProfileLevel_H264_High_AutoLevel
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_ProfileLevel, value: profile)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_MaxKeyFrameInterval,
-                             value: StreamEncodingPolicy.keyframeInterval(fps: finalFps) as CFNumber)
-        VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 1 as CFNumber)
+                             value: KeyframePolicy.frameInterval(
+                                fps: finalFps, transport: bitrateTransport) as CFNumber)
+        VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration,
+                             value: KeyframePolicy.defaultSeconds(transport: bitrateTransport) as CFNumber)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: 0 as CFNumber)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_AverageBitRate, value: streamBitrate as CFNumber)
         let bytesPerSecond = max(streamBitrate / 8, 1)
@@ -903,7 +995,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: finalFps as CFNumber)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality, value: kCFBooleanTrue)
         VTCompressionSessionPrepareToEncodeFrames(encoder)
-        Log.info("encoder ready: \(width)x\(height) \(streamCodec.label) fps=\(finalFps) bitrate=\(streamBitrate / 1_000_000)Mbps keyframeInterval=\(StreamEncodingPolicy.keyframeInterval(fps: finalFps)) quality=\(quality.rawValue) lowLatencyRC=\(lowLatency)")
+        adaptiveBitrateController = settings.bitrateMode == .auto
+            ? AdaptiveBitrateController(
+                initialBitrate: streamBitrate,
+                bounds: StreamEncodingPolicy.bitrateBounds(
+                    codec: streamCodec, transport: bitrateTransport))
+            : nil
+        lastAdaptiveDecision = nil
+        Task { @MainActor in onTargetBitrate?(Double(streamBitrate) / 1_000_000) }
+        Log.info("encoder ready: \(width)x\(height) \(streamCodec.label) fps=\(finalFps) bitrate=\(streamBitrate / 1_000_000)Mbps keyframeInterval=\(KeyframePolicy.frameInterval(fps: finalFps, transport: bitrateTransport)) quality=\(quality.rawValue) lowLatencyRC=\(lowLatency)")
     }
 
     private func createEncoder(width: Int, height: Int, codec: StreamCodec,
@@ -946,9 +1046,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
         // No receiver, or the socket is backed up: skip this frame entirely.
         guard connectionReady else { return }
-        if pendingSends > maxPendingSends {
-            needsKeyframe = true   // dropped frames break the P-frame chain
-            dropsThisWindow += 1
+        let queueDecision = SendQueuePolicy.decision(
+            pendingSends: pendingSends, budget: maxPendingSends,
+            currentDroppedFrames: dropsThisWindow)
+        if queueDecision.shouldDrop {
+            needsKeyframe = queueDecision.forceKeyframe
+            dropsThisWindow = queueDecision.droppedFrames
             dropsTotal += 1
             return
         }
@@ -988,7 +1091,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 let sndMs = Int64(Date().timeIntervalSince1970 * 1000)
                 var framed = Data("{\"cap\":\(capturedAtMs),\"snd\":\(sndMs)}".utf8)
                 framed.append(data)
-                self.recordEncodedFrame(bytes: data.count,
+                self.recordEncodedFrame(bytes: data.count, isKeyframe: Self.isKeyframe(buffer),
                                         latencyMs: Date().timeIntervalSince(encodeStart) * 1000)
                 self.sendFramed(framed)
             }
@@ -1010,9 +1113,22 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         needsKeyframe = true
     }
 
-    private func recordEncodedFrame(bytes: Int, latencyMs: Double) {
+    private static func isKeyframe(_ sample: CMSampleBuffer) -> Bool {
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(
+            sample, createIfNecessary: false) as? [[CFString: Any]],
+              let first = attachments.first else { return false }
+        return first[kCMSampleAttachmentKey_NotSync] == nil
+    }
+
+    private func recordEncodedFrame(bytes: Int, isKeyframe: Bool, latencyMs: Double) {
         encodedFramesWindow += 1
         encodedBytesWindow += bytes
+        peakFrameBytesWindow = max(peakFrameBytesWindow, bytes)
+        if isKeyframe {
+            keyframesWindow += 1
+            keyframeBytesWindow += bytes
+            keyframeQueueDepthWindow = max(keyframeQueueDepthWindow, pendingSends)
+        }
         encodeLatencyMsWindow.append(latencyMs)
         let elapsed = Date().timeIntervalSince(encodeStatsWindowStart)
         guard elapsed >= 1 else { return }
@@ -1024,12 +1140,21 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         lastEncodedFps = Int(fps.rounded())
         lastAverageFrameSize = avgFrame
         lastEncodeLatencyMs = avgLatency
+        lastKeyframeCount = keyframesWindow
+        lastAverageKeyframeSize = keyframesWindow > 0 ? keyframeBytesWindow / keyframesWindow : 0
+        lastPeakFrameSize = peakFrameBytesWindow
+        lastKeyframeQueueDepth = keyframeQueueDepthWindow
         if settings.enableDebugStats {
-            Log.info("ENC-STATS codec=\(streamCodec.rawValue) encodedFps=\(String(format: "%.1f", fps)) encodeLatencyMs=\(String(format: "%.1f", avgLatency)) bitrate=\(streamBitrate) keyframeInterval=\(StreamEncodingPolicy.keyframeInterval(fps: requestedCaptureFps)) averageFrameSize=\(avgFrame)")
+            let averageKeyframeSize = keyframesWindow > 0 ? keyframeBytesWindow / keyframesWindow : 0
+            Log.info("ENC-STATS codec=\(streamCodec.rawValue) encodedFps=\(String(format: "%.1f", fps)) encodeLatencyMs=\(String(format: "%.1f", avgLatency)) bitrate=\(streamBitrate) keyframeInterval=\(KeyframePolicy.frameInterval(fps: requestedCaptureFps, transport: bitrateTransport)) keyframeCount=\(keyframesWindow) averageKeyframeSize=\(averageKeyframeSize) peakFrameSize=\(peakFrameBytesWindow) queueAtWindowEnd=\(pendingSends) averageFrameSize=\(avgFrame)")
         }
         encodedFramesWindow = 0
         encodedBytesWindow = 0
         encodeLatencyMsWindow.removeAll(keepingCapacity: true)
+        keyframesWindow = 0
+        keyframeBytesWindow = 0
+        peakFrameBytesWindow = 0
+        keyframeQueueDepthWindow = 0
         encodeStatsWindowStart = Date()
     }
 
@@ -1162,6 +1287,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             let elapsed = Date().timeIntervalSince(self.statsWindowStart)
             if elapsed >= 1.0 {
                 let mbps = Double(self.bytesSent) * 8 / elapsed / 1_000_000
+                self.lastActualBitrateMbps = mbps
                 let frames = self.framesSent
                 self.lastSentFps = Int((Double(self.framesSent) / elapsed).rounded())
                 self.framesSent = 0
@@ -1176,6 +1302,143 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     private func status(_ text: String) async {
         await MainActor.run { onStatus?(text) }
+    }
+
+    private var activeTransportName: String {
+        switch transport {
+        case .tcp: return "wifi"
+        case .usb: return "apple-usb"
+        case .androidAdb: return "android-adb-usb"
+        }
+    }
+
+    private var bitrateTransport: BitrateTransport {
+        switch transport {
+        case .tcp: return .wifi
+        case .usb, .androidAdb: return .usb
+        }
+    }
+
+    private func selectedBitrate(automatic: Int, codec: StreamCodec) -> Int {
+        StreamEncodingPolicy.selectedBitrate(
+            mode: settings.bitrateMode, preset: settings.bitratePreset,
+            automatic: automatic, codec: codec, transport: bitrateTransport)
+    }
+
+    private func updateAdaptiveBitrate(receiver: ReceiverStats) {
+        guard let controller = adaptiveBitrateController else { return }
+        let decision = controller.evaluate(
+            AdaptiveBitrateMetrics(
+                timestamp: Date().timeIntervalSince1970,
+                pendingSends: pendingSends,
+                encodedFps: Double(lastEncodedFps), sentFps: Double(lastSentFps),
+                rttMs: receiver.rttMs, frameAgeP95Ms: receiver.frameAgeP95Ms,
+                macDrops: lastMacDropsSnapshot,
+                androidDrops: max(Int(receiver.androidDroppedFrames ?? 0), 0),
+                androidQueueDepth: max(Int(receiver.androidQueueDepth ?? 0), 0)),
+            mode: settings.bitrateMode)
+        guard let decision, let encoder else { return }
+        streamBitrate = decision.newBitrate
+        VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_AverageBitRate,
+                             value: streamBitrate as CFNumber)
+        VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_DataRateLimits,
+                             value: [max(streamBitrate / 8, 1), 1] as CFArray)
+        lastAdaptiveDecision = decision
+        Task { @MainActor in onTargetBitrate?(Double(streamBitrate) / 1_000_000) }
+        sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
+        Log.info("adaptive bitrate previousBitrate=\(decision.previousBitrate) newBitrate=\(decision.newBitrate) reason=\(decision.reason) networkState=\(decision.networkState.rawValue)")
+    }
+
+    private func appendBenchmarkSample(receiver: ReceiverStats) {
+        guard let recorder = benchmarkRecorder,
+              BenchmarkRecordingGate.shouldAppend(
+                isRecorderActive: recorder.isActive, hasReceiverStats: true),
+              let startedAt = benchmarkStartedAt,
+              let policy = benchmarkPhasePolicy,
+              let runId = benchmarkRunId,
+              let sessionId = benchmarkSessionId,
+              let scene = benchmarkScene else { return }
+        let elapsed = startedAt.duration(to: benchmarkClock.now)
+        let elapsedSeconds = BenchmarkControlPolicy.seconds(from: elapsed)
+        let phase = policy.phase(elapsedSeconds: elapsedSeconds)
+        guard phase != .finished else {
+            finishBenchmarkOnQueue(message: "Benchmark completed")
+            return
+        }
+        let sample = BenchmarkSample(
+            timestamp: Date(), monotonicElapsed: elapsed,
+            runId: runId, sessionId: sessionId, scene: scene.rawValue, phase: phase.rawValue,
+            deviceModel: lastHello?.negotiatedDeviceModel ?? receiver.deviceModel ?? "notAvailable",
+            transport: activeTransportName, codec: streamCodec.rawValue,
+            resolution: BenchmarkResolution(width: activeStreamWidth, height: activeStreamHeight),
+            requestedFps: Double(requestedCaptureFps),
+            actualVirtualDisplayRefreshRate: Double(actualVirtualDisplayRefreshRate),
+            captureFps: Double(lastCaptureFps), encodedFps: Double(lastEncodedFps),
+            sentFps: Double(lastSentFps), receiver: receiver,
+            targetBitrateMbps: Double(streamBitrate) / 1_000_000,
+            actualBitrateMbps: lastActualBitrateMbps > 0 ? lastActualBitrateMbps : nil,
+            previousBitrateMbps: lastAdaptiveDecision.map { Double($0.previousBitrate) / 1_000_000 },
+            newBitrateMbps: lastAdaptiveDecision.map { Double($0.newBitrate) / 1_000_000 },
+            bitrateChangeReason: lastAdaptiveDecision?.reason,
+            networkState: lastAdaptiveDecision?.networkState.rawValue,
+            keyframeCount: Double(lastKeyframeCount),
+            averageKeyframeSize: lastAverageKeyframeSize > 0 ? Double(lastAverageKeyframeSize) : nil,
+            peakFrameSize: lastPeakFrameSize > 0 ? Double(lastPeakFrameSize) : nil,
+            keyframeQueueDepth: Double(lastKeyframeQueueDepth),
+            keyframeFrameAgeP95Ms: lastKeyframeCount > 0 ? receiver.frameAgeP95Ms : nil,
+            decoderRecoveryEvent: decoderRecoveryEvent,
+            averageFrameSize: lastAverageFrameSize > 0 ? Double(lastAverageFrameSize) : nil,
+            encodeLatencyMs: lastEncodeLatencyMs, pendingSends: Double(pendingSends),
+            macQueue: Double(pendingSends), macDrops: Double(lastMacDropsSnapshot),
+            macCPU: nil, macMemory: Self.residentMemoryMB())
+        do {
+            try recorder.append(sample)
+            lastAdaptiveDecision = nil
+            decoderRecoveryEvent = nil
+            Task { @MainActor in
+                onBenchmarkStatus?("\(phase.rawValue) · \(scene.label) · \(runId)")
+            }
+        } catch {
+            finishBenchmarkOnQueue(message: "Benchmark failed: \(error)")
+        }
+    }
+
+    private func finishBenchmarkOnQueue(message: String?) {
+        guard let recorder = benchmarkRecorder else { return }
+        benchmarkRecorder = nil
+        benchmarkStartedAt = nil
+        benchmarkPhasePolicy = nil
+        benchmarkRunId = nil
+        benchmarkSessionId = nil
+        benchmarkScene = nil
+        benchmarkFinishWorkItem?.cancel()
+        benchmarkFinishWorkItem = nil
+        let outputDirectory = benchmarkOutputDirectory
+        benchmarkOutputDirectory = nil
+        do {
+            let result = try recorder.stop()
+            if let message {
+                let finalMessage = "\(message) · \(result.csvURL.deletingLastPathComponent().path)"
+                Task { @MainActor in onBenchmarkStatus?(finalMessage) }
+            }
+        } catch {
+            let directory = outputDirectory?.path ?? "output path unavailable"
+            let failure = "Benchmark flush failed: \(error) · \(directory)"
+            Log.info(failure)
+            Task { @MainActor in onBenchmarkStatus?(failure) }
+        }
+    }
+
+    private static func residentMemoryMB() -> Double? {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return nil }
+        return Double(info.resident_size) / 1_048_576
     }
 
 }

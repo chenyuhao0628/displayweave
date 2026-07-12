@@ -19,6 +19,10 @@ public final class VideoStreamPolicySelfTest {
         testFrameClassifier();
         testFrameTelemetry();
         testStreamMetricsLatencyFields();
+        testMetricDistribution();
+        testClockOffsetEstimator();
+        testStatsPublicationWindowBoundary();
+        testMacPingMetricsParsing();
         testCodecFallbackStatus();
         testWifiTransportCarriesFramedPayloads();
         testWifiTransportIgnoresSendAfterStop();
@@ -111,6 +115,82 @@ public final class VideoStreamPolicySelfTest {
         assertEquals("HEVC 不可用，已请求回退 H.264",
                 CodecFallbackStatus.messageForCodecFailure("hevc"));
         assertEquals(null, CodecFallbackStatus.messageForCodecFailure("h264"));
+    }
+
+    private static void testMetricDistribution() {
+        MetricDistribution distribution = new MetricDistribution(4);
+        assertEquals(MetricDistribution.MISSING_MS, distribution.latest());
+        assertEquals(MetricDistribution.MISSING_MS, distribution.p50());
+        assertEquals(MetricDistribution.MISSING_MS, distribution.p95());
+        assertEquals(MetricDistribution.MISSING_MS, distribution.p99());
+
+        distribution.add(40);
+        distribution.add(10);
+        distribution.add(30);
+        distribution.add(20);
+        assertEquals(20L, distribution.latest());
+        assertEquals(20L, distribution.p50());
+        assertEquals(40L, distribution.p95());
+        assertEquals(40L, distribution.p99());
+
+        distribution.add(5);
+        assertEquals(4, distribution.size());
+        assertEquals(5L, distribution.latest());
+        assertEquals(10L, distribution.p50());
+        assertEquals(30L, distribution.p95());
+    }
+
+    private static void testClockOffsetEstimator() {
+        ClockOffsetEstimator estimator = new ClockOffsetEstimator(4);
+        assertEquals(ClockOffsetEstimator.State.ESTIMATING, estimator.state());
+        assertFalse(estimator.addSample(0, 300, 300, 300));
+        assertFalse(estimator.addSample(300, 0, 0, 0));
+        assertEquals(0, estimator.sampleCount());
+
+        assertTrue(estimator.addSample(1000, 1012, 1014, 1006)); // offset 10, RTT 4
+        assertTrue(estimator.addSample(2000, 2014, 2016, 2008)); // offset 11, RTT 6
+        assertEquals(ClockOffsetEstimator.State.ESTIMATING, estimator.state());
+        assertTrue(estimator.addSample(3000, 3014, 3016, 3010)); // offset 10, RTT 8
+        assertEquals(ClockOffsetEstimator.State.STABLE, estimator.state());
+        assertEquals(11L, estimator.offsetMs());
+        assertEquals(1L, estimator.confidenceMs());
+
+        assertTrue(estimator.addSample(4000, 4102, 4104, 4200)); // offset 1, RTT 198
+        assertTrue(estimator.addSample(5000, 5022, 5024, 5020)); // offset 11, RTT 18; evicts first
+        assertEquals(4, estimator.sampleCount());
+        assertEquals(11L, estimator.offsetMs());
+        assertEquals(1L, estimator.confidenceMs());
+        ClockOffsetEstimator estimating = new ClockOffsetEstimator(4);
+        estimating.addSample(1000, 1012, 1014, 1006);
+        assertEquals(null, OpenDisplayServer.stableOffsetOrNull(estimating));
+        estimating.addSample(2000, 2014, 2016, 2008);
+        estimating.addSample(3000, 3014, 3016, 3010);
+        assertEquals(11.0, OpenDisplayServer.stableOffsetOrNull(estimating));
+        estimating.reset();
+        assertEquals(0, estimating.sampleCount());
+        assertEquals(ClockOffsetEstimator.State.ESTIMATING, estimating.state());
+        assertEquals(ClockOffsetEstimator.MISSING_MS, estimating.offsetMs());
+        assertEquals(null, OpenDisplayServer.stableOffsetOrNull(estimating));
+    }
+
+    private static void testStatsPublicationWindowBoundary() {
+        assertFalse(OpenDisplayServer.shouldPublishStats(999));
+        assertTrue(OpenDisplayServer.shouldPublishStats(1000));
+    }
+
+    private static void testMacPingMetricsParsing() {
+        OpenDisplayServer.MacPingMetrics metrics = OpenDisplayServer.MacPingMetrics.parse(
+                "{\"type\":\"ping\",\"inp50\":3.5,\"inputP95Ms\":8.25,\"requestedFps\":120}",
+                0, 0, 60);
+        assertEquals(3.5, metrics.inputP50Ms);
+        assertEquals(8.25, metrics.inputP95Ms);
+        assertEquals(120, metrics.requestedFps);
+        OpenDisplayServer.MacPingMetrics overflow = OpenDisplayServer.MacPingMetrics.parse(
+                "{\"inp50\":1e999,\"inp95\":NaN,\"requestedFps\":1e999}",
+                4.0, 9.0, 60);
+        assertEquals(4.0, overflow.inputP50Ms);
+        assertEquals(9.0, overflow.inputP95Ms);
+        assertEquals(60, overflow.requestedFps);
     }
 
     private static void testWifiTransportCarriesFramedPayloads() {

@@ -4,8 +4,11 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import app.opendisplay.android.ControlMessageWriter;
+import app.opendisplay.android.ReceiverStatsSnapshot;
 import app.opendisplay.android.ScrollGestureTracker;
 import app.opendisplay.android.TouchGestureCoordinator;
 import app.opendisplay.android.TouchEventMapper;
@@ -16,6 +19,8 @@ public final class ProtocolSelfTest {
         testJsonClassification();
         testHelloJsonIncludesDisplayCapabilities();
         testStreamConfigJson();
+        testReceiverStatsJsonUsesCanonicalFieldsAndNulls();
+        testStatsJsonRejectsNonFiniteNumbers();
         testAnnexBTelemetryAndNalus();
         testAnnexBFindsHevcParameterSets();
         testSpsParser();
@@ -86,6 +91,42 @@ public final class ProtocolSelfTest {
         assertContains(json, "\"bitrate\":60000000");
         assertContains(json, "\"profile\":\"main\"");
         assertContains(json, "\"transport\":\"wifi\"");
+    }
+
+    private static void testReceiverStatsJsonUsesCanonicalFieldsAndNulls() {
+        ReceiverStatsSnapshot snapshot = new ReceiverStatsSnapshot(
+                1234L, "Pixel \"Tablet\"\\Pro", "usb", "hevc",
+                2560, 1600, 120, 119.88,
+                118, 117, 116, null,
+                null, null, null, "estimating",
+                8.25, 9L, 6L, 14L, 20L,
+                null, null, 1, 2, 3.5, 7.5);
+        String json = snapshot.toJson();
+        assertContains(json, "\"type\":\"stats\"");
+        assertContains(json, "\"timestamp\":1234");
+        assertContains(json, "\"deviceModel\":\"Pixel \\\"Tablet\\\"\\\\Pro\"");
+        assertContains(json, "\"actualAndroidDisplayRefreshRate\":119.88");
+        assertContains(json, "\"clockOffsetMs\":null");
+        assertContains(json, "\"rttMs\":null");
+        assertContains(json, "\"offsetConfidenceMs\":null");
+        assertContains(json, "\"estimatedE2ELatencyMs\":null");
+        assertContains(json, "\"sendToRenderEstimatedMs\":null");
+        assertContains(json, "\"inputP95Ms\":7.5");
+        assertFalse(json.contains("\"null\""));
+    }
+
+    private static void testStatsJsonRejectsNonFiniteNumbers() {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("nan", Double.NaN);
+        values.put("positiveInfinity", Double.POSITIVE_INFINITY);
+        values.put("negativeInfinity", Float.NEGATIVE_INFINITY);
+        String json = LengthPrefixedProtocol.statsJson(values);
+        assertContains(json, "\"nan\":null");
+        assertContains(json, "\"positiveInfinity\":null");
+        assertContains(json, "\"negativeInfinity\":null");
+        assertFalse(json.contains(":NaN"));
+        assertFalse(json.contains(":Infinity"));
+        assertFalse(json.contains(":-Infinity"));
     }
 
     private static void testAnnexBTelemetryAndNalus() throws Exception {

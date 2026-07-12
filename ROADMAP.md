@@ -10,6 +10,7 @@
 - Android HEVC/120 and H.264/60 USB paths on the available OnePlus device.
 - Cable, ADB restart, authorization revoke/reallow, touch, and two-finger scroll checks.
 - Offline v2-signed Android APK and mixed current-iPhone/Android concurrency.
+- Short benchmark recording, target/actual bitrate separation, Auto/Manual/Benchmark modes, adaptive bitrate, bounded send queues, and transport-aware keyframes (automated verification; physical performance matrix pending).
 
 ## Next validation
 

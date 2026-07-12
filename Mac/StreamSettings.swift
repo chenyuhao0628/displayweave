@@ -113,12 +113,41 @@ enum StreamTransportMode: String, CaseIterable {
     }
 }
 
+enum BitrateMode: String, CaseIterable {
+    case auto, manual, benchmark
+
+    var label: String {
+        switch self {
+        case .auto: return "Auto"
+        case .manual: return "Manual"
+        case .benchmark: return "Benchmark"
+        }
+    }
+}
+
+enum BitratePreset: Int, CaseIterable {
+    case mbps10 = 10, mbps20 = 20, mbps30 = 30, mbps40 = 40
+    case mbps60 = 60, mbps80 = 80, mbps100 = 100, mbps120 = 120
+    case mbps140 = 140, mbps160 = 160, mbps180 = 180, mbps200 = 200
+
+    var megabits: Int { rawValue }
+    var bitsPerSecond: Int { rawValue * 1_000_000 }
+    var label: String { "\(rawValue) Mbps" }
+
+    static var manualCases: [BitratePreset] {
+        allCases.filter { $0.rawValue <= 160 && $0 != .mbps140 }
+    }
+    static var benchmarkCases: [BitratePreset] { allCases }
+}
+
 struct StreamSettings: Equatable {
     var fpsMode: StreamFpsMode
     var codecMode: StreamCodecMode
     var quality: StreamQuality
     var transportMode: StreamTransportMode
     var enableDebugStats: Bool
+    var bitrateMode: BitrateMode = .auto
+    var bitratePreset: BitratePreset = .mbps40
 
     static func load(from defaults: UserDefaults = .standard) -> StreamSettings {
         let fpsMode = StreamFpsMode(rawValue: defaults.string(forKey: "fpsMode") ?? "") ?? legacyFpsMode(defaults)
@@ -126,12 +155,17 @@ struct StreamSettings: Equatable {
         let quality = StreamQuality.fromStoredValue(defaults.string(forKey: "quality"))
         let transportMode = StreamTransportMode(rawValue: defaults.string(forKey: "transportMode") ?? "") ?? .auto
         let debugStats = defaults.object(forKey: "debugStats") == nil || defaults.bool(forKey: "debugStats")
+        let storedBitrateMode = defaults.string(forKey: "bitrateMode")
+        let bitrateMode = BitrateMode(rawValue: storedBitrateMode ?? "") ?? .auto
+        let bitratePreset = BitratePreset(rawValue: defaults.integer(forKey: "bitrateMbps")) ?? .mbps40
         return StreamSettings(
             fpsMode: fpsMode,
             codecMode: codecMode,
             quality: quality,
             transportMode: transportMode,
-            enableDebugStats: debugStats)
+            enableDebugStats: debugStats,
+            bitrateMode: bitrateMode,
+            bitratePreset: bitratePreset)
     }
 
     func save(to defaults: UserDefaults = .standard) {
@@ -140,6 +174,8 @@ struct StreamSettings: Equatable {
         defaults.set(quality.rawValue, forKey: "quality")
         defaults.set(transportMode.rawValue, forKey: "transportMode")
         defaults.set(enableDebugStats, forKey: "debugStats")
+        defaults.set(bitrateMode.rawValue, forKey: "bitrateMode")
+        defaults.set(bitratePreset.rawValue, forKey: "bitrateMbps")
     }
 
     func selectedFps(deviceMaxFps: Int) -> Int {

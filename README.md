@@ -15,6 +15,7 @@ DisplayWeave is an independently maintained, GPL-3.0, local-first second-display
 - Recovery: receiver foreground/surface return, cable unplug/replug, ADB restart, and authorization revoke/reallow were verified on the available OnePlus Android device.
 - Mixed receivers: one current DisplayWeave iPhone over WiFi and one Android receiver ran concurrently.
 - Runtime evidence: capture, encode, send, receive, decode, render, queue, drop, and latency metrics.
+- Performance controls: Auto/Manual/experimental Benchmark bitrate, bounded adaptive changes, quality-aware send queues, and transport-aware keyframe intervals.
 
 Android high refresh remains experimental. One OnePlus HEVC/120 WiFi run measured about 109–111 rendered FPS; this does not guarantee stable 120 FPS on other devices or conditions.
 
@@ -76,6 +77,8 @@ Android release signing uses a keystore stored outside the repository. See [deve
 - [Release checklist](docs/release-checklist.md)
 - [Stability evidence](docs/stability-test-report.md)
 - [USB/WiFi benchmark protocol](docs/usb-vs-wifi-benchmark.md)
+- [Bitrate modes](docs/bitrate-modes.md) and [adaptive bitrate](docs/adaptive-bitrate.md)
+- [Queue analysis](docs/low-latency-queue-analysis.md) and [keyframe strategy](docs/keyframe-strategy.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)

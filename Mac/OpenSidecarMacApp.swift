@@ -127,6 +127,8 @@ final class DeviceSession: ObservableObject, Identifiable {
     @Published var status = "正在启动…"
     @Published var framesSent = 0
     @Published var mbps = 0.0
+    @Published var targetMbps = 0.0
+    @Published var benchmarkStatus = "Idle"
     // Receiver's per-install identity (from hello) — the key for recognizing
     // the same physical device across USB and WiFi.
     var deviceID: String?
@@ -200,6 +202,8 @@ final class SenderController: ObservableObject {
     private var androidConnectPending = Set<String>()
     private var androidRecoveryAttempt: [String: Int] = [:]
     private var androidRecoveryGeneration: [String: Int] = [:]
+    private let benchmarkLaunch = BenchmarkLaunchOptions.parse(ProcessInfo.processInfo.arguments)
+    private var didAutoStartBenchmark = false
 
     // Connection policy keeps one session per physical device. Apple
     // transports retain the existing explicit/no-mid-session-handover
@@ -561,6 +565,9 @@ final class SenderController: ObservableObject {
         sender.onStatus = { [weak session] text in
             session?.status = text
             Log.info("status[\(id)]: \(text)")
+            if text.hasPrefix("已连接") {
+                self.autoStartBenchmarkIfRequested()
+            }
         }
         sender.onHello = { [weak self, weak session] info in
             guard let self, let session else { return }
@@ -580,6 +587,12 @@ final class SenderController: ObservableObject {
             session?.framesSent = frames
             session?.mbps = mbps
         }
+        sender.onTargetBitrate = { [weak session] mbps in
+            session?.targetMbps = mbps
+        }
+        sender.onBenchmarkStatus = { [weak session] status in
+            session?.benchmarkStatus = status
+        }
         sender.onDisconnected = { [weak self, weak session] in
             guard let self, let session else { return }
             if case .androidAdb(let mapping) = session.target {
@@ -588,6 +601,10 @@ final class SenderController: ObservableObject {
                 Log.info("device disconnected — session \(session.id) stopped")
                 self.end(session)
             }
+        }
+        for existing in sessions where existing.sender.isBenchmarkActive {
+            existing.sender.stopBenchmark()
+            existing.benchmarkStatus = "Benchmark stopped: another session connected"
         }
         sessions.append(session)
         Task {
@@ -604,6 +621,27 @@ final class SenderController: ObservableObject {
                 }
             }
         }
+    }
+
+    func startBenchmark(scene: BenchmarkScene, duration: BenchmarkDuration) {
+        guard sessions.count == 1, let session = sessions.first else { return }
+        do {
+            try session.sender.startBenchmark(scene: scene, duration: duration)
+        } catch {
+            session.benchmarkStatus = "Benchmark failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func autoStartBenchmarkIfRequested() {
+        guard benchmarkLaunch.autoStart, !didAutoStartBenchmark,
+              sessions.count == 1 else { return }
+        didAutoStartBenchmark = true
+        startBenchmark(scene: benchmarkLaunch.scene, duration: benchmarkLaunch.duration)
+        Log.info("benchmark auto-start scene=\(benchmarkLaunch.scene.rawValue) duration=\(benchmarkLaunch.duration.rawValue)s")
+    }
+
+    func stopBenchmark() {
+        sessions.first?.sender.stopBenchmark()
     }
 
     private func connectAndroidAdb(serial: String, userInitiated: Bool) {
@@ -898,9 +936,18 @@ final class PermissionMonitor: ObservableObject {
 struct ContentView: View {
     @ObservedObject var controller: SenderController
     @StateObject private var permissions = PermissionMonitor()
+    @State private var benchmarkScene = BenchmarkScene.staticDesktop
+    @State private var benchmarkDuration = BenchmarkDuration.standard
     // Optional so the view still compiles/previews without an updater (e.g.
     // if Sparkle ever fails to start); the button just disables itself then.
     let updater: SPUStandardUpdaterController?
+
+    private var bitratePresets: [BitratePreset] {
+        let codec: StreamCodec = controller.settings.codecMode == .h264 ? .h264 : .hevc
+        let transport: BitrateTransport = controller.settings.transportMode == .wifi ? .wifi : .usb
+        return StreamEncodingPolicy.availablePresets(
+            mode: controller.settings.bitrateMode, codec: codec, transport: transport)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1015,6 +1062,41 @@ struct ContentView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
+                    Picker("Bitrate", selection: $controller.settings.bitrateMode) {
+                        ForEach(BitrateMode.allCases, id: \.self) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: controller.settings.bitrateMode) { _, _ in
+                        if let first = bitratePresets.first,
+                           !bitratePresets.contains(controller.settings.bitratePreset) {
+                            controller.settings.bitratePreset = first
+                        }
+                        controller.restartAll()
+                    }
+                    if controller.settings.bitrateMode != .auto {
+                        Picker("Target Bitrate", selection: $controller.settings.bitratePreset) {
+                            ForEach(bitratePresets, id: \.self) { preset in
+                                Text(preset.label).tag(preset)
+                            }
+                        }
+                        .onChange(of: controller.settings.bitratePreset) { _, _ in
+                            controller.restartAll()
+                        }
+                    }
+                    if controller.settings.bitrateMode == .benchmark {
+                        Text("Experimental · May increase latency · May cause queueing · For local benchmark only")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    } else if controller.settings.bitrateMode == .auto {
+                        Text("Target Bitrate adapts to measured queueing, drops, RTT and frame age.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
                     Picker("Transport", selection: $controller.settings.transportMode) {
                         ForEach(StreamTransportMode.allCases, id: \.self) { mode in
                             Text(mode.label).tag(mode)
@@ -1041,6 +1123,42 @@ struct ContentView: View {
 
                 Toggle("Debug Stats", isOn: $controller.settings.enableDebugStats)
                     .onChange(of: controller.settings.enableDebugStats) { _, _ in controller.restartAll() }
+
+#if DEBUG
+                DisclosureGroup("Short Benchmark (Experimental)") {
+                    Picker("Scene", selection: $benchmarkScene) {
+                        ForEach(BenchmarkScene.allCases, id: \.self) { scene in
+                            Text(scene.label).tag(scene)
+                        }
+                    }
+                    Picker("Duration", selection: $benchmarkDuration) {
+                        ForEach(BenchmarkDuration.allCases, id: \.self) { duration in
+                            Text(duration.label).tag(duration)
+                        }
+                    }
+                    HStack {
+                        Button("Start (30s warm-up)") {
+                            controller.startBenchmark(
+                                scene: benchmarkScene, duration: benchmarkDuration)
+                        }
+                        .disabled(controller.sessions.count != 1)
+                        Button("Stop") { controller.stopBenchmark() }
+                            .disabled(controller.sessions.isEmpty)
+                    }
+                    if let session = controller.sessions.first {
+                        Text(session.benchmarkStatus)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                    } else {
+                        Text("Connect exactly one receiver before recording.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Development Preview · writes real CSV/JSONL samples only; it does not automate the physical scene.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+#endif
 
                 VStack(alignment: .leading, spacing: 4) {
                     Picker("显示位置", selection: $controller.presentation) {
@@ -1213,8 +1331,8 @@ struct SessionRow: View {
                     .lineLimit(2)
             }
             Spacer()
-            if session.mbps > 0 {
-                Text("\(String(format: "%.1f", session.mbps)) Mbit/s")
+            if session.targetMbps > 0 || session.mbps > 0 {
+                Text("Target \(String(format: "%.1f", session.targetMbps)) · Actual \(String(format: "%.1f", session.mbps)) Mbps")
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
             }

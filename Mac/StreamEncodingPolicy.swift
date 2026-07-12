@@ -12,7 +12,40 @@ enum StreamCodec: String {
     }
 }
 
+enum BitrateTransport {
+    case wifi, usb
+}
+
 enum StreamEncodingPolicy {
+    static func bitrateBounds(codec: StreamCodec,
+                              transport: BitrateTransport) -> ClosedRange<Int> {
+        switch (codec, transport) {
+        case (.hevc, .wifi): return 12_000_000...100_000_000
+        case (.hevc, .usb): return 20_000_000...160_000_000
+        case (.h264, .wifi): return 8_000_000...60_000_000
+        case (.h264, .usb): return 10_000_000...100_000_000
+        }
+    }
+
+    static func selectedBitrate(mode: BitrateMode, preset: BitratePreset,
+                                automatic: Int, codec: StreamCodec,
+                                transport: BitrateTransport) -> Int {
+        if mode == .benchmark {
+            return min(max(preset.bitsPerSecond, 1_000_000), 200_000_000)
+        }
+        let bounds = bitrateBounds(codec: codec, transport: transport)
+        let requested = mode == .manual ? preset.bitsPerSecond : automatic
+        return min(max(requested, bounds.lowerBound), bounds.upperBound)
+    }
+
+    static func availablePresets(mode: BitrateMode, codec: StreamCodec,
+                                 transport: BitrateTransport) -> [BitratePreset] {
+        guard mode != .auto else { return [] }
+        if mode == .benchmark { return BitratePreset.benchmarkCases }
+        let bounds = bitrateBounds(codec: codec, transport: transport)
+        return BitratePreset.manualCases.filter { bounds.contains($0.bitsPerSecond) }
+    }
+
     static func selectedCodec(supportedCodecs: [String], preferredCodec: String?) -> StreamCodec {
         let normalized = Set(supportedCodecs.map { $0.lowercased() })
         if let preferredCodec = preferredCodec?.lowercased(),
