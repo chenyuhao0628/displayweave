@@ -52,6 +52,6 @@ export default function App({ initialLocale = "en" }: { initialLocale?: Locale }
       <section className="faq-section" id="faq"><div className="shell faq-layout"><header className="section-heading"><span className="section-label">{c.faq.label}</span><h2>{c.faq.title}</h2></header><div className="faq-list">{c.faq.items.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></div></section>
     </main>
 
-    <footer><div className="shell footer-grid"><div><a className="brand footer-brand" href="./"><img src="icon-256.png" alt="" /><span>DisplayWeave</span></a><p>{c.footer.line}</p></div><div><a href="docs/">{c.footer.docs}</a><a href="https://github.com/chenyuhao0628/displayweave/issues">{c.footer.issues}</a><a href="https://github.com/chenyuhao0628/displayweave">{c.footer.source}</a></div><span>© 2026 · GPL-3.0</span></div></footer>
+    <footer><div className="shell footer-grid"><div><a className="brand footer-brand" href="./"><img src="icon-256.png" alt="" /><span>DisplayWeave</span></a><p>{c.footer.line}</p></div><div><a href={`https://github.com/chenyuhao0628/displayweave/blob/main/docs/README${initialLocale === "zh" ? ".zh-CN" : ""}.md`}>{c.footer.docs}</a><a href="https://github.com/chenyuhao0628/displayweave/issues">{c.footer.issues}</a><a href="https://github.com/chenyuhao0628/displayweave">{c.footer.source}</a></div><span>© 2026 · GPL-3.0</span></div></footer>
   </>
 }
