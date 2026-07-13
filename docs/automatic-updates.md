@@ -9,6 +9,11 @@ DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases an
 - Mac artifact: `DisplayWeave-macOS.zip`
 - Android artifact: `DisplayWeave-Android.apk`
 
+The current migration release is
+[`v0.2.0-preview.1`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.1).
+Older builds cannot discover this channel by themselves: install this release
+manually once, then use automatic updates for later versions.
+
 The Mac build is ad-hoc signed and not notarized. Sparkle authenticates its ZIP with the embedded EdDSA public key, so subsequent updates can be verified without Apple Developer Program credentials. This does not make the first download Gatekeeper-trusted or equivalent to a notarized release.
 
 ## One-time user migration

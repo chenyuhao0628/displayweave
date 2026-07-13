@@ -5,7 +5,7 @@
 ## 当前用户指南
 
 - [开发预览分发](development-preview.zh-CN.md)
-- [Preview 0.1 / Preview 2 发布说明](release-notes-preview-0.1.zh-CN.md)
+- [`v0.2.0-preview.1` 发布说明](release-notes-v0.2.0-preview.1.zh-CN.md)
 - [发布检查清单](release-checklist.zh-CN.md)
 - [Mac 与 Android 自动更新](automatic-updates.zh-CN.md)
 - [稳定性与真机证据](stability-test-report.zh-CN.md)
@@ -23,7 +23,10 @@
 
 ## 历史/内部记录
 
-`docs/superpowers/specs/`、`docs/superpowers/plans/` 及 `android-usb-transport-design.md` 记录设计与实施决策，可以保留原语言，但不能作为唯一的当前用户说明。
+[Preview 0.1 / Preview 2 发布说明](release-notes-preview-0.1.zh-CN.md)、
+`docs/superpowers/specs/`、`docs/superpowers/plans/` 及
+`android-usb-transport-design.md` 记录既有版本或设计决策，可以保留原语言，
+但不能作为唯一的当前用户说明。
 
 ## 状态词汇
 
