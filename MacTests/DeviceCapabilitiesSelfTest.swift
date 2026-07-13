@@ -21,6 +21,18 @@ struct DeviceCapabilitiesSelfTest {
         assertEqual("h264", oldHello.negotiatedPreferredCodec,
                     "old hello defaults preferred codec to H.264")
 
+        let legacyIOSHello = try JSONDecoder().decode(PhoneInfo.self, from: Data("""
+        {"type":"hello","pixelsWide":1320,"pixelsHigh":2868,"scale":3.0,"device":"iPhone"}
+        """.utf8))
+        assertEqual("iPhone", legacyIOSHello.kind,
+                    "legacy iOS device kind is retained")
+        assertEqual(60, legacyIOSHello.negotiatedMaxFps,
+                    "legacy iOS defaults to 60 fps")
+        assertEqual(["h264"], legacyIOSHello.negotiatedSupportedCodecs,
+                    "legacy iOS remains H.264")
+        assertEqual("unknown", legacyIOSHello.negotiatedTransport,
+                    "legacy iOS needs no transport field")
+
         let modernHello = try JSONDecoder().decode(PhoneInfo.self, from: Data("""
         {"type":"hello","pixelsWide":2560,"pixelsHigh":1600,"scale":2.0,
          "refreshRate":120,"maxFps":120,"supportedCodecs":["HEVC","H264"],

@@ -54,14 +54,15 @@ targets:
         # --- Sparkle auto-update (issue #52) ---
         # The release workflow publishes appcast.xml into public/. Automatic
         # checks remain off until the first DisplayWeave-signed release exists.
-        SUFeedURL: https://raw.githubusercontent.com/chenyuhao0628/displayweave/main/public/appcast.xml
+        SUFeedURL: https://chenyuhao0628.github.io/displayweave/appcast.xml
         # Public EdDSA key from Sparkle's `generate_keys`. The matching private
         # key lives only as the `SPARKLE_PRIVATE_KEY` GitHub Actions secret
         # (used to sign the appcast in CI) and is never committed. Sparkle
         # verifies update signatures against this public key before installing.
-        SUPublicEDKey: rYxlIePmwzi2bRo/qIsuY2TqTnQ34li2gQhJpGBiumw=
+        SUPublicEDKey: N9dMZV/F1ui58IsEmCv5jFVgDWiWv2yB/01KBlAHFjE=
         # Check for updates automatically in the background on a schedule.
-        SUEnableAutomaticChecks: false
+        SUEnableAutomaticChecks: true
+        SUAutomaticallyUpdate: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.displayweave.mac
