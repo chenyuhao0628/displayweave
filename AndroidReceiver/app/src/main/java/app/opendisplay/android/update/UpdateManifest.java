@@ -9,6 +9,10 @@ import java.util.Map;
 public final class UpdateManifest {
     public static final int CURRENT_SCHEMA_VERSION = 1;
     public static final String EXPECTED_PACKAGE_NAME = "app.opendisplay.android";
+    public static final String EXPECTED_SIGNING_CERTIFICATE_SHA256 =
+            "89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d";
+    public static final String EXPECTED_RELEASE_PATH_PREFIX =
+            "/chenyuhao0628/displayweave/releases/download/";
     public static final int MINIMUM_SUPPORTED_SDK = 26;
 
     public final int schemaVersion;
@@ -53,8 +57,11 @@ public final class UpdateManifest {
         validateHttps(apkUrl, "APK URL");
         require("github.com".equalsIgnoreCase(apkUrl.getHost()), "Unexpected APK host");
         require(apkUrl.getPath() != null
+                        && apkUrl.getPath().startsWith(EXPECTED_RELEASE_PATH_PREFIX)
                         && apkUrl.getPath().endsWith("/DisplayWeave-Android.apk"),
                 "Unexpected APK filename");
+        require(EXPECTED_SIGNING_CERTIFICATE_SHA256.equals(signingCertificateSha256),
+                "Unexpected APK signing certificate");
         validateHttps(releaseNotesUrl, "release notes URL");
     }
 

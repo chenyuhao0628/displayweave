@@ -15,6 +15,7 @@ public final class UpdateCoordinator {
     private static final String FEED_URL =
             "https://chenyuhao0628.github.io/displayweave/android-update.json";
     private static final String KEY_LAST_SUCCESSFUL_CHECK = "updateLastSuccessfulCheck";
+    private static final String KEY_PENDING_INSTALL_PERMISSION = "updatePendingInstallPermission";
 
     public interface Listener {
         void onCheckState(String state);
@@ -33,7 +34,6 @@ public final class UpdateCoordinator {
     private boolean checking;
     private UpdateManifest pendingManifest;
     private File pendingFile;
-    private boolean waitingForInstallPermission;
 
     public UpdateCoordinator(
             Activity activity, SharedPreferences preferences, Listener listener) {
@@ -107,13 +107,30 @@ public final class UpdateCoordinator {
             listener.onUpdateError("已验证的更新文件不存在，请重新下载", true);
             return;
         }
-        waitingForInstallPermission = !UpdateInstaller.install(activity);
+        boolean launched = UpdateInstaller.install(activity);
+        preferences.edit().putBoolean(KEY_PENDING_INSTALL_PERMISSION, !launched).apply();
     }
 
     public void resumePendingInstall() {
-        if (waitingForInstallPermission && UpdateInstaller.canInstall(activity)) {
-            waitingForInstallPermission = false;
-            UpdateInstaller.install(activity);
+        boolean persisted = preferences.getBoolean(KEY_PENDING_INSTALL_PERMISSION, false);
+        File verified;
+        try {
+            verified = new File(
+                    UpdateFileProvider.updateDirectory(activity), UpdateFileProvider.FILE_NAME);
+        } catch (RuntimeException unavailableStorage) {
+            if (persisted) {
+                preferences.edit().remove(KEY_PENDING_INSTALL_PERMISSION).apply();
+            }
+            return;
+        }
+        if (persisted && !verified.isFile()) {
+            preferences.edit().remove(KEY_PENDING_INSTALL_PERMISSION).apply();
+            return;
+        }
+        if (UpdatePolicy.shouldResumePendingInstall(
+                persisted, verified.isFile(), UpdateInstaller.canInstall(activity))
+                && UpdateInstaller.install(activity)) {
+            preferences.edit().remove(KEY_PENDING_INSTALL_PERMISSION).apply();
         }
     }
 

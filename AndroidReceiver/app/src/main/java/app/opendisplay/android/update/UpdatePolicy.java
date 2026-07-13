@@ -18,6 +18,11 @@ public final class UpdatePolicy {
         return nowMillis - lastCheckMillis >= CHECK_INTERVAL_MILLIS;
     }
 
+    public static boolean shouldResumePendingInstall(
+            boolean persistedUserIntent, boolean verifiedFileExists, boolean canInstall) {
+        return persistedUserIntent && verifiedFileExists && canInstall;
+    }
+
     public static String normalizeHex(String value) {
         if (value == null) {
             throw new IllegalArgumentException("Missing hexadecimal value");

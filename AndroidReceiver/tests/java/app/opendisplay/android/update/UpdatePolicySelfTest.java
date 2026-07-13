@@ -23,6 +23,14 @@ public final class UpdatePolicySelfTest {
         expect(UpdatePolicy.shouldCheck(2L, 1L, true), "manual bypasses throttle");
         expect(CERT.equals(UpdatePolicy.normalizeHex(CERT.toUpperCase())),
                 "fingerprint normalization is stable");
+        expect(UpdatePolicy.shouldResumePendingInstall(true, true, true),
+                "persisted install resumes after Activity recreation");
+        expect(!UpdatePolicy.shouldResumePendingInstall(false, true, true),
+                "install does not resume without persisted user intent");
+        expect(!UpdatePolicy.shouldResumePendingInstall(true, false, true),
+                "install does not resume without verified APK");
+        expect(!UpdatePolicy.shouldResumePendingInstall(true, true, false),
+                "install waits until unknown-source permission is granted");
 
         expectThrows(() -> UpdateManifest.parse(validJson().replace(
                 "https://github.com", "http://github.com")),
@@ -32,6 +40,9 @@ public final class UpdatePolicySelfTest {
                 "wrong package rejected");
         expectThrows(() -> UpdateManifest.parse(validJson().replace(HASH, "xyz")),
                 "bad hash rejected");
+        expectThrows(() -> UpdateManifest.parse(validJson().replace(
+                CERT, "1111111111111111111111111111111111111111111111111111111111111111")),
+                "unpinned signer fingerprint rejected");
         expectThrows(() -> UpdateManifest.parse(validJson().replace(
                 "\"schemaVersion\":1", "\"schemaVersion\":2")),
                 "unknown schema rejected");
