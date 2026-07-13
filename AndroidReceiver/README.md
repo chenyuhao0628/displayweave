@@ -10,9 +10,19 @@ The Android receiver accepts DisplayWeave video over local WiFi or a Mac-managed
 - WiFi: Mac and Android on the same trusted LAN with Nearby WiFi/Local Network discovery permission where required.
 - USB: a data-capable cable, Developer options, USB debugging, and approval of the Mac's RSA identity.
 
-## Install Preview 2
+## Install `v0.2.0-preview.1`
 
-Download `DisplayWeave-Preview-0.1-Android.apk` from [`v0.1.0-preview.2`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.1.0-preview.2). It is an offline v2-signed release APK and does not require Google Play. Verify `SHA256SUMS.txt` and the certificate fingerprint in [the release checklist](../docs/release-checklist.md) before installing.
+Download `DisplayWeave-Android.apk` from [`v0.2.0-preview.1`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.1). It is an offline v2-signed release APK and does not require Google Play. Install it over the existing `app.opendisplay.android` package once. Verify `SHA256SUMS.txt` and the certificate fingerprint in [the release checklist](../docs/release-checklist.md) before installing.
+
+## Updates after the first install
+
+- The receiver checks the HTTPS update feed at most once per 24 hours when it resumes.
+- **Settings & Help → Check for Updates** bypasses the daily throttle.
+- Before installation, it verifies exact byte count, SHA-256, package name,
+  version code, minimum SDK, and the pinned signing certificate.
+- Android may ask for permission to install unknown apps. The final installation
+  always uses Android's system confirmation UI; silent installation is not supported.
+- Declining the permission or installation does not stop the display receiver.
 
 ## Connect
 
@@ -54,7 +64,7 @@ The keystore remains outside Git; its password is read from macOS Keychain. Do n
 - Input: tap, drag, cursor, and two-finger scroll JSON.
 - Recovery: listener/surface operations are idempotent; readiness requires a peer protocol message rather than TCP connect alone.
 
-## Verified Preview 2 behavior
+## Prior verified Preview 2 behavior
 
 - OnePlus HEVC/120 and H.264/60 over USB.
 - Foreground return, force-stop/reopen, ADB server restart, cable unplug/replug, and authorization revoke/reallow recovery.

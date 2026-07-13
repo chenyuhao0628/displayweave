@@ -6,7 +6,7 @@
 
 DisplayWeave is an independently maintained, GPL-3.0, local-first second-display project derived from [OpenDisplay](https://github.com/peetzweg/opendisplay). It turns iPhone, iPad, and Android devices into extended or mirrored displays for a Mac.
 
-## Preview 2 capabilities
+## Current capabilities
 
 - Apple receivers: USB through `usbmuxd` and local WiFi, using the H.264 path.
 - Android receiver: local WiFi or per-device dynamic `adb forward` USB, HEVC/H.265 with H.264 fallback, and 30/60/90/120fps negotiation.
@@ -19,20 +19,41 @@ DisplayWeave is an independently maintained, GPL-3.0, local-first second-display
 
 Android high refresh remains experimental. One OnePlus HEVC/120 WiFi run measured about 109–111 rendered FPS; this does not guarantee stable 120 FPS on other devices or conditions.
 
-## Download `v0.1.0-preview.2`
+The physical-device recovery and high-refresh observations below were recorded
+during Preview 2 validation and remain prior evidence; they were not rerun on a
+second Android device for this release.
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.1.0-preview.2)
+## Download `v0.2.0-preview.1`
+
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.1)
 
 | Platform | Asset | Distribution boundary |
 | --- | --- | --- |
-| macOS | `DisplayWeave-Preview-0.1-macOS.zip` | Universal ad-hoc signed app; not Developer ID signed or notarized |
-| Android | `DisplayWeave-Preview-0.1-Android.apk` | Offline release APK, v2-signed with the project Preview key; no Google Play account required |
+| macOS | `DisplayWeave-macOS.zip` | Ad-hoc signed and not notarized; first update-capable build is installed manually |
+| Android | `DisplayWeave-Android.apk` | Offline v2-signed APK; future in-app downloads are verified before system confirmation |
 | iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | Unsigned re-signing input; cannot be installed directly |
-| Verification | `SHA256SUMS.txt` | SHA-256 for all three packages |
+| Mac feed | `appcast.xml` | Sparkle feed authenticated by the public key embedded in the Mac app |
+| Android feed | `android-update.json` | HTTPS metadata with size, hash, version, package, and pinned certificate |
+| Verification | `SHA256SUMS.txt` | SHA-256 for all Release files |
 
 This is a development preview, not a production-signed store release. Verify the checksum before use. Android users should also compare the certificate fingerprint in the [release checklist](docs/release-checklist.md).
 
 The refreshed Mac build uses a DisplayWeave-owned application identity. Settings migrate from the legacy OpenDisplay/OpenSidecar preference domains, but macOS will require Screen Recording, Accessibility, and Local Network permission to be granted again after the upgrade.
+
+### One-time migration and later updates
+
+- **Mac:** manually replace the old app with this build in `/Applications`.
+  Gatekeeper may require Control-click → **Open** or Privacy & Security →
+  **Open Anyway**. Later releases are checked and verified through Sparkle, but
+  the app remains ad-hoc signed and not notarized.
+- **Android:** install this APK over the existing package once. The receiver
+  then checks at most daily, with a manual check in **Settings & Help**.
+  Downloads are verified by size, SHA-256, package, version, minimum SDK, and
+  the pinned signing certificate before Android shows its system installer.
+- **iOS/iPadOS:** the unsigned re-signing input and existing OpenDisplay
+  receiver protocol are unchanged by the Mac/Android update channel.
+
+See [automatic updates](docs/automatic-updates.md) for migration and recovery.
 
 ## Android USB quick start
 
