@@ -61,17 +61,17 @@ private final class DisplayLinkPatternView: MTKView, MTKViewDelegate {
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
     func draw(in view: MTKView) {
+        let t = ProcessInfo.processInfo.systemUptime
         guard let commandQueue,
               let pass = currentRenderPassDescriptor,
-              let drawable = currentDrawable,
-              let commandBuffer = commandQueue.makeCommandBuffer(),
-              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return }
-        let t = ProcessInfo.processInfo.systemUptime
+              let drawable = currentDrawable else { return }
         pass.colorAttachments[0].clearColor = MTLClearColor(
             red: 0.45 + sin(t * 1.7) * 0.35,
             green: 0.45 + cos(t * 2.3) * 0.35,
             blue: 0.65,
             alpha: 1)
+        guard let commandBuffer = commandQueue.makeCommandBuffer(),
+              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return }
         encoder.endEncoding()
         commandBuffer.present(drawable)
         commandBuffer.commit()
