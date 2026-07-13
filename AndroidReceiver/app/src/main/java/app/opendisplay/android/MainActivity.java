@@ -28,6 +28,9 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import app.opendisplay.android.update.UpdateCoordinator;
+import app.opendisplay.android.update.UpdateManifest;
+
 import java.util.Locale;
 
 public final class MainActivity extends Activity implements OpenDisplayServer.Listener {
@@ -49,6 +52,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private SurfaceHolder activeSurface;
     private ReceiverLifecycleCoordinator receiverLifecycle;
     private SharedPreferences prefs;
+    private UpdateCoordinator updateCoordinator;
+    private String updateState = "尚未检查更新";
     private String currentStatus = "等待启动…";
     private boolean streaming;
     private final ScrollGestureTracker scrollGesture = new ScrollGestureTracker();
@@ -71,6 +76,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             requestPermissions(new String[] {Manifest.permission.NEARBY_WIFI_DEVICES}, REQUEST_NEARBY_WIFI);
         }
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        updateCoordinator = createUpdateCoordinator();
         receiverLifecycle = new ReceiverLifecycleCoordinator(
                 new ReceiverLifecycleCoordinator.Actions() {
                     @Override
@@ -92,6 +98,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     protected void onResume() {
         super.onResume();
         receiverLifecycle.onResume();
+        updateCoordinator.resumePendingInstall();
+        updateCoordinator.check(false);
     }
 
     @Override
@@ -102,6 +110,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
 
     @Override
     protected void onDestroy() {
+        updateCoordinator.shutdown();
         receiverLifecycle.onDestroy();
         super.onDestroy();
     }
@@ -333,6 +342,17 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         quality.setOnClickListener(v -> showDisplayProfileDialog());
         content.addView(quality, matchWrap());
 
+        TextView version = text("当前版本：" + installedVersionLabel()
+                        + "\n更新状态：" + updateState,
+                13, Color.rgb(95, 105, 120), false);
+        version.setPadding(0, dp(10), 0, 0);
+        content.addView(version, matchWrap());
+
+        Button checkUpdate = new Button(this);
+        checkUpdate.setText("检查更新");
+        checkUpdate.setOnClickListener(v -> updateCoordinator.check(true));
+        content.addView(checkUpdate, matchWrap());
+
         TextView help = text("如果 Mac 找不到 Android：确认两台设备在同一局域网，VPN/TUN 没有隔离局域网，"
                 + "并允许 Android 的“附近设备/本地网络”权限。点击屏幕后若 Mac 端无反应，请确认 Mac 辅助功能权限已开启。",
                 14, Color.rgb(82, 94, 112), false);
@@ -352,6 +372,74 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 .setView(content)
                 .setPositiveButton("完成", null)
                 .show();
+    }
+
+    private UpdateCoordinator createUpdateCoordinator() {
+        return new UpdateCoordinator(this, prefs, new UpdateCoordinator.Listener() {
+            @Override
+            public void onCheckState(String state) {
+                updateState = state;
+            }
+
+            @Override
+            public void onUpdateAvailable(UpdateManifest manifest) {
+                updateState = "发现新版本 " + manifest.versionName;
+                if (!canShowDialog()) return;
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("发现新版本 " + manifest.versionName)
+                        .setMessage("更新包会先验证大小、SHA-256、包名、版本和签名证书，"
+                                + "验证通过后仍需在 Android 系统界面确认安装。")
+                        .setPositiveButton("下载并验证", (dialog, which) ->
+                                updateCoordinator.download(manifest))
+                        .setNegativeButton("稍后", null)
+                        .show();
+            }
+
+            @Override
+            public void onDownloadProgress(int percent) {
+                updateState = "正在下载更新… " + percent + "%";
+            }
+
+            @Override
+            public void onVerifiedUpdateReady(UpdateManifest manifest) {
+                updateState = "更新已验证，等待安装";
+                if (!canShowDialog()) return;
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("更新已验证")
+                        .setMessage("版本 " + manifest.versionName
+                                + " 已通过安全校验。点击安装后将打开 Android 系统安装界面。")
+                        .setPositiveButton("安装", (dialog, which) ->
+                                updateCoordinator.installPending())
+                        .setNegativeButton("稍后", null)
+                        .show();
+            }
+
+            @Override
+            public void onUpdateError(String message, boolean manual) {
+                updateState = "更新检查失败：" + message;
+                if (!manual || !canShowDialog()) return;
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("无法更新")
+                        .setMessage(message)
+                        .setPositiveButton("知道了", null)
+                        .show();
+            }
+        });
+    }
+
+    private boolean canShowDialog() {
+        return !isFinishing() && (Build.VERSION.SDK_INT < 17 || !isDestroyed());
+    }
+
+    private String installedVersionLabel() {
+        try {
+            android.content.pm.PackageInfo info = getPackageManager()
+                    .getPackageInfo(getPackageName(), 0);
+            long code = Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
+            return info.versionName + " (" + code + ")";
+        } catch (PackageManager.NameNotFoundException error) {
+            return "未知";
+        }
     }
 
     private void showDisplayProfileDialog() {

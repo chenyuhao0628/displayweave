@@ -1,12 +1,15 @@
 package app.opendisplay.android.update;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 public final class UpdatePolicySelfTest {
     private static final String HASH =
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     private static final String CERT =
             "89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d";
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         UpdateManifest manifest = UpdateManifest.parse(validJson());
         expect(manifest.schemaVersion == 1, "schema parsed");
         expect(manifest.versionCode == 123, "version code parsed");
@@ -35,6 +38,19 @@ public final class UpdatePolicySelfTest {
         expectThrows(() -> UpdateManifest.parse(validJson().replace(
                 "\"minimumSdk\":26", "\"minimumSdk\":25")),
                 "unsupported SDK floor rejected");
+
+        String androidManifest = Files.readString(Path.of("src/main/AndroidManifest.xml"));
+        expect(androidManifest.contains("android.permission.REQUEST_INSTALL_PACKAGES"),
+                "package-install permission declared");
+        expect(androidManifest.contains("android:name=\".update.UpdateFileProvider\""),
+                "update provider declared");
+        expect(androidManifest.contains(
+                        "android:authorities=\"app.opendisplay.android.update-files\""),
+                "update provider authority fixed");
+        expect(androidManifest.contains("android:exported=\"false\""),
+                "update provider is not exported");
+        expect(androidManifest.contains("android:grantUriPermissions=\"true\""),
+                "update provider grants per-request reads");
 
         System.out.println("UpdatePolicySelfTest PASS");
     }
