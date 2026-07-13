@@ -2,6 +2,14 @@
 
 # DisplayWeave Preview 0.1 发布检查清单
 
+## 自动更新门槛
+
+- 确认[自动更新说明](automatic-updates.zh-CN.md)中的 5 个 secret 名称全部存在，禁止输出 secret 值。
+- build number 必须单调递增；必须生成 `DisplayWeave-macOS.zip`、`DisplayWeave-Android.apk`、`appcast.xml` 和 `android-update.json`。
+- 上传前运行 `tools/verify-update-release.sh`；禁止替换资产或使用 `--clobber`。
+- Release 资产存在后才能提交两个更新源，并确认 Pages 部署成功。
+- 构建无签名 iOS 目标并运行旧 iPhone hello fixture；iOS 兼容门槛不得依赖 Mac/Android 发布凭据。
+
 ## 身份与边界
 
 - 标签：`v0.1.0-preview.2`，必须标为 prerelease。

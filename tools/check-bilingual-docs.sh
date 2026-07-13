@@ -13,6 +13,7 @@ pairs=(
   "AndroidReceiver/README.md:AndroidReceiver/README.zh-CN.md"
   "docs/README.md:docs/README.zh-CN.md"
   "docs/120hz-migration-plan.md:docs/120hz-migration-plan.zh-CN.md"
+  "docs/automatic-updates.md:docs/automatic-updates.zh-CN.md"
   "docs/brand-assets.md:docs/brand-assets.zh-CN.md"
   "docs/branding-and-doc-audit.md:docs/branding-and-doc-audit.zh-CN.md"
   "docs/benchmark-guide.md:docs/benchmark-guide.zh-CN.md"

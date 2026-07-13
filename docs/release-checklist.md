@@ -1,5 +1,13 @@
 [English](release-checklist.md) | [简体中文](release-checklist.zh-CN.md)
 
+## Automatic-update gate
+
+- Confirm all five secret names in [Automatic updates](automatic-updates.md) exist; never print their values.
+- Require a monotonically higher build number, `DisplayWeave-macOS.zip`, `DisplayWeave-Android.apk`, `appcast.xml`, and `android-update.json`.
+- Run `tools/verify-update-release.sh` before upload. Upload assets without replacement or `--clobber`.
+- Confirm Release assets exist before committing the two feeds, then confirm the Pages deployment succeeds.
+- Build the unsigned iOS target and run the legacy iPhone hello fixture; do not couple iOS compatibility to Mac/Android publication credentials.
+
 # DisplayWeave Preview 0.1 Release Checklist
 
 审计日期：2026-07-11

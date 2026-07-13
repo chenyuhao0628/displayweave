@@ -7,6 +7,7 @@
 - [Development preview distribution](development-preview.md)
 - [Preview 0.1 / Preview 2 release notes](release-notes-preview-0.1.md)
 - [Release checklist](release-checklist.md)
+- [Mac and Android automatic updates](automatic-updates.md)
 - [Stability and physical-device evidence](stability-test-report.md)
 - [Performance metrics audit](performance-metrics-audit.md)
 - [Short benchmark guide](benchmark-guide.md)
