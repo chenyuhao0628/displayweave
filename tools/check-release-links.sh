@@ -4,14 +4,29 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
-tag="v0.1.0-preview.2"
+tag="v0.2.0-preview.1"
 assets=(
-  "DisplayWeave-Preview-0.1-Android.apk"
-  "DisplayWeave-Preview-0.1-macOS.zip"
+  "DisplayWeave-Android.apk"
+  "DisplayWeave-macOS.zip"
   "DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa"
+  "appcast.xml"
+  "android-update.json"
   "SHA256SUMS.txt"
 )
-sources=(src README.md README.zh-CN.md docs/release-notes-preview-0.1.md)
+hashes=(
+  "35c828abc9200affe8a63602519f63e56ca7aff4ca6a88d6bbcb2f2bf009bec5"
+  "24588906ccde36958355d8e72bae54fa1e6f8244c3fca832b81c9a05bd7519d9"
+  "fee1b7d8c1b81bac33b91b11dfaeeb608ccc35050ccc4bcd796178227acdedfa"
+)
+sources=(
+  src index.html README.md README.zh-CN.md
+  AndroidReceiver/README.md AndroidReceiver/README.zh-CN.md
+  docs/development-preview.md docs/development-preview.zh-CN.md
+  docs/release-notes-v0.2.0-preview.1.md
+  docs/release-notes-v0.2.0-preview.1.zh-CN.md
+  docs/release-checklist.md docs/release-checklist.zh-CN.md
+  docs/automatic-updates.md docs/automatic-updates.zh-CN.md
+)
 
 grep -R -Fq "$tag" "${sources[@]}" || {
   echo "missing release tag: $tag" >&2
@@ -25,8 +40,25 @@ for asset in "${assets[@]}"; do
   }
 done
 
-if grep -R -E 'v0\.1\.0-preview\.1|DisplayWeave-Android-debug\.apk|DisplayWeave-iOS-Simulator-development-preview\.zip' "${sources[@]}"; then
-  echo "obsolete Preview 1 release reference found" >&2
+for hash in "${hashes[@]}"; do
+  grep -R -Fq "$hash" "${sources[@]}" || {
+    echo "missing current release SHA-256: $hash" >&2
+    exit 1
+  }
+done
+
+release_url="https://github.com/chenyuhao0628/displayweave/releases/tag/$tag"
+mac_feed="https://chenyuhao0628.github.io/displayweave/appcast.xml"
+android_feed="https://chenyuhao0628.github.io/displayweave/android-update.json"
+for url in "$release_url" "$mac_feed" "$android_feed"; do
+  grep -R -Fq "$url" "${sources[@]}" || {
+    echo "missing current release URL: $url" >&2
+    exit 1
+  }
+done
+
+if grep -R -E 'v0\.1\.0-preview\.2|DisplayWeave-Preview-0\.1-(macOS|Android)|v0\.1\.0-preview\.1|DisplayWeave-Android-debug\.apk|DisplayWeave-iOS-Simulator-development-preview\.zip' "${sources[@]}"; then
+  echo "obsolete active release reference found" >&2
   exit 1
 fi
 

@@ -21,6 +21,7 @@ pairs=(
   "docs/latency-measurement.md:docs/latency-measurement.zh-CN.md"
   "docs/performance-metrics-audit.md:docs/performance-metrics-audit.zh-CN.md"
   "docs/release-checklist.md:docs/release-checklist.zh-CN.md"
+  "docs/release-notes-v0.2.0-preview.1.md:docs/release-notes-v0.2.0-preview.1.zh-CN.md"
   "docs/release-notes-preview-0.1.md:docs/release-notes-preview-0.1.zh-CN.md"
   "docs/roadmap-and-acceptance.md:docs/roadmap-and-acceptance.zh-CN.md"
   "docs/stability-test-report.md:docs/stability-test-report.zh-CN.md"
