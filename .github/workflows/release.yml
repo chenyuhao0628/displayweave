@@ -1,19 +1,13 @@
 name: Release
 
 on:
-  # DisplayWeave is source-first until signing, notarization, App Store, and
-  # release-please permissions are configured for this repository.
   workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
-  # Lets the build-mac job dispatch the Pages deploy after committing the
-  # Sparkle appcast (a GITHUB_TOKEN push won't auto-trigger pages.yml).
   actions: write
 
-# Serialize release runs on the same ref so two quick merges can't race two
-# uploads. Never cancel an in-flight run — it may be mid-upload to TestFlight.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -30,157 +24,126 @@ jobs:
         with:
           release-type: simple
 
-  build-ios:
+  build-updates:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: macos-26
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3'
-          bundler-cache: true
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Generate project
-        env:
-          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
-        run: xcodegen generate
-
-      - name: Set up SSH for match certs repo
-        uses: webfactory/ssh-agent@v0.10.0
-        with:
-          ssh-private-key: ${{ secrets.MATCH_DEPLOY_KEY }}
-
-      - name: Build iOS app and upload to TestFlight
-        env:
-          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          APP_STORE_CONNECT_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
-          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
-          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
-          APP_BUILD_NUMBER: ${{ github.run_number }}
-        run: |
-          export APP_MARKETING_VERSION="${TAG_NAME#v}"
-          bundle exec fastlane ios beta
-
-  build-mac:
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
-    runs-on: macos-26
-    # The `secrets` context can't be referenced in a step-level `if:` (it's a
-    # workflow-validation error). Map the Sparkle key to a job env var so the
-    # appcast step can guard on its presence via the allowed `env` context.
     env:
       SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+      DISPLAYWEAVE_ANDROID_KEYSTORE_BASE64: ${{ secrets.DISPLAYWEAVE_ANDROID_KEYSTORE_BASE64 }}
+      DISPLAYWEAVE_ANDROID_STORE_PASSWORD: ${{ secrets.DISPLAYWEAVE_ANDROID_STORE_PASSWORD }}
+      DISPLAYWEAVE_ANDROID_KEY_ALIAS: ${{ secrets.DISPLAYWEAVE_ANDROID_KEY_ALIAS }}
+      DISPLAYWEAVE_ANDROID_KEY_PASSWORD: ${{ secrets.DISPLAYWEAVE_ANDROID_KEY_PASSWORD }}
+      DISPLAYWEAVE_ANDROID_KEYSTORE: ${{ runner.temp }}/displayweave-android-release.jks
+      DISPLAYWEAVE_OUTPUT_DIR: ${{ github.workspace }}/build/update-release
+      DISPLAYWEAVE_UPDATE_RELEASE: "1"
+      DISPLAYWEAVE_BUILD_NUMBER: ${{ github.run_number }}
+      DISPLAYWEAVE_RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
     steps:
       - uses: actions/checkout@v6
-
-      - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.3'
-          bundler-cache: true
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0
 
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Generate project
-        env:
-          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
-        run: xcodegen generate
-
-      - name: Set up SSH for match certs repo
-        uses: webfactory/ssh-agent@v0.10.0
-        with:
-          ssh-private-key: ${{ secrets.MATCH_DEPLOY_KEY }}
-
-      - name: Build notarized macOS app
-        env:
-          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          APP_STORE_CONNECT_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
-          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
-          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
-          APP_BUILD_NUMBER: ${{ github.run_number }}
-        run: |
-          export APP_MARKETING_VERSION="${TAG_NAME#v}"
-          bundle exec fastlane mac build_release
-
-      - name: Upload macOS artifact to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload "${{ needs.release-please.outputs.tag_name }}" \
-            build/export/DisplayWeave.dmg
-
-      # --- Sparkle auto-update: generate + publish the appcast (issue #52) ---
-      # Builds appcast.xml from the just-released, notarized DMG and commits it
-      # to public/appcast.xml on main. The Pages workflow (pages.yml) triggers
-      # on public/** changes, copies public/ into site-dist/ via the Vite build, and
-      # deploys it. The raw public/appcast.xml URL is the SUFeedURL in project.yml.
-      #
-      # No-ops gracefully until the maintainer adds the SPARKLE_PRIVATE_KEY
-      # secret (the EdDSA private key from Sparkle's `generate_keys`), so this
-      # never hard-fails a release before auto-update is switched on.
-      - name: Publish Sparkle appcast to GitHub Pages
-        if: ${{ env.SPARKLE_PRIVATE_KEY != '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
-          # Sparkle release that ships the generate_appcast / sign_update tools.
-          SPARKLE_TOOLS_VERSION: "2.6.4"
+      - name: Prepare release versions and Android signing
         run: |
           set -euo pipefail
+          echo "DISPLAYWEAVE_VERSION_NAME=${DISPLAYWEAVE_RELEASE_TAG#v}" >> "$GITHUB_ENV"
+          printf '%s' "$DISPLAYWEAVE_ANDROID_KEYSTORE_BASE64" \
+            | base64 -D > "$DISPLAYWEAVE_ANDROID_KEYSTORE"
+          chmod 600 "$DISPLAYWEAVE_ANDROID_KEYSTORE"
 
-          # Sparkle's CLI tools (generate_appcast, sign_update) ship in the
-          # official release tarball — download the matching version.
-          curl -fsSL -o /tmp/sparkle.tar.xz \
-            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_TOOLS_VERSION}/Sparkle-${SPARKLE_TOOLS_VERSION}.tar.xz"
-          mkdir -p /tmp/sparkle && tar -xf /tmp/sparkle.tar.xz -C /tmp/sparkle
-          GEN_APPCAST="$(find /tmp/sparkle -name generate_appcast -type f | head -1)"
-          echo "Using $GEN_APPCAST"
+      - name: Build and test Mac, unsigned iOS, and signed Android
+        run: |
+          set -euo pipefail
+          # package-preview uses Mac/OpenSidecarMacAdHoc.entitlements and builds
+          # OpenSidecariOS with CODE_SIGNING_ALLOWED=NO as a compatibility gate.
+          ./tools/package-preview-0.1.sh
 
-          # The EdDSA private key (CI secret) → file for --ed-key-file.
-          printf '%s' "$SPARKLE_PRIVATE_KEY" > /tmp/sparkle_ed_priv
+      - name: Verify Android signer with apksigner
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify \
+            --verbose --print-certs \
+            "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-Android.apk"
 
-          # generate_appcast wants a directory of update archives. Point the
-          # download links at the GitHub Release assets where the DMG lives.
-          mkdir -p /tmp/appcast-updates
-          cp build/export/DisplayWeave.dmg /tmp/appcast-updates/
+      - name: Generate signed Mac and verified Android update feeds
+        env:
+          DISPLAYWEAVE_RELEASE_BASE_URL: https://github.com/${{ github.repository }}/releases/download
+          DISPLAYWEAVE_ANDROID_APK: ${{ github.workspace }}/build/update-release/DisplayWeave-Android.apk
+          DISPLAYWEAVE_ANDROID_FEED_OUTPUT: ${{ github.workspace }}/build/update-release/android-update.json
+        run: |
+          set -euo pipefail
+          echo "DISPLAYWEAVE_PUBLISHED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+          export DISPLAYWEAVE_PUBLISHED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          ./tools/generate-android-update-manifest.sh
 
-          "$GEN_APPCAST" \
-            --ed-key-file /tmp/sparkle_ed_priv \
-            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/" \
-            -o /tmp/appcast-updates/appcast.xml \
-            /tmp/appcast-updates
+          GEN_APPCAST="$(find build/preview-0.1-mac-derived/SourcePackages \
+            -type f -path '*/Sparkle/bin/generate_appcast' -print -quit)"
+          test -x "$GEN_APPCAST"
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | "$GEN_APPCAST" \
+            --ed-key-file - \
+            --download-url-prefix \
+              "https://github.com/${GITHUB_REPOSITORY}/releases/download/${DISPLAYWEAVE_RELEASE_TAG}/" \
+            --link "https://github.com/${GITHUB_REPOSITORY}" \
+            --versions "$DISPLAYWEAVE_BUILD_NUMBER" \
+            -o "$DISPLAYWEAVE_OUTPUT_DIR/appcast.xml" \
+            "$DISPLAYWEAVE_OUTPUT_DIR"
 
-          # Commit the feed into public/ on main; Pages picks it up from there.
-          git config user.name  "github-actions[bot]"
+          cd "$DISPLAYWEAVE_OUTPUT_DIR"
+          shasum -a 256 \
+            DisplayWeave-macOS.zip \
+            DisplayWeave-Android.apk \
+            DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa \
+            appcast.xml android-update.json > SHA256SUMS.txt
+
+      - name: Verify the complete update release
+        run: |
+          set -euo pipefail
+          ./tools/verify-update-release.sh "$DISPLAYWEAVE_OUTPUT_DIR"
+
+      - name: Upload immutable update assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "$DISPLAYWEAVE_RELEASE_TAG" \
+            "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-macOS.zip" \
+            "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-Android.apk" \
+            "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa" \
+            "$DISPLAYWEAVE_OUTPUT_DIR/appcast.xml" \
+            "$DISPLAYWEAVE_OUTPUT_DIR/android-update.json" \
+            "$DISPLAYWEAVE_OUTPUT_DIR/SHA256SUMS.txt"
+
+      - name: Publish update feeds to GitHub Pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/displayweave-feeds"
+          cp "$DISPLAYWEAVE_OUTPUT_DIR/appcast.xml" \
+            "$DISPLAYWEAVE_OUTPUT_DIR/android-update.json" \
+            "$RUNNER_TEMP/displayweave-feeds/"
+
+          git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin main
-          git checkout main
+          git switch --force-create main origin/main
           mkdir -p public
-          cp /tmp/appcast-updates/appcast.xml public/appcast.xml
-          rm -f /tmp/sparkle_ed_priv
-          git add public/appcast.xml
-          # Compare the STAGED file: plain `git diff` ignores untracked files,
-          # so the first-ever appcast (a brand-new public/appcast.xml) looked
-          # "unchanged" and was never committed. `--cached` sees the staged add.
-          if ! git diff --cached --quiet -- public/appcast.xml; then
-            git commit -m "chore(release): publish Sparkle appcast for ${TAG_NAME} [skip ci]"
+          cp "$RUNNER_TEMP/displayweave-feeds/appcast.xml" public/appcast.xml
+          cp "$RUNNER_TEMP/displayweave-feeds/android-update.json" public/android-update.json
+          git add public/appcast.xml public/android-update.json
+          if ! git diff --cached --quiet -- public/appcast.xml public/android-update.json; then
+            git commit -m "chore(release): publish update feeds for ${DISPLAYWEAVE_RELEASE_TAG} [skip ci]"
             git push origin main
-            # Pushes made with GITHUB_TOKEN do NOT trigger other workflows
-            # (GitHub blocks recursive runs), so kick the Pages deploy
-            # explicitly via its workflow_dispatch entry point.
-            gh workflow run pages.yml --ref main || \
-              echo "could not dispatch pages.yml — deploy it manually"
-          else
-            echo "appcast.xml unchanged — nothing to publish"
           fi
+          gh workflow run pages.yml --ref main
+
+      - name: Clean signing material
+        if: always()
+        run: |
+          rm -f "$DISPLAYWEAVE_ANDROID_KEYSTORE"
+          rm -rf "$RUNNER_TEMP/displayweave-feeds"

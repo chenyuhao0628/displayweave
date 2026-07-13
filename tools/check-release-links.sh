@@ -30,4 +30,33 @@ if grep -R -E 'v0\.1\.0-preview\.1|DisplayWeave-Android-debug\.apk|DisplayWeave-
   exit 1
 fi
 
-echo "release-link check passed: $tag and ${#assets[@]} assets"
+workflow=".github/workflows/release.yml"
+workflow_contract=(
+  "SPARKLE_PRIVATE_KEY"
+  "DISPLAYWEAVE_ANDROID_KEYSTORE_BASE64"
+  "DISPLAYWEAVE_ANDROID_STORE_PASSWORD"
+  "DISPLAYWEAVE_ANDROID_KEY_ALIAS"
+  "DISPLAYWEAVE_ANDROID_KEY_PASSWORD"
+  "Mac/OpenSidecarMacAdHoc.entitlements"
+  "DisplayWeave-macOS.zip"
+  "DisplayWeave-Android.apk"
+  "appcast.xml"
+  "android-update.json"
+  "apksigner"
+  "CODE_SIGNING_ALLOWED=NO"
+  "if: always()"
+  "gh workflow run pages.yml"
+)
+for marker in "${workflow_contract[@]}"; do
+  grep -Fq "$marker" "$workflow" || {
+    echo "release workflow is missing update contract marker: $marker" >&2
+    exit 1
+  }
+done
+
+if grep -Eiq 'MATCH_|Developer ID|notari[sz]|TestFlight|fastlane' "$workflow"; then
+  echo "release workflow still depends on credential-bound Apple publication" >&2
+  exit 1
+fi
+
+echo "release-link check passed: $tag, ${#assets[@]} assets, and automatic-update workflow"
