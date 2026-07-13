@@ -8,6 +8,10 @@ val releaseKeystore = providers.environmentVariable("DISPLAYWEAVE_ANDROID_KEYSTO
 val releaseStorePassword = providers.environmentVariable("DISPLAYWEAVE_ANDROID_STORE_PASSWORD")
 val releaseKeyAlias = providers.environmentVariable("DISPLAYWEAVE_ANDROID_KEY_ALIAS")
 val releaseKeyPassword = providers.environmentVariable("DISPLAYWEAVE_ANDROID_KEY_PASSWORD")
+val displayWeaveBuildNumber = providers.environmentVariable("DISPLAYWEAVE_BUILD_NUMBER")
+    .orElse("1")
+val displayWeaveVersionName = providers.environmentVariable("DISPLAYWEAVE_VERSION_NAME")
+    .orElse("0.1.0")
 val hasReleaseSigning = listOf(
     releaseKeystore,
     releaseStorePassword,
@@ -23,8 +27,8 @@ android {
         applicationId = "app.opendisplay.android"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = displayWeaveBuildNumber.get().toInt()
+        versionName = displayWeaveVersionName.get()
     }
 
     compileOptions {

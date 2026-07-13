@@ -2,15 +2,26 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-OUT_DIR="$ROOT_DIR/build/preview-0.1"
+OUT_DIR="${DISPLAYWEAVE_OUTPUT_DIR:-$ROOT_DIR/build/preview-0.1}"
 MAC_DERIVED="$ROOT_DIR/build/preview-0.1-mac-derived"
 IOS_DERIVED="$ROOT_DIR/build/preview-0.1-ios-derived"
 ANDROID_APK="$ROOT_DIR/AndroidReceiver/app/build/outputs/apk/release/app-release.apk"
+VERSION_NAME="${DISPLAYWEAVE_VERSION_NAME:-0.1.0}"
+BUILD_NUMBER="${DISPLAYWEAVE_BUILD_NUMBER:-1}"
+UPDATE_RELEASE="${DISPLAYWEAVE_UPDATE_RELEASE:-0}"
 APKSIGNER="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}/build-tools/36.1.0/apksigner"
-KEYSTORE_PATH="$HOME/Library/Application Support/DisplayWeave/Signing/android-preview.jks"
-KEY_ALIAS="displayweave-preview"
+KEYSTORE_PATH="${DISPLAYWEAVE_ANDROID_KEYSTORE:-$HOME/Library/Application Support/DisplayWeave/Signing/android-preview.jks}"
+KEY_ALIAS="${DISPLAYWEAVE_ANDROID_KEY_ALIAS:-displayweave-preview}"
 KEYCHAIN_SERVICE="app.displayweave.android-preview-signing"
 STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/displayweave-preview-0.1.XXXXXX")"
+
+if [[ "$UPDATE_RELEASE" == "1" ]]; then
+  MAC_ARCHIVE_NAME="DisplayWeave-macOS.zip"
+  ANDROID_ARCHIVE_NAME="DisplayWeave-Android.apk"
+else
+  MAC_ARCHIVE_NAME="DisplayWeave-Preview-0.1-macOS.zip"
+  ANDROID_ARCHIVE_NAME="DisplayWeave-Preview-0.1-Android.apk"
+fi
 
 cleanup() {
   unset password DISPLAYWEAVE_ANDROID_KEYSTORE DISPLAYWEAVE_ANDROID_STORE_PASSWORD
@@ -33,8 +44,8 @@ xcodebuild -quiet \
   -configuration Release \
   -derivedDataPath "$MAC_DERIVED" \
   -clonedSourcePackagesDirPath "$MAC_DERIVED/SourcePackages" \
-  MARKETING_VERSION=0.1.0 \
-  CURRENT_PROJECT_VERSION=1 \
+  MARKETING_VERSION="$VERSION_NAME" \
+  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
   CODE_SIGN_ENTITLEMENTS=Mac/OpenSidecarMacAdHoc.entitlements \
   CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
   build
@@ -42,7 +53,7 @@ xcodebuild -quiet \
 MAC_APP="$MAC_DERIVED/Build/Products/Release/DisplayWeave.app"
 codesign --verify --deep --strict --verbose=2 "$MAC_APP"
 ditto -c -k --sequesterRsrc --keepParent \
-  "$MAC_APP" "$OUT_DIR/DisplayWeave-Preview-0.1-macOS.zip"
+  "$MAC_APP" "$OUT_DIR/$MAC_ARCHIVE_NAME"
 
 IOS_ARCHIVE_NAME="DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa"
 xcodebuild -quiet \
@@ -53,8 +64,8 @@ xcodebuild -quiet \
   -destination 'generic/platform=iOS' \
   -derivedDataPath "$IOS_DERIVED" \
   -clonedSourcePackagesDirPath "$IOS_DERIVED/SourcePackages" \
-  MARKETING_VERSION=0.1.0 \
-  CURRENT_PROJECT_VERSION=1 \
+  MARKETING_VERSION="$VERSION_NAME" \
+  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \
   build
@@ -81,12 +92,16 @@ if [[ "$archive_listing" == *"__MACOSX/"* || "$archive_listing" == *"/._"* ]]; t
 fi
 
 test -f "$KEYSTORE_PATH"
-password="$(security find-generic-password \
-  -s "$KEYCHAIN_SERVICE" -a "$KEY_ALIAS" -w)"
+if [[ -z "${DISPLAYWEAVE_ANDROID_STORE_PASSWORD:-}" ]]; then
+  password="$(security find-generic-password \
+    -s "$KEYCHAIN_SERVICE" -a "$KEY_ALIAS" -w)"
+  export DISPLAYWEAVE_ANDROID_STORE_PASSWORD="$password"
+  export DISPLAYWEAVE_ANDROID_KEY_PASSWORD="$password"
+fi
 export DISPLAYWEAVE_ANDROID_KEYSTORE="$KEYSTORE_PATH"
-export DISPLAYWEAVE_ANDROID_STORE_PASSWORD="$password"
 export DISPLAYWEAVE_ANDROID_KEY_ALIAS="$KEY_ALIAS"
-export DISPLAYWEAVE_ANDROID_KEY_PASSWORD="$password"
+export DISPLAYWEAVE_VERSION_NAME="$VERSION_NAME"
+export DISPLAYWEAVE_BUILD_NUMBER="$BUILD_NUMBER"
 
 cd "$ROOT_DIR/AndroidReceiver"
 ./gradlew --no-daemon clean test assembleRelease
@@ -102,12 +117,12 @@ if [[ ! -f "$ANDROID_APK" ]]; then
 fi
 
 "$APKSIGNER" verify --verbose --print-certs "$ANDROID_APK"
-cp "$ANDROID_APK" "$OUT_DIR/DisplayWeave-Preview-0.1-Android.apk"
+cp "$ANDROID_APK" "$OUT_DIR/$ANDROID_ARCHIVE_NAME"
 
 cd "$OUT_DIR"
 shasum -a 256 \
-  DisplayWeave-Preview-0.1-macOS.zip \
-  DisplayWeave-Preview-0.1-Android.apk \
+  "$MAC_ARCHIVE_NAME" \
+  "$ANDROID_ARCHIVE_NAME" \
   "$IOS_ARCHIVE_NAME" > SHA256SUMS.txt
 
 echo "DisplayWeave Preview 0.1 artifacts:"
