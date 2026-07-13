@@ -64,7 +64,7 @@ targets:
         SUEnableAutomaticChecks: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.peetzweg.opensidecar.mac
+        PRODUCT_BUNDLE_IDENTIFIER: app.displayweave.mac
         PRODUCT_NAME: DisplayWeave
         BUNDLE_DISPLAY_NAME: DisplayWeave
         SWIFT_OBJC_BRIDGING_HEADER: Mac/OpenSidecarMac-Bridging-Header.h
@@ -79,7 +79,7 @@ targets:
         # The distinct display name keeps the two telling apart in the
         # System Settings permission lists.
         Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: com.peetzweg.opensidecar.mac.debug
+          PRODUCT_BUNDLE_IDENTIFIER: app.displayweave.mac.debug
           BUNDLE_DISPLAY_NAME: DisplayWeave 开发版
   OpenSidecariOS:
     type: application

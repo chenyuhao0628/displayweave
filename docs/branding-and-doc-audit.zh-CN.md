@@ -2,7 +2,7 @@
 
 # DisplayWeave 品牌与文档审计
 
-Preview 2 网站采用深墨蓝、青色信号路径、非对称首屏、代码原生连接拓扑、发布轨道和证据状态板，不再沿用 OpenDisplay 式白底居中产品页。OpenDisplay 来源、GPL-3.0 与 SideScreen 技术参考继续保留；内部兼容标识不做无测试改名。
+Preview 2 网站采用深墨蓝、青色信号路径、非对称首屏、代码原生连接拓扑、发布轨道和证据状态板，不再沿用 OpenDisplay 式白底居中产品页。OpenDisplay 来源、GPL-3.0 与 SideScreen 技术参考继续保留。后续台前调度身份修复仅迁移 macOS 正式版与 Debug Bundle ID，并提供旧偏好迁移；iOS/Android 标识和 `_opensidecar._tcp` 继续作为兼容契约保留。
 
 | 检查点 | 实装结果 |
 | --- | --- |

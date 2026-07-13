@@ -28,14 +28,14 @@ platform :mac do
     # CI uses readonly: true so it just reads from the git repo, no Apple auth needed.
     match(
       type:           "developer_id",
-      app_identifier: "com.peetzweg.opensidecar.mac",
+      app_identifier: "app.displayweave.mac",
       readonly:       is_ci
     )
     update_code_signing_settings(
       use_automatic_signing: false,
       path:                  "OpenSidecar.xcodeproj",
       code_sign_identity:    "Developer ID Application",
-      profile_name:          "match Direct com.peetzweg.opensidecar.mac macos",
+      profile_name:          "match Direct app.displayweave.mac macos",
       targets:               ["OpenSidecarMac"]
     )
     build_mac_app(
@@ -54,7 +54,7 @@ platform :mac do
     # block to the repo root so every path agrees.
     notarize(
       package:   "build/export/DisplayWeave.app",
-      bundle_id: "com.peetzweg.opensidecar.mac",
+      bundle_id: "app.displayweave.mac",
       api_key:   key
     )
 
@@ -76,7 +76,7 @@ platform :mac do
     BASH
     notarize(
       package:   dmg,
-      bundle_id: "com.peetzweg.opensidecar.mac",
+      bundle_id: "app.displayweave.mac",
       api_key:   key
     )
   end

@@ -100,7 +100,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // capture→encode→stream→display latency (~30ms perceived). Instead we
     // hide it from capture and stream its position on the control channel —
     // the phone draws it locally on the ~2ms path the touches use.
-    // Escape hatch: `defaults write sh.peet.opensidecar.mac localCursor -bool false`.
+    // Escape hatch: `defaults write app.displayweave.mac.debug localCursor -bool false`.
     private let localCursor = UserDefaults.standard.object(forKey: "localCursor") == nil
         || UserDefaults.standard.bool(forKey: "localCursor")
     private var cursorTimer: DispatchSourceTimer?
@@ -300,7 +300,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                                virtualDisplayRefreshRate: vd.actualRefreshRate,
                                codec: codec)
 
-        // Debug aid (`defaults write sh.peet.opensidecar.mac testPattern -bool true`):
+        // Debug aid (`defaults write app.displayweave.mac.debug testPattern -bool true`):
         // an animated window on the virtual display generates a constant frame
         // stream so steady-state latency can be measured without user activity.
         if UserDefaults.standard.bool(forKey: "testPattern") {

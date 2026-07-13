@@ -38,6 +38,11 @@ identifiers. Names such as `OpenSidecar.xcodeproj`, Xcode schemes,
 `_opensidecar._tcp` remain internal compatibility contracts. They should not be
 renamed as a cosmetic cleanup without a separate migration design.
 
+The later Stage Manager identity fix supplies that migration design for macOS only:
+release and Debug now use `app.displayweave.mac` identities, copy missing values
+from legacy preference domains once, and explicitly load the embedded AppIcon at
+launch. Receiver identifiers and `_opensidecar._tcp` remain unchanged.
+
 ## Summary
 
 - The README's feature/status section is generally accurate: Android USB/ADB
