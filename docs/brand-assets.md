@@ -27,10 +27,10 @@
 ## 一致性
 
 - Mac 与 iOS 的 1024 图标 SHA-256 相同，均与 `public/icon.png` 相同。
-- 网站 favicon 引用 `public/icon-256.png`。
+- 网站 favicon 引用 `public/logo.png`，使用不同资源路径避开旧 favicon 缓存。
 - Open Graph 与 Twitter Card 均引用 `public/og.png`，尺寸为 1200×630。
 - README 使用 `public/logo.png`；网站文字品牌统一为 DisplayWeave。
-- 原有 `OpenSidecar` / `OpenDisplay` 名称仍存在于 target、bundle ID、协议 service type 和兼容类名中；这些是兼容标识，不是用户可见主品牌。
+- macOS 正式版与 Debug Bundle ID 已迁移为 `app.displayweave.mac` 和 `app.displayweave.mac.debug`，并在启动时迁移旧偏好、显式加载包内 AppIcon。Xcode target、iOS/Android 标识、协议 service type 和兼容类名保持不变，以保留接收端兼容性。
 
 ## Preview 0.1 缺失项
 

@@ -20,7 +20,12 @@ enum AppPresentation: String, CaseIterable {
 @main
 struct OpenSidecarMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var controller = SenderController.shared
+    @StateObject private var controller: SenderController
+
+    init() {
+        ApplicationIdentityPolicy.migratePreferences()
+        _controller = StateObject(wrappedValue: SenderController.shared)
+    }
 
     var body: some Scene {
         MenuBarExtra(isInserted: Binding(
@@ -46,6 +51,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Stage Manager and the Dock use the running NSApplication icon.
+        // Load the icon embedded in this exact bundle instead of allowing a
+        // legacy LaunchServices registration to supply an OpenDisplay image.
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL) {
+            NSApp.applicationIconImage = icon
+        }
         // Hand the updater to the control window, which is built outside the
         // SwiftUI App scene (NSHostingView), so it can offer the same button.
         MainWindow.updater = updater

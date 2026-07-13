@@ -32,6 +32,8 @@ Android high refresh remains experimental. One OnePlus HEVC/120 WiFi run measure
 
 This is a development preview, not a production-signed store release. Verify the checksum before use. Android users should also compare the certificate fingerprint in the [release checklist](docs/release-checklist.md).
 
+The refreshed Mac build uses a DisplayWeave-owned application identity. Settings migrate from the legacy OpenDisplay/OpenSidecar preference domains, but macOS will require Screen Recording, Accessibility, and Local Network permission to be granted again after the upgrade.
+
 ## Android USB quick start
 
 1. Enable Developer options and USB debugging on the Android device.

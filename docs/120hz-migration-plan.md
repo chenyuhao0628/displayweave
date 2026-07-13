@@ -473,7 +473,7 @@ Implemented so far:
   `actualRefreshRate`, selected resolution, scale, and fallback reason.
 - `MacSender` now chooses the requested virtual display refresh rate from the
   Android-reported `maxFps` and an optional Mac user override:
-  `defaults write sh.peet.opensidecar.mac fps 90` or `120`.
+  `defaults write app.displayweave.mac.debug fps 90` or `120`.
 
 Verification:
 
@@ -540,7 +540,7 @@ Implemented so far:
 - Encode telemetry now logs `encodedFps`, `encodeLatencyMs`, codec, bitrate,
   keyframe interval, and average frame size.
 - Automatic codec selection now follows Android capabilities and preferred
-  codec, with `defaults write sh.peet.opensidecar.mac codec h264` or `hevc` as
+  codec, with `defaults write app.displayweave.mac.debug codec h264` or `hevc` as
   an override. HEVC failures still fall back to H.264.
 
 Verification:
@@ -610,7 +610,7 @@ Implemented so far:
   `OnFrameRenderedListener` increments `renderedFps`.
 - Mac default codec selection now follows Android capability negotiation again:
   HEVC is selected when Android reports/prefers HEVC, unless overridden by
-  `defaults write sh.peet.opensidecar.mac codec h264`.
+  `defaults write app.displayweave.mac.debug codec h264`.
 
 Verification:
 

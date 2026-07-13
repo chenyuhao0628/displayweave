@@ -32,6 +32,8 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 
 这是开发预览版，不是生产签名的商店版本。使用前请验证校验和；Android 用户还应核对[发布检查清单](docs/release-checklist.zh-CN.md)中的证书指纹。
 
+新版 Mac 构建使用 DisplayWeave 自有应用身份。设置会从旧 OpenDisplay/OpenSidecar 偏好域迁移，但升级后需要在 macOS 重新授予屏幕录制、辅助功能和本地网络权限。
+
 ## Android USB 快速开始
 
 1. 在 Android 设备启用开发者选项和 USB 调试。
