@@ -2,6 +2,6 @@
 
 发送端已启用 TCP no-delay，并持续占用 pending 计数直到 Network.framework 回报发送完成。当前待发送数达到预算时会丢弃新捕获帧，避免再多塞入一帧。
 
-候选预算为 Gaming 1、Low/Balanced 2、High 3。丢弃预测帧后立即请求关键帧，让解码器重新同步。这些数值是有单元测试覆盖的候选默认值，不是实体 A/B 结论。
+候选预算为 Gaming 1、Low/Balanced 2、High 3。这里的 Drop 发生在编码前，不会破坏已经编码的参考链，因此不再请求关键帧；已编码帧丢失、Transport Write 失败、重连、Decoder Recovery、Codec Fallback 与 Stream Reconfigure 仍会请求关键帧。这些数值是有单元测试覆盖的候选默认值，不是实体 A/B 结论。
 
 实体验证必须在同场景比较平均 FPS、1% Low FPS、Frame Age、估算 E2E 延迟、丢帧、关键帧请求和视觉稳定性。只有队列接近零且不造成过多丢帧或关键帧抖动的预算才能接受。

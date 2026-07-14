@@ -67,12 +67,14 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private let displaySerial: UInt32
 
     // Backpressure: outstanding sends. If the socket can't keep up we drop
-    // frames instead of queueing latency, then force a keyframe to resync.
+    // the raw capture before VideoToolbox rather than queueing latency. That
+    // does not break the encoded reference chain and must not force an IDR.
     // Kept tight: at 60fps each queued send is ~17ms of added latency.
     private var pendingSends = 0
     private var maxPendingSends: Int { SendQueuePolicy.budget(quality: quality) }
     private var dropsThisWindow = 0
-    private var needsKeyframe = true
+    private var keyframeRequests = KeyframeRequestTracker(initialReason: .streamReconfigure)
+    private var needsKeyframe: Bool { keyframeRequests.hasPendingRequest }
     private var connectionReady = false
     private var stopped = false
     // The liveness monitors are self-rescheduling chains guarded only by
@@ -339,7 +341,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 TestPattern.hide(ownerID: testPatternOwnerID)
             }
             virtualDisplay = nil   // removes the old display
-            needsKeyframe = true
+            requestKeyframe(.streamReconfigure)
             do {
                 try await setupExtend(target)
             } catch {
@@ -540,7 +542,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             case .sendStreamConfig:
                 sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
             case .forceKeyframe:
-                needsKeyframe = true   // new peer needs SPS/PPS + IDR
+                requestKeyframe(.reconnect)   // new peer needs SPS/PPS + IDR
             }
         }
         // A reconnect can recreate the phone's video view with no cursor
@@ -928,7 +930,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                     if previous?.supportsProtocolV2 != true,
                        encoder != nil, activeStreamWidth > 0, activeStreamHeight > 0 {
                         sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
-                        needsKeyframe = true
+                        requestKeyframe(.streamReconfigure)
                     }
                 } else {
                     Task { await self.status("已连接到 \(self.endpointName)") }
@@ -991,7 +993,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                         height: activeStreamHeight
                     )
                 case .forceKeyframe:
-                    needsKeyframe = true
+                    requestKeyframe(.receiverKeyframeRequest)
                 }
             }
         case "codecFailure":
@@ -1007,7 +1009,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                              fps: requestedCaptureFps,
                              preferredCodec: .h264)
                 sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
-                needsKeyframe = true
+                requestKeyframe(.codecFallback)
             }
         default:
             Log.info("unknown control message type: \(type)")
@@ -1075,7 +1077,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             case .retry:
                 Log.info("receiver protocol timeout phase=\(phase); retrying stream config")
                 Task { await self.status("接收端响应超时，正在有限重试…") }
-                self.needsKeyframe = true
+                self.requestKeyframe(.decoderReset)
                 self.sendStreamConfig(
                     width: self.activeStreamWidth,
                     height: self.activeStreamHeight,
@@ -1224,7 +1226,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             pendingSends: pendingSends, budget: maxPendingSends,
             currentDroppedFrames: dropsThisWindow)
         if queueDecision.shouldDrop {
-            needsKeyframe = queueDecision.forceKeyframe
+            if queueDecision.forceKeyframe, let reason = queueDecision.reason {
+                requestKeyframe(reason)
+            }
             dropsThisWindow = queueDecision.droppedFrames
             dropsTotal += 1
             return
@@ -1240,9 +1244,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             ? protocolIdentity.nextFrame()
             : nil
         var frameProperties: CFDictionary?
-        if needsKeyframe {
+        let forcedKeyframeReason = keyframeRequests.consumePendingRequest()
+        if let forcedKeyframeReason {
             frameProperties = [kVTEncodeFrameOptionKey_ForceKeyFrame: kCFBooleanTrue!] as CFDictionary
-            needsKeyframe = false
+            decoderRecoveryEvent = forcedKeyframeReason.rawValue
+            Log.info("forcing keyframe reason=\(forcedKeyframeReason.rawValue) requests=\(keyframeRequests.requestCount) coalesced=\(keyframeRequests.coalescedCount)")
         }
         let encodeStart = Date()
         let duration = CMTime(
@@ -1258,8 +1264,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         ) { [weak self] status, _, buffer in
             guard let self else { return }
             guard status == noErr, let buffer else {
+                if forcedKeyframeReason != nil {
+                    self.keyframeRequests.completeInFlightRequest(encodedKeyframe: false)
+                }
                 self.handleEncodeFailure(status: status)
                 return
+            }
+            let isKeyframe = Self.isKeyframe(buffer)
+            if forcedKeyframeReason != nil {
+                self.keyframeRequests.completeInFlightRequest(encodedKeyframe: isKeyframe)
             }
             if let data = self.annexB(from: buffer) {
                 // Telemetry prefix before the first start code — the receiver
@@ -1272,9 +1285,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                     identity: protocolFrameIdentity)
                 var framed = Data(prefix.utf8)
                 framed.append(data)
-                self.recordEncodedFrame(bytes: data.count, isKeyframe: Self.isKeyframe(buffer),
+                self.recordEncodedFrame(bytes: data.count, isKeyframe: isKeyframe,
                                         latencyMs: Date().timeIntervalSince(encodeStart) * 1000)
                 self.sendFramed(framed)
+            } else {
+                self.requestKeyframe(.encodedFrameDiscarded)
             }
         }
     }
@@ -1291,7 +1306,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                      fps: requestedCaptureFps,
                      preferredCodec: .h264)
         sendStreamConfig(width: max(activeStreamWidth, 2), height: max(activeStreamHeight, 2))
-        needsKeyframe = true
+        requestKeyframe(.codecFallback)
     }
 
     private static func isKeyframe(_ sample: CMSampleBuffer) -> Bool {
@@ -1477,6 +1492,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             self.pendingSends -= 1
             if let error {
                 Log.info("send error: \(error)")
+                self.requestKeyframe(.transportWriteFailure)
                 return
             }
             self.framesSent += 1
@@ -1494,6 +1510,20 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 Task { @MainActor in self.onStats?(frames, mbps) }
             }
         })
+    }
+
+    @discardableResult
+    private func requestKeyframe(_ reason: FrameDropReason) -> KeyframeRequestDisposition {
+        let disposition = keyframeRequests.request(reason)
+        switch disposition {
+        case .ignored:
+            break
+        case .scheduled:
+            Log.info("keyframe requested reason=\(reason.rawValue) status=scheduled count=\(keyframeRequests.requestCount)")
+        case .coalesced:
+            Log.info("keyframe requested reason=\(reason.rawValue) status=coalesced count=\(keyframeRequests.requestCount) coalesced=\(keyframeRequests.coalescedCount)")
+        }
+        return disposition
     }
 
     // MARK: - Helpers
@@ -1584,6 +1614,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             peakFrameSize: lastPeakFrameSize > 0 ? Double(lastPeakFrameSize) : nil,
             keyframeQueueDepth: Double(lastKeyframeQueueDepth),
             keyframeFrameAgeP95Ms: lastKeyframeCount > 0 ? receiver.frameAgeP95Ms : nil,
+            keyframeRequestReason: keyframeRequests.pendingReason?.rawValue ?? decoderRecoveryEvent,
+            keyframeRequestCount: Double(keyframeRequests.requestCount),
+            keyframeCoalescedCount: Double(keyframeRequests.coalescedCount),
             decoderRecoveryEvent: decoderRecoveryEvent,
             averageFrameSize: lastAverageFrameSize > 0 ? Double(lastAverageFrameSize) : nil,
             encodeLatencyMs: lastEncodeLatencyMs, pendingSends: Double(pendingSends),

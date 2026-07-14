@@ -99,6 +99,9 @@ struct BenchmarkSample {
     var peakFrameSize: Double?
     var keyframeQueueDepth: Double?
     var keyframeFrameAgeP95Ms: Double?
+    var keyframeRequestReason: String?
+    var keyframeRequestCount: Double?
+    var keyframeCoalescedCount: Double?
     var decoderRecoveryEvent: String?
 
     init(timestamp: Date, monotonicElapsed: ContinuousClock.Duration,
@@ -112,7 +115,11 @@ struct BenchmarkSample {
          bitrateChangeReason: String? = nil, networkState: String? = nil,
          keyframeCount: Double? = nil, averageKeyframeSize: Double? = nil,
          peakFrameSize: Double? = nil, keyframeQueueDepth: Double? = nil,
-         keyframeFrameAgeP95Ms: Double? = nil, decoderRecoveryEvent: String? = nil,
+         keyframeFrameAgeP95Ms: Double? = nil,
+         keyframeRequestReason: String? = nil,
+         keyframeRequestCount: Double? = nil,
+         keyframeCoalescedCount: Double? = nil,
+         decoderRecoveryEvent: String? = nil,
          averageFrameSize localAverageFrameSize: Double? = nil,
          encodeLatencyMs: Double?,
          pendingSends: Double?, macQueue: Double?,
@@ -147,6 +154,9 @@ struct BenchmarkSample {
         self.peakFrameSize = peakFrameSize
         self.keyframeQueueDepth = keyframeQueueDepth
         self.keyframeFrameAgeP95Ms = keyframeFrameAgeP95Ms
+        self.keyframeRequestReason = keyframeRequestReason
+        self.keyframeRequestCount = keyframeRequestCount
+        self.keyframeCoalescedCount = keyframeCoalescedCount
         self.decoderRecoveryEvent = decoderRecoveryEvent
         averageFrameSize = localAverageFrameSize ?? receiver.averageFrameSize
         self.encodeLatencyMs = encodeLatencyMs
@@ -184,7 +194,9 @@ struct BenchmarkSample {
         "macQueue", "androidQueue", "macDrops", "androidDrops", "inputP50Ms", "inputP95Ms",
         "macCPU", "macMemory", "previousBitrateMbps", "newBitrateMbps",
         "bitrateChangeReason", "networkState", "keyframeCount", "averageKeyframeSize",
-        "peakFrameSize", "keyframeQueueDepth", "keyframeFrameAgeP95Ms", "decoderRecoveryEvent"
+        "peakFrameSize", "keyframeQueueDepth", "keyframeFrameAgeP95Ms",
+        "keyframeRequestReason", "keyframeRequestCount", "keyframeCoalescedCount",
+        "decoderRecoveryEvent"
     ]
 
     var csvFields: [String] {
@@ -204,6 +216,8 @@ struct BenchmarkSample {
          bitrateChangeReason ?? Self.notAvailable, networkState ?? Self.notAvailable,
          number(keyframeCount), number(averageKeyframeSize), number(peakFrameSize),
          number(keyframeQueueDepth), number(keyframeFrameAgeP95Ms),
+         keyframeRequestReason ?? Self.notAvailable, number(keyframeRequestCount),
+         number(keyframeCoalescedCount),
          decoderRecoveryEvent ?? Self.notAvailable]
     }
 
@@ -248,6 +262,9 @@ struct BenchmarkSample {
             "keyframeCount": keyframeCount, "averageKeyframeSize": averageKeyframeSize,
             "peakFrameSize": peakFrameSize, "keyframeQueueDepth": keyframeQueueDepth,
             "keyframeFrameAgeP95Ms": keyframeFrameAgeP95Ms,
+            "keyframeRequestReason": keyframeRequestReason,
+            "keyframeRequestCount": keyframeRequestCount,
+            "keyframeCoalescedCount": keyframeCoalescedCount,
             "decoderRecoveryEvent": decoderRecoveryEvent
         ]
         for (key, value) in optional {

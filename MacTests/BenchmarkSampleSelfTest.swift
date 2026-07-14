@@ -120,6 +120,9 @@ let sample = BenchmarkSample(
     peakFrameSize: 140_000,
     keyframeQueueDepth: 1,
     keyframeFrameAgeP95Ms: 30,
+    keyframeRequestReason: "reconnect",
+    keyframeRequestCount: 4,
+    keyframeCoalescedCount: 2,
     decoderRecoveryEvent: "receiver-kf",
     averageFrameSize: 41_234.5,
     encodeLatencyMs: 4.25,
@@ -141,6 +144,9 @@ expect(csv.contains("\"run,\"\"one\"\"\""), "CSV escapes comma and quotes")
 expect(csv.contains("\"session\nline\""), "CSV escapes newline")
 expect(sample.csvFields.contains(BenchmarkSample.notAvailable), "nil writes notAvailable in CSV")
 expect(BenchmarkSample.csvHeader.first == "timestamp", "fixed header starts with timestamp")
+expect(BenchmarkSample.csvHeader.contains("keyframeRequestReason"), "header records keyframe request reason")
+expect(BenchmarkSample.csvHeader.contains("keyframeRequestCount"), "header records keyframe request count")
+expect(BenchmarkSample.csvHeader.contains("keyframeCoalescedCount"), "header records coalesced requests")
 expect(BenchmarkSample.csvHeader.last == "decoderRecoveryEvent", "fixed header ends with recovery event")
 var nonFiniteSample = sample
 nonFiniteSample.macCPU = Double.infinity
@@ -165,6 +171,9 @@ expect(jsonObject["newBitrateMbps"] as? Double == 20, "new adaptive target is re
 expect(jsonObject["bitrateChangeReason"] as? String == "pending-sends", "adaptive reason is recorded")
 expect(jsonObject["networkState"] as? String == "congested", "adaptive state is recorded")
 expect(jsonObject["keyframeCount"] as? Double == 2, "keyframe count is recorded")
+expect(jsonObject["keyframeRequestReason"] as? String == "reconnect", "keyframe request reason is recorded")
+expect(jsonObject["keyframeRequestCount"] as? Double == 4, "keyframe request count is recorded")
+expect(jsonObject["keyframeCoalescedCount"] as? Double == 2, "coalesced keyframe count is recorded")
 expect(jsonObject["decoderRecoveryEvent"] as? String == "receiver-kf", "recovery event is recorded")
 expect(jsonObject["averageFrameSize"] as? Double == 41_234.5, "local frame size stays measured")
 expect((jsonObject["resolution"] as? [String: Any])?["width"] as? Int == 1920, "JSONL contains resolution")
