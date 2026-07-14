@@ -13,6 +13,8 @@ struct PhoneInfo: Decodable {
     let deviceModel: String?
     let androidSdk: Int?
     let transport: String?
+    let protocolVersion: Int?
+    let capabilities: [String]?
 
     var kind: String { device ?? "设备" }
     var negotiatedRefreshRate: Int { Self.supportedFpsBucket(refreshRate ?? 60) }
@@ -28,6 +30,20 @@ struct PhoneInfo: Decodable {
     var negotiatedDeviceModel: String { deviceModel ?? kind }
     var negotiatedAndroidSdk: Int { androidSdk ?? 0 }
     var negotiatedTransport: String { transport ?? "unknown" }
+    var isAndroidReceiver: Bool {
+        kind.lowercased() == "android" || (androidSdk ?? 0) > 0
+    }
+    var supportsProtocolV2: Bool {
+        guard isAndroidReceiver, (protocolVersion ?? 1) >= 2 else {
+            return false
+        }
+        let advertised = Set(capabilities ?? [])
+        let required: Set<String> = [
+            "streamConfigAck", "decoderReady", "firstFrameRendered",
+            "sessionEpoch", "configVersion", "frameSequence"
+        ]
+        return required.isSubset(of: advertised)
+    }
 
     private static func supportedFpsBucket(_ value: Int) -> Int {
         if value >= 110 { return 120 }

@@ -15,21 +15,29 @@ import java.util.concurrent.TimeUnit;
 import app.opendisplay.android.protocol.LengthPrefixedProtocol;
 import app.opendisplay.android.protocol.MacControlMessage;
 
-public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, NsdAdvertiser.Listener {
+public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private static final int PORT = 9000;
 
     private final Listener listener;
+    private final ExecutorService transportEvents = Executors.newSingleThreadExecutor();
     private final ExecutorService decoderWorker = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor();
     private final String installId;
     private final NsdAdvertiser advertiser;
     private final ReceiverTransport transport;
     private final ReceiverConnectionCoordinator connectionCoordinator;
+    private final ReceiverProtocolSession protocolSession = new ReceiverProtocolSession();
     private volatile boolean wifiAdvertisingEnabled;
     private volatile int listeningPort;
     private volatile DisplaySpec displaySpec;
     private volatile boolean running;
-    private H264SurfaceDecoder decoder;
+    private Surface surface;
+    private volatile H264SurfaceDecoder decoder;
+    private volatile long decoderGeneration;
+    private volatile long decoderSessionEpoch;
+    private volatile long decoderConfigVersion;
+    private volatile boolean decoderAwaitingFreshConfig;
+    private volatile long streamingGeneration;
     private Double clockOffsetMs;
     private final ClockOffsetEstimator clockEstimator = new ClockOffsetEstimator(8);
     private int renderedFrames;
@@ -61,12 +69,17 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
     private VideoStreamConfig currentStreamConfig = VideoStreamConfig.DEFAULT;
     private byte[] latestVideoFrame;
     private VideoFrameTelemetry latestVideoFrameTelemetry;
+    private long latestVideoFrameGeneration;
     private final DecodeWorkerState decodeWorkerState = new DecodeWorkerState();
+    private volatile long lastVideoReceivedMs;
+    private volatile long lastFrameRenderedMs;
+    private volatile long lastDecoderRecoveryMs;
 
     public interface Listener {
         void onStatus(String status);
         void onConnected(boolean connected);
         void onStreaming(boolean streaming);
+        void onConnectionState(ReceiverConnectionStateSnapshot state);
         void onCursor(double x, double y, boolean visible);
         void onCursorImage(byte[] png, double anchorX, double anchorY,
                            double normalizedWidth, double normalizedHeight);
@@ -107,10 +120,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
 
                     @Override
                     public void releaseDecoder() {
-                        H264SurfaceDecoder activeDecoder = decoder;
-                        if (activeDecoder != null) {
-                            activeDecoder.release();
-                        }
+                        OpenDisplayServer.this.releaseDecoder();
                     }
 
                     @Override
@@ -122,6 +132,20 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
                     public void stopStreaming() {
                         listener.onStreaming(false);
                     }
+
+                    @Override
+                    public void onConnectionState(ReceiverConnectionStateSnapshot state) {
+                        listener.onConnectionState(state);
+                        if (protocolSession.isNegotiatedV2()) {
+                            sendJson(LengthPrefixedProtocol.connectionStateJson(
+                                    state.state.name(),
+                                    state.reason,
+                                    state.enteredAtMs,
+                                    state.generation,
+                                    state.sessionEpoch,
+                                    state.configVersion));
+                        }
+                    }
                 });
     }
 
@@ -130,40 +154,65 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
             return;
         }
         running = true;
-        decoder = new H264SurfaceDecoder(surface, this);
+        this.surface = surface;
         metricsWindowStartMs = System.currentTimeMillis();
         transport.start(new ReceiverTransport.Listener() {
             @Override
             public void onListening(int port) {
-                listeningPort = port;
-                if (wifiAdvertisingEnabled) {
-                    startWifiAdvertising(port);
-                }
-                listener.onStatus("正在监听 :" + port + " / " + transport.name());
+                executeTransportEvent(() -> {
+                    listeningPort = port;
+                    if (wifiAdvertisingEnabled) {
+                        startWifiAdvertising(port);
+                    }
+                    listener.onStatus("正在监听 :" + port + " / " + transport.name());
+                });
             }
 
             @Override
-            public void onConnected(String peer) {
-                resetClockSynchronization();
-                connectionCoordinator.onConnected();
-                listener.onStatus("Mac 已连接：" + peer);
-                sendHello();
+            public void onConnected(long generation, String peer) {
+                executeTransportEvent(() -> {
+                    if (!connectionCoordinator.onConnected(generation, "socketAccepted")) {
+                        return;
+                    }
+                    protocolSession.onConnected(generation);
+                    resetClockSynchronization();
+                    lastVideoReceivedMs = 0;
+                    lastFrameRenderedMs = System.currentTimeMillis();
+                    lastDecoderRecoveryMs = 0;
+                    streamingGeneration = 0;
+                    replaceDecoder(generation);
+                    listener.onStatus("Mac 已连接：" + peer);
+                    sendHello();
+                });
             }
 
             @Override
-            public void onPayload(byte[] payload) {
-                handleTransportPayload(payload);
+            public void onPayload(long generation, byte[] payload) {
+                executeTransportEvent(() -> {
+                    if (connectionCoordinator.isCurrent(generation)) {
+                        handleTransportPayload(generation, payload);
+                    }
+                });
             }
 
             @Override
-            public void onDisconnected() {
-                resetClockSynchronization();
-                connectionCoordinator.onDisconnected();
+            public void onDisconnected(long generation) {
+                executeTransportEvent(() -> {
+                    if (!connectionCoordinator.onDisconnected(generation, "readerExited")) {
+                        return;
+                    }
+                    resetClockSynchronization();
+                    lastVideoReceivedMs = 0;
+                });
             }
 
             @Override
-            public void onError(String message) {
-                listener.onStatus(message);
+            public void onError(long generation, String message) {
+                executeTransportEvent(() -> {
+                    if (connectionCoordinator.onError(generation, message)) {
+                        listener.onStatus(message);
+                    }
+                });
             }
         });
         timer.scheduleAtFixedRate(this::sendPingIfConnected, 2, 2, TimeUnit.SECONDS);
@@ -174,18 +223,17 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
         running = false;
         listeningPort = 0;
         advertiser.stop();
-        transport.stop();
+        transport.stop(LengthPrefixedProtocol.goodbyeJson().getBytes(StandardCharsets.UTF_8));
         resetQueuedFrames();
-        if (decoder != null) {
-            decoder.release();
-        }
+        releaseDecoderImmediately();
+        transportEvents.shutdownNow();
         decoderWorker.shutdownNow();
         timer.shutdownNow();
     }
 
     public void updateDisplay(DisplaySpec spec) {
         displaySpec = spec;
-        sendHello();
+        executeTransportEvent(this::sendHello);
     }
 
     public synchronized void enableWifiAdvertising() {
@@ -215,9 +263,31 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
         sendJson(LengthPrefixedProtocol.scrollJson(dx, dy));
     }
 
-    private void enqueueVideoFrame(byte[] payload) {
+    private void executeTransportEvent(Runnable event) {
+        if (!running) {
+            return;
+        }
+        try {
+            transportEvents.execute(() -> {
+                if (running) {
+                    event.run();
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            // stop() may race with a final transport callback.
+        }
+    }
+
+    private void enqueueVideoFrame(long generation, byte[] payload) {
+        if (!connectionCoordinator.isCurrent(generation)) {
+            return;
+        }
+        lastVideoReceivedMs = System.currentTimeMillis();
         VideoFrameTelemetry telemetry = VideoFrameTelemetry.fromWirePayload(
                 payload, System.currentTimeMillis());
+        if (!protocolSession.acceptFrame(generation, telemetry)) {
+            return;
+        }
         synchronized (this) {
             receivedFrames++;
             if (latestVideoFrame != null) {
@@ -233,6 +303,7 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
             }
             latestVideoFrame = payload;
             latestVideoFrameTelemetry = telemetry;
+            latestVideoFrameGeneration = generation;
             queueDepthAndroid = 1;
             if (decodeWorkerState.markFrameAvailable()) {
                 decoderWorker.execute(this::drainLatestVideoFrames);
@@ -244,36 +315,42 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
         while (running) {
             byte[] frame;
             VideoFrameTelemetry telemetry;
+            long generation;
             synchronized (this) {
                 frame = latestVideoFrame;
                 telemetry = latestVideoFrameTelemetry;
+                generation = latestVideoFrameGeneration;
                 latestVideoFrame = null;
                 latestVideoFrameTelemetry = null;
+                latestVideoFrameGeneration = 0;
                 queueDepthAndroid = 0;
                 if (frame == null) {
                     decodeWorkerState.markIdle();
                     return;
                 }
             }
-            H264SurfaceDecoder activeDecoder = decoder;
-            if (activeDecoder != null) {
-                activeDecoder.queueFrame(frame, telemetry);
+            if (!connectionCoordinator.isCurrent(generation)) {
+                continue;
             }
+            queueFrameIfCurrentDecoder(generation, frame, telemetry);
         }
         synchronized (this) {
             decodeWorkerState.markIdle();
         }
     }
 
-    private void handleTransportPayload(byte[] payload) {
+    private void handleTransportPayload(long generation, byte[] payload) {
         if (LengthPrefixedProtocol.isPureJsonControl(payload)) {
-            handleMacJson(new String(payload, StandardCharsets.UTF_8));
+            handleMacJson(generation, new String(payload, StandardCharsets.UTF_8));
         } else if (decoder != null) {
-            enqueueVideoFrame(payload);
+            enqueueVideoFrame(generation, payload);
         }
     }
 
-    private void handleMacJson(String json) {
+    private void handleMacJson(long generation, String json) {
+        if (!connectionCoordinator.isCurrent(generation)) {
+            return;
+        }
         try {
             JSONObject object = new JSONObject(json);
             String type = object.optString("type", "");
@@ -325,22 +402,68 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
                 listener.onCursorImage(png, cursor.anchorX, cursor.anchorY,
                         cursor.normalizedWidth, cursor.normalizedHeight);
             } else if ("streamConfig".equals(type)) {
-                if (decoder != null) {
+                    int protocolVersion = object.optInt("protocolVersion", 1);
+                    long sessionEpoch = object.optLong("sessionEpoch", 0);
+                    long configVersion = object.optLong("configVersion", 0);
+                    if (!protocolSession.acceptStreamConfig(
+                            generation, protocolVersion, sessionEpoch, configVersion)) {
+                        android.util.Log.w("DisplayWeave", "rejected stale/invalid streamConfig"
+                                + " generation=" + generation
+                                + " sessionEpoch=" + sessionEpoch
+                                + " configVersion=" + configVersion);
+                        return;
+                    }
+                    resetQueuedFrames();
+                    if (protocolSession.isNegotiatedV2()) {
+                        connectionCoordinator.transition(
+                                generation,
+                                ReceiverConnectionState.HELLO_ACCEPTED,
+                                "protocolV2Selected",
+                                sessionEpoch,
+                                configVersion);
+                    }
+                    connectionCoordinator.transition(
+                            generation,
+                            ReceiverConnectionState.STREAM_CONFIG_RECEIVED,
+                            "streamConfigReceived",
+                            sessionEpoch,
+                            configVersion);
                     VideoStreamConfig config = VideoStreamConfig.from(
                             object.optString("codec", "h264"),
                             object.optInt("fps", 60),
                             object.optInt("width", displaySpec.pixelsWide),
                             object.optInt("height", displaySpec.pixelsHigh),
                             object.optInt("bitrate", 0));
+                    VideoStreamConfig previousConfig = currentStreamConfig;
                     currentStreamConfig = config;
                     lastMacTransport = object.optString("transport", lastMacTransport);
                     listener.onStreamConfig(config);
-                    decoder.applyStreamConfig(
-                            config.codec,
-                            config.fps,
-                            config.width,
-                            config.height);
-                }
+                    streamingGeneration = 0;
+                    if (protocolSession.isNegotiatedV2()) {
+                        sendJson(LengthPrefixedProtocol.streamConfigAckJson(
+                                sessionEpoch,
+                                configVersion,
+                                true,
+                                config.codec,
+                                config.fps,
+                                config.width,
+                                config.height,
+                                surface != null && surface.isValid()));
+                        connectionCoordinator.transition(
+                                generation,
+                                ReceiverConnectionState.STREAM_CONFIG_ACCEPTED,
+                                "streamConfigAckSent",
+                                sessionEpoch,
+                                configVersion);
+                    }
+                    connectionCoordinator.transition(
+                            generation,
+                            ReceiverConnectionState.DECODER_CONFIGURING,
+                            "streamConfigApplied",
+                            sessionEpoch,
+                            configVersion);
+                    configureDecoderForIdentity(
+                            generation, sessionEpoch, configVersion, previousConfig, config);
             }
         } catch (Exception ignored) {
         }
@@ -364,6 +487,20 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
                 spec.transport,
                 "Android",
                 installId));
+        long generation = connectionCoordinator.currentGeneration();
+        if (protocolSession.isNegotiatedV2()) {
+            connectionCoordinator.transition(
+                    generation,
+                    ReceiverConnectionState.HELLO_SENT,
+                    "helloSent",
+                    protocolSession.sessionEpoch(),
+                    protocolSession.configVersion());
+        } else {
+            connectionCoordinator.transition(
+                    generation,
+                    ReceiverConnectionState.HELLO_SENT,
+                    "helloSent");
+        }
     }
 
     private void sendPingIfConnected() {
@@ -377,31 +514,263 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
     }
 
     private void sendJson(String json) {
-        transport.send(json.getBytes(StandardCharsets.UTF_8));
+        long generation = connectionCoordinator.currentGeneration();
+        if (connectionCoordinator.isCurrent(generation)) {
+            transport.send(generation, json.getBytes(StandardCharsets.UTF_8));
+        }
     }
 
     private synchronized void resetQueuedFrames() {
         latestVideoFrame = null;
         latestVideoFrameTelemetry = null;
+        latestVideoFrameGeneration = 0;
         queueDepthAndroid = 0;
         decodeWorkerState.markQueueReset();
     }
 
-    @Override
-    public void onDecoderStatus(String status) {
-        listener.onStatus(status);
-        if (status.startsWith("正在接收")) {
-            listener.onStreaming(true);
+    private synchronized void replaceDecoder(long generation) {
+        releaseDecoder();
+        if (surface == null || !connectionCoordinator.isCurrent(generation)) {
+            return;
+        }
+        decoderGeneration = generation;
+        decoderSessionEpoch = 0;
+        decoderConfigVersion = 0;
+        decoderAwaitingFreshConfig = false;
+        decoder = new H264SurfaceDecoder(
+                surface, new GenerationDecoderListener(generation, 0, 0));
+    }
+
+    private void configureDecoderForIdentity(
+            long generation, long sessionEpoch, long configVersion,
+            VideoStreamConfig previousConfig, VideoStreamConfig config) {
+        H264SurfaceDecoder previous;
+        GenerationDecoderListener nextListener =
+                new GenerationDecoderListener(generation, sessionEpoch, configVersion);
+        synchronized (this) {
+            if (surface == null || !connectionCoordinator.isCurrent(generation)
+                    || !protocolSession.matchesIdentity(sessionEpoch, configVersion)) {
+                return;
+            }
+            previous = decoder;
+            decoderGeneration = generation;
+            decoderSessionEpoch = sessionEpoch;
+            decoderConfigVersion = configVersion;
+            if (previous != null
+                    && !decoderAwaitingFreshConfig
+                    && !DecoderReconfigurationPolicy.requiresReplacement(
+                            previousConfig, config)
+                    && previous.rebindIfConfigured(nextListener)) {
+                return;
+            }
+            decoder = null;
+        }
+
+        // MediaCodec.stop()/release() can block in vendor code. Keep that work
+        // off the serialized transport-event executor so Ack, ping and newer
+        // stream configurations remain observable and bounded.
+        decoderWorker.execute(() -> {
+            if (previous != null) {
+                previous.release();
+            }
+            H264SurfaceDecoder next;
+            synchronized (OpenDisplayServer.this) {
+                if (surface == null || !connectionCoordinator.isCurrent(generation)
+                        || !protocolSession.matchesIdentity(sessionEpoch, configVersion)
+                        || decoder != null) {
+                    return;
+                }
+                next = new H264SurfaceDecoder(surface, nextListener);
+                decoder = next;
+            }
+            next.applyStreamConfig(config.codec, config.fps, config.width, config.height);
+            decoderAwaitingFreshConfig = false;
+        });
+    }
+
+    private void releaseDecoder() {
+        H264SurfaceDecoder activeDecoder;
+        synchronized (this) {
+            activeDecoder = detachDecoder();
+        }
+        if (activeDecoder != null) {
+            decoderWorker.execute(activeDecoder::release);
         }
     }
 
-    @Override
-    public void onDecoderNeedsKeyframe() {
+    private void releaseDecoderImmediately() {
+        H264SurfaceDecoder activeDecoder;
+        synchronized (this) {
+            activeDecoder = detachDecoder();
+        }
+        if (activeDecoder != null) {
+            activeDecoder.release();
+        }
+    }
+
+    private H264SurfaceDecoder detachDecoder() {
+        H264SurfaceDecoder activeDecoder = decoder;
+        decoder = null;
+        decoderGeneration = 0;
+        decoderSessionEpoch = 0;
+        decoderConfigVersion = 0;
+        decoderAwaitingFreshConfig = false;
+        return activeDecoder;
+    }
+
+    private synchronized void queueFrameIfCurrentDecoder(
+            long generation, byte[] frame, VideoFrameTelemetry telemetry) {
+        H264SurfaceDecoder activeDecoder = decoder;
+        if (activeDecoder != null && decoderGeneration == generation
+                && !decoderAwaitingFreshConfig
+                && protocolSession.matchesIdentity(
+                        decoderSessionEpoch, decoderConfigVersion)
+                && protocolSession.matchesCurrentFrame(telemetry)) {
+            activeDecoder.queueFrame(frame, telemetry);
+        }
+    }
+
+    private synchronized boolean releaseCodecForRecovery(
+            long generation, boolean requireFreshConfig) {
+        if (decoder == null || decoderGeneration != generation
+                || !protocolSession.matchesIdentity(
+                        decoderSessionEpoch, decoderConfigVersion)) {
+            return false;
+        }
+        resetQueuedFrames();
+        H264SurfaceDecoder activeDecoder = decoder;
+        decoderAwaitingFreshConfig = requireFreshConfig;
+        decoderWorker.execute(activeDecoder::release);
+        return true;
+    }
+
+    private final class GenerationDecoderListener implements H264SurfaceDecoder.Listener {
+        private final long generation;
+        private final long sessionEpoch;
+        private final long configVersion;
+
+        GenerationDecoderListener(long generation, long sessionEpoch, long configVersion) {
+            this.generation = generation;
+            this.sessionEpoch = sessionEpoch;
+            this.configVersion = configVersion;
+        }
+
+        private boolean isCurrentIdentity() {
+            return connectionCoordinator.isCurrent(generation)
+                    && protocolSession.matchesIdentity(sessionEpoch, configVersion);
+        }
+
+        @Override
+        public void onDecoderStatus(String status) {
+            executeTransportEvent(() -> {
+                if (isCurrentIdentity()) {
+                    OpenDisplayServer.this.onDecoderStatus(generation, status);
+                }
+            });
+        }
+
+        @Override
+        public void onDecoderReady(DecoderRuntimeInfo info) {
+            executeTransportEvent(() -> {
+                if (isCurrentIdentity()) {
+                    OpenDisplayServer.this.onDecoderReady(generation, info);
+                }
+            });
+        }
+
+        @Override
+        public void onDecoderNeedsKeyframe() {
+            executeTransportEvent(() -> {
+                if (isCurrentIdentity()) {
+                    OpenDisplayServer.this.onDecoderNeedsKeyframe(generation);
+                }
+            });
+        }
+
+        @Override
+        public void onDecoderCodecFailure(String codec, String message) {
+            executeTransportEvent(() -> {
+                if (isCurrentIdentity()) {
+                    OpenDisplayServer.this.onDecoderCodecFailure(generation, codec, message);
+                }
+            });
+        }
+
+        @Override
+        public void onDecoderFrameDropped() {
+            executeTransportEvent(() -> {
+                if (isCurrentIdentity()) {
+                    OpenDisplayServer.this.onDecoderFrameDropped(generation);
+                }
+            });
+        }
+
+        @Override
+        public void onDecoderFrameDecoded() {
+            executeTransportEvent(() -> {
+                if (isCurrentIdentity()) {
+                    OpenDisplayServer.this.onDecoderFrameDecoded(generation);
+                }
+            });
+        }
+
+        @Override
+        public void onDecoderFrameRendered(VideoFrameTelemetry telemetry) {
+            executeTransportEvent(() -> {
+                if (isCurrentIdentity()) {
+                    OpenDisplayServer.this.onDecoderFrameRendered(generation, telemetry);
+                }
+            });
+        }
+    }
+
+    private void onDecoderStatus(long generation, String status) {
+        if (!connectionCoordinator.isCurrent(generation)) {
+            return;
+        }
+        android.util.Log.i("DisplayWeaveDecoder", "generation=" + generation
+                + " status=" + status);
+        if (status.contains("失败") || status.contains("异常")
+                || status.contains("过大") || status.startsWith("无法")) {
+            listener.onStatus(status);
+        }
+    }
+
+    private void onDecoderReady(long generation, DecoderRuntimeInfo info) {
+        long sessionEpoch = protocolSession.sessionEpoch();
+        long configVersion = protocolSession.configVersion();
+        if (!connectionCoordinator.transition(
+                generation, ReceiverConnectionState.DECODER_READY, "mediaCodecStarted",
+                sessionEpoch, configVersion)) {
+            return;
+        }
+        if (protocolSession.isNegotiatedV2()) {
+            sendJson(LengthPrefixedProtocol.decoderReadyJson(
+                    sessionEpoch,
+                    configVersion,
+                    info.codec,
+                    info.decoderName,
+                    info.hardwareAccelerated,
+                    info.softwareOnly,
+                    info.lowLatencySupported,
+                    info.lowLatencyEnabled));
+        }
+        connectionCoordinator.transition(
+                generation, ReceiverConnectionState.WAITING_FIRST_FRAME, "decoderReady",
+                sessionEpoch, configVersion);
+    }
+
+    private void onDecoderNeedsKeyframe(long generation) {
+        if (!connectionCoordinator.isCurrent(generation)) {
+            return;
+        }
         sendJson(LengthPrefixedProtocol.keyframeRequestJson());
     }
 
-    @Override
-    public void onDecoderCodecFailure(String codec, String message) {
+    private void onDecoderCodecFailure(long generation, String codec, String message) {
+        if (!connectionCoordinator.isCurrent(generation)) {
+            return;
+        }
         String fallbackStatus = CodecFallbackStatus.messageForCodecFailure(codec);
         if (fallbackStatus != null) {
             listener.onStatus(fallbackStatus);
@@ -409,20 +778,44 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
         sendJson(LengthPrefixedProtocol.codecFailureJson(codec, message));
     }
 
-    @Override
-    public synchronized void onDecoderFrameDropped() {
+    private synchronized void onDecoderFrameDropped(long generation) {
+        if (!connectionCoordinator.isCurrent(generation)) {
+            return;
+        }
         droppedFramesAndroid++;
     }
 
-    @Override
-    public synchronized void onDecoderFrameDecoded() {
+    private synchronized void onDecoderFrameDecoded(long generation) {
+        if (!connectionCoordinator.isCurrent(generation)) {
+            return;
+        }
         decodedFrames++;
     }
 
-    @Override
-    public synchronized void onDecoderFrameRendered(VideoFrameTelemetry telemetry) {
+    private synchronized void onDecoderFrameRendered(
+            long generation, VideoFrameTelemetry telemetry) {
+        if (!connectionCoordinator.isCurrent(generation)) {
+            return;
+        }
+        if (!protocolSession.matchesCurrentFrame(telemetry)) {
+            return;
+        }
+        if (streamingGeneration != generation) {
+            streamingGeneration = generation;
+            long sessionEpoch = protocolSession.sessionEpoch();
+            long configVersion = protocolSession.configVersion();
+            connectionCoordinator.transition(
+                    generation, ReceiverConnectionState.STREAMING, "firstFrameRendered",
+                    sessionEpoch, configVersion);
+            if (protocolSession.isNegotiatedV2()) {
+                sendJson(LengthPrefixedProtocol.firstFrameRenderedJson(
+                        sessionEpoch, configVersion, telemetry.frameSequence));
+            }
+            listener.onStreaming(true);
+        }
         renderedFrames++;
         long now = System.currentTimeMillis();
+        lastFrameRenderedMs = now;
         if (telemetry != null) {
             long frameAgeMs = telemetry.latestFrameAgeMs(now);
             latestFrameAgeMsSum += frameAgeMs;
@@ -448,11 +841,33 @@ public final class OpenDisplayServer implements H264SurfaceDecoder.Listener, Nsd
     }
 
     private void publishStatsSafely() {
-        try {
-            publishStatsIfDue();
-        } catch (RuntimeException error) {
-            android.util.Log.w("DisplayWeave", "stats publication failed", error);
+        executeTransportEvent(() -> {
+            try {
+                recoverDecoderIfStalled(System.currentTimeMillis());
+                publishStatsIfDue();
+            } catch (RuntimeException error) {
+                android.util.Log.w("DisplayWeave", "stats publication failed", error);
+            }
+        });
+    }
+
+    private void recoverDecoderIfStalled(long nowMs) {
+        long generation = connectionCoordinator.currentGeneration();
+        if (!running || !connectionCoordinator.isCurrent(generation)
+                || !DecoderStallRecoveryPolicy.shouldRecover(
+                nowMs, lastVideoReceivedMs, lastFrameRenderedMs, lastDecoderRecoveryMs)) {
+            return;
         }
+        lastDecoderRecoveryMs = nowMs;
+        boolean negotiatedV2 = protocolSession.isNegotiatedV2();
+        if (!releaseCodecForRecovery(generation, negotiatedV2)) {
+            return;
+        }
+        streamingGeneration = 0;
+        connectionCoordinator.transition(
+                generation, ReceiverConnectionState.RECOVERING, "decoderStalled");
+        listener.onStatus("检测到画面停滞，正在重建解码器…");
+        sendJson(LengthPrefixedProtocol.decoderResetRequestJson(negotiatedV2));
     }
 
     private synchronized void publishStatsIfDue(long now) {

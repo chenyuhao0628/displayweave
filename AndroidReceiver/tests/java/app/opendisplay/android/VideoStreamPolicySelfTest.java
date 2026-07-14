@@ -4,9 +4,12 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import app.opendisplay.android.protocol.LengthPrefixedProtocol;
@@ -15,6 +18,8 @@ public final class VideoStreamPolicySelfTest {
     public static void main(String[] args) {
         testStreamConfigDefaults();
         testCodecMapping();
+        testProtocolV2FrameIdentity();
+        testProtocolV2SessionFiltering();
         testRefreshModeSelection();
         testFrameClassifier();
         testFrameTelemetry();
@@ -24,7 +29,11 @@ public final class VideoStreamPolicySelfTest {
         testStatsPublicationWindowBoundary();
         testMacPingMetricsParsing();
         testCodecFallbackStatus();
+        testDecoderStallRecoveryPolicy();
+        testDecoderReconfigurationPolicy();
+        testAcceptedSocketOptions();
         testWifiTransportCarriesFramedPayloads();
+        testWifiTransportReplacesBlockedConnection();
         testWifiTransportIgnoresSendAfterStop();
         System.out.println("VideoStreamPolicySelfTest PASS");
     }
@@ -55,6 +64,57 @@ public final class VideoStreamPolicySelfTest {
         VideoStreamConfig unknown = VideoStreamConfig.from("vp9", 55, 1280, 720, 0);
         assertEquals("h264", unknown.codec);
         assertEquals(60, unknown.fps);
+    }
+
+    private static void testProtocolV2FrameIdentity() {
+        byte[] payload = concat(
+                "{\"cap\":1,\"snd\":2,\"se\":8,\"cv\":12,\"fs\":41}"
+                        .getBytes(StandardCharsets.UTF_8),
+                new byte[] {0, 0, 0, 1, 0x65, 1});
+        VideoFrameTelemetry telemetry = VideoFrameTelemetry.fromWirePayload(payload, 3);
+        assertEquals(8L, telemetry.sessionEpoch);
+        assertEquals(12L, telemetry.configVersion);
+        assertEquals(41L, telemetry.frameSequence);
+    }
+
+    private static void testProtocolV2SessionFiltering() {
+        ReceiverProtocolSession session = new ReceiverProtocolSession();
+        session.onConnected(3);
+        assertTrue(session.acceptStreamConfig(3, 2, 8, 12));
+        assertTrue(session.isNegotiatedV2());
+        assertTrue(session.matchesIdentity(8, 12));
+        assertFalse(session.matchesIdentity(8, 11));
+        assertTrue(session.acceptFrame(3, telemetry(8, 12, 1)));
+        assertFalse(session.acceptFrame(2, telemetry(8, 12, 2)));
+        assertFalse(session.acceptFrame(3, telemetry(7, 12, 3)));
+        assertFalse(session.acceptFrame(3, telemetry(8, 11, 4)));
+        assertFalse(session.acceptFrame(3, telemetry(8, 12, 1)));
+        assertTrue(session.acceptFrame(3, telemetry(8, 12, 2)));
+        assertFalse(session.acceptStreamConfig(3, 1, 0, 0));
+        assertTrue(session.isNegotiatedV2());
+        assertFalse(session.acceptStreamConfig(3, 2, 7, 13));
+        assertFalse(session.acceptStreamConfig(3, 2, 8, 12));
+        assertTrue(session.acceptStreamConfig(3, 2, 8, 13));
+        assertFalse(session.matchesIdentity(8, 12));
+        assertTrue(session.matchesIdentity(8, 13));
+        assertFalse(session.acceptFrame(3, telemetry(8, 12, 3)));
+        assertTrue(session.acceptFrame(3, telemetry(8, 13, 1)));
+
+        session.onConnected(4);
+        assertFalse(session.acceptFrame(4, telemetry(8, 12, 3)));
+        assertTrue(session.acceptStreamConfig(4, 1, 0, 0));
+        assertFalse(session.isNegotiatedV2());
+        assertTrue(session.matchesIdentity(0, 0));
+        assertTrue(session.acceptFrame(4, VideoFrameTelemetry.fromWirePayload(
+                new byte[] {0, 0, 0, 1, 0x65}, 5)));
+    }
+
+    private static VideoFrameTelemetry telemetry(long epoch, long version, long sequence) {
+        byte[] payload = concat(
+                ("{\"cap\":1,\"snd\":2,\"se\":" + epoch + ",\"cv\":" + version
+                        + ",\"fs\":" + sequence + "}").getBytes(StandardCharsets.UTF_8),
+                new byte[] {0, 0, 0, 1, 0x65});
+        return VideoFrameTelemetry.fromWirePayload(payload, 3);
     }
 
     private static void testRefreshModeSelection() {
@@ -115,6 +175,32 @@ public final class VideoStreamPolicySelfTest {
         assertEquals("HEVC 不可用，已请求回退 H.264",
                 CodecFallbackStatus.messageForCodecFailure("hevc"));
         assertEquals(null, CodecFallbackStatus.messageForCodecFailure("h264"));
+    }
+
+    private static void testDecoderStallRecoveryPolicy() {
+        assertFalse(DecoderStallRecoveryPolicy.shouldRecover(
+                10_000, 9_500, 9_400, 0));
+        assertTrue(DecoderStallRecoveryPolicy.shouldRecover(
+                10_000, 9_500, 7_500, 0));
+        assertFalse(DecoderStallRecoveryPolicy.shouldRecover(
+                10_000, 7_000, 7_500, 0));
+        assertFalse(DecoderStallRecoveryPolicy.shouldRecover(
+                10_000, 9_500, 7_500, 9_000));
+    }
+
+    private static void testDecoderReconfigurationPolicy() {
+        VideoStreamConfig current = VideoStreamConfig.from(
+                "hevc", 120, 3040, 1904, 80_000_000);
+        VideoStreamConfig bitrateOnly = VideoStreamConfig.from(
+                "hevc", 120, 3040, 1904, 64_000_000);
+        assertFalse(DecoderReconfigurationPolicy.requiresReplacement(current, bitrateOnly));
+
+        assertTrue(DecoderReconfigurationPolicy.requiresReplacement(
+                current, VideoStreamConfig.from("h264", 120, 3040, 1904, 64_000_000)));
+        assertTrue(DecoderReconfigurationPolicy.requiresReplacement(
+                current, VideoStreamConfig.from("hevc", 60, 3040, 1904, 64_000_000)));
+        assertTrue(DecoderReconfigurationPolicy.requiresReplacement(
+                current, VideoStreamConfig.from("hevc", 120, 2280, 1428, 64_000_000)));
     }
 
     private static void testMetricDistribution() {
@@ -197,6 +283,7 @@ public final class VideoStreamPolicySelfTest {
         ReceiverTransport transport = new WifiTcpReceiverTransport(0);
         AtomicInteger listeningPort = new AtomicInteger();
         AtomicReference<byte[]> received = new AtomicReference<>();
+        AtomicLong generation = new AtomicLong();
         CountDownLatch listening = new CountDownLatch(1);
         CountDownLatch connected = new CountDownLatch(1);
         CountDownLatch payloadReceived = new CountDownLatch(1);
@@ -206,13 +293,17 @@ public final class VideoStreamPolicySelfTest {
                 listeningPort.set(port);
                 listening.countDown();
             }
-            @Override public void onConnected(String peer) { connected.countDown(); }
-            @Override public void onPayload(byte[] payload) {
+            @Override public void onConnected(long nextGeneration, String peer) {
+                generation.set(nextGeneration);
+                connected.countDown();
+            }
+            @Override public void onPayload(long payloadGeneration, byte[] payload) {
+                assertEquals(generation.get(), payloadGeneration);
                 received.set(payload);
                 payloadReceived.countDown();
             }
-            @Override public void onDisconnected() { }
-            @Override public void onError(String message) {
+            @Override public void onDisconnected(long disconnectedGeneration) { }
+            @Override public void onError(long errorGeneration, String message) {
                 throw new AssertionError(message);
             }
         });
@@ -229,7 +320,7 @@ public final class VideoStreamPolicySelfTest {
                 assertTrue(payloadReceived.await(2, TimeUnit.SECONDS));
                 assertEquals("from-mac", new String(received.get(), StandardCharsets.UTF_8));
 
-                transport.send("from-android".getBytes(StandardCharsets.UTF_8));
+                transport.send(generation.get(), "from-android".getBytes(StandardCharsets.UTF_8));
                 byte[] reply = LengthPrefixedProtocol.read(
                         new BufferedInputStream(client.getInputStream()));
                 assertEquals("from-android", new String(reply, StandardCharsets.UTF_8));
@@ -241,11 +332,106 @@ public final class VideoStreamPolicySelfTest {
         }
     }
 
+    private static void testAcceptedSocketOptions() {
+        try (Socket socket = new Socket()) {
+            WifiTcpReceiverTransport.configureAcceptedSocket(socket);
+            assertTrue(socket.getTcpNoDelay());
+            assertTrue(socket.getKeepAlive());
+        } catch (Exception error) {
+            throw new AssertionError("accepted socket options failed", error);
+        }
+    }
+
+    private static void testWifiTransportReplacesBlockedConnection() {
+        WifiTcpReceiverTransport transport = new WifiTcpReceiverTransport(0);
+        AtomicInteger listeningPort = new AtomicInteger();
+        AtomicInteger connectionCount = new AtomicInteger();
+        List<Long> generations = new CopyOnWriteArrayList<>();
+        List<Long> disconnected = new CopyOnWriteArrayList<>();
+        AtomicLong payloadGeneration = new AtomicLong();
+        CountDownLatch listening = new CountDownLatch(1);
+        CountDownLatch firstConnected = new CountDownLatch(1);
+        CountDownLatch secondConnected = new CountDownLatch(1);
+        CountDownLatch secondPayload = new CountDownLatch(1);
+        CountDownLatch currentDisconnected = new CountDownLatch(1);
+
+        transport.start(new ReceiverTransport.Listener() {
+            @Override public void onListening(int port) {
+                listeningPort.set(port);
+                listening.countDown();
+            }
+            @Override public void onConnected(long generation, String peer) {
+                generations.add(generation);
+                if (connectionCount.incrementAndGet() == 1) {
+                    firstConnected.countDown();
+                } else {
+                    secondConnected.countDown();
+                }
+            }
+            @Override public void onPayload(long generation, byte[] payload) {
+                payloadGeneration.set(generation);
+                secondPayload.countDown();
+            }
+            @Override public void onDisconnected(long generation) {
+                disconnected.add(generation);
+                currentDisconnected.countDown();
+            }
+            @Override public void onError(long generation, String message) {
+                // Closing the current client at the end of the test may report an EOF first.
+            }
+        });
+
+        try {
+            assertTrue(listening.await(2, TimeUnit.SECONDS));
+            try (Socket first = new Socket("127.0.0.1", listeningPort.get())) {
+                first.setSoTimeout(2000);
+                assertTrue(firstConnected.await(2, TimeUnit.SECONDS));
+                try (Socket second = new Socket("127.0.0.1", listeningPort.get())) {
+                    second.setSoTimeout(2000);
+                    assertTrue(secondConnected.await(2, TimeUnit.SECONDS));
+                    assertEquals(2, generations.size());
+                    assertTrue(generations.get(1) > generations.get(0));
+                    assertEquals(generations.get(1).longValue(), transport.currentGeneration());
+
+                    int oldRead;
+                    try {
+                        oldRead = first.getInputStream().read();
+                    } catch (java.net.SocketException closedByPeer) {
+                        oldRead = -1;
+                    }
+                    assertEquals(-1, oldRead);
+
+                    long oldGeneration = generations.get(0);
+                    long currentGeneration = generations.get(1);
+                    transport.send(oldGeneration, "stale-write".getBytes(StandardCharsets.UTF_8));
+                    transport.send(currentGeneration, "current-write".getBytes(StandardCharsets.UTF_8));
+                    byte[] reply = LengthPrefixedProtocol.read(
+                            new BufferedInputStream(second.getInputStream()));
+                    assertEquals("current-write", new String(reply, StandardCharsets.UTF_8));
+
+                    BufferedOutputStream output = new BufferedOutputStream(second.getOutputStream());
+                    LengthPrefixedProtocol.write(output, "new-payload".getBytes(StandardCharsets.UTF_8));
+                    output.flush();
+                    assertTrue(secondPayload.await(2, TimeUnit.SECONDS));
+                    assertEquals(currentGeneration, payloadGeneration.get());
+                    assertTrue(disconnected.isEmpty());
+                }
+                assertTrue(currentDisconnected.await(2, TimeUnit.SECONDS));
+                assertEquals(1, disconnected.size());
+                assertEquals(generations.get(1), disconnected.get(0));
+            }
+        } catch (Exception error) {
+            throw new AssertionError("connection generation takeover failed", error);
+        } finally {
+            transport.stop();
+        }
+    }
+
     private static void testWifiTransportIgnoresSendAfterStop() {
         ReceiverTransport transport = new WifiTcpReceiverTransport(0);
         transport.stop();
         try {
-            transport.send("late-ping".getBytes(StandardCharsets.UTF_8));
+            transport.send(1, "late-ping".getBytes(StandardCharsets.UTF_8));
         } catch (RuntimeException error) {
             throw new AssertionError("send after stop must be a no-op", error);
         }

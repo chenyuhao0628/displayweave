@@ -93,8 +93,18 @@ struct ReceiverScreen: View {
             showSettings = true
         }
         .onChange(of: scenePhase) { _, phase in
-            // iOS may tear the listener down while suspended — recover.
-            if phase == .active { model.receiver.ensureListening() }
+            let state: ReceiverSceneState
+            switch phase {
+            case .active: state = .active
+            case .inactive: state = .inactive
+            case .background: state = .background
+            @unknown default: state = .inactive
+            }
+            switch ReceiverSceneLifecyclePolicy.action(for: state) {
+            case .startListening: model.receiver.ensureListening()
+            case .stopListening: model.receiver.stop()
+            case .none: break
+            }
         }
         .onChange(of: model.receiver.connected) { _, isConnected in
             // The first valid connection retires the onboarding hint for good.

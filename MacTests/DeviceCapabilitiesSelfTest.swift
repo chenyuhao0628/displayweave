@@ -30,6 +30,8 @@ struct DeviceCapabilitiesSelfTest {
                     "legacy iOS defaults to 60 fps")
         assertEqual(["h264"], legacyIOSHello.negotiatedSupportedCodecs,
                     "legacy iOS remains H.264")
+        assertEqual(false, legacyIOSHello.supportsProtocolV2,
+                    "legacy iOS must stay on the legacy wire path")
         assertEqual("unknown", legacyIOSHello.negotiatedTransport,
                     "legacy iOS needs no transport field")
 
@@ -37,7 +39,9 @@ struct DeviceCapabilitiesSelfTest {
         {"type":"hello","pixelsWide":2560,"pixelsHigh":1600,"scale":2.0,
          "refreshRate":120,"maxFps":120,"supportedCodecs":["HEVC","H264"],
          "preferredCodec":"HEVC","deviceModel":"Android Tablet","androidSdk":35,
-         "transport":"wifi"}
+         "transport":"wifi","protocolVersion":2,
+         "capabilities":["streamConfigAck","decoderReady","firstFrameRendered",
+                         "sessionEpoch","configVersion","frameSequence"]}
         """.utf8))
         assertEqual(120, modernHello.negotiatedRefreshRate,
                     "modern hello preserves 120Hz display capability")
@@ -49,6 +53,15 @@ struct DeviceCapabilitiesSelfTest {
                     "supported HEVC preference is preserved")
         assertEqual("wifi", modernHello.negotiatedTransport,
                     "transport metadata is preserved")
+        assertEqual(true, modernHello.supportsProtocolV2,
+                    "complete Android capability advertisement enables protocol v2")
+
+        let partialV2 = try JSONDecoder().decode(PhoneInfo.self, from: Data("""
+        {"pixelsWide":2560,"pixelsHigh":1600,"scale":2.0,"device":"Android",
+         "protocolVersion":2,"capabilities":["streamConfigAck","decoderReady"]}
+        """.utf8))
+        assertEqual(false, partialV2.supportsProtocolV2,
+                    "partial capability sets must fall back to the legacy wire path")
 
         let unsupportedPreference = try JSONDecoder().decode(PhoneInfo.self, from: Data("""
         {"pixelsWide":1280,"pixelsHigh":720,"scale":1.0,

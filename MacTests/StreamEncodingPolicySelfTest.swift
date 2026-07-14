@@ -137,6 +137,93 @@ struct StreamEncodingPolicySelfTest {
                    "fallback stream config should preserve the negotiated fps")
         assertTrue(fallbackConfig.contains("\"profile\":\"high\""),
                    "fallback stream config should announce the H.264 profile")
+        assertTrue(!fallbackConfig.contains("sessionEpoch"),
+                   "legacy stream config must not gain protocol-v2 fields")
+
+        var identity = StreamProtocolIdentity()
+        identity.beginConnection()
+        let firstConfig = identity.beginConfiguration()
+        let negotiatedConfig = StreamConfigMessage(
+            codec: .hevc, fps: 120, width: 2560, height: 1600,
+            bitrate: 60_000_000, transport: "wifi", identity: firstConfig
+        ).json
+        assertTrue(negotiatedConfig.contains("\"protocolVersion\":2"),
+                   "negotiated stream config declares protocol v2")
+        assertTrue(negotiatedConfig.contains("\"sessionEpoch\":1"),
+                   "first connection starts epoch one")
+        assertTrue(negotiatedConfig.contains("\"configVersion\":1"),
+                   "first configuration starts version one")
+        let frameOne = identity.nextFrame()
+        let frameTwo = identity.nextFrame()
+        assertEqual(1, Int(frameOne.frameSequence), "first frame sequence")
+        assertEqual(2, Int(frameTwo.frameSequence), "frame sequence increments")
+        identity.beginConnection()
+        let nextConfig = identity.beginConfiguration()
+        assertEqual(2, Int(nextConfig.sessionEpoch), "reconnect increments session epoch")
+        assertEqual(1, Int(nextConfig.configVersion), "new session resets config version")
+        var replacementSenderIdentity = StreamProtocolIdentity()
+        replacementSenderIdentity.beginConnection()
+        assertTrue(replacementSenderIdentity.sessionEpoch > nextConfig.sessionEpoch,
+                   "a replacement sender in the same process must receive a newer epoch")
+
+        let prefix = VideoTelemetryPrefix.json(
+            captureMs: 10, sendMs: 20, identity: frameTwo)
+        assertTrue(prefix.contains("\"se\":1,\"cv\":1,\"fs\":2"),
+                   "negotiated frame prefix carries epoch/version/sequence")
+        assertTrue(VideoTelemetryPrefix.json(captureMs: 10, sendMs: 20, identity: nil)
+            == "{\"cap\":10,\"snd\":20}",
+                   "legacy telemetry prefix remains byte-for-byte unchanged")
+
+        var handshake = ReceiverProtocolHandshake()
+        handshake.begin(firstConfig)
+        assertTrue(handshake.receive(type: "streamConfigAck", identity: firstConfig),
+                   "matching streamConfig ack advances the handshake")
+        assertTrue(handshake.phase == .awaitingDecoderReady,
+                   "ack waits for decoder ready")
+        assertTrue(!handshake.receive(type: "decoderReady", identity: nextConfig),
+                   "stale epoch/config progress is ignored")
+        assertTrue(handshake.receive(type: "decoderReady", identity: firstConfig),
+                   "matching decoder ready advances the handshake")
+        assertTrue(handshake.phase == .awaitingFirstFrame,
+                   "decoder ready waits for first rendered frame")
+        assertTrue(!handshake.receive(type: "firstFrameRendered", identity: firstConfig),
+                   "first-frame progress requires a positive frame sequence")
+        assertTrue(handshake.receive(type: "firstFrameRendered", identity: frameOne),
+                   "matching first frame completes the handshake")
+        assertTrue(handshake.phase == .streaming,
+                   "first rendered frame is the only streaming proof")
+
+        handshake.begin(firstConfig)
+        assertTrue(handshake.timeoutAction() == .retry,
+                   "first negotiated timeout requests a finite retry")
+        assertTrue(handshake.timeoutAction() == .retry,
+                   "second negotiated timeout requests the final retry")
+        assertTrue(handshake.timeoutAction() == .fail,
+                   "retry budget exhaustion fails instead of looping forever")
+
+        var failureBudget = ReceiverProtocolFailureBudget(maxReconnects: 1)
+        assertTrue(failureBudget.failureAction() == .reconnect,
+                   "one failed handshake may reconnect once")
+        assertTrue(failureBudget.failureAction() == .endSession,
+                   "repeated failed handshakes end the session")
+        failureBudget.markStreaming()
+        assertTrue(failureBudget.failureAction() == .reconnect,
+                   "a proven streaming session resets the cross-connection budget")
+
+        assertTrue(
+            ReceiverDecoderRecoveryPolicy.actions(
+                negotiatedV2: true,
+                streamConfigRequired: true
+            ) == [.resendStreamConfig, .forceKeyframe],
+            "a negotiated decoder rebuild must create a fresh config version before keyframe"
+        )
+        assertTrue(
+            ReceiverDecoderRecoveryPolicy.actions(
+                negotiatedV2: false,
+                streamConfigRequired: true
+            ) == [.forceKeyframe],
+            "legacy receiver recovery must preserve the existing keyframe-only behavior"
+        )
 
         print("StreamEncodingPolicySelfTest PASS")
     }

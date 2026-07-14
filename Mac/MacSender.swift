@@ -91,6 +91,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var lastHello: PhoneInfo?
     private var helloContinuation: CheckedContinuation<PhoneInfo, Error>?
     private var inputInjector: InputInjector?
+    private var protocolIdentity = StreamProtocolIdentity()
+    private var protocolHandshake = ReceiverProtocolHandshake()
+    private var protocolFailureBudget = ReceiverProtocolFailureBudget(maxReconnects: 1)
 
     // Liveness: both sides ping every 2s; if nothing arrives for 5s the link
     // is half-open (e.g. usbmuxd accepted but the device is gone) — reconnect.
@@ -527,6 +530,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func becomeReady(_ conn: NWConnection) {
         Log.info("connection ready to \(endpointName)")
         connectionReady = true
+        protocolIdentity.beginConnection()
         everConnected = true
         let hasConfiguredStream = encoder != nil
             && activeStreamWidth > 0 && activeStreamHeight > 0
@@ -548,7 +552,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         lastCursorSent = (-1, -1, false)
         lastReceived = Date()  // fresh grace period for the watchdog
         receiveControl(on: conn)
-        Task { await self.status("已连接到 \(self.endpointName)") }
+        Task { await self.status("正在连接到 \(self.endpointName)…") }
     }
 
     private func connectTCP(_ endpoint: NWEndpoint) {
@@ -827,15 +831,48 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // MARK: - Control messages (phone -> Mac)
 
     private func receiveControl(on conn: NWConnection) {
-        conn.receive(minimumIncompleteLength: 4, maximumLength: 4) { [weak self] data, _, _, error in
-            guard let self, error == nil, let data, data.count == 4 else { return }
+        conn.receive(minimumIncompleteLength: 4, maximumLength: 4) { [weak self] data, _, isComplete, error in
+            guard let self else { return }
+            guard error == nil, let data, data.count == 4 else {
+                self.handleControlReadEnd(on: conn, isComplete: isComplete, error: error)
+                return
+            }
             let len = Int(UInt32(bigEndian: data.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }))
             guard len > 0, len < 1 << 20 else { return }
-            conn.receive(minimumIncompleteLength: len, maximumLength: len) { [weak self] payload, _, _, error in
-                guard let self, error == nil, let payload, payload.count == len else { return }
+            conn.receive(minimumIncompleteLength: len, maximumLength: len) { [weak self] payload, _, isComplete, error in
+                guard let self else { return }
+                guard error == nil, let payload, payload.count == len else {
+                    self.handleControlReadEnd(on: conn, isComplete: isComplete, error: error)
+                    return
+                }
                 self.handleControl(payload)
                 self.receiveControl(on: conn)
             }
+        }
+    }
+
+    private func handleControlReadEnd(on conn: NWConnection, isComplete: Bool,
+                                      error: NWError?) {
+        guard !stopped, connection === conn else { return }
+        let event: ConnectionClosureEvent = isComplete && error == nil ? .cleanEnd : .failure
+        handleConnectionClosure(ConnectionClosurePolicy.action(
+            for: event,
+            peer: receiverPeerKind
+        ))
+    }
+
+    private var receiverPeerKind: ReceiverPeerKind {
+        guard let lastHello else { return .unknown }
+        return lastHello.isAndroidReceiver ? .android : .legacyApple
+    }
+
+    private func handleConnectionClosure(_ action: ConnectionClosureAction) {
+        switch action {
+        case .endSession:
+            Log.info("receiver closed the connection cleanly — ending session")
+            finishSessionAfterReceiverExit()
+        case .retryWithinGrace:
+            scheduleReconnect()
         }
     }
 
@@ -847,6 +884,14 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         guard let obj = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
               let type = obj["type"] as? String else {
             Log.info("unparseable control message (\(payload.count) bytes)")
+            return
+        }
+        if let action = ReceiverControlPolicy.closureAction(
+            messageType: type,
+            peer: receiverPeerKind
+        ) {
+            Log.info("receiver sent goodbye — closure action=\(action)")
+            handleConnectionClosure(action)
             return
         }
         switch type {
@@ -878,6 +923,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             if let info = try? JSONDecoder().decode(PhoneInfo.self, from: payload) {
                 let previous = lastHello
                 lastHello = info
+                if info.supportsProtocolV2 {
+                    Task { await self.status("正在协商视频配置…") }
+                    if previous?.supportsProtocolV2 != true,
+                       encoder != nil, activeStreamWidth > 0, activeStreamHeight > 0 {
+                        sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
+                        needsKeyframe = true
+                    }
+                } else {
+                    Task { await self.status("已连接到 \(self.endpointName)") }
+                }
                 Task { @MainActor in self.onHello?(info) }
                 if let continuation = helloContinuation {
                     helloContinuation = nil
@@ -896,6 +951,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                     }
                 }
             }
+        case "streamConfigAck", "decoderReady", "firstFrameRendered":
+            handleReceiverProtocolProgress(type: type, object: obj)
+        case "connectionState":
+            let state = obj["state"] as? String ?? "unknown"
+            let reason = obj["reason"] as? String ?? ""
+            Log.info("receiver connection state=\(state) reason=\(reason)")
         case "touch":
             if let phase = obj["phase"] as? String,
                let x = obj["x"] as? Double,
@@ -918,7 +979,21 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             // periodic keyframes are off) — force an IDR on the next frame.
             Log.info("phone requested keyframe")
             decoderRecoveryEvent = "receiver-kf"
-            needsKeyframe = true
+            let actions = ReceiverDecoderRecoveryPolicy.actions(
+                negotiatedV2: lastHello?.supportsProtocolV2 == true,
+                streamConfigRequired: obj["streamConfigRequired"] as? Bool == true
+            )
+            for action in actions {
+                switch action {
+                case .resendStreamConfig:
+                    sendStreamConfig(
+                        width: activeStreamWidth,
+                        height: activeStreamHeight
+                    )
+                case .forceKeyframe:
+                    needsKeyframe = true
+                }
+            }
         case "codecFailure":
             let failedCodec = (obj["codec"] as? String)?.lowercased() ?? "unknown"
             let message = obj["message"] as? String ?? "unspecified codec failure"
@@ -937,6 +1012,92 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         default:
             Log.info("unknown control message type: \(type)")
         }
+    }
+
+    private func finishSessionAfterReceiverExit() {
+        connectionReady = false
+        connection?.cancel()
+        connection = nil
+        Task { @MainActor in self.onDisconnected?() }
+    }
+
+    private func handleReceiverProtocolProgress(type: String, object: [String: Any]) {
+        guard lastHello?.supportsProtocolV2 == true,
+              let sessionEpoch = int64(object["sessionEpoch"]),
+              let configVersion = int64(object["configVersion"]) else {
+            return
+        }
+        if type == "streamConfigAck", object["accepted"] as? Bool != true {
+            Log.info("receiver rejected stream config epoch=\(sessionEpoch) config=\(configVersion)")
+            return
+        }
+        let frameSequence = int64(object["frameSequence"]) ?? 0
+        let identity = StreamProtocolFrameIdentity(
+            sessionEpoch: sessionEpoch,
+            configVersion: configVersion,
+            frameSequence: frameSequence)
+        guard protocolHandshake.receive(type: type, identity: identity) else {
+            Log.info("ignored stale/out-of-order receiver progress type=\(type) epoch=\(sessionEpoch) config=\(configVersion)")
+            return
+        }
+        switch protocolHandshake.phase {
+        case .awaitingDecoderReady:
+            Task { await self.status("正在配置解码器…") }
+        case .awaitingFirstFrame:
+            Task { await self.status("等待首帧…") }
+        case .streaming:
+            protocolFailureBudget.markStreaming()
+            Task { await self.status("已连接 / Streaming") }
+        default:
+            break
+        }
+        scheduleProtocolTimeout(identity: identity, phase: protocolHandshake.phase)
+    }
+
+    private func scheduleProtocolTimeout(
+        identity: StreamProtocolFrameIdentity,
+        phase: ReceiverProtocolHandshakePhase
+    ) {
+        let delay: TimeInterval
+        switch phase {
+        case .awaitingStreamConfigAck: delay = 1.5
+        case .awaitingDecoderReady: delay = 2.0
+        case .awaitingFirstFrame: delay = 3.0
+        default: return
+        }
+        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self,
+                  self.connectionReady,
+                  self.protocolHandshake.identity?.sessionEpoch == identity.sessionEpoch,
+                  self.protocolHandshake.identity?.configVersion == identity.configVersion,
+                  self.protocolHandshake.phase == phase else { return }
+            switch self.protocolHandshake.timeoutAction() {
+            case .retry:
+                Log.info("receiver protocol timeout phase=\(phase); retrying stream config")
+                Task { await self.status("接收端响应超时，正在有限重试…") }
+                self.needsKeyframe = true
+                self.sendStreamConfig(
+                    width: self.activeStreamWidth,
+                    height: self.activeStreamHeight,
+                    protocolRetry: true)
+            case .fail:
+                Log.info("receiver protocol timeout phase=\(phase); retry budget exhausted")
+                switch self.protocolFailureBudget.failureAction() {
+                case .reconnect:
+                    Task { await self.status("接收端协商失败，正在进行最后一次重连…") }
+                    self.scheduleReconnect()
+                case .endSession:
+                    Task { await self.status("接收端协商失败，已停止重试") }
+                    self.finishSessionAfterReceiverExit()
+                }
+            case .none:
+                break
+            }
+        }
+    }
+
+    private func int64(_ value: Any?) -> Int64? {
+        (value as? NSNumber)?.int64Value
     }
 
     private func waitForHello() async throws -> PhoneInfo {
@@ -1075,6 +1236,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func encode(_ pixelBuffer: CVPixelBuffer, pts: CMTime) {
         guard let encoder else { return }
         let capturedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let protocolFrameIdentity = lastHello?.supportsProtocolV2 == true
+            ? protocolIdentity.nextFrame()
+            : nil
         var frameProperties: CFDictionary?
         if needsKeyframe {
             frameProperties = [kVTEncodeFrameOptionKey_ForceKeyFrame: kCFBooleanTrue!] as CFDictionary
@@ -1102,7 +1266,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 // parses it and skips to the encoded Annex B payload. cap = capture time,
                 // snd = handoff to the socket (so cap→snd ≈ encode duration).
                 let sndMs = Int64(Date().timeIntervalSince1970 * 1000)
-                var framed = Data("{\"cap\":\(capturedAtMs),\"snd\":\(sndMs)}".utf8)
+                let prefix = VideoTelemetryPrefix.json(
+                    captureMs: capturedAtMs,
+                    sendMs: sndMs,
+                    identity: protocolFrameIdentity)
+                var framed = Data(prefix.utf8)
                 framed.append(data)
                 self.recordEncodedFrame(bytes: data.count, isKeyframe: Self.isKeyframe(buffer),
                                         latencyMs: Date().timeIntervalSince(encodeStart) * 1000)
@@ -1263,12 +1431,25 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         connection.send(content: frame, completion: .contentProcessed { _ in })
     }
 
-    private func sendStreamConfig(width: Int, height: Int) {
+    private func sendStreamConfig(width: Int, height: Int, protocolRetry: Bool = false) {
         let transportName: String
         if case .androidAdb = transport {
             transportName = "usb"
         } else {
             transportName = lastHello?.negotiatedTransport ?? "unknown"
+        }
+        let identity: StreamProtocolFrameIdentity?
+        if lastHello?.supportsProtocolV2 == true {
+            identity = protocolIdentity.beginConfiguration()
+            if let identity {
+                if protocolRetry {
+                    protocolHandshake.retrying(identity)
+                } else {
+                    protocolHandshake.begin(identity)
+                }
+            }
+        } else {
+            identity = nil
         }
         let message = StreamConfigMessage(
             codec: streamCodec,
@@ -1276,9 +1457,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             width: width,
             height: height,
             bitrate: streamBitrate,
-            transport: transportName)
+            transport: transportName,
+            identity: identity)
         sendJSONFrame(message.json)
-        Log.info("stream config sent: codec=\(streamCodec.rawValue) fps=\(requestedCaptureFps) width=\(width) height=\(height) bitrate=\(streamBitrate) profile=\(message.profile) transport=\(transportName)")
+        if let identity {
+            scheduleProtocolTimeout(identity: identity, phase: .awaitingStreamConfigAck)
+        }
+        Log.info("stream config sent: codec=\(streamCodec.rawValue) fps=\(requestedCaptureFps) width=\(width) height=\(height) bitrate=\(streamBitrate) profile=\(message.profile) transport=\(transportName) sessionEpoch=\(identity?.sessionEpoch ?? 0) configVersion=\(identity?.configVersion ?? 0)")
     }
 
     private func sendFramed(_ payload: Data) {

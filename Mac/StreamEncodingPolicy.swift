@@ -132,25 +132,200 @@ struct StreamConfigMessage {
     var height: Int
     var bitrate: Int
     var transport: String
+    var identity: StreamProtocolFrameIdentity? = nil
 
     var profile: String {
         codec == .hevc ? "main" : "high"
     }
 
     var json: String {
-        "{\"type\":\"streamConfig\","
+        let legacy = "{\"type\":\"streamConfig\","
             + "\"codec\":\"\(codec.rawValue)\","
             + "\"fps\":\(RefreshRatePolicy.sanitize(fps)),"
             + "\"width\":\(max(width, 1)),"
             + "\"height\":\(max(height, 1)),"
             + "\"bitrate\":\(max(bitrate, 0)),"
             + "\"profile\":\"\(profile)\","
-            + "\"transport\":\"\(escaped(transport))\"}"
+            + "\"transport\":\"\(escaped(transport))\""
+        guard let identity else { return legacy + "}" }
+        return legacy
+            + ",\"protocolVersion\":2"
+            + ",\"sessionEpoch\":\(identity.sessionEpoch)"
+            + ",\"configVersion\":\(identity.configVersion)}"
     }
 
     private func escaped(_ value: String) -> String {
         value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+}
+
+struct StreamProtocolFrameIdentity: Equatable, Sendable {
+    let sessionEpoch: Int64
+    let configVersion: Int64
+    let frameSequence: Int64
+}
+
+final class StreamSessionEpochAllocator: @unchecked Sendable {
+    static let process = StreamSessionEpochAllocator()
+
+    private let lock = NSLock()
+    private var lastEpoch: Int64 = 0
+
+    func next() -> Int64 {
+        lock.lock()
+        defer { lock.unlock() }
+        lastEpoch = lastEpoch == Int64.max ? 1 : lastEpoch + 1
+        return lastEpoch
+    }
+}
+
+struct StreamProtocolIdentity: Sendable {
+    private let epochAllocator: StreamSessionEpochAllocator
+    private(set) var sessionEpoch: Int64 = 0
+    private(set) var configVersion: Int64 = 0
+    private(set) var frameSequence: Int64 = 0
+
+    init(epochAllocator: StreamSessionEpochAllocator = .process) {
+        self.epochAllocator = epochAllocator
+    }
+
+    mutating func beginConnection() {
+        sessionEpoch = epochAllocator.next()
+        configVersion = 0
+        frameSequence = 0
+    }
+
+    mutating func beginConfiguration() -> StreamProtocolFrameIdentity {
+        if sessionEpoch == 0 { beginConnection() }
+        configVersion += 1
+        frameSequence = 0
+        return current
+    }
+
+    mutating func nextFrame() -> StreamProtocolFrameIdentity {
+        frameSequence += 1
+        return current
+    }
+
+    var current: StreamProtocolFrameIdentity {
+        StreamProtocolFrameIdentity(
+            sessionEpoch: sessionEpoch,
+            configVersion: configVersion,
+            frameSequence: frameSequence)
+    }
+}
+
+enum VideoTelemetryPrefix {
+    static func json(captureMs: Int64, sendMs: Int64,
+                     identity: StreamProtocolFrameIdentity?) -> String {
+        guard let identity else {
+            return "{\"cap\":\(captureMs),\"snd\":\(sendMs)}"
+        }
+        return "{\"cap\":\(captureMs),\"snd\":\(sendMs),"
+            + "\"se\":\(identity.sessionEpoch),\"cv\":\(identity.configVersion),"
+            + "\"fs\":\(identity.frameSequence)}"
+    }
+}
+
+enum ReceiverProtocolHandshakePhase: Equatable, Sendable {
+    case idle
+    case awaitingStreamConfigAck
+    case awaitingDecoderReady
+    case awaitingFirstFrame
+    case streaming
+    case failed
+}
+
+enum ReceiverProtocolTimeoutAction: Equatable, Sendable {
+    case none
+    case retry
+    case fail
+}
+
+struct ReceiverProtocolHandshake: Sendable {
+    private(set) var phase: ReceiverProtocolHandshakePhase = .idle
+    private(set) var identity: StreamProtocolFrameIdentity?
+    private var timeoutCount = 0
+
+    mutating func begin(_ identity: StreamProtocolFrameIdentity) {
+        self.identity = identity
+        phase = .awaitingStreamConfigAck
+        timeoutCount = 0
+    }
+
+    mutating func retrying(_ identity: StreamProtocolFrameIdentity) {
+        self.identity = identity
+        phase = .awaitingStreamConfigAck
+    }
+
+    mutating func receive(type: String, identity candidate: StreamProtocolFrameIdentity) -> Bool {
+        guard candidate.sessionEpoch == identity?.sessionEpoch,
+              candidate.configVersion == identity?.configVersion else {
+            return false
+        }
+        switch (phase, type) {
+        case (.awaitingStreamConfigAck, "streamConfigAck"):
+            phase = .awaitingDecoderReady
+        case (.awaitingDecoderReady, "decoderReady"):
+            phase = .awaitingFirstFrame
+        case (.awaitingFirstFrame, "firstFrameRendered") where candidate.frameSequence > 0:
+            phase = .streaming
+        default:
+            return false
+        }
+        return true
+    }
+
+    mutating func timeoutAction() -> ReceiverProtocolTimeoutAction {
+        guard phase != .idle, phase != .streaming, phase != .failed else { return .none }
+        if timeoutCount < 2 {
+            timeoutCount += 1
+            return .retry
+        }
+        phase = .failed
+        return .fail
+    }
+}
+
+enum ReceiverProtocolFailureAction: Equatable, Sendable {
+    case reconnect
+    case endSession
+}
+
+enum ReceiverDecoderRecoveryAction: Equatable, Sendable {
+    case resendStreamConfig
+    case forceKeyframe
+}
+
+enum ReceiverDecoderRecoveryPolicy {
+    static func actions(
+        negotiatedV2: Bool,
+        streamConfigRequired: Bool
+    ) -> [ReceiverDecoderRecoveryAction] {
+        if negotiatedV2 && streamConfigRequired {
+            return [.resendStreamConfig, .forceKeyframe]
+        }
+        return [.forceKeyframe]
+    }
+}
+
+struct ReceiverProtocolFailureBudget: Sendable {
+    let maxReconnects: Int
+    private var reconnects = 0
+
+    init(maxReconnects: Int) {
+        self.maxReconnects = max(0, maxReconnects)
+    }
+
+    mutating func failureAction() -> ReceiverProtocolFailureAction {
+        guard reconnects < maxReconnects else { return .endSession }
+        reconnects += 1
+        return .reconnect
+    }
+
+    mutating func markStreaming() {
+        reconnects = 0
     }
 }

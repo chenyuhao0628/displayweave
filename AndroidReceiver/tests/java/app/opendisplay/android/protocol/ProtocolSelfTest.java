@@ -18,7 +18,11 @@ public final class ProtocolSelfTest {
         testLengthPrefixedRoundTrip();
         testJsonClassification();
         testHelloJsonIncludesDisplayCapabilities();
+        testHelloJsonAdvertisesNegotiatedProtocolV2();
         testStreamConfigJson();
+        testProtocolV2ProgressMessages();
+        testDecoderResetRequestPreservesLegacyAndRequestsFreshV2Config();
+        testGoodbyeJson();
         testReceiverStatsJsonUsesCanonicalFieldsAndNulls();
         testStatsJsonRejectsNonFiniteNumbers();
         testAnnexBTelemetryAndNalus();
@@ -74,6 +78,57 @@ public final class ProtocolSelfTest {
         assertContains(json, "\"id\":\"install-1\"");
     }
 
+    private static void testHelloJsonAdvertisesNegotiatedProtocolV2() {
+        String json = LengthPrefixedProtocol.helloJson(
+                2560, 1600, 2.0, 120, 120,
+                new String[] {"hevc", "h264"}, "hevc", "Android Tablet", 35,
+                "wifi", "Android", "install-1");
+        assertContains(json, "\"protocolVersion\":2");
+        assertContains(json, "\"capabilities\":[\"streamConfigAck\",\"decoderReady\","
+                + "\"firstFrameRendered\",\"sessionEpoch\",\"configVersion\","
+                + "\"frameSequence\"]");
+    }
+
+    private static void testProtocolV2ProgressMessages() {
+        String ack = LengthPrefixedProtocol.streamConfigAckJson(
+                8, 12, true, "hevc", 120, 2560, 1600, true);
+        assertContains(ack, "\"type\":\"streamConfigAck\"");
+        assertContains(ack, "\"sessionEpoch\":8");
+        assertContains(ack, "\"configVersion\":12");
+        assertContains(ack, "\"accepted\":true");
+        assertContains(ack, "\"surfaceValid\":true");
+
+        String ready = LengthPrefixedProtocol.decoderReadyJson(
+                8, 12, "hevc", "c2.vendor.hevc.decoder", true,
+                true, false, false);
+        assertContains(ready, "\"type\":\"decoderReady\"");
+        assertContains(ready, "\"decoderName\":\"c2.vendor.hevc.decoder\"");
+        assertContains(ready, "\"hardwareAccelerated\":true");
+        assertContains(ready, "\"lowLatencySupported\":false");
+        assertContains(ready, "\"lowLatencyEnabled\":false");
+
+        String first = LengthPrefixedProtocol.firstFrameRenderedJson(8, 12, 41);
+        assertContains(first, "\"type\":\"firstFrameRendered\"");
+        assertContains(first, "\"frameSequence\":41");
+
+        String state = LengthPrefixedProtocol.connectionStateJson(
+                "WAITING_FIRST_FRAME", "decoderReady", 1234, 3, 8, 12);
+        assertContains(state, "\"type\":\"connectionState\"");
+        assertContains(state, "\"state\":\"waitingFirstFrame\"");
+        assertContains(state, "\"reason\":\"decoderReady\"");
+        assertContains(state, "\"enteredAt\":1234");
+        assertContains(state, "\"generation\":3");
+    }
+
+    private static void testDecoderResetRequestPreservesLegacyAndRequestsFreshV2Config() {
+        assertEquals("{\"type\":\"kf\"}",
+                LengthPrefixedProtocol.decoderResetRequestJson(false));
+        String negotiated = LengthPrefixedProtocol.decoderResetRequestJson(true);
+        assertContains(negotiated, "\"type\":\"kf\"");
+        assertContains(negotiated, "\"reason\":\"decoderReset\"");
+        assertContains(negotiated, "\"streamConfigRequired\":true");
+    }
+
     private static void testStreamConfigJson() {
         String json = LengthPrefixedProtocol.streamConfigJson(
                 "hevc",
@@ -91,6 +146,10 @@ public final class ProtocolSelfTest {
         assertContains(json, "\"bitrate\":60000000");
         assertContains(json, "\"profile\":\"main\"");
         assertContains(json, "\"transport\":\"wifi\"");
+    }
+
+    private static void testGoodbyeJson() {
+        assertEquals("{\"type\":\"goodbye\"}", LengthPrefixedProtocol.goodbyeJson());
     }
 
     private static void testReceiverStatsJsonUsesCanonicalFieldsAndNulls() {

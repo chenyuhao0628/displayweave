@@ -224,6 +224,40 @@ final class PhoneReceiver: ObservableObject {
         }
     }
 
+    func stop() {
+        queue.async {
+            self.listener?.cancel()
+            self.listener = nil
+            self.listenerHealthy = false
+            self.resetStreamState()
+            self.setConnected(false)
+            self.setStatus("已在后台断开")
+            guard let conn = self.connection,
+                  let payload = try? JSONSerialization.data(
+                    withJSONObject: ["type": "goodbye"]) else {
+                self.connection?.cancel()
+                self.connection = nil
+                return
+            }
+            var header = UInt32(payload.count).bigEndian
+            var frame = Data(bytes: &header, count: 4)
+            frame.append(payload)
+            conn.send(content: frame, completion: .contentProcessed { [weak self, weak conn] _ in
+                guard let self, let conn else { return }
+                self.queue.async {
+                    guard self.connection === conn else { return }
+                    conn.cancel()
+                    self.connection = nil
+                }
+            })
+            self.queue.asyncAfter(deadline: .now() + 0.25) { [weak self, weak conn] in
+                guard let self, let conn, self.connection === conn else { return }
+                conn.cancel()
+                self.connection = nil
+            }
+        }
+    }
+
     private func restartListener() {
         listener?.cancel()
         listener = nil

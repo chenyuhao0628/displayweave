@@ -8,22 +8,34 @@ public final class VideoFrameTelemetry {
     public final long captureMacMs;
     public final long sendMacMs;
     public final long receivedAndroidMs;
+    public final long sessionEpoch;
+    public final long configVersion;
+    public final long frameSequence;
 
-    private VideoFrameTelemetry(long captureMacMs, long sendMacMs, long receivedAndroidMs) {
+    private VideoFrameTelemetry(long captureMacMs, long sendMacMs, long receivedAndroidMs,
+                                long sessionEpoch, long configVersion, long frameSequence) {
         this.captureMacMs = captureMacMs;
         this.sendMacMs = sendMacMs;
         this.receivedAndroidMs = receivedAndroidMs;
+        this.sessionEpoch = sessionEpoch;
+        this.configVersion = configVersion;
+        this.frameSequence = frameSequence;
     }
 
     public static VideoFrameTelemetry fromWirePayload(byte[] payload, long receivedAndroidMs) {
         String prefix = AnnexB.telemetryPrefix(payload);
         if (prefix == null) {
-            return new VideoFrameTelemetry(MISSING_MS, MISSING_MS, receivedAndroidMs);
+            return new VideoFrameTelemetry(
+                    MISSING_MS, MISSING_MS, receivedAndroidMs,
+                    MISSING_MS, MISSING_MS, MISSING_MS);
         }
         return new VideoFrameTelemetry(
                 parseLongField(prefix, "cap"),
                 parseLongField(prefix, "snd"),
-                receivedAndroidMs);
+                receivedAndroidMs,
+                parseLongField(prefix, "se"),
+                parseLongField(prefix, "cv"),
+                parseLongField(prefix, "fs"));
     }
 
     public long latestFrameAgeMs(long nowAndroidMs) {

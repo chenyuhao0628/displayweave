@@ -12,6 +12,15 @@ import java.util.Map;
 
 public final class LengthPrefixedProtocol {
     public static final int MAX_FRAME_BYTES = 1 << 20;
+    public static final int NEGOTIATED_PROTOCOL_VERSION = 2;
+    public static final String[] NEGOTIATED_CAPABILITIES = new String[] {
+            "streamConfigAck",
+            "decoderReady",
+            "firstFrameRendered",
+            "sessionEpoch",
+            "configVersion",
+            "frameSequence"
+    };
 
     private LengthPrefixedProtocol() {}
 
@@ -80,7 +89,8 @@ public final class LengthPrefixedProtocol {
                 "{\"type\":\"hello\",\"pixelsWide\":%d,\"pixelsHigh\":%d,\"scale\":%.3f,"
                         + "\"refreshRate\":%d,\"maxFps\":%d,\"supportedCodecs\":%s,"
                         + "\"preferredCodec\":\"%s\",\"deviceModel\":\"%s\",\"androidSdk\":%d,"
-                        + "\"transport\":\"%s\",\"device\":\"%s\",\"id\":\"%s\"}",
+                        + "\"transport\":\"%s\",\"device\":\"%s\",\"id\":\"%s\","
+                        + "\"protocolVersion\":%d,\"capabilities\":%s}",
                 pixelsWide, pixelsHigh, scale,
                 sanitizeFps(refreshRate), sanitizeFps(maxFps),
                 stringArrayJson(supportedCodecs),
@@ -89,7 +99,9 @@ public final class LengthPrefixedProtocol {
                 Math.max(0, androidSdk),
                 escape(transport),
                 escape(device),
-                escape(installId));
+                escape(installId),
+                NEGOTIATED_PROTOCOL_VERSION,
+                stringArrayJson(NEGOTIATED_CAPABILITIES));
     }
 
     public static String touchJson(String phase, double x, double y, Double macClockMs) {
@@ -115,6 +127,18 @@ public final class LengthPrefixedProtocol {
         return "{\"type\":\"kf\"}";
     }
 
+    public static String decoderResetRequestJson(boolean negotiatedV2) {
+        if (!negotiatedV2) {
+            return keyframeRequestJson();
+        }
+        return "{\"type\":\"kf\",\"reason\":\"decoderReset\","
+                + "\"streamConfigRequired\":true}";
+    }
+
+    public static String goodbyeJson() {
+        return "{\"type\":\"goodbye\"}";
+    }
+
     public static String codecFailureJson(String codec, String message) {
         return String.format(Locale.US,
                 "{\"type\":\"codecFailure\",\"codec\":\"%s\",\"message\":\"%s\"}",
@@ -133,6 +157,55 @@ public final class LengthPrefixedProtocol {
                 Math.max(0, bitrate),
                 escape(profile),
                 escape(transport));
+    }
+
+    public static String streamConfigAckJson(
+            long sessionEpoch, long configVersion, boolean accepted,
+            String codec, int fps, int width, int height, boolean surfaceValid) {
+        return String.format(Locale.US,
+                "{\"type\":\"streamConfigAck\",\"sessionEpoch\":%d,"
+                        + "\"configVersion\":%d,\"accepted\":%s,\"codec\":\"%s\","
+                        + "\"fps\":%d,\"width\":%d,\"height\":%d,"
+                        + "\"surfaceValid\":%s}",
+                Math.max(0, sessionEpoch), Math.max(0, configVersion), accepted,
+                escape(codec), sanitizeFps(fps), Math.max(1, width), Math.max(1, height),
+                surfaceValid);
+    }
+
+    public static String decoderReadyJson(
+            long sessionEpoch, long configVersion, String codec, String decoderName,
+            boolean hardwareAccelerated, boolean softwareOnly, boolean lowLatencySupported,
+            boolean lowLatencyEnabled) {
+        return String.format(Locale.US,
+                "{\"type\":\"decoderReady\",\"sessionEpoch\":%d,"
+                        + "\"configVersion\":%d,\"codec\":\"%s\","
+                        + "\"decoderName\":\"%s\",\"hardwareAccelerated\":%s,"
+                        + "\"softwareOnly\":%s,\"lowLatencySupported\":%s,"
+                        + "\"lowLatencyEnabled\":%s}",
+                Math.max(0, sessionEpoch), Math.max(0, configVersion), escape(codec),
+                escape(decoderName), hardwareAccelerated, softwareOnly,
+                lowLatencySupported, lowLatencyEnabled);
+    }
+
+    public static String firstFrameRenderedJson(
+            long sessionEpoch, long configVersion, long frameSequence) {
+        return String.format(Locale.US,
+                "{\"type\":\"firstFrameRendered\",\"sessionEpoch\":%d,"
+                        + "\"configVersion\":%d,\"frameSequence\":%d}",
+                Math.max(0, sessionEpoch), Math.max(0, configVersion),
+                Math.max(0, frameSequence));
+    }
+
+    public static String connectionStateJson(
+            String state, String reason, long enteredAt, long generation,
+            long sessionEpoch, long configVersion) {
+        return String.format(Locale.US,
+                "{\"type\":\"connectionState\",\"state\":\"%s\","
+                        + "\"reason\":\"%s\",\"enteredAt\":%d,\"generation\":%d,"
+                        + "\"sessionEpoch\":%d,\"configVersion\":%d}",
+                escape(lowerCamel(state)), escape(reason), Math.max(0, enteredAt),
+                Math.max(0, generation), Math.max(0, sessionEpoch),
+                Math.max(0, configVersion));
     }
 
     public static String scrollJson(double dx, double dy) {
@@ -197,5 +270,25 @@ public final class LengthPrefixedProtocol {
             }
         }
         return out.append("]").toString();
+    }
+
+    private static String lowerCamel(String value) {
+        if (value == null || value.length() == 0) {
+            return "";
+        }
+        StringBuilder result = new StringBuilder();
+        boolean uppercaseNext = false;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c == '_') {
+                uppercaseNext = result.length() > 0;
+            } else if (uppercaseNext) {
+                result.append(Character.toUpperCase(c));
+                uppercaseNext = false;
+            } else {
+                result.append(Character.toLowerCase(c));
+            }
+        }
+        return result.toString();
     }
 }

@@ -22,6 +22,7 @@ final class ReceiverLifecycleCoordinator {
 
     void onPause() {
         resumed = false;
+        stopIfRunning();
     }
 
     void onSurfaceCreated() {

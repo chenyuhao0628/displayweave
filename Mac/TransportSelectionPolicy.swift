@@ -80,6 +80,40 @@ enum ReconnectPeerReadinessPolicy {
     }
 }
 
+enum ConnectionClosureEvent: Equatable, Sendable {
+    case cleanEnd
+    case failure
+}
+
+enum ConnectionClosureAction: Equatable, Sendable {
+    case endSession
+    case retryWithinGrace
+}
+
+enum ReceiverPeerKind: Equatable, Sendable {
+    case android
+    case legacyApple
+    case unknown
+}
+
+enum ConnectionClosurePolicy {
+    static func action(for event: ConnectionClosureEvent,
+                       peer: ReceiverPeerKind) -> ConnectionClosureAction {
+        guard event == .cleanEnd, peer == .legacyApple else {
+            return .retryWithinGrace
+        }
+        return .endSession
+    }
+}
+
+enum ReceiverControlPolicy {
+    static func closureAction(messageType: String,
+                              peer: ReceiverPeerKind) -> ConnectionClosureAction? {
+        guard messageType == "goodbye" else { return nil }
+        return peer == .legacyApple ? .endSession : .retryWithinGrace
+    }
+}
+
 enum AndroidUsbRecoveryState: Equatable, Sendable {
     case connected
     case waiting(attempt: Int, delay: Double)

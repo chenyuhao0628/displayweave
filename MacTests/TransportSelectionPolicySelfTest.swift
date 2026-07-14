@@ -95,6 +95,30 @@ struct TransportSelectionPolicySelfTest {
         check(true,
               ReconnectPeerReadinessPolicy.clearsDisconnectGrace(for: .peerMessage),
               "a protocol message proves the Receiver is alive")
+        check(.endSession,
+              ConnectionClosurePolicy.action(for: .cleanEnd, peer: .legacyApple),
+              "a legacy Apple receiver that cleanly closes must end its session")
+        check(.retryWithinGrace,
+              ConnectionClosurePolicy.action(for: .cleanEnd, peer: .android),
+              "an Android clean close must retain bounded background/surface recovery")
+        check(.retryWithinGrace,
+              ConnectionClosurePolicy.action(for: .cleanEnd, peer: .unknown),
+              "a close before hello must fail safe to bounded retry")
+        check(.retryWithinGrace,
+              ConnectionClosurePolicy.action(for: .failure, peer: .legacyApple),
+              "a transport failure should retain bounded reconnect recovery")
+        check(.endSession,
+              ReceiverControlPolicy.closureAction(
+                messageType: "goodbye", peer: .legacyApple),
+              "an explicit legacy Apple goodbye must end the session")
+        check(.retryWithinGrace,
+              ReceiverControlPolicy.closureAction(
+                messageType: "goodbye", peer: .android),
+              "an Android goodbye must retain bounded foreground recovery")
+        check(nil,
+              ReceiverControlPolicy.closureAction(
+                messageType: "ping", peer: .android),
+              "normal control traffic must keep the session alive")
 
         print("TransportSelectionPolicySelfTest PASS")
     }

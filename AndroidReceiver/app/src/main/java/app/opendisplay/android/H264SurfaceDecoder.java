@@ -19,7 +19,7 @@ import app.opendisplay.android.protocol.SpsParser;
 public final class H264SurfaceDecoder {
     private static final String LOG_TAG = "DisplayWeaveDecoder";
     private final Surface surface;
-    private final Listener listener;
+    private volatile Listener listener;
     private MediaCodec codec;
     private int configuredWidth;
     private int configuredHeight;
@@ -29,9 +29,11 @@ public final class H264SurfaceDecoder {
     private final ConcurrentMap<Long, VideoFrameTelemetry> renderedTelemetry = new ConcurrentHashMap<>();
     private HandlerThread renderedCallbackThread;
     private long lastMissingParameterLogMs;
+    private DecoderRuntimeInfo lastRuntimeInfo;
 
     public interface Listener {
         void onDecoderStatus(String status);
+        void onDecoderReady(DecoderRuntimeInfo info);
         void onDecoderNeedsKeyframe();
         void onDecoderCodecFailure(String codec, String message);
         void onDecoderFrameDropped();
@@ -42,6 +44,17 @@ public final class H264SurfaceDecoder {
     public H264SurfaceDecoder(Surface surface, Listener listener) {
         this.surface = surface;
         this.listener = listener;
+    }
+
+    public synchronized boolean rebindIfConfigured(Listener nextListener) {
+        listener = nextListener;
+        if (codec == null || lastRuntimeInfo == null) {
+            return false;
+        }
+        nextListener.onDecoderReady(lastRuntimeInfo);
+        nextListener.onDecoderStatus("正在接收 " + configuredWidth + "×" + configuredHeight
+                + " · " + streamConfig.codec + " · " + streamConfig.fps + "fps");
+        return true;
     }
 
     public synchronized void applyStreamConfig(String codecName, int fps, int width, int height) {
@@ -132,6 +145,7 @@ public final class H264SurfaceDecoder {
             }
             codec.release();
             codec = null;
+            lastRuntimeInfo = null;
             pendingTelemetry.clear();
             renderedTelemetry.clear();
         }
@@ -174,8 +188,39 @@ public final class H264SurfaceDecoder {
         configuredWidth = width;
         configuredHeight = height;
         presentationUs = 0;
+        lastRuntimeInfo = runtimeInfo();
+        listener.onDecoderReady(lastRuntimeInfo);
         listener.onDecoderStatus("正在接收 " + configuredWidth + "×" + configuredHeight
                 + " · " + streamConfig.codec + " · " + streamConfig.fps + "fps");
+    }
+
+    private DecoderRuntimeInfo runtimeInfo() {
+        android.media.MediaCodecInfo info = codec.getCodecInfo();
+        boolean hardwareAccelerated = false;
+        boolean softwareOnly = false;
+        boolean vendor = false;
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            hardwareAccelerated = info.isHardwareAccelerated();
+            softwareOnly = info.isSoftwareOnly();
+            vendor = info.isVendor();
+        }
+        boolean lowLatencySupported = false;
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            try {
+                lowLatencySupported = info.getCapabilitiesForType(streamConfig.mimeType)
+                        .isFeatureSupported(
+                                android.media.MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency);
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        return new DecoderRuntimeInfo(
+                streamConfig.codec,
+                codec.getName(),
+                hardwareAccelerated,
+                softwareOnly,
+                vendor,
+                lowLatencySupported,
+                false);
     }
 
     private void drainOutput() {

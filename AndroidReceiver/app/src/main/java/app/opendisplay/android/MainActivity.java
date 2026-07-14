@@ -137,6 +137,48 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     @Override
+    public void onConnectionState(ReceiverConnectionStateSnapshot state) {
+        runOnUiThread(() -> {
+            switch (state.state) {
+                case DISCONNECTED:
+                    setStatus("等待 Mac 连接…");
+                    break;
+                case SOCKET_CONNECTED:
+                case HELLO_SENT:
+                case HELLO_ACCEPTED:
+                    setStatus("正在连接…");
+                    break;
+                case STREAM_CONFIG_RECEIVED:
+                case STREAM_CONFIG_ACCEPTED:
+                    setStatus("正在协商视频配置…");
+                    break;
+                case DECODER_CONFIGURING:
+                case DECODER_READY:
+                    setStatus("正在配置解码器…");
+                    break;
+                case WAITING_FIRST_FRAME:
+                    setStatus("等待首帧…");
+                    break;
+                case STREAMING:
+                    setStatus("正在接收");
+                    break;
+                case RECOVERING:
+                    setStatus("正在恢复画面…");
+                    break;
+                case FAILED:
+                    setStatus("连接异常：" + state.reason);
+                    break;
+            }
+            android.util.Log.i("DisplayWeave", "connectionState=" + state.state
+                    + " reason=" + state.reason
+                    + " generation=" + state.generation
+                    + " sessionEpoch=" + state.sessionEpoch
+                    + " configVersion=" + state.configVersion
+                    + " enteredAtMs=" + state.enteredAtMs);
+        });
+    }
+
+    @Override
     public void onCursor(double x, double y, boolean visible) {
         runOnUiThread(() -> cursorOverlay.moveCursor(x, y, visible));
     }

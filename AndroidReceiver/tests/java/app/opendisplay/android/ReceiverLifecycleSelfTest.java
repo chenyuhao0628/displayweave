@@ -61,12 +61,12 @@ public final class ReceiverLifecycleSelfTest {
                 "resume and surface events must start exactly one server");
 
         coordinator.onPause();
-        require(actions.stops == 0,
-                "onPause must not stop a server while its surface remains valid");
+        require(actions.stops == 1,
+                "onPause must close the receiver so Mac removes its virtual display");
 
         coordinator.onSurfaceDestroyed();
         require(actions.stops == 1,
-                "surface loss must stop the current server exactly once");
+                "surface loss after pause must not stop the receiver twice");
 
         coordinator.onSurfaceCreated();
         require(actions.starts == 1,
