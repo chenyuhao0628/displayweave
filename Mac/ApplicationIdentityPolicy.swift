@@ -4,6 +4,7 @@ enum ApplicationIdentityPolicy {
     static let releaseBundleIdentifier = "app.displayweave.mac"
     static let debugBundleIdentifier = "app.displayweave.mac.debug"
     private static let migrationMarker = "displayWeaveIdentityMigrationV1"
+    private static let nonMigratingKeys: Set<String> = ["testPattern"]
 
     static func legacyDomains(for bundleIdentifier: String?) -> [String] {
         if bundleIdentifier == debugBundleIdentifier {
@@ -20,11 +21,16 @@ enum ApplicationIdentityPolicy {
         ]
     }
 
+    static func testPatternEnabled(bundleIdentifier: String?, storedValue: Bool) -> Bool {
+        bundleIdentifier == debugBundleIdentifier && storedValue
+    }
+
     static func mergedPreferences(current: [String: Any],
                                   legacyDomains: [[String: Any]]) -> [String: Any] {
         var merged = current
         for domain in legacyDomains {
-            for (key, value) in domain where merged[key] == nil {
+            for (key, value) in domain
+                where merged[key] == nil && !nonMigratingKeys.contains(key) {
                 merged[key] = value
             }
         }

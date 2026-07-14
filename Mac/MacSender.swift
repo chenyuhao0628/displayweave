@@ -61,6 +61,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private let mode: CaptureMode
     private let quality: StreamQuality
     private let settings: StreamSettings
+    private let testPatternOwnerID = UUID()
     // Stable per-device serial for the virtual display, so macOS can tell
     // multiple OpenDisplay monitors apart and persist their arrangement.
     private let displaySerial: UInt32
@@ -303,9 +304,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         // Debug aid (`defaults write app.displayweave.mac.debug testPattern -bool true`):
         // an animated window on the virtual display generates a constant frame
         // stream so steady-state latency can be measured without user activity.
-        if UserDefaults.standard.bool(forKey: "testPattern") {
+        if ApplicationIdentityPolicy.testPatternEnabled(
+            bundleIdentifier: Bundle.main.bundleIdentifier,
+            storedValue: UserDefaults.standard.bool(forKey: "testPattern")) {
             let id = vd.displayID
-            Task { @MainActor in TestPattern.show(on: id) }
+            let testPatternOwnerID = self.testPatternOwnerID
+            Task { @MainActor [weak self] in
+                guard let self, !self.stopped else { return }
+                TestPattern.show(ownerID: testPatternOwnerID, on: id)
+            }
         }
     }
 
@@ -324,6 +331,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             stream = nil
             if let encoder { VTCompressionSessionInvalidate(encoder) }
             encoder = nil
+            let testPatternOwnerID = self.testPatternOwnerID
+            await MainActor.run {
+                TestPattern.hide(ownerID: testPatternOwnerID)
+            }
             virtualDisplay = nil   // removes the old display
             needsKeyframe = true
             do {
@@ -399,6 +410,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         await status("\(mode == .extend ? "正在扩展到" : "正在镜像到") \(kind)（\(pixelsWide)×\(pixelsHigh)）")
     }
 
+    @MainActor
     func stop() {
         stopped = true
         cursorTimer?.cancel()
@@ -411,6 +423,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         connection = nil
         if let encoder { VTCompressionSessionInvalidate(encoder) }
         encoder = nil
+        TestPattern.hide(ownerID: testPatternOwnerID)
         virtualDisplay = nil   // releasing it removes the display
         queue.async { [weak self] in
             self?.finishBenchmarkOnQueue(message: "Benchmark stopped with session")

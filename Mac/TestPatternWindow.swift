@@ -8,15 +8,29 @@ import MetalKit
 /// Enable with `defaults write app.displayweave.mac.debug testPattern -bool true`.
 @MainActor
 enum TestPattern {
-    // One window per virtual display — multi-device sessions each get their
-    // own pattern, so all pipelines stream at once during measurements.
-    private static var windows: [CGDirectDisplayID: NSWindow] = [:]
+    private struct PendingShow {
+        let generation: UUID
+        let task: Task<Void, Never>
+    }
 
-    static func show(on displayID: CGDirectDisplayID) {
-        hide(on: displayID)
+    // One owner per sender session. The owner remains stable when rotation
+    // replaces its virtual display, so an old asynchronous show can be
+    // cancelled before macOS moves its orphaned window onto the main display.
+    private static var windows: [UUID: NSWindow] = [:]
+    private static var pendingShows: [UUID: PendingShow] = [:]
+
+    static func show(ownerID: UUID, on displayID: CGDirectDisplayID) {
+        hide(ownerID: ownerID)
+        let generation = UUID()
         // The screen may register a beat after the virtual display appears.
-        Task { @MainActor in
+        let task = Task { @MainActor in
+            defer {
+                if pendingShows[ownerID]?.generation == generation {
+                    pendingShows.removeValue(forKey: ownerID)
+                }
+            }
             for _ in 0..<10 {
+                guard !Task.isCancelled else { return }
                 if let screen = NSScreen.screens.first(where: {
                     ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID) == displayID
                 }) {
@@ -24,19 +38,31 @@ enum TestPattern {
                                      backing: .buffered, defer: false)
                     w.contentView = DisplayLinkPatternView(displayID: displayID)
                     w.setFrame(screen.frame, display: true)
+                    guard !Task.isCancelled else {
+                        w.close()
+                        return
+                    }
                     w.orderFrontRegardless()
-                    windows[displayID] = w
+                    windows[ownerID] = w
                     Log.info("test pattern window shown on display \(displayID)")
                     return
                 }
                 try? await Task.sleep(for: .milliseconds(300))
             }
-            Log.info("test pattern: screen for display \(displayID) never appeared")
+            if !Task.isCancelled {
+                Log.info("test pattern: screen for display \(displayID) never appeared")
+            }
         }
+        pendingShows[ownerID] = PendingShow(generation: generation, task: task)
     }
 
-    static func hide(on displayID: CGDirectDisplayID) {
-        windows.removeValue(forKey: displayID)?.orderOut(nil)
+    static func hide(ownerID: UUID) {
+        pendingShows.removeValue(forKey: ownerID)?.task.cancel()
+        windows.removeValue(forKey: ownerID)?.close()
+    }
+
+    static func isTracking(ownerID: UUID) -> Bool {
+        pendingShows[ownerID] != nil || windows[ownerID] != nil
     }
 }
 
