@@ -23,9 +23,9 @@ The physical-device recovery and high-refresh observations below were recorded
 during Preview 2 validation and remain prior evidence; they were not rerun on a
 second Android device for this release.
 
-## Download `v0.2.0-preview.5`
+## Download `v0.2.1`
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.5)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1)
 
 | Platform | Asset | Distribution boundary |
 | --- | --- | --- |
