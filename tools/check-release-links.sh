@@ -72,6 +72,7 @@ workflow_contract=(
   "DISPLAYWEAVE_ANDROID_KEY_PASSWORD"
   "Mac/OpenSidecarMacAdHoc.entitlements"
   "DisplayWeave-macOS.zip"
+  "DisplayWeave-macOS.dmg"
   "DisplayWeave-Android.apk"
   "appcast.xml"
   "android-update.json"
