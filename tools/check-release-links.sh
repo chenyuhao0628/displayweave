@@ -82,6 +82,7 @@ workflow_contract=(
   "actions/deploy-pages@v4"
   "python3 -m venv"
   "displayweave-appcast-input"
+  "needs.build_updates.result == 'success'"
 )
 for marker in "${workflow_contract[@]}"; do
   grep -Fq "$marker" "$workflow" || {

@@ -36,7 +36,8 @@ jobs:
         with:
           release-type: simple
 
-  build-updates:
+  build_updates:
+    name: build-updates
     needs: release_please
     if: >-
       always() &&
@@ -162,8 +163,10 @@ jobs:
         run: |
           rm -f "$DISPLAYWEAVE_ANDROID_KEYSTORE"
 
-  deploy-update-feeds:
-    needs: build-updates
+  deploy_update_feeds:
+    name: deploy-update-feeds
+    needs: build_updates
+    if: ${{ always() && needs.build_updates.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
