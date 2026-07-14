@@ -36,14 +36,21 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 
 这是开发预览版，不是生产签名的商店版本。使用前请验证校验和；Android 用户还应核对[发布检查清单](docs/release-checklist.zh-CN.md)中的证书指纹。
 
+新的 Mac 打包流程会在后续 Release 中同时生成 `DisplayWeave-macOS.dmg`
+和 ZIP。DMG 是推荐的首次安装包：把 DisplayWeave 拖入“应用程序”，并按照背景中
+显示的首次运行说明操作。ZIP 继续作为 Sparkle 更新包，也可以手动解压安装。两种
+容器里是同一个 `DisplayWeave.app`，放入 `/Applications` 后都能收到后续 Sparkle
+更新。当前已经发布的 `v0.2.0-preview.2` 早于 DMG 产物，因此上方历史表格仍如实
+只列出 ZIP。
+
 新版 Mac 构建使用 DisplayWeave 自有应用身份。设置会从旧 OpenDisplay/OpenSidecar 偏好域迁移，但升级后需要在 macOS 重新授予屏幕录制、辅助功能和本地网络权限。
 
 ### 一次性迁移与后续更新
 
 - **Mac：** 手动用此版本替换 `/Applications` 中的旧应用。Gatekeeper
   可能要求按住 Control 点击并选择“打开”，或在“隐私与安全性”中选择
-  “仍要打开”。后续版本通过 Sparkle 检查和验证，但应用仍为 ad-hoc
-  签名且未公证。
+  “仍要打开”；不需要全局开启“任何来源”。后续版本通过 Sparkle 检查和
+  验证，但应用仍为 ad-hoc 签名且未公证。
 - **Android：** 先把此 APK 覆盖安装到现有包。之后接收端最多每天自动
   检查一次，也可在“设置与帮助”手动检查。下载会校验大小、SHA-256、
   包名、版本、最低 SDK 和固定签名证书，再打开 Android 系统安装器。

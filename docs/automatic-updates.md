@@ -6,13 +6,16 @@ DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases an
 
 - Mac feed: `https://chenyuhao0628.github.io/displayweave/appcast.xml`
 - Android feed: `https://chenyuhao0628.github.io/displayweave/android-update.json`
-- Mac artifact: `DisplayWeave-macOS.zip`
+- Mac first-install artifact: `DisplayWeave-macOS.dmg` (guided releases)
+- Mac update artifact: `DisplayWeave-macOS.zip`
 - Android artifact: `DisplayWeave-Android.apk`
 
 The current migration release is
 [`v0.2.0-preview.2`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.2).
 Older builds cannot discover this channel by themselves: install this release
 manually once, then use automatic updates for later versions.
+The published `v0.2.0-preview.2` migration release has the ZIP but predates the
+guided DMG asset; later releases built by the current workflow include both.
 
 The Mac build is ad-hoc signed and not notarized. Sparkle authenticates its ZIP with the embedded EdDSA public key, so subsequent updates can be verified without Apple Developer Program credentials. This does not make the first download Gatekeeper-trusted or equivalent to a notarized release.
 
@@ -20,11 +23,11 @@ The Mac build is ad-hoc signed and not notarized. Sparkle authenticates its ZIP 
 
 ### Mac
 
-1. Download and manually install the first update-capable build. Replace the old app in `/Applications`; do not run the app from the ZIP or Downloads folder.
-2. Because the app is not notarized, Control-click the app and choose **Open**. If macOS still blocks it, use **System Settings → Privacy & Security → Open Anyway**, then confirm only if the download came from the official release.
+1. Prefer `DisplayWeave-macOS.dmg` when the release provides it: open the DMG and drag DisplayWeave to Applications. Installing from the ZIP is equivalent after `DisplayWeave.app` is placed in `/Applications`; do not keep running the app from the DMG, ZIP, or Downloads folder.
+2. Because the app is not notarized, Control-click the app and choose **Open**. If macOS still blocks it, use **System Settings → Privacy & Security → Open Anyway**, then confirm only if the download came from the official release. Do not enable **Anywhere** globally.
 3. Launch it once and retain the existing Screen Recording, Accessibility, and Local Network permissions. Moving or renaming the app later can cause macOS to ask for permissions again.
 
-After this migration, Sparkle checks the signed appcast automatically and may install newer builds. The app also retains Sparkle's manual **Check for Updates** command. A release with an invalid EdDSA signature is rejected.
+After this migration, Sparkle checks the signed appcast automatically and may install newer builds. Sparkle lives inside `DisplayWeave.app`, not in the DMG or ZIP container, so either installation method receives the same later updates. The app also retains Sparkle's manual **Check for Updates** command. A release with an invalid EdDSA signature is rejected.
 
 ### Android
 
