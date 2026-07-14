@@ -8,6 +8,8 @@ Baseline: `d5eb716`
 
 Scope: macOS Sender and Android Receiver. This document records only semantics proven by the code. A value appearing in an overlay does not make it suitable for a formal benchmark.
 
+> Implementation update (2026-07-14): structured Benchmark export and Android thermal/power sampling were added after this baseline. See [Android thermal and power metrics](android-thermal-power-metrics.md); the historical matrix below remains unchanged.
+
 ## Classification
 
 - **Measured:** derived from runtime events, byte counts, or callbacks.

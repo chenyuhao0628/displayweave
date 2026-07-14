@@ -11,7 +11,7 @@
 
 本文是 Android 连接稳定性与低延迟工作的阶段零审计，记录 Connection Generation 实现前的真实行为。配置的 FPS、码率和刷新率请求不会被当成实测结果；本文也不声称已经完成长时间或多设备验证。
 
-> 实现状态更新（2026-07-14）：PR 1 Connection Generation 至 PR 9 协商式 Binary Framing/分配工作此后均已实现。下表刻意保留阶段零 Baseline；当前行为见[帧尺寸协商](frame-size-negotiation.zh-CN.md)、[Decoder 低延迟选择](android-decoder-low-latency.zh-CN.md)、[WiFi 低延迟 / Surface 帧率](android-wifi-low-latency-surface-frame-rate.zh-CN.md)、[Drop 原因策略](android-drop-reason-policy.zh-CN.md)、[本地快速拥塞下降](mac-local-fast-congestion-decrease.zh-CN.md)与[Binary Framing/分配](android-binary-frame-header-v2.zh-CN.md)。
+> 实现状态更新（2026-07-14）：PR 1 Connection Generation 至 PR 9 协商式 Binary Framing/分配，以及只增加测量能力的热/功耗 Follow-up 此后均已实现。下表刻意保留阶段零 Baseline；当前行为见[帧尺寸协商](frame-size-negotiation.zh-CN.md)、[Decoder 低延迟选择](android-decoder-low-latency.zh-CN.md)、[WiFi 低延迟 / Surface 帧率](android-wifi-low-latency-surface-frame-rate.zh-CN.md)、[Drop 原因策略](android-drop-reason-policy.zh-CN.md)、[本地快速拥塞下降](mac-local-fast-congestion-decrease.zh-CN.md)、[Binary Framing/分配](android-binary-frame-header-v2.zh-CN.md)与[热/功耗指标](android-thermal-power-metrics.zh-CN.md)。真机恢复证据仍在 [Android 快速恢复 V2](android-quick-recovery-v2.zh-CN.md)中保持待测。
 
 ## 执行摘要
 

@@ -94,6 +94,11 @@ let statsJSON = """
   "bufferPoolMiss": 58,
   "gcCount": 4,
   "gcTimeMs": 17,
+  "thermalStatus": 2,
+  "powerSaver": true,
+  "batteryTemperature": 36.5,
+  "batteryLevel": 77,
+  "charging": false,
   "decoderName": "c2.vendor.hevc.decoder",
   "hardwareAccelerated": true,
   "softwareOnly": false,
@@ -140,6 +145,11 @@ expect(stats.allocatedFrameBytes == 8_388_608 && stats.bufferReuseCount == 58,
        "frame-allocation and zero-copy reuse counters decode")
 expect(stats.bufferPoolMiss == 58 && stats.gcCount == 4 && stats.gcTimeMs == 17,
        "pool-miss and runtime GC counters decode")
+expect(stats.thermalStatus == 2 && stats.powerSaver == true,
+       "thermal and power-saver readings decode")
+expect(stats.batteryTemperature == 36.5 && stats.batteryLevel == 77
+       && stats.charging == false,
+       "battery temperature, level, and charging state decode")
 expect(stats.decoderName == "c2.vendor.hevc.decoder" && stats.hardwareAccelerated == true,
        "actual decoder identity and acceleration decode")
 expect(stats.lowLatencySupported == true && stats.lowLatencyEnabled == true,
@@ -231,6 +241,13 @@ expect(BenchmarkSample.csvHeader.contains("bufferReuseCount"),
        "header records zero-copy buffer reuse")
 expect(BenchmarkSample.csvHeader.contains("gcTimeMs"),
        "header records Android runtime GC time")
+expect(BenchmarkSample.csvHeader.contains("thermalStatus")
+       && BenchmarkSample.csvHeader.contains("powerSaver"),
+       "header records Android thermal and power-saver state")
+expect(BenchmarkSample.csvHeader.contains("batteryTemperature")
+       && BenchmarkSample.csvHeader.contains("batteryLevel")
+       && BenchmarkSample.csvHeader.contains("charging"),
+       "header records battery state")
 expect(BenchmarkSample.csvHeader.contains("decoderName"), "header records actual decoder")
 expect(BenchmarkSample.csvHeader.contains("lowLatencyEnabled"), "header records low-latency state")
 expect(BenchmarkSample.csvHeader.contains("requestedSurfaceFrameRate"),
@@ -291,6 +308,13 @@ expect(jsonObject["bufferPoolMiss"] as? Double == 58,
        "transport buffer pool misses are recorded")
 expect(jsonObject["gcCount"] as? Double == 4 && jsonObject["gcTimeMs"] as? Double == 17,
        "Android runtime GC metrics are recorded")
+expect(jsonObject["thermalStatus"] as? Double == 2
+       && jsonObject["powerSaver"] as? Bool == true,
+       "Android thermal and power-saver state are recorded")
+expect(jsonObject["batteryTemperature"] as? Double == 36.5
+       && jsonObject["batteryLevel"] as? Double == 77
+       && jsonObject["charging"] as? Bool == false,
+       "Android battery state is recorded")
 expect(jsonObject["decoderName"] as? String == "c2.vendor.hevc.decoder", "decoder name is recorded")
 expect(jsonObject["hardwareAccelerated"] as? Bool == true, "hardware acceleration is recorded")
 expect(jsonObject["softwareOnly"] as? Bool == false, "software-only state is recorded")

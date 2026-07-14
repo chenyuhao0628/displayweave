@@ -337,6 +337,7 @@ public final class ProtocolSelfTest {
                 null, null, 1, 2, 3.5, 7.5,
                 2048, 4096, 3072, 6144, 2, 3,
                 8192, 4, 5, 6, 7,
+                2, true, 36.5, 77, false,
                 "c2.vendor.hevc.decoder", true, false, true,
                 true, true, true, "", "auto",
                 "applied:streamConfig:window=120Hz,surface=onlyIfSeamless",
@@ -365,6 +366,11 @@ public final class ProtocolSelfTest {
         assertContains(json, "\"bufferPoolMiss\":5");
         assertContains(json, "\"gcCount\":6");
         assertContains(json, "\"gcTimeMs\":7");
+        assertContains(json, "\"thermalStatus\":2");
+        assertContains(json, "\"powerSaver\":true");
+        assertContains(json, "\"batteryTemperature\":36.5");
+        assertContains(json, "\"batteryLevel\":77");
+        assertContains(json, "\"charging\":false");
         assertContains(json, "\"decoderName\":\"c2.vendor.hevc.decoder\"");
         assertContains(json, "\"hardwareAccelerated\":true");
         assertContains(json, "\"lowLatencyEnabled\":true");

@@ -26,6 +26,7 @@ public final class VideoStreamPolicySelfTest {
         testVideoFramePacketUsesZeroCopyBinaryPayloadView();
         testFrameSizeMetrics();
         testFrameAllocationMetrics();
+        testAndroidPowerMetricsNormalization();
         testFrameTelemetry();
         testStreamMetricsLatencyFields();
         testMetricDistribution();
@@ -118,6 +119,24 @@ public final class VideoStreamPolicySelfTest {
         assertEquals(0L, second.allocatedFrameBytes);
         assertEquals(0L, second.bufferReuseCount);
         assertEquals(0L, second.bufferPoolMiss);
+    }
+
+    private static void testAndroidPowerMetricsNormalization() {
+        AndroidPowerMetrics.Snapshot available = AndroidPowerMetrics.fromReadings(
+                2, true, 365, 77, 100, false);
+        assertEquals(Integer.valueOf(2), available.thermalStatus);
+        assertTrue(available.powerSaver);
+        assertEquals(36.5, available.batteryTemperature);
+        assertEquals(Integer.valueOf(77), available.batteryLevel);
+        assertFalse(available.charging);
+
+        AndroidPowerMetrics.Snapshot unavailable = AndroidPowerMetrics.fromReadings(
+                null, null, null, -1, 0, null);
+        assertEquals(null, unavailable.thermalStatus);
+        assertEquals(null, unavailable.powerSaver);
+        assertEquals(null, unavailable.batteryTemperature);
+        assertEquals(null, unavailable.batteryLevel);
+        assertEquals(null, unavailable.charging);
     }
 
     private static void testProtocolV2SessionFiltering() {

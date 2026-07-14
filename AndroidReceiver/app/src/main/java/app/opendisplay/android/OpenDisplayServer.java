@@ -31,6 +31,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private final FrameSizeMetrics frameSizeMetrics = new FrameSizeMetrics();
     private final FrameAllocationMetrics frameAllocationMetrics =
             new FrameAllocationMetrics();
+    private final AndroidPowerMetrics powerMetrics;
     private final AndroidDropTracker androidDropTracker = new AndroidDropTracker();
     private DecoderLowLatencyMode decoderLowLatencyMode = DecoderLowLatencyMode.AUTO;
     private volatile boolean wifiAdvertisingEnabled;
@@ -117,6 +118,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         this.displaySpec = displaySpec;
         this.listener = listener;
         this.transport = transport;
+        this.powerMetrics = new AndroidPowerMetrics(context);
         this.installId = InstallId.get(context);
         this.advertiser = new NsdAdvertiser(context, this);
         this.wifiAdvertisingEnabled = wifiAdvertisingEnabled;
@@ -1085,6 +1087,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             FrameSizeMetrics.Snapshot frameSizes = frameSizeMetrics.snapshot();
             FrameAllocationMetrics.Snapshot frameAllocations =
                     frameAllocationMetrics.snapshotAndResetWindow();
+            AndroidPowerMetrics.Snapshot power = powerMetrics.sample();
             DecoderRuntimeInfo runtimeInfo = decoderRuntimeInfo;
             ReceiverStatsSnapshot snapshot = new ReceiverStatsSnapshot(
                     now,
@@ -1126,6 +1129,11 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     frameAllocations.bufferPoolMiss,
                     frameAllocations.gcCount,
                     frameAllocations.gcTimeMs,
+                    power.thermalStatus,
+                    power.powerSaver,
+                    power.batteryTemperature,
+                    power.batteryLevel,
+                    power.charging,
                     runtimeInfo == null ? null : runtimeInfo.decoderName,
                     runtimeInfo == null ? null : runtimeInfo.hardwareAccelerated,
                     runtimeInfo == null ? null : runtimeInfo.softwareOnly,

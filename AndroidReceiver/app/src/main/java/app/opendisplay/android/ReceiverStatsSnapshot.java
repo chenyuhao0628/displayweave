@@ -45,6 +45,11 @@ public final class ReceiverStatsSnapshot {
     public final long bufferPoolMiss;
     public final long gcCount;
     public final long gcTimeMs;
+    public final Integer thermalStatus;
+    public final Boolean powerSaver;
+    public final Double batteryTemperature;
+    public final Integer batteryLevel;
+    public final Boolean charging;
     public final String decoderName;
     public final Boolean hardwareAccelerated;
     public final Boolean softwareOnly;
@@ -78,6 +83,8 @@ public final class ReceiverStatsSnapshot {
             long oversizeFrameCount, long invalidFrameLengthCount,
             long allocatedFrameBytes, long bufferReuseCount,
             long bufferPoolMiss, long gcCount, long gcTimeMs,
+            Integer thermalStatus, Boolean powerSaver, Double batteryTemperature,
+            Integer batteryLevel, Boolean charging,
             String decoderName, Boolean hardwareAccelerated, Boolean softwareOnly,
             Boolean vendor, Boolean lowLatencySupported, Boolean lowLatencyEnabled,
             Boolean decoderConfigureSuccess, String decoderFallbackReason,
@@ -125,6 +132,11 @@ public final class ReceiverStatsSnapshot {
         this.bufferPoolMiss = bufferPoolMiss;
         this.gcCount = gcCount;
         this.gcTimeMs = gcTimeMs;
+        this.thermalStatus = thermalStatus;
+        this.powerSaver = powerSaver;
+        this.batteryTemperature = batteryTemperature;
+        this.batteryLevel = batteryLevel;
+        this.charging = charging;
         this.decoderName = decoderName;
         this.hardwareAccelerated = hardwareAccelerated;
         this.softwareOnly = softwareOnly;
@@ -184,6 +196,11 @@ public final class ReceiverStatsSnapshot {
         values.put("bufferPoolMiss", bufferPoolMiss);
         values.put("gcCount", gcCount);
         values.put("gcTimeMs", gcTimeMs);
+        values.put("thermalStatus", thermalStatus);
+        values.put("powerSaver", powerSaver);
+        values.put("batteryTemperature", batteryTemperature);
+        values.put("batteryLevel", batteryLevel);
+        values.put("charging", charging);
         values.put("decoderName", decoderName);
         values.put("hardwareAccelerated", hardwareAccelerated);
         values.put("softwareOnly", softwareOnly);

@@ -8,6 +8,8 @@
 
 范围：macOS Sender 与 Android Receiver。本文只记录代码能够证明的口径；overlay 中存在字段不等于该字段可用于正式 Benchmark。
 
+> 实现状态更新（2026-07-14）：此 Baseline 之后已增加结构化 Benchmark Export 与 Android 热/功耗采样。参见 [Android 热状态与功耗指标](android-thermal-power-metrics.zh-CN.md)；下方历史矩阵保持不改。
+
 ## 判定方法
 
 - **真实测量**：由运行时事件、字节数或回调计数得到。

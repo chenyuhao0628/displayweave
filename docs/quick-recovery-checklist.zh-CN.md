@@ -1,5 +1,7 @@
 # 快速异常恢复清单
 
+当前 Android 构建请使用 [Android 快速恢复 V2 证据](android-quick-recovery-v2.zh-CN.md)。
+
 状态：等待在当前性能控制构建上重新执行。
 
 | 场景 | 必须结果 | 当前构建证据 |

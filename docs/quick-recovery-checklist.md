@@ -1,5 +1,7 @@
 # Quick recovery checklist
 
+Superseded for the current Android build by [Android quick recovery V2 evidence](android-quick-recovery-v2.md).
+
 Status: pending re-run against the current performance-control build.
 
 | Scenario | Required result | Current-build evidence |

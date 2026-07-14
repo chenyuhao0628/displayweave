@@ -59,6 +59,11 @@ struct ReceiverStats: Decodable {
     var bufferPoolMiss: Double?
     var gcCount: Double?
     var gcTimeMs: Double?
+    var thermalStatus: Double?
+    var powerSaver: Bool?
+    var batteryTemperature: Double?
+    var batteryLevel: Double?
+    var charging: Bool?
     var decoderName: String?
     var hardwareAccelerated: Bool?
     var softwareOnly: Bool?
@@ -126,6 +131,11 @@ struct BenchmarkSample {
     var bufferPoolMiss: Double?
     var gcCount: Double?
     var gcTimeMs: Double?
+    var thermalStatus: Double?
+    var powerSaver: Bool?
+    var batteryTemperature: Double?
+    var batteryLevel: Double?
+    var charging: Bool?
     var decoderName: String?
     var hardwareAccelerated: Bool?
     var softwareOnly: Bool?
@@ -281,6 +291,11 @@ struct BenchmarkSample {
         bufferPoolMiss = receiver.bufferPoolMiss
         gcCount = receiver.gcCount
         gcTimeMs = receiver.gcTimeMs
+        thermalStatus = receiver.thermalStatus
+        powerSaver = receiver.powerSaver
+        batteryTemperature = receiver.batteryTemperature
+        batteryLevel = receiver.batteryLevel
+        charging = receiver.charging
         decoderName = receiver.decoderName
         hardwareAccelerated = receiver.hardwareAccelerated
         softwareOnly = receiver.softwareOnly
@@ -341,7 +356,8 @@ struct BenchmarkSample {
         "currentFrameBytes", "maxFrameBytesObserved", "currentKeyframeBytes",
         "maxKeyframeBytesObserved", "oversizeFrameCount", "invalidFrameLengthCount",
         "allocatedFrameBytes", "bufferReuseCount", "bufferPoolMiss", "gcCount",
-        "gcTimeMs",
+        "gcTimeMs", "thermalStatus", "powerSaver", "batteryTemperature",
+        "batteryLevel", "charging",
         "decoderName", "hardwareAccelerated", "softwareOnly", "decoderVendor",
         "lowLatencySupported", "lowLatencyEnabled", "decoderConfigureSuccess",
         "decoderFallbackReason", "decoderLowLatencyMode",
@@ -382,6 +398,8 @@ struct BenchmarkSample {
          number(oversizeFrameCount), number(invalidFrameLengthCount),
          number(allocatedFrameBytes), number(bufferReuseCount),
          number(bufferPoolMiss), number(gcCount), number(gcTimeMs),
+         number(thermalStatus), boolean(powerSaver), number(batteryTemperature),
+         number(batteryLevel), boolean(charging),
          decoderName ?? Self.notAvailable, boolean(hardwareAccelerated),
          boolean(softwareOnly), boolean(decoderVendor),
          boolean(lowLatencySupported), boolean(lowLatencyEnabled),
@@ -460,6 +478,11 @@ struct BenchmarkSample {
             "bufferPoolMiss": bufferPoolMiss,
             "gcCount": gcCount,
             "gcTimeMs": gcTimeMs,
+            "thermalStatus": thermalStatus,
+            "powerSaver": powerSaver,
+            "batteryTemperature": batteryTemperature,
+            "batteryLevel": batteryLevel,
+            "charging": charging,
             "decoderName": decoderName,
             "hardwareAccelerated": hardwareAccelerated,
             "softwareOnly": softwareOnly,
