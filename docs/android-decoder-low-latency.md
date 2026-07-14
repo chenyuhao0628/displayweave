@@ -99,4 +99,4 @@ No Android device was attached during implementation, so no physical result is i
 
 ## Next step
 
-PR 6 should implement Android WiFi low-latency lock lifecycle and finish the Surface frame-rate hint policy as a separate power/display change.
+PR 6 now implements the separate WiFi low-latency lock and Surface frame-rate lifecycle; see [WiFi low latency / Surface frame rate](android-wifi-low-latency-surface-frame-rate.md). PR 7 should add Android drop classification and adaptive-controller filtering.

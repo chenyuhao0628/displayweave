@@ -13,6 +13,7 @@ public final class ReceiverStatsSnapshot {
     public final int width;
     public final int height;
     public final int requestedFps;
+    public final double requestedSurfaceFrameRate;
     public final double actualAndroidDisplayRefreshRate;
     public final int receivedFps;
     public final int decodedFps;
@@ -48,10 +49,17 @@ public final class ReceiverStatsSnapshot {
     public final Boolean decoderConfigureSuccess;
     public final String decoderFallbackReason;
     public final String decoderLowLatencyMode;
+    public final String frameRateApplyResult;
+    public final String wifiLowLatencyMode;
+    public final boolean wifiLowLatencyRequested;
+    public final boolean wifiLowLatencyAcquired;
+    public final boolean wifiLowLatencyActive;
+    public final String wifiLowLatencyReleaseReason;
 
     public ReceiverStatsSnapshot(
             long timestamp, String deviceModel, String transport, String codec,
-            int width, int height, int requestedFps, double actualAndroidDisplayRefreshRate,
+            int width, int height, int requestedFps, double requestedSurfaceFrameRate,
+            double actualAndroidDisplayRefreshRate,
             int receivedFps, int decodedFps, int renderedFps, Double rttMs,
             Double clockOffsetMs, Double offsetConfidenceMs, Double clockRttMs,
             String clockState, Double frameAgeAvgMs, Long frameAgeLatestMs,
@@ -65,7 +73,10 @@ public final class ReceiverStatsSnapshot {
             String decoderName, Boolean hardwareAccelerated, Boolean softwareOnly,
             Boolean vendor, Boolean lowLatencySupported, Boolean lowLatencyEnabled,
             Boolean decoderConfigureSuccess, String decoderFallbackReason,
-            String decoderLowLatencyMode) {
+            String decoderLowLatencyMode, String frameRateApplyResult,
+            String wifiLowLatencyMode, boolean wifiLowLatencyRequested,
+            boolean wifiLowLatencyAcquired, boolean wifiLowLatencyActive,
+            String wifiLowLatencyReleaseReason) {
         this.timestamp = timestamp;
         this.deviceModel = deviceModel;
         this.transport = transport;
@@ -73,6 +84,7 @@ public final class ReceiverStatsSnapshot {
         this.width = width;
         this.height = height;
         this.requestedFps = requestedFps;
+        this.requestedSurfaceFrameRate = requestedSurfaceFrameRate;
         this.actualAndroidDisplayRefreshRate = actualAndroidDisplayRefreshRate;
         this.receivedFps = receivedFps;
         this.decodedFps = decodedFps;
@@ -108,6 +120,12 @@ public final class ReceiverStatsSnapshot {
         this.decoderConfigureSuccess = decoderConfigureSuccess;
         this.decoderFallbackReason = decoderFallbackReason;
         this.decoderLowLatencyMode = decoderLowLatencyMode;
+        this.frameRateApplyResult = frameRateApplyResult;
+        this.wifiLowLatencyMode = wifiLowLatencyMode;
+        this.wifiLowLatencyRequested = wifiLowLatencyRequested;
+        this.wifiLowLatencyAcquired = wifiLowLatencyAcquired;
+        this.wifiLowLatencyActive = wifiLowLatencyActive;
+        this.wifiLowLatencyReleaseReason = wifiLowLatencyReleaseReason;
     }
 
     public String toJson() {
@@ -119,6 +137,7 @@ public final class ReceiverStatsSnapshot {
         values.put("width", width);
         values.put("height", height);
         values.put("requestedFps", requestedFps);
+        values.put("requestedSurfaceFrameRate", requestedSurfaceFrameRate);
         values.put("actualAndroidDisplayRefreshRate", actualAndroidDisplayRefreshRate);
         values.put("receivedFps", receivedFps);
         values.put("decodedFps", decodedFps);
@@ -154,6 +173,12 @@ public final class ReceiverStatsSnapshot {
         values.put("decoderConfigureSuccess", decoderConfigureSuccess);
         values.put("decoderFallbackReason", decoderFallbackReason);
         values.put("decoderLowLatencyMode", decoderLowLatencyMode);
+        values.put("frameRateApplyResult", safe(frameRateApplyResult));
+        values.put("wifiLowLatencyMode", safe(wifiLowLatencyMode));
+        values.put("wifiLowLatencyRequested", wifiLowLatencyRequested);
+        values.put("wifiLowLatencyAcquired", wifiLowLatencyAcquired);
+        values.put("wifiLowLatencyActive", wifiLowLatencyActive);
+        values.put("wifiLowLatencyReleaseReason", safe(wifiLowLatencyReleaseReason));
         return LengthPrefixedProtocol.statsJson(values);
     }
 

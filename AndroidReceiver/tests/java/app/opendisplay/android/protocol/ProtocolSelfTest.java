@@ -217,19 +217,22 @@ public final class ProtocolSelfTest {
     private static void testReceiverStatsJsonUsesCanonicalFieldsAndNulls() {
         ReceiverStatsSnapshot snapshot = new ReceiverStatsSnapshot(
                 1234L, "Pixel \"Tablet\"\\Pro", "usb", "hevc",
-                2560, 1600, 120, 119.88,
+                2560, 1600, 120, 120.0, 119.88,
                 118, 117, 116, null,
                 null, null, null, "estimating",
                 8.25, 9L, 6L, 14L, 20L,
                 null, null, 1, 2, 3.5, 7.5,
                 2048, 4096, 3072, 6144, 2, 3,
                 "c2.vendor.hevc.decoder", true, false, true,
-                true, true, true, "", "auto");
+                true, true, true, "", "auto",
+                "applied:streamConfig:window=120Hz,surface=onlyIfSeamless",
+                "auto", true, true, true, "");
         String json = snapshot.toJson();
         assertContains(json, "\"type\":\"stats\"");
         assertContains(json, "\"timestamp\":1234");
         assertContains(json, "\"deviceModel\":\"Pixel \\\"Tablet\\\"\\\\Pro\"");
         assertContains(json, "\"actualAndroidDisplayRefreshRate\":119.88");
+        assertContains(json, "\"requestedSurfaceFrameRate\":120.0");
         assertContains(json, "\"clockOffsetMs\":null");
         assertContains(json, "\"rttMs\":null");
         assertContains(json, "\"offsetConfidenceMs\":null");
@@ -247,6 +250,11 @@ public final class ProtocolSelfTest {
         assertContains(json, "\"lowLatencyEnabled\":true");
         assertContains(json, "\"decoderConfigureSuccess\":true");
         assertContains(json, "\"decoderLowLatencyMode\":\"auto\"");
+        assertContains(json, "\"frameRateApplyResult\":\"applied:streamConfig");
+        assertContains(json, "\"wifiLowLatencyMode\":\"auto\"");
+        assertContains(json, "\"wifiLowLatencyRequested\":true");
+        assertContains(json, "\"wifiLowLatencyAcquired\":true");
+        assertContains(json, "\"wifiLowLatencyActive\":true");
         assertFalse(json.contains("\"null\""));
     }
 

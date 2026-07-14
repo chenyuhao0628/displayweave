@@ -99,4 +99,4 @@ Hardware Decoder
 
 ## Next Step
 
-PR 6 应单独实现 Android WiFi Low-latency Lock Lifecycle，并完成 Surface Frame-rate Hint Policy，保持其为独立功耗/显示变更。
+PR 6 现已单独实现 WiFi Low-latency Lock 与 Surface Frame-rate Lifecycle，见 [WiFi 低延迟 / Surface 帧率](android-wifi-low-latency-surface-frame-rate.zh-CN.md)。PR 7 应进入 Android Drop Classification 与 Adaptive-controller Filtering。

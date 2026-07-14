@@ -9,7 +9,9 @@ struct ReceiverStats: Decodable {
     var width: Int?
     var height: Int?
     var requestedFps: Double?
+    var requestedSurfaceFrameRate: Double?
     var actualAndroidDisplayRefreshRate: Double?
+    var frameRateApplyResult: String?
     var receivedFps: Double?
     var decodedFps: Double?
     var renderedFps: Double?
@@ -44,6 +46,11 @@ struct ReceiverStats: Decodable {
     var decoderConfigureSuccess: Bool?
     var decoderFallbackReason: String?
     var decoderLowLatencyMode: String?
+    var wifiLowLatencyMode: String?
+    var wifiLowLatencyRequested: Bool?
+    var wifiLowLatencyAcquired: Bool?
+    var wifiLowLatencyActive: Bool?
+    var wifiLowLatencyReleaseReason: String?
 
     // Forward-compatible fields that may be supplied by a newer receiver.
     var actualBitrateMbps: Double?
@@ -74,7 +81,9 @@ struct BenchmarkSample {
     var resolution: BenchmarkResolution
     var requestedFps: Double
     var actualVirtualDisplayRefreshRate: Double?
+    var requestedSurfaceFrameRate: Double?
     var actualAndroidDisplayRefreshRate: Double?
+    var frameRateApplyResult: String?
     var captureFps: Double?
     var encodedFps: Double?
     var sentFps: Double?
@@ -99,6 +108,11 @@ struct BenchmarkSample {
     var decoderConfigureSuccess: Bool?
     var decoderFallbackReason: String?
     var decoderLowLatencyMode: String?
+    var wifiLowLatencyMode: String?
+    var wifiLowLatencyRequested: Bool?
+    var wifiLowLatencyAcquired: Bool?
+    var wifiLowLatencyActive: Bool?
+    var wifiLowLatencyReleaseReason: String?
     var encodeLatencyMs: Double?
     var sendToRenderEstimatedMs: Double?
     var rttMs: Double?
@@ -166,7 +180,9 @@ struct BenchmarkSample {
         self.resolution = resolution
         self.requestedFps = requestedFps
         self.actualVirtualDisplayRefreshRate = actualVirtualDisplayRefreshRate
+        requestedSurfaceFrameRate = receiver.requestedSurfaceFrameRate
         actualAndroidDisplayRefreshRate = receiver.actualAndroidDisplayRefreshRate
+        frameRateApplyResult = receiver.frameRateApplyResult
         self.captureFps = captureFps
         self.encodedFps = encodedFps
         self.sentFps = sentFps
@@ -204,6 +220,11 @@ struct BenchmarkSample {
         decoderConfigureSuccess = receiver.decoderConfigureSuccess
         decoderFallbackReason = receiver.decoderFallbackReason
         decoderLowLatencyMode = receiver.decoderLowLatencyMode
+        wifiLowLatencyMode = receiver.wifiLowLatencyMode
+        wifiLowLatencyRequested = receiver.wifiLowLatencyRequested
+        wifiLowLatencyAcquired = receiver.wifiLowLatencyAcquired
+        wifiLowLatencyActive = receiver.wifiLowLatencyActive
+        wifiLowLatencyReleaseReason = receiver.wifiLowLatencyReleaseReason
         self.encodeLatencyMs = encodeLatencyMs
         sendToRenderEstimatedMs = receiver.sendToRenderEstimatedMs
         rttMs = receiver.rttMs
@@ -230,7 +251,8 @@ struct BenchmarkSample {
     static let csvHeader = [
         "timestamp", "monotonicElapsedMs", "runId", "sessionId", "scene", "phase",
         "deviceModel", "transport", "codec", "width", "height", "requestedFps",
-        "actualVirtualDisplayRefreshRate", "actualAndroidDisplayRefreshRate", "captureFps",
+        "actualVirtualDisplayRefreshRate", "requestedSurfaceFrameRate",
+        "actualAndroidDisplayRefreshRate", "frameRateApplyResult", "captureFps",
         "encodedFps", "sentFps", "receivedFps", "decodedFps", "renderedFps",
         "targetBitrateMbps", "actualBitrateMbps", "averageFrameSize",
         "currentFrameBytes", "maxFrameBytesObserved", "currentKeyframeBytes",
@@ -238,6 +260,8 @@ struct BenchmarkSample {
         "decoderName", "hardwareAccelerated", "softwareOnly", "decoderVendor",
         "lowLatencySupported", "lowLatencyEnabled", "decoderConfigureSuccess",
         "decoderFallbackReason", "decoderLowLatencyMode",
+        "wifiLowLatencyMode", "wifiLowLatencyRequested", "wifiLowLatencyAcquired",
+        "wifiLowLatencyActive", "wifiLowLatencyReleaseReason",
         "encodeLatencyMs",
         "sendToRenderEstimatedMs", "rttMs", "clockOffsetMs", "offsetConfidenceMs",
         "clockState", "frameAgeAvgMs", "frameAgeLatestMs", "frameAgeP50Ms",
@@ -254,7 +278,9 @@ struct BenchmarkSample {
         [isoTimestamp, number(monotonicElapsedMs), runId, sessionId, scene, phase,
          deviceModel, transport, codec, String(resolution.width), String(resolution.height),
          number(requestedFps), number(actualVirtualDisplayRefreshRate),
-         number(actualAndroidDisplayRefreshRate), number(captureFps), number(encodedFps),
+         number(requestedSurfaceFrameRate), number(actualAndroidDisplayRefreshRate),
+         frameRateApplyResult ?? Self.notAvailable,
+         number(captureFps), number(encodedFps),
          number(sentFps), number(receivedFps), number(decodedFps), number(renderedFps),
          number(targetBitrateMbps), number(actualBitrateMbps), number(averageFrameSize),
          number(currentFrameBytes), number(maxFrameBytesObserved),
@@ -266,6 +292,10 @@ struct BenchmarkSample {
          boolean(decoderConfigureSuccess),
          decoderFallbackReason ?? Self.notAvailable,
          decoderLowLatencyMode ?? Self.notAvailable,
+         wifiLowLatencyMode ?? Self.notAvailable,
+         boolean(wifiLowLatencyRequested), boolean(wifiLowLatencyAcquired),
+         boolean(wifiLowLatencyActive),
+         wifiLowLatencyReleaseReason ?? Self.notAvailable,
          number(encodeLatencyMs), number(sendToRenderEstimatedMs), number(rttMs),
          number(clockOffsetMs), number(offsetConfidenceMs), clockState ?? Self.notAvailable,
          number(frameAgeAvgMs), number(frameAgeLatestMs), number(frameAgeP50Ms),
@@ -303,7 +333,9 @@ struct BenchmarkSample {
         ]
         let optional: [String: Any?] = [
             "actualVirtualDisplayRefreshRate": actualVirtualDisplayRefreshRate,
+            "requestedSurfaceFrameRate": requestedSurfaceFrameRate,
             "actualAndroidDisplayRefreshRate": actualAndroidDisplayRefreshRate,
+            "frameRateApplyResult": frameRateApplyResult,
             "captureFps": captureFps, "encodedFps": encodedFps, "sentFps": sentFps,
             "receivedFps": receivedFps, "decodedFps": decodedFps, "renderedFps": renderedFps,
             "targetBitrateMbps": targetBitrateMbps, "actualBitrateMbps": actualBitrateMbps,
@@ -323,6 +355,11 @@ struct BenchmarkSample {
             "decoderConfigureSuccess": decoderConfigureSuccess,
             "decoderFallbackReason": decoderFallbackReason,
             "decoderLowLatencyMode": decoderLowLatencyMode,
+            "wifiLowLatencyMode": wifiLowLatencyMode,
+            "wifiLowLatencyRequested": wifiLowLatencyRequested,
+            "wifiLowLatencyAcquired": wifiLowLatencyAcquired,
+            "wifiLowLatencyActive": wifiLowLatencyActive,
+            "wifiLowLatencyReleaseReason": wifiLowLatencyReleaseReason,
             "encodeLatencyMs": encodeLatencyMs,
             "sendToRenderEstimatedMs": sendToRenderEstimatedMs, "rttMs": rttMs,
             "clockOffsetMs": clockOffsetMs, "offsetConfidenceMs": offsetConfidenceMs,

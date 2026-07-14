@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Rect;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
@@ -42,6 +43,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private static final String KEY_SHOW_METRICS = "showMetrics";
     private static final String KEY_DISPLAY_PROFILE = "displayProfile";
     private static final String KEY_DECODER_LOW_LATENCY = "decoderLowLatency";
+    private static final String KEY_WIFI_LOW_LATENCY = "wifiLowLatency";
 
     private FrameLayout root;
     private SurfaceView surfaceView;
@@ -57,12 +59,16 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private String updateState = "尚未检查更新";
     private String currentStatus = "等待启动…";
     private boolean streaming;
+    private boolean foreground;
+    private String currentTransport = "unknown";
     private final ScrollGestureTracker scrollGesture = new ScrollGestureTracker();
     private TouchGestureCoordinator touchGesture;
     private StreamMetrics lastMetrics = new StreamMetrics(0, 0, 0, 0);
     private VideoStreamConfig lastStreamConfig = VideoStreamConfig.DEFAULT;
-    private float requestedSurfaceRefreshRate = 60f;
-    private String surfaceFrameRateStatus = "not requested";
+    private volatile float requestedSurfaceRefreshRate = 60f;
+    private volatile String surfaceFrameRateStatus = "notRequested";
+    private WifiLowLatencyLifecycle wifiLowLatencyLifecycle;
+    private SurfaceFrameRateLifecycle surfaceFrameRateLifecycle;
 
     @Override
     @SuppressWarnings("deprecation")
@@ -78,6 +84,20 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         }
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         updateCoordinator = createUpdateCoordinator();
+        wifiLowLatencyLifecycle = new WifiLowLatencyLifecycle(
+                Build.VERSION.SDK_INT, createWifiLowLatencyLock());
+        surfaceFrameRateLifecycle = new SurfaceFrameRateLifecycle(
+                new SurfaceFrameRateLifecycle.Actions() {
+                    @Override
+                    public void apply(int fps, String reason) {
+                        applyStreamRefreshRate(fps, reason);
+                    }
+
+                    @Override
+                    public void clear(String reason) {
+                        clearStreamRefreshRate(reason);
+                    }
+                });
         receiverLifecycle = new ReceiverLifecycleCoordinator(
                 new ReceiverLifecycleCoordinator.Actions() {
                     @Override
@@ -98,6 +118,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     @Override
     protected void onResume() {
         super.onResume();
+        foreground = true;
+        surfaceFrameRateLifecycle.onResume();
+        updateWifiLowLatencyState();
         receiverLifecycle.onResume();
         updateCoordinator.resumePendingInstall();
         updateCoordinator.check(false);
@@ -105,12 +128,17 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
 
     @Override
     protected void onPause() {
+        foreground = false;
+        updateWifiLowLatencyState();
+        surfaceFrameRateLifecycle.onPause();
         receiverLifecycle.onPause();
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
+        surfaceFrameRateLifecycle.onDestroy();
+        wifiLowLatencyLifecycle.shutdown("activityDestroyed");
         updateCoordinator.shutdown();
         receiverLifecycle.onDestroy();
         super.onDestroy();
@@ -154,6 +182,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                     setStatus("正在协商视频配置…");
                     break;
                 case DECODER_CONFIGURING:
+                    surfaceFrameRateLifecycle.onDecoderRebuild();
+                    setStatus("正在配置解码器…");
+                    break;
                 case DECODER_READY:
                     setStatus("正在配置解码器…");
                     break;
@@ -199,6 +230,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     public void onMetrics(StreamMetrics metrics) {
         runOnUiThread(() -> {
             lastMetrics = metrics;
+            currentTransport = metrics.transport == null ? "unknown" : metrics.transport;
+            updateWifiLowLatencyState();
             refreshStreamingStatus();
         });
     }
@@ -207,14 +240,37 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     public void onStreamConfig(VideoStreamConfig config) {
         runOnUiThread(() -> {
             lastStreamConfig = config;
-            requestStreamRefreshRate(config.fps);
+            surfaceFrameRateLifecycle.onStreamConfig(config.fps);
             refreshStreamingStatus();
+        });
+    }
+
+    @Override
+    public void onTransportChanged(String transport) {
+        runOnUiThread(() -> {
+            currentTransport = transport == null ? "unknown" : transport;
+            updateWifiLowLatencyState();
         });
     }
 
     @Override
     public float currentDisplayRefreshRate() {
         return currentRefreshRate();
+    }
+
+    @Override
+    public float requestedSurfaceFrameRate() {
+        return requestedSurfaceRefreshRate;
+    }
+
+    @Override
+    public String surfaceFrameRateApplyResult() {
+        return surfaceFrameRateStatus;
+    }
+
+    @Override
+    public WifiLowLatencyLifecycle.Snapshot wifiLowLatencySnapshot() {
+        return wifiLowLatencyLifecycle.snapshot();
     }
 
     @Override
@@ -268,6 +324,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             @Override
             public void surfaceCreated(SurfaceHolder holder) {
                 activeSurface = holder;
+                surfaceFrameRateLifecycle.onSurfaceCreated();
+                updateWifiLowLatencyState();
                 receiverLifecycle.onSurfaceCreated();
             }
 
@@ -276,12 +334,14 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 if (server != null) {
                     server.updateDisplay(currentDisplaySpec());
                 }
-                requestStreamRefreshRate(lastStreamConfig.fps);
+                surfaceFrameRateLifecycle.onSurfaceChanged();
             }
 
             @Override
             public void surfaceDestroyed(SurfaceHolder holder) {
+                surfaceFrameRateLifecycle.onSurfaceDestroyed();
                 activeSurface = null;
+                updateWifiLowLatencyState();
                 receiverLifecycle.onSurfaceDestroyed();
             }
         });
@@ -390,6 +450,12 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 + currentDecoderLowLatencyMode().label);
         decoderLowLatency.setOnClickListener(v -> showDecoderLowLatencyDialog());
         content.addView(decoderLowLatency, matchWrap());
+
+        Button wifiLowLatency = new Button(this);
+        wifiLowLatency.setText("WiFi 低延迟："
+                + currentWifiLowLatencyMode().label);
+        wifiLowLatency.setOnClickListener(v -> showWifiLowLatencyDialog());
+        content.addView(wifiLowLatency, matchWrap());
 
         TextView version = text("当前版本：" + installedVersionLabel()
                         + "\n更新状态：" + updateState,
@@ -545,6 +611,30 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 .show();
     }
 
+    private void showWifiLowLatencyDialog() {
+        WifiLowLatencyMode[] modes = WifiLowLatencyMode.values();
+        String[] labels = new String[modes.length];
+        int checked = 0;
+        WifiLowLatencyMode current = currentWifiLowLatencyMode();
+        for (int i = 0; i < modes.length; i++) {
+            labels[i] = modes[i].label;
+            if (modes[i] == current) {
+                checked = i;
+            }
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("WiFi 低延迟")
+                .setSingleChoiceItems(labels, checked, (dialog, which) -> {
+                    WifiLowLatencyMode selected = modes[which];
+                    prefs.edit().putString(KEY_WIFI_LOW_LATENCY, selected.key).apply();
+                    updateWifiLowLatencyState();
+                    setStatus("WiFi 低延迟已设为" + selected.label);
+                    dialog.dismiss();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
     private void showOnboardingIfNeeded() {
         if (prefs.getBoolean(KEY_ONBOARDING_DISMISSED, false)) {
             return;
@@ -588,6 +678,11 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private DecoderLowLatencyMode currentDecoderLowLatencyMode() {
         return DecoderLowLatencyMode.fromStoredValue(
                 prefs.getString(KEY_DECODER_LOW_LATENCY, null));
+    }
+
+    private WifiLowLatencyMode currentWifiLowLatencyMode() {
+        return WifiLowLatencyMode.fromStoredValue(
+                prefs.getString(KEY_WIFI_LOW_LATENCY, null));
     }
 
     private boolean hasNearbyWifiPermission() {
@@ -686,6 +781,12 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
 
     private void setStreaming(boolean streaming) {
         this.streaming = streaming;
+        if (streaming) {
+            surfaceFrameRateLifecycle.onStreamingStarted();
+        } else {
+            surfaceFrameRateLifecycle.onStreamingStopped();
+        }
+        updateWifiLowLatencyState();
         idlePanel.setVisibility(streaming ? View.GONE : View.VISIBLE);
         updateStatusOverlayVisibility();
     }
@@ -697,6 +798,10 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         StringBuilder value = new StringBuilder("正在接收");
         value.append(" · ").append(lastStreamConfig.codec.toUpperCase(Locale.US));
         value.append(" · 请求 ").append(lastStreamConfig.fps).append(" FPS");
+        if (requestedSurfaceRefreshRate > 0) {
+            value.append(" · Surface请求 ")
+                    .append(Math.round(requestedSurfaceRefreshRate)).append(" FPS");
+        }
         if (lastMetrics.receiverFps > 0) {
             value.append(" · 收 ").append(lastMetrics.receiverFps).append(" FPS");
         }
@@ -764,7 +869,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         setStatus(value.toString());
     }
 
-    private void requestStreamRefreshRate(int fps) {
+    private void applyStreamRefreshRate(int fps, String reason) {
         float target = RefreshRateController.chooseRefreshRate(
                 fps, supportedRefreshRates(), currentRefreshRate());
         requestedSurfaceRefreshRate = target;
@@ -773,23 +878,96 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         attrs.preferredRefreshRate = target;
         getWindow().setAttributes(attrs);
 
-        surfaceFrameRateStatus = "window=" + Math.round(target) + "Hz";
+        surfaceFrameRateStatus = "applied:" + reason
+                + ":window=" + Math.round(target) + "Hz";
         if (Build.VERSION.SDK_INT >= 30 && activeSurface != null) {
             try {
-                activeSurface.getSurface().setFrameRate(
-                        target,
-                        android.view.Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE);
-                surfaceFrameRateStatus += ", surface=set";
+                if (Build.VERSION.SDK_INT >= 31) {
+                    activeSurface.getSurface().setFrameRate(
+                            target,
+                            android.view.Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE,
+                            android.view.Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS);
+                } else {
+                    activeSurface.getSurface().setFrameRate(
+                            target,
+                            android.view.Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE);
+                }
+                surfaceFrameRateStatus += ",surface=onlyIfSeamless";
             } catch (RuntimeException error) {
-                surfaceFrameRateStatus += ", surface=failed:" + error.getClass().getSimpleName();
+                surfaceFrameRateStatus += ",surface=failed:" + error.getClass().getSimpleName();
             }
         } else {
-            surfaceFrameRateStatus += ", surface=unsupported";
+            surfaceFrameRateStatus += ",surface=unsupported";
         }
         android.util.Log.i("OpenDisplay", "refresh request: requestedFps=" + fps
                 + " displayRefreshRate=" + currentRefreshRate()
                 + " selectedRefreshRate=" + target
                 + " surfaceFrameRateSetResult=" + surfaceFrameRateStatus);
+    }
+
+    private void clearStreamRefreshRate(String reason) {
+        WindowManager.LayoutParams attrs = getWindow().getAttributes();
+        attrs.preferredRefreshRate = 0f;
+        getWindow().setAttributes(attrs);
+        surfaceFrameRateStatus = "cleared:" + reason + ":window";
+        if (Build.VERSION.SDK_INT >= 30 && activeSurface != null) {
+            try {
+                activeSurface.getSurface().setFrameRate(
+                        0f, android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
+                surfaceFrameRateStatus += ",surface";
+            } catch (RuntimeException error) {
+                surfaceFrameRateStatus += ",surface=failed:"
+                        + error.getClass().getSimpleName();
+            }
+        }
+    }
+
+    private WifiLowLatencyLifecycle.LockAdapter createWifiLowLatencyLock() {
+        if (Build.VERSION.SDK_INT < 29) {
+            return null;
+        }
+        WifiManager manager = (WifiManager) getApplicationContext()
+                .getSystemService(WIFI_SERVICE);
+        if (manager == null) {
+            return null;
+        }
+        WifiManager.WifiLock lock = manager.createWifiLock(
+                WifiManager.WIFI_MODE_FULL_LOW_LATENCY,
+                "DisplayWeave:WifiLowLatency");
+        lock.setReferenceCounted(false);
+        return new WifiLowLatencyLifecycle.LockAdapter() {
+            @Override
+            public boolean acquire() {
+                if (!lock.isHeld()) {
+                    lock.acquire();
+                }
+                return lock.isHeld();
+            }
+
+            @Override
+            public boolean release() {
+                if (lock.isHeld()) {
+                    lock.release();
+                }
+                return !lock.isHeld();
+            }
+
+            @Override
+            public boolean isHeld() {
+                return lock.isHeld();
+            }
+        };
+    }
+
+    private void updateWifiLowLatencyState() {
+        if (wifiLowLatencyLifecycle == null) {
+            return;
+        }
+        boolean surfaceValid = activeSurface != null
+                && activeSurface.getSurface().isValid();
+        wifiLowLatencyLifecycle.update(
+                currentWifiLowLatencyMode(), foreground, streaming,
+                surfaceValid, currentTransport);
     }
 
     private float[] supportedRefreshRates() {

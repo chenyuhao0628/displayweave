@@ -87,7 +87,11 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         void onCursorImage(byte[] png, double anchorX, double anchorY,
                            double normalizedWidth, double normalizedHeight);
         void onStreamConfig(VideoStreamConfig config);
+        void onTransportChanged(String transport);
         float currentDisplayRefreshRate();
+        float requestedSurfaceFrameRate();
+        String surfaceFrameRateApplyResult();
+        WifiLowLatencyLifecycle.Snapshot wifiLowLatencySnapshot();
         void onMetrics(StreamMetrics metrics);
     }
 
@@ -486,6 +490,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     VideoStreamConfig previousConfig = currentStreamConfig;
                     currentStreamConfig = config;
                     lastMacTransport = object.optString("transport", lastMacTransport);
+                    listener.onTransportChanged(lastMacTransport);
                     listener.onStreamConfig(config);
                     streamingGeneration = 0;
                     if (protocolSession.isNegotiatedV2()) {
@@ -957,6 +962,10 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             droppedFramesAndroid = 0;
             metricsWindowStartMs = now;
             float actualAndroidHz = listener.currentDisplayRefreshRate();
+            float requestedSurfaceFps = listener.requestedSurfaceFrameRate();
+            String frameRateApplyResult = listener.surfaceFrameRateApplyResult();
+            WifiLowLatencyLifecycle.Snapshot wifiLowLatency =
+                    listener.wifiLowLatencySnapshot();
             listener.onMetrics(new StreamMetrics(
                     receivedFps,
                     renderedFps,
@@ -993,6 +1002,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     currentStreamConfig.width,
                     currentStreamConfig.height,
                     lastMacRequestedFps,
+                    requestedSurfaceFps,
                     actualAndroidHz,
                     receivedFps,
                     decodedFps,
@@ -1027,7 +1037,14 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     runtimeInfo == null ? null : runtimeInfo.lowLatencyEnabled,
                     runtimeInfo == null ? null : runtimeInfo.configureSuccess,
                     runtimeInfo == null ? null : runtimeInfo.fallbackReason,
-                    decoderLowLatencyMode.key);
+                    decoderLowLatencyMode.key,
+                    frameRateApplyResult,
+                    wifiLowLatency == null ? "auto" : wifiLowLatency.mode,
+                    wifiLowLatency != null && wifiLowLatency.requested,
+                    wifiLowLatency != null && wifiLowLatency.acquired,
+                    wifiLowLatency != null && wifiLowLatency.active,
+                    wifiLowLatency == null
+                            ? "stateUnavailable" : wifiLowLatency.releaseReason);
             sendJson(snapshot.toJson());
         }
     }

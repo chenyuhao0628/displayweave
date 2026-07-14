@@ -38,6 +38,10 @@ USB mode never silently becomes WiFi. WiFi mode never creates an ADB forward.
 
 **Settings & Help → Decoder Low Latency** defaults to Auto. Auto/On requests MediaCodec low latency only when the actual API 30+ decoder advertises support; a rejected parameter is retried on the same decoder without low latency. Off never sets the parameter. Changing this setting rebuilds the receiver session once. See [the decoder low-latency policy](../docs/android-decoder-low-latency.md).
 
+## WiFi and display latency hints
+
+**Settings & Help → WiFi Low Latency** defaults to Auto. On API 29+, Auto/On holds `WIFI_MODE_FULL_LOW_LATENCY` only while the app is foreground, the Surface is valid, video is Streaming, and the actual Mac transport is WiFi. USB, disconnect, background, Surface loss, and app exit release it. The Surface frame-rate hint uses fixed-source and only-if-seamless behavior, is reapplied for Surface/config/decoder lifecycle events, and is cleared when streaming stops. See [WiFi low latency and Surface frame rate](../docs/android-wifi-low-latency-surface-frame-rate.md).
+
 ## Build and test
 
 ```bash

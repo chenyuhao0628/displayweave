@@ -11,7 +11,7 @@ Scope: the current working tree, including pre-existing uncommitted lifecycle an
 
 This is the phase-zero audit for the Android connection-stability and latency work. It records observed behavior before the connection-generation implementation. It does not treat configured FPS, bitrate, or refresh-rate requests as measured results. No long-duration or multi-device validation is claimed.
 
-> Implementation update (2026-07-14): PR 1 connection generation, PR 2 negotiated identity/progress, PR 3 keyframe/drop correction, PR 4 frame-size negotiation, and PR 5 decoder low-latency selection have since been implemented. The table below intentionally remains the phase-zero baseline; current behavior is documented in [frame-size negotiation](frame-size-negotiation.md) and [decoder low-latency selection](android-decoder-low-latency.md).
+> Implementation update (2026-07-14): PR 1 connection generation, PR 2 negotiated identity/progress, PR 3 keyframe/drop correction, PR 4 frame-size negotiation, PR 5 decoder low-latency selection, and PR 6 WiFi/display hints have since been implemented. The table below intentionally remains the phase-zero baseline; current behavior is documented in [frame-size negotiation](frame-size-negotiation.md), [decoder low-latency selection](android-decoder-low-latency.md), and [WiFi low latency / Surface frame rate](android-wifi-low-latency-surface-frame-rate.md).
 
 ## Executive summary
 

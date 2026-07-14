@@ -61,7 +61,9 @@ let statsJSON = """
   "width": 1920,
   "height": 1080,
   "requestedFps": 60,
+  "requestedSurfaceFrameRate": 60.0,
   "actualAndroidDisplayRefreshRate": 59.94,
+  "frameRateApplyResult": "applied:streamConfig:window=60Hz,surface=onlyIfSeamless",
   "receivedFps": 58.5,
   "decodedFps": 57.5,
   "renderedFps": 56.5,
@@ -95,7 +97,12 @@ let statsJSON = """
   "lowLatencyEnabled": true,
   "decoderConfigureSuccess": true,
   "decoderFallbackReason": "",
-  "decoderLowLatencyMode": "auto"
+  "decoderLowLatencyMode": "auto",
+  "wifiLowLatencyMode": "auto",
+  "wifiLowLatencyRequested": true,
+  "wifiLowLatencyAcquired": true,
+  "wifiLowLatencyActive": true,
+  "wifiLowLatencyReleaseReason": ""
 }
 """
 
@@ -114,6 +121,12 @@ expect(stats.decoderName == "c2.vendor.hevc.decoder" && stats.hardwareAccelerate
 expect(stats.lowLatencySupported == true && stats.lowLatencyEnabled == true,
        "decoder low-latency state decodes")
 expect(stats.decoderLowLatencyMode == "auto", "requested low-latency mode decodes")
+expect(stats.requestedSurfaceFrameRate == 60,
+       "requested Surface frame rate decodes separately")
+expect(stats.frameRateApplyResult?.contains("onlyIfSeamless") == true,
+       "Surface apply result decodes")
+expect(stats.wifiLowLatencyRequested == true && stats.wifiLowLatencyActive == true,
+       "WiFi low-latency lifecycle state decodes")
 
 let sample = BenchmarkSample(
     timestamp: Date(timeIntervalSince1970: 1_700_000_000.125),
@@ -176,6 +189,10 @@ expect(BenchmarkSample.csvHeader.contains("maxFrameBytesObserved"), "header reco
 expect(BenchmarkSample.csvHeader.contains("invalidFrameLengthCount"), "header records invalid lengths")
 expect(BenchmarkSample.csvHeader.contains("decoderName"), "header records actual decoder")
 expect(BenchmarkSample.csvHeader.contains("lowLatencyEnabled"), "header records low-latency state")
+expect(BenchmarkSample.csvHeader.contains("requestedSurfaceFrameRate"),
+       "header records requested Surface frame rate")
+expect(BenchmarkSample.csvHeader.contains("wifiLowLatencyActive"),
+       "header records WiFi low-latency active state")
 expect(BenchmarkSample.csvHeader.last == "decoderRecoveryEvent", "fixed header ends with recovery event")
 var nonFiniteSample = sample
 nonFiniteSample.macCPU = Double.infinity
@@ -220,6 +237,20 @@ expect(jsonObject["lowLatencyEnabled"] as? Bool == true, "low-latency enablement
 expect(jsonObject["decoderConfigureSuccess"] as? Bool == true, "decoder configure success is recorded")
 expect(jsonObject["decoderFallbackReason"] as? String == "", "decoder fallback reason is recorded")
 expect(jsonObject["decoderLowLatencyMode"] as? String == "auto", "requested decoder mode is recorded")
+expect(jsonObject["requestedSurfaceFrameRate"] as? Double == 60,
+       "requested Surface frame rate is recorded")
+expect((jsonObject["frameRateApplyResult"] as? String)?.contains("onlyIfSeamless") == true,
+       "Surface frame-rate apply result is recorded")
+expect(jsonObject["wifiLowLatencyMode"] as? String == "auto",
+       "WiFi low-latency mode is recorded")
+expect(jsonObject["wifiLowLatencyRequested"] as? Bool == true,
+       "WiFi low-latency request is recorded")
+expect(jsonObject["wifiLowLatencyAcquired"] as? Bool == true,
+       "WiFi low-latency ownership is recorded")
+expect(jsonObject["wifiLowLatencyActive"] as? Bool == true,
+       "WiFi low-latency lifecycle activity is recorded")
+expect(jsonObject["wifiLowLatencyReleaseReason"] as? String == "",
+       "WiFi low-latency release reason is recorded")
 expect((jsonObject["resolution"] as? [String: Any])?["width"] as? Int == 1920, "JSONL contains resolution")
 expect((jsonObject["timestamp"] as? String)?.hasSuffix("Z") == true, "wall timestamp is ISO8601")
 expect(jsonObject["monotonicElapsedMs"] as? Double == 1234.5, "monotonic elapsed is caller supplied")

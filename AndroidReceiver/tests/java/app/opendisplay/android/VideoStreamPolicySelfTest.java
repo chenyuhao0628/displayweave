@@ -35,6 +35,8 @@ public final class VideoStreamPolicySelfTest {
         testDecoderLowLatencyMode();
         testDecoderSelectionAndFallbackOrder();
         testDecoderRuntimeFailureMetrics();
+        testWifiLowLatencyLifecycle();
+        testSurfaceFrameRateLifecycle();
         testAcceptedSocketOptions();
         testWifiTransportCarriesFramedPayloads();
         testWifiTransportKeepsLegacyFrameLimit();
@@ -286,6 +288,143 @@ public final class VideoStreamPolicySelfTest {
         assertFalse(failure.lowLatencyEnabled);
         assertEquals("decoderConfigureFailed:c2.vendor.hevc.decoder:CodecException",
                 failure.fallbackReason);
+    }
+
+    private static void testWifiLowLatencyLifecycle() {
+        final class FakeLock implements WifiLowLatencyLifecycle.LockAdapter {
+            int acquireCount;
+            int releaseCount;
+            boolean held;
+
+            @Override
+            public boolean acquire() {
+                acquireCount++;
+                held = true;
+                return true;
+            }
+
+            @Override
+            public boolean release() {
+                releaseCount++;
+                held = false;
+                return true;
+            }
+
+            @Override
+            public boolean isHeld() {
+                return held;
+            }
+        }
+
+        assertEquals(WifiLowLatencyMode.AUTO,
+                WifiLowLatencyMode.fromStoredValue(null));
+        assertEquals(WifiLowLatencyMode.ON,
+                WifiLowLatencyMode.fromStoredValue("on"));
+        assertEquals(WifiLowLatencyMode.OFF,
+                WifiLowLatencyMode.fromStoredValue("off"));
+
+        FakeLock lock = new FakeLock();
+        WifiLowLatencyLifecycle lifecycle = new WifiLowLatencyLifecycle(29, lock);
+        lifecycle.update(WifiLowLatencyMode.AUTO,
+                true, true, true, "wifi");
+        assertTrue(lifecycle.snapshot().requested);
+        assertTrue(lifecycle.snapshot().acquired);
+        assertTrue(lifecycle.snapshot().active);
+        assertEquals(1, lock.acquireCount);
+
+        lifecycle.update(WifiLowLatencyMode.AUTO,
+                true, true, true, "wifi");
+        assertEquals(1, lock.acquireCount);
+
+        lifecycle.update(WifiLowLatencyMode.AUTO,
+                true, true, true, "android-adb-usb");
+        assertFalse(lifecycle.snapshot().active);
+        assertEquals("transportNotWifi", lifecycle.snapshot().releaseReason);
+        assertEquals(1, lock.releaseCount);
+
+        lifecycle.update(WifiLowLatencyMode.ON,
+                true, true, true, "wifi");
+        assertEquals(2, lock.acquireCount);
+        lifecycle.update(WifiLowLatencyMode.ON,
+                false, true, true, "wifi");
+        assertEquals("appBackground", lifecycle.snapshot().releaseReason);
+        assertEquals(2, lock.releaseCount);
+
+        lifecycle.update(WifiLowLatencyMode.OFF,
+                true, true, true, "wifi");
+        assertFalse(lifecycle.snapshot().requested);
+        assertFalse(lifecycle.snapshot().active);
+        assertEquals("disabledByUser", lifecycle.snapshot().releaseReason);
+
+        FakeLock unsupportedLock = new FakeLock();
+        WifiLowLatencyLifecycle unsupported =
+                new WifiLowLatencyLifecycle(28, unsupportedLock);
+        unsupported.update(WifiLowLatencyMode.ON,
+                true, true, true, "wifi");
+        assertEquals(0, unsupportedLock.acquireCount);
+        assertEquals("unsupportedApi", unsupported.snapshot().releaseReason);
+
+        lifecycle.update(WifiLowLatencyMode.AUTO,
+                true, true, true, "wifi");
+        lifecycle.shutdown("activityDestroyed");
+        assertFalse(lifecycle.snapshot().active);
+        assertEquals("activityDestroyed", lifecycle.snapshot().releaseReason);
+        assertEquals(3, lock.releaseCount);
+    }
+
+    private static void testSurfaceFrameRateLifecycle() {
+        final int[] applyCount = {0};
+        final int[] clearCount = {0};
+        final int[] lastFps = {0};
+        final String[] lastReason = {""};
+        SurfaceFrameRateLifecycle lifecycle = new SurfaceFrameRateLifecycle(
+                new SurfaceFrameRateLifecycle.Actions() {
+                    @Override
+                    public void apply(int fps, String reason) {
+                        applyCount[0]++;
+                        lastFps[0] = fps;
+                        lastReason[0] = reason;
+                    }
+
+                    @Override
+                    public void clear(String reason) {
+                        clearCount[0]++;
+                        lastReason[0] = reason;
+                    }
+                });
+
+        lifecycle.onResume();
+        assertEquals(0, applyCount[0]);
+        lifecycle.onSurfaceCreated();
+        assertEquals(1, applyCount[0]);
+        assertEquals(60, lastFps[0]);
+        assertEquals("surfaceCreated", lastReason[0]);
+
+        lifecycle.onStreamConfig(120);
+        assertEquals(2, applyCount[0]);
+        assertEquals(120, lastFps[0]);
+        lifecycle.onDecoderRebuild();
+        assertEquals(3, applyCount[0]);
+        assertEquals("decoderRebuild", lastReason[0]);
+
+        lifecycle.onStreamingStopped();
+        assertEquals(1, clearCount[0]);
+        lifecycle.onStreamingStopped();
+        assertEquals(1, clearCount[0]);
+        lifecycle.onStreamingStarted();
+        assertEquals(4, applyCount[0]);
+        assertEquals("streamingStarted", lastReason[0]);
+
+        lifecycle.onPause();
+        assertEquals(2, clearCount[0]);
+        assertEquals("appBackground", lastReason[0]);
+        lifecycle.onResume();
+        assertEquals(5, applyCount[0]);
+        assertEquals("foregroundResume", lastReason[0]);
+        lifecycle.onSurfaceDestroyed();
+        assertEquals(3, clearCount[0]);
+        lifecycle.onDestroy();
+        assertEquals(3, clearCount[0]);
     }
 
     private static void testMetricDistribution() {

@@ -36,6 +36,10 @@ USB 模式不会静默变成 WiFi，WiFi 模式不会创建 ADB forward。
 
 “**设置与帮助 → 解码器低延迟**”默认使用“自动”。Auto/On 只会在 API 30+ 的实际 Decoder 明确声明支持时请求 MediaCodec Low Latency；若参数被拒绝，会在同一 Decoder 上关闭 Low Latency 重试。Off 不会设置该参数。修改此设置会重建一次 Receiver Session。参见 [Decoder 低延迟策略](../docs/android-decoder-low-latency.zh-CN.md)。
 
+## WiFi 与显示延迟提示
+
+“**设置与帮助 → WiFi 低延迟**”默认使用“自动”。API 29+ 上，Auto/On 仅在 App 位于前台、Surface 有效、视频已进入 Streaming 且 Mac 实际 Transport 为 WiFi 时持有 `WIFI_MODE_FULL_LOW_LATENCY`；USB、断开、后台、Surface 丢失和 App 退出都会释放。Surface 帧率提示使用 Fixed-source 与 Only-if-seamless 行为，在 Surface/Config/Decoder 生命周期事件重应用，并在停止 Streaming 时清理。参见 [WiFi 低延迟与 Surface 帧率](../docs/android-wifi-low-latency-surface-frame-rate.zh-CN.md)。
+
 ## 构建与测试
 
 ```bash
