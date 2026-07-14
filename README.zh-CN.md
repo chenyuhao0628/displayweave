@@ -21,9 +21,9 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 
 下述真机恢复与高刷新观察来自 Preview 2 验证，继续作为既有证据；本版本没有在第二台 Android 上重新执行这些项目。
 
-## 下载 `v0.2.0-preview.4`
+## 下载 `v0.2.0-preview.5`
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.4)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.5)
 
 | 平台 | 产物 | 分发边界 |
 | --- | --- | --- |
