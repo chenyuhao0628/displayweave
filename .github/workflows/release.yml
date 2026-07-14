@@ -64,7 +64,11 @@ jobs:
         run: brew install xcodegen
 
       - name: Install DMG metadata tools
-        run: python3 -m pip install -r tools/dmg-requirements.txt
+        run: |
+          python3 -m venv "$RUNNER_TEMP/displayweave-dmg-venv"
+          "$RUNNER_TEMP/displayweave-dmg-venv/bin/python" -m pip install \
+            -r tools/dmg-requirements.txt
+          echo "$RUNNER_TEMP/displayweave-dmg-venv/bin" >> "$GITHUB_PATH"
 
       - name: Prepare release versions and Android signing
         run: |

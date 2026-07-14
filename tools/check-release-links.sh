@@ -80,6 +80,7 @@ workflow_contract=(
   "CODE_SIGNING_ALLOWED=NO"
   "if: always()"
   "actions/deploy-pages@v4"
+  "python3 -m venv"
 )
 for marker in "${workflow_contract[@]}"; do
   grep -Fq "$marker" "$workflow" || {
