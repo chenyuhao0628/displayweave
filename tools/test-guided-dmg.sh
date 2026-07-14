@@ -38,7 +38,7 @@ DMG="$TEMP/DisplayWeave-macOS.dmg"
 "$ROOT/tools/create-guided-dmg.sh" "$APP" "$DMG"
 hdiutil verify "$DMG" >/dev/null
 attach_output="$(hdiutil attach -readonly -nobrowse -mountpoint "$MOUNT" "$DMG")"
-DEVICE="$(awk 'NR == 1 { print $1 }' <<<"$attach_output")"
+DEVICE="$(awk '$1 ~ /^\/dev\// { print $1; exit }' <<<"$attach_output")"
 
 test -d "$MOUNT/DisplayWeave.app"
 test -L "$MOUNT/Applications"
