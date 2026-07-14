@@ -108,6 +108,9 @@ jobs:
           GEN_APPCAST="$(find build/preview-0.1-mac-derived/SourcePackages \
             -type f -path '*/Sparkle/bin/generate_appcast' -print -quit)"
           test -x "$GEN_APPCAST"
+          APPCAST_INPUT="$RUNNER_TEMP/displayweave-appcast-input"
+          mkdir -p "$APPCAST_INPUT"
+          cp "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-macOS.zip" "$APPCAST_INPUT/"
           printf '%s' "$SPARKLE_PRIVATE_KEY" | "$GEN_APPCAST" \
             --ed-key-file - \
             --download-url-prefix \
@@ -115,7 +118,7 @@ jobs:
             --link "https://github.com/${GITHUB_REPOSITORY}" \
             --versions "$DISPLAYWEAVE_BUILD_NUMBER" \
             -o "$DISPLAYWEAVE_OUTPUT_DIR/appcast.xml" \
-            "$DISPLAYWEAVE_OUTPUT_DIR"
+            "$APPCAST_INPUT"
 
           cd "$DISPLAYWEAVE_OUTPUT_DIR"
           shasum -a 256 \

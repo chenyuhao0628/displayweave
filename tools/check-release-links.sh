@@ -81,6 +81,7 @@ workflow_contract=(
   "if: always()"
   "actions/deploy-pages@v4"
   "python3 -m venv"
+  "displayweave-appcast-input"
 )
 for marker in "${workflow_contract[@]}"; do
   grep -Fq "$marker" "$workflow" || {
