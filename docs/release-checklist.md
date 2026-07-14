@@ -1,27 +1,27 @@
 [English](release-checklist.md) | [简体中文](release-checklist.zh-CN.md)
 
-# `v0.2.0-preview.3` release checklist
+# `v0.2.0-preview.4` release checklist
 
 ## Published identity
 
-- Release: https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.3
-- Version: `v0.2.0-preview.3`
-- Monotonic build/version code: `4`
-- Release target commit: `1f159b44f256f64da53ae2c8cc3c1b96754bcad3`
-- Public feed commit: `dbf730bd01d26df18a5717e34fb86d0b38b8809c`
-- Successful Release run: `29323273404`
-- Successful Pages run: `29323640794`
+- Release: https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.4
+- Version: `v0.2.0-preview.4`
+- Monotonic Mac build / Android version code: `5`
+- Release target commit: `f300f88e84423f2a895d8b15dc3e514362e050bc`
+- Successful Release run: `29347755688`
+- Successful build job: `87135822940`
+- Successful Pages/update-feed job: `87136937478`
 
 ## Assets and integrity
 
 | Asset | SHA-256 / check |
 | --- | --- |
-| `DisplayWeave-macOS.zip` | `32cade719d825d3f3562483cb72b9a4d65223e4b2518d54389ff2d661a1742ae` |
-| `DisplayWeave-macOS.dmg` | `68b3737f09f8d02da135aef89167896aa4057d453d65fa20861e2ae58a142a29` |
-| `DisplayWeave-Android.apk` | `98356346793932bd494a31585ff7ca788b880bd62cd6b8e2762aadc8ff0541c1` |
-| `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `7eb93eedd24e44bbabccb38ab145a2e2122e4c53bd52dbe8e9d2b3d08e21eb16` |
-| `appcast.xml` | `3606e4f32678319f1bcea1e94e97bcba1a1171a6810ed935be3b00264f4795c8` |
-| `android-update.json` | `90adbfe6345de384c8541b986673cae28c256a6cef8017e000fb93ff7cfdbf70` |
+| `DisplayWeave-macOS.zip` | `28cc452cce5168db3813834f59fbb0ad290ac7a30cba83c5f79337bb5cf36a8a` |
+| `DisplayWeave-macOS.dmg` | `a41539f180a2d1854307d70cfaa7328ec14348bdee7ce242e9e478df0f265c50` |
+| `DisplayWeave-Android.apk` | `11f3b7ce1e765aced8d1dfd255edfda83641f36db0863f37c6a948305e5c7820` |
+| `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `a43b7b99c861f9d4f60c85f0ce0bcc57e21c428fb106317df89a42fe8966d15a` |
+| `appcast.xml` | `4eedf2ce46dc4908de8b8a414f8dd860d8a09042c2cdc9c206dc360428d37049` |
+| `android-update.json` | `c225d438f89c615d167a3448016626205a20bb6d12190c58b48742283b33dceb` |
 | `SHA256SUMS.txt` | Present and covers the six files above |
 
 Android signing certificate SHA-256:
@@ -30,49 +30,40 @@ Android signing certificate SHA-256:
 89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d
 ```
 
+- [x] GitHub reports all seven immutable assets uploaded.
 - [x] Mac app is ad-hoc signed, universal, and intentionally not notarized.
 - [x] Android APK is v2 signed with one signer and the pinned certificate.
 - [x] iOS IPA is an unsigned arm64 re-signing input and is not directly installable.
-- [x] Release assets are immutable; future fixes require a higher build.
 
 ## Build and automated verification
 
-- [x] 17 Swift tests passed.
-- [x] 6 Android self-tests passed.
-- [x] Mac, iOS compatibility, and Android Release builds completed.
-- [x] Archive structure, displayed version, build/version code, update URLs,
-  byte counts, hashes, Android package identity, and signing were checked.
-- [x] Invalid Sparkle signatures, modified Android downloads, wrong package
-  identity, and non-increasing versions are rejected by the corresponding path.
+- [x] Manually dispatched workflow used `release_tag=v0.2.0-preview.4` and `build_number=5`.
+- [x] Workflow head and Release target both equal `f300f88e84423f2a895d8b15dc3e514362e050bc`.
+- [x] Mac Release and unsigned iOS compatibility builds completed.
+- [x] Android signed Release build completed: 72 actionable tasks and all six Android self-test groups passed.
+- [x] `apksigner` reported v2 signing, one signer, and the pinned certificate.
+- [x] Archive structure, displayed versions, update URLs, sizes, hashes, package identity, and signing passed `verify-update-release.sh`.
+- [x] The target commit had already passed all 22 standalone Swift tests, Android's 61-task Debug build, unsigned macOS/iOS Debug builds, and the production site/docs checks.
 
 ## Update-channel checks
 
-- [x] Live Mac feed:
-  https://chenyuhao0628.github.io/displayweave/appcast.xml
-- [x] Live Android feed:
-  https://chenyuhao0628.github.io/displayweave/android-update.json
-- [x] Mac first-install instructions disclose Gatekeeper, ad-hoc signing, and
-  lack of notarization.
-- [x] Android first-install instructions disclose unknown-source permission and
-  mandatory system confirmation; no silent installation is claimed.
-- [x] Key-loss recovery and feed rollback procedures are documented in
-  [automatic updates](automatic-updates.md).
+- [x] Live Mac feed: https://chenyuhao0628.github.io/displayweave/appcast.xml
+- [x] Live Android feed: https://chenyuhao0628.github.io/displayweave/android-update.json
+- [x] Both live files were compared byte-for-byte with their Release assets after deployment.
+- [x] Mac feed advertises short version `0.2.0-preview.4`, build `5`, ZIP size `2714987`, and the new EdDSA signature.
+- [x] Android feed advertises version code `5`, APK size `213308`, the expected package, SHA-256, minimum SDK, and pinned certificate.
+- [x] Repository `public/` feeds contain the same values so later Pages deployments cannot roll the update channel back to preview.3.
 
-## iOS/OpenDisplay compatibility
+## Compatibility and disclosure
 
-- [x] `_opensidecar._tcp` discovery and TCP port `9000` remain unchanged.
-- [x] Four-byte length-prefix framing, Annex B H.264, and legacy hello defaults
-  remain available.
-- [x] The Metal drawable synchronization fix covers the reported iPhone black
-  screen path without changing the receiver protocol.
-- [x] iOS remains outside the Mac/Android automatic-update channel.
+- [x] Legacy OpenDisplay iOS continues to use length-prefix + JSON telemetry + Annex-B H.264 unless Android-only capabilities are negotiated.
+- [x] First-install instructions disclose Gatekeeper/ad-hoc signing, Android unknown-source confirmation, and the unsigned iOS boundary.
+- [x] Release notes distinguish code/build evidence from pending physical evidence and make no unsupported latency claim.
 
 ## Deferred physical evidence
 
-- [ ] Complete a run with two Android devices.
+- [ ] Run the complete Android quick-recovery V2 matrix on attached hardware.
 - [ ] Complete a controlled same-condition USB/WiFi matrix.
+- [ ] Recheck a Legacy OpenDisplay iOS/TestFlight runtime.
+- [ ] Complete a run with two Android devices.
 - [ ] Complete the planned 30-minute and 2-hour endurance runs.
-
-The OnePlus high-refresh/recovery and iPhone observations in the
-[Preview 2 stability report](stability-test-report.md) remain prior evidence;
-they were not rerun for this publication.

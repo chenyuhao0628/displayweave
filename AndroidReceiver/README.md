@@ -10,9 +10,9 @@ The Android receiver accepts DisplayWeave video over local WiFi or a Mac-managed
 - WiFi: Mac and Android on the same trusted LAN with Nearby WiFi/Local Network discovery permission where required.
 - USB: a data-capable cable, Developer options, USB debugging, and approval of the Mac's RSA identity.
 
-## Install `v0.2.0-preview.3`
+## Install `v0.2.0-preview.4`
 
-Download `DisplayWeave-Android.apk` from [`v0.2.0-preview.3`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.3). It is an offline v2-signed release APK and does not require Google Play. Install it over the existing `app.opendisplay.android` package once. Verify `SHA256SUMS.txt` and the certificate fingerprint in [the release checklist](../docs/release-checklist.md) before installing.
+Download `DisplayWeave-Android.apk` from [`v0.2.0-preview.4`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.4). It is an offline v2-signed release APK and does not require Google Play. Install it over the existing `app.opendisplay.android` package once. Verify `SHA256SUMS.txt` and the certificate fingerprint in [the release checklist](../docs/release-checklist.md) before installing.
 
 ## Updates after the first install
 
