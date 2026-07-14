@@ -71,6 +71,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // does not break the encoded reference chain and must not force an IDR.
     // Kept tight: at 60fps each queued send is ~17ms of added latency.
     private var pendingSends = 0
+    private var nextPendingSendID: UInt64 = 0
+    private var pendingSendStartedAt: [UInt64: TimeInterval] = [:]
+    private var lastSendCompletionDelayMs: Double = 0
+    private var localEncodedFrames = 0
+    private var localSentFrames = 0
+    private var localCongestionWindowStart = ProcessInfo.processInfo.systemUptime
+    private var lastLocalOldestPendingSendAgeMs: Double = 0
+    private var lastLocalEncodedFps: Double = 0
+    private var lastLocalSentFps: Double = 0
     private var maxPendingSends: Int { SendQueuePolicy.budget(quality: quality) }
     private var dropsThisWindow = 0
     private var keyframeRequests = KeyframeRequestTracker(initialReason: .streamReconfigure)
@@ -192,6 +201,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             monitorsStarted = true
             schedulePing()
             scheduleWatchdog()
+            scheduleLocalCongestionCheck()
         }
 
         // Screen Recording permission: poll until granted. No auto-prompt at
@@ -659,12 +669,47 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         connection?.cancel()
         connection = nil
         pendingSends = 0
+        pendingSendStartedAt.removeAll()
         queue.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.connect()
         }
     }
 
     // MARK: - Liveness (ping + watchdog)
+
+    private func scheduleLocalCongestionCheck() {
+        queue.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self, !self.stopped else { return }
+            let timestamp = ProcessInfo.processInfo.systemUptime
+            let elapsed = max(timestamp - self.localCongestionWindowStart, 0.001)
+            let encodedFps = Double(self.localEncodedFrames) / elapsed
+            let sentFps = Double(self.localSentFrames) / elapsed
+            let oldestPendingAgeMs = self.pendingSendStartedAt.values.min().map {
+                max(0, (timestamp - $0) * 1_000)
+            } ?? 0
+            self.lastLocalOldestPendingSendAgeMs = oldestPendingAgeMs
+            self.lastLocalEncodedFps = encodedFps
+            self.lastLocalSentFps = sentFps
+            self.localEncodedFrames = 0
+            self.localSentFrames = 0
+            self.localCongestionWindowStart = timestamp
+
+            if self.connectionReady, let controller = self.adaptiveBitrateController,
+               let decision = controller.evaluateLocal(
+                LocalCongestionMetrics(
+                    timestamp: timestamp,
+                    pendingSends: self.pendingSends,
+                    queueBudget: self.maxPendingSends,
+                    oldestPendingSendAgeMs: oldestPendingAgeMs,
+                    encodedFps: encodedFps,
+                    sentFps: sentFps,
+                    sendCompletionDelayMs: self.lastSendCompletionDelayMs),
+                mode: self.settings.bitrateMode) {
+                self.applyAdaptiveDecision(decision)
+            }
+            self.scheduleLocalCongestionCheck()
+        }
+    }
 
     private func schedulePing() {
         queue.asyncAfter(deadline: .now() + 2.0) { [weak self] in
@@ -1126,6 +1171,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         streamBitrate = selectedBitrate(automatic: automaticBitrate, codec: preferredCodec)
         encodedFramesWindow = 0
         encodedBytesWindow = 0
+        localEncodedFrames = 0
+        localSentFrames = 0
+        localCongestionWindowStart = ProcessInfo.processInfo.systemUptime
+        lastLocalOldestPendingSendAgeMs = 0
+        lastLocalEncodedFps = 0
+        lastLocalSentFps = 0
+        lastSendCompletionDelayMs = 0
         encodeLatencyMsWindow.removeAll(keepingCapacity: true)
         encodeStatsWindowStart = Date()
 
@@ -1263,35 +1315,55 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             infoFlagsOut: nil
         ) { [weak self] status, _, buffer in
             guard let self else { return }
-            guard status == noErr, let buffer else {
-                if forcedKeyframeReason != nil {
-                    self.keyframeRequests.completeInFlightRequest(encodedKeyframe: false)
-                }
-                self.handleEncodeFailure(status: status)
-                return
-            }
-            let isKeyframe = Self.isKeyframe(buffer)
-            if forcedKeyframeReason != nil {
-                self.keyframeRequests.completeInFlightRequest(encodedKeyframe: isKeyframe)
-            }
-            if let data = self.annexB(from: buffer) {
-                // Telemetry prefix before the first start code — the receiver
-                // parses it and skips to the encoded Annex B payload. cap = capture time,
-                // snd = handoff to the socket (so cap→snd ≈ encode duration).
-                let sndMs = Int64(Date().timeIntervalSince1970 * 1000)
-                let prefix = VideoTelemetryPrefix.json(
-                    captureMs: capturedAtMs,
-                    sendMs: sndMs,
-                    identity: protocolFrameIdentity)
-                var framed = Data(prefix.utf8)
-                framed.append(data)
-                self.recordEncodedFrame(bytes: data.count, isKeyframe: isKeyframe,
-                                        latencyMs: Date().timeIntervalSince(encodeStart) * 1000)
-                self.sendFramed(framed)
-            } else {
-                self.requestKeyframe(.encodedFrameDiscarded)
+            self.queue.async {
+                self.handleEncodedFrame(
+                    status: status,
+                    buffer: buffer,
+                    forcedKeyframeReason: forcedKeyframeReason,
+                    capturedAtMs: capturedAtMs,
+                    protocolFrameIdentity: protocolFrameIdentity,
+                    encodeStart: encodeStart)
             }
         }
+    }
+
+    private func handleEncodedFrame(
+        status: OSStatus,
+        buffer: CMSampleBuffer?,
+        forcedKeyframeReason: FrameDropReason?,
+        capturedAtMs: Int64,
+        protocolFrameIdentity: StreamProtocolFrameIdentity?,
+        encodeStart: Date
+    ) {
+        guard status == noErr, let buffer else {
+            if forcedKeyframeReason != nil {
+                keyframeRequests.completeInFlightRequest(encodedKeyframe: false)
+            }
+            handleEncodeFailure(status: status)
+            return
+        }
+        let isKeyframe = Self.isKeyframe(buffer)
+        if forcedKeyframeReason != nil {
+            keyframeRequests.completeInFlightRequest(encodedKeyframe: isKeyframe)
+        }
+        guard let data = annexB(from: buffer) else {
+            requestKeyframe(.encodedFrameDiscarded)
+            return
+        }
+        // Telemetry prefix before the first start code — the receiver parses it
+        // and skips to Annex B. cap→snd approximates encode duration.
+        let sndMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let prefix = VideoTelemetryPrefix.json(
+            captureMs: capturedAtMs,
+            sendMs: sndMs,
+            identity: protocolFrameIdentity)
+        var framed = Data(prefix.utf8)
+        framed.append(data)
+        recordEncodedFrame(
+            bytes: data.count,
+            isKeyframe: isKeyframe,
+            latencyMs: Date().timeIntervalSince(encodeStart) * 1000)
+        sendFramed(framed)
     }
 
     private func handleEncodeFailure(status: OSStatus) {
@@ -1317,6 +1389,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     }
 
     private func recordEncodedFrame(bytes: Int, isKeyframe: Bool, latencyMs: Double) {
+        localEncodedFrames += 1
         encodedFramesWindow += 1
         encodedBytesWindow += bytes
         peakFrameBytesWindow = max(peakFrameBytesWindow, bytes)
@@ -1502,15 +1575,25 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         var header = UInt32(payload.count).bigEndian
         var frame = Data(bytes: &header, count: 4)
         frame.append(payload)
+        nextPendingSendID &+= 1
+        let pendingSendID = nextPendingSendID
+        let sendStartedAt = ProcessInfo.processInfo.systemUptime
+        pendingSendStartedAt[pendingSendID] = sendStartedAt
         pendingSends += 1
         connection.send(content: frame, completion: .contentProcessed { [weak self] error in
             guard let self else { return }
-            self.pendingSends -= 1
+            let completedAt = ProcessInfo.processInfo.systemUptime
+            guard let startedAt = self.pendingSendStartedAt.removeValue(
+                forKey: pendingSendID) else { return }
+            self.lastSendCompletionDelayMs = max(
+                0, (completedAt - startedAt) * 1_000)
+            self.pendingSends = max(0, self.pendingSends - 1)
             if let error {
                 Log.info("send error: \(error)")
                 self.requestKeyframe(.transportWriteFailure)
                 return
             }
+            self.localSentFrames += 1
             self.framesSent += 1
             self.bytesSent += frame.count
             // Report stats roughly once a second.
@@ -1573,7 +1656,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         guard let controller = adaptiveBitrateController else { return }
         let decision = controller.evaluate(
             AdaptiveBitrateMetrics(
-                timestamp: Date().timeIntervalSince1970,
+                timestamp: ProcessInfo.processInfo.systemUptime,
                 pendingSends: pendingSends,
                 encodedFps: Double(lastEncodedFps), sentFps: Double(lastSentFps),
                 rttMs: receiver.rttMs, frameAgeP95Ms: receiver.frameAgeP95Ms,
@@ -1583,7 +1666,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                     Int(receiver.androidCongestionDrops ?? 0), 0),
                 androidQueueDepth: max(Int(receiver.androidQueueDepth ?? 0), 0)),
             mode: settings.bitrateMode)
-        guard let decision, let encoder else { return }
+        guard let decision else { return }
+        applyAdaptiveDecision(decision)
+    }
+
+    private func applyAdaptiveDecision(_ decision: AdaptiveBitrateDecision) {
+        guard let encoder else { return }
         streamBitrate = decision.newBitrate
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_AverageBitRate,
                              value: streamBitrate as CFNumber)
@@ -1592,7 +1680,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         lastAdaptiveDecision = decision
         Task { @MainActor in onTargetBitrate?(Double(streamBitrate) / 1_000_000) }
         sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
-        Log.info("adaptive bitrate previousBitrate=\(decision.previousBitrate) newBitrate=\(decision.newBitrate) reason=\(decision.reason) networkState=\(decision.networkState.rawValue)")
+        Log.info("adaptive bitrate previousBitrate=\(decision.previousBitrate) newBitrate=\(decision.newBitrate) reason=\(decision.reason) trigger=\(decision.trigger) decisionEpoch=\(decision.decisionEpoch) networkState=\(decision.networkState.rawValue)")
     }
 
     private func appendBenchmarkSample(receiver: ReceiverStats) {
@@ -1626,6 +1714,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             previousBitrateMbps: lastAdaptiveDecision.map { Double($0.previousBitrate) / 1_000_000 },
             newBitrateMbps: lastAdaptiveDecision.map { Double($0.newBitrate) / 1_000_000 },
             bitrateChangeReason: lastAdaptiveDecision?.reason,
+            bitrateChangeTrigger: lastAdaptiveDecision?.trigger,
+            decisionEpoch: adaptiveBitrateController.map {
+                Double($0.decisionEpoch)
+            },
+            lastDecreaseReason: adaptiveBitrateController?.lastDecreaseReason,
+            lastDecreaseAt: adaptiveBitrateController?.lastDecreaseAt,
+            localOldestPendingSendAgeMs: lastLocalOldestPendingSendAgeMs,
+            localSendCompletionDelayMs: lastSendCompletionDelayMs,
+            localEncodedFps: lastLocalEncodedFps,
+            localSentFps: lastLocalSentFps,
             networkState: lastAdaptiveDecision?.networkState.rawValue,
             keyframeCount: Double(lastKeyframeCount),
             averageKeyframeSize: lastAverageKeyframeSize > 0 ? Double(lastAverageKeyframeSize) : nil,

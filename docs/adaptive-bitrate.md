@@ -6,4 +6,6 @@ Auto evaluates receiver statistics only. Congestion reduces the target by 20% af
 
 Runtime changes update VideoToolbox `AverageBitRate` and `DataRateLimits`, then send a new `streamConfig`; they do not rebuild the encoder. Logs and benchmark rows keep target and actual bitrate separate and record previous target, new target, reason, and network state.
 
+The Mac also samples local send pressure every 200 ms. Two consecutive full-queue or rising-oldest-age samples can issue a bounded 12% `localFastDecrease`. Local, receiver, and stable-recovery decisions share one decrease hold and decision epoch; see [local fast congestion decrease](mac-local-fast-congestion-decrease.md).
+
 The controller and serialization paths have automated coverage. Physical congestion/recovery testing is still required before treating the thresholds as final.

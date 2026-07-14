@@ -26,6 +26,7 @@ pairs=(
   "docs/development-preview.md:docs/development-preview.zh-CN.md"
   "docs/frame-size-negotiation.md:docs/frame-size-negotiation.zh-CN.md"
   "docs/latency-measurement.md:docs/latency-measurement.zh-CN.md"
+  "docs/mac-local-fast-congestion-decrease.md:docs/mac-local-fast-congestion-decrease.zh-CN.md"
   "docs/performance-metrics-audit.md:docs/performance-metrics-audit.zh-CN.md"
   "docs/release-checklist.md:docs/release-checklist.zh-CN.md"
   "docs/release-notes-v0.2.0-preview.1.md:docs/release-notes-v0.2.0-preview.1.zh-CN.md"

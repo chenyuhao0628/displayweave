@@ -170,7 +170,15 @@ let sample = BenchmarkSample(
     actualBitrateMbps: 18.25,
     previousBitrateMbps: 24,
     newBitrateMbps: 20,
-    bitrateChangeReason: "pending-sends",
+    bitrateChangeReason: "localFastDecrease",
+    bitrateChangeTrigger: "pending-budget",
+    decisionEpoch: 3,
+    lastDecreaseReason: "localFastDecrease",
+    lastDecreaseAt: 1_700_000_000.2,
+    localOldestPendingSendAgeMs: 32,
+    localSendCompletionDelayMs: 18,
+    localEncodedFps: 60,
+    localSentFps: 50,
     networkState: "congested",
     keyframeCount: 2,
     averageKeyframeSize: 125_000,
@@ -218,6 +226,12 @@ expect(BenchmarkSample.csvHeader.contains("androidDropCountsWindow"),
        "header records Android drop reasons")
 expect(BenchmarkSample.csvHeader.contains("androidLastDropFrameSequence"),
        "header records Android drop identity context")
+expect(BenchmarkSample.csvHeader.contains("bitrateChangeTrigger"),
+       "header records fast-decrease trigger")
+expect(BenchmarkSample.csvHeader.contains("decisionEpoch"),
+       "header records unified decision identity")
+expect(BenchmarkSample.csvHeader.contains("localOldestPendingSendAgeMs"),
+       "header records local queue age")
 expect(BenchmarkSample.csvHeader.last == "decoderRecoveryEvent", "fixed header ends with recovery event")
 var nonFiniteSample = sample
 nonFiniteSample.macCPU = Double.infinity
@@ -239,7 +253,8 @@ expect(jsonObject["targetBitrateMbps"] as? Double == 20, "target bitrate stays c
 expect(jsonObject["actualBitrateMbps"] as? Double == 18.25, "actual bitrate stays measured")
 expect(jsonObject["previousBitrateMbps"] as? Double == 24, "previous adaptive target is recorded")
 expect(jsonObject["newBitrateMbps"] as? Double == 20, "new adaptive target is recorded")
-expect(jsonObject["bitrateChangeReason"] as? String == "pending-sends", "adaptive reason is recorded")
+expect(jsonObject["bitrateChangeReason"] as? String == "localFastDecrease",
+       "adaptive decision source is recorded")
 expect(jsonObject["networkState"] as? String == "congested", "adaptive state is recorded")
 expect(jsonObject["keyframeCount"] as? Double == 2, "keyframe count is recorded")
 expect(jsonObject["keyframeRequestReason"] as? String == "reconnect", "keyframe request reason is recorded")
@@ -282,6 +297,12 @@ expect(jsonObject["androidCongestionDrops"] as? Double == 2,
        "congestion-relevant Android drops are recorded")
 expect(jsonObject["androidLastDropFrameSequence"] as? Double == 44,
        "Android last-drop identity is recorded")
+expect(jsonObject["bitrateChangeTrigger"] as? String == "pending-budget",
+       "local fast-decrease trigger is recorded")
+expect(jsonObject["decisionEpoch"] as? Double == 3,
+       "decision epoch is recorded")
+expect(jsonObject["localOldestPendingSendAgeMs"] as? Double == 32,
+       "oldest pending-send age is recorded")
 expect((jsonObject["resolution"] as? [String: Any])?["width"] as? Int == 1920, "JSONL contains resolution")
 expect((jsonObject["timestamp"] as? String)?.hasSuffix("Z") == true, "wall timestamp is ISO8601")
 expect(jsonObject["monotonicElapsedMs"] as? Double == 1234.5, "monotonic elapsed is caller supplied")

@@ -167,6 +167,14 @@ struct BenchmarkSample {
     var previousBitrateMbps: Double?
     var newBitrateMbps: Double?
     var bitrateChangeReason: String?
+    var bitrateChangeTrigger: String?
+    var decisionEpoch: Double?
+    var lastDecreaseReason: String?
+    var lastDecreaseAt: Double?
+    var localOldestPendingSendAgeMs: Double?
+    var localSendCompletionDelayMs: Double?
+    var localEncodedFps: Double?
+    var localSentFps: Double?
     var networkState: String?
     var keyframeCount: Double?
     var averageKeyframeSize: Double?
@@ -186,7 +194,16 @@ struct BenchmarkSample {
          sentFps: Double?, receiver: ReceiverStats, targetBitrateMbps: Double?,
          actualBitrateMbps: Double? = nil,
          previousBitrateMbps: Double? = nil, newBitrateMbps: Double? = nil,
-         bitrateChangeReason: String? = nil, networkState: String? = nil,
+         bitrateChangeReason: String? = nil,
+         bitrateChangeTrigger: String? = nil,
+         decisionEpoch: Double? = nil,
+         lastDecreaseReason: String? = nil,
+         lastDecreaseAt: Double? = nil,
+         localOldestPendingSendAgeMs: Double? = nil,
+         localSendCompletionDelayMs: Double? = nil,
+         localEncodedFps: Double? = nil,
+         localSentFps: Double? = nil,
+         networkState: String? = nil,
          keyframeCount: Double? = nil, averageKeyframeSize: Double? = nil,
          peakFrameSize: Double? = nil, keyframeQueueDepth: Double? = nil,
          keyframeFrameAgeP95Ms: Double? = nil,
@@ -224,6 +241,14 @@ struct BenchmarkSample {
         self.previousBitrateMbps = previousBitrateMbps
         self.newBitrateMbps = newBitrateMbps
         self.bitrateChangeReason = bitrateChangeReason
+        self.bitrateChangeTrigger = bitrateChangeTrigger
+        self.decisionEpoch = decisionEpoch
+        self.lastDecreaseReason = lastDecreaseReason
+        self.lastDecreaseAt = lastDecreaseAt
+        self.localOldestPendingSendAgeMs = localOldestPendingSendAgeMs
+        self.localSendCompletionDelayMs = localSendCompletionDelayMs
+        self.localEncodedFps = localEncodedFps
+        self.localSentFps = localSentFps
         self.networkState = networkState
         self.keyframeCount = keyframeCount
         self.averageKeyframeSize = averageKeyframeSize
@@ -317,7 +342,10 @@ struct BenchmarkSample {
         "androidLastDropFrameSequence", "androidLastDropCodec",
         "androidLastDropTransport", "inputP50Ms", "inputP95Ms",
         "macCPU", "macMemory", "previousBitrateMbps", "newBitrateMbps",
-        "bitrateChangeReason", "networkState", "keyframeCount", "averageKeyframeSize",
+        "bitrateChangeReason", "bitrateChangeTrigger", "decisionEpoch",
+        "lastDecreaseReason", "lastDecreaseAt", "localOldestPendingSendAgeMs",
+        "localSendCompletionDelayMs", "localEncodedFps", "localSentFps",
+        "networkState", "keyframeCount", "averageKeyframeSize",
         "peakFrameSize", "keyframeQueueDepth", "keyframeFrameAgeP95Ms",
         "keyframeRequestReason", "keyframeRequestCount", "keyframeCoalescedCount",
         "decoderRecoveryEvent"
@@ -360,7 +388,12 @@ struct BenchmarkSample {
          androidLastDropTransport ?? Self.notAvailable,
          number(inputP50Ms), number(inputP95Ms), number(macCPU),
          number(macMemory), number(previousBitrateMbps), number(newBitrateMbps),
-         bitrateChangeReason ?? Self.notAvailable, networkState ?? Self.notAvailable,
+         bitrateChangeReason ?? Self.notAvailable,
+         bitrateChangeTrigger ?? Self.notAvailable, number(decisionEpoch),
+         lastDecreaseReason ?? Self.notAvailable, number(lastDecreaseAt),
+         number(localOldestPendingSendAgeMs), number(localSendCompletionDelayMs),
+         number(localEncodedFps), number(localSentFps),
+         networkState ?? Self.notAvailable,
          number(keyframeCount), number(averageKeyframeSize), number(peakFrameSize),
          number(keyframeQueueDepth), number(keyframeFrameAgeP95Ms),
          keyframeRequestReason ?? Self.notAvailable, number(keyframeRequestCount),
@@ -442,7 +475,16 @@ struct BenchmarkSample {
             "inputP50Ms": inputP50Ms, "inputP95Ms": inputP95Ms,
             "macCPU": macCPU, "macMemory": macMemory,
             "previousBitrateMbps": previousBitrateMbps, "newBitrateMbps": newBitrateMbps,
-            "bitrateChangeReason": bitrateChangeReason, "networkState": networkState,
+            "bitrateChangeReason": bitrateChangeReason,
+            "bitrateChangeTrigger": bitrateChangeTrigger,
+            "decisionEpoch": decisionEpoch,
+            "lastDecreaseReason": lastDecreaseReason,
+            "lastDecreaseAt": lastDecreaseAt,
+            "localOldestPendingSendAgeMs": localOldestPendingSendAgeMs,
+            "localSendCompletionDelayMs": localSendCompletionDelayMs,
+            "localEncodedFps": localEncodedFps,
+            "localSentFps": localSentFps,
+            "networkState": networkState,
             "keyframeCount": keyframeCount, "averageKeyframeSize": averageKeyframeSize,
             "peakFrameSize": peakFrameSize, "keyframeQueueDepth": keyframeQueueDepth,
             "keyframeFrameAgeP95Ms": keyframeFrameAgeP95Ms,

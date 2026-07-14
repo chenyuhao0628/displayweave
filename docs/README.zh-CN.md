@@ -15,7 +15,7 @@
 - [短时 Benchmark 指南](benchmark-guide.zh-CN.md)
 - [延迟测量](latency-measurement.zh-CN.md)
 - [USB/WiFi Benchmark 规程](usb-vs-wifi-benchmark.zh-CN.md)
-- [码率模式](bitrate-modes.zh-CN.md)、[自适应码率](adaptive-bitrate.zh-CN.md)、[队列分析](low-latency-queue-analysis.zh-CN.md)与[关键帧策略](keyframe-strategy.zh-CN.md)
+- [码率模式](bitrate-modes.zh-CN.md)、[自适应码率](adaptive-bitrate.zh-CN.md)、[本地快速拥塞下降](mac-local-fast-congestion-decrease.zh-CN.md)、[队列分析](low-latency-queue-analysis.zh-CN.md)与[关键帧策略](keyframe-strategy.zh-CN.md)
 - [短时 USB/WiFi 证据](usb-vs-wifi-short-benchmark.zh-CN.md)、[快速恢复清单](quick-recovery-checklist.zh-CN.md)与[多设备架构审计](multi-device-architecture-audit.zh-CN.md)
 - [路线图与验收](roadmap-and-acceptance.zh-CN.md)
 - [Android 高刷新迁移证据](120hz-migration-plan.zh-CN.md)

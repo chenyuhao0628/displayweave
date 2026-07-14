@@ -15,7 +15,7 @@
 - [Short benchmark guide](benchmark-guide.md)
 - [Latency measurement](latency-measurement.md)
 - [USB versus WiFi benchmark protocol](usb-vs-wifi-benchmark.md)
-- [Bitrate modes](bitrate-modes.md), [adaptive bitrate](adaptive-bitrate.md), [queue analysis](low-latency-queue-analysis.md), and [keyframe strategy](keyframe-strategy.md)
+- [Bitrate modes](bitrate-modes.md), [adaptive bitrate](adaptive-bitrate.md), [local fast congestion decrease](mac-local-fast-congestion-decrease.md), [queue analysis](low-latency-queue-analysis.md), and [keyframe strategy](keyframe-strategy.md)
 - [Short USB/WiFi evidence](usb-vs-wifi-short-benchmark.md), [quick recovery checklist](quick-recovery-checklist.md), and [multi-device architecture audit](multi-device-architecture-audit.md)
 - [Roadmap and acceptance](roadmap-and-acceptance.md)
 - [Android high-refresh migration evidence](120hz-migration-plan.md)

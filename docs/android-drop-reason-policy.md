@@ -92,4 +92,4 @@ No Android device was attached during implementation, so build success is not ph
 
 ## Next step
 
-PR 8 should add the 100–250 ms Mac-local decrease-only congestion path with shared decrease hold/decision identity so the receiver loop cannot double-decrease the same event.
+Implemented in [PR 8's local fast congestion policy](mac-local-fast-congestion-decrease.md). PR 9 should design/test the negotiated Android binary frame header and allocation reductions.

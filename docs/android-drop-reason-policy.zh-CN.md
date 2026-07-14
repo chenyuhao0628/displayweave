@@ -92,4 +92,4 @@ Auto Bitrate 不再因为 `androidDroppedFrames > 0` 就下降。只有连续两
 
 ## Next Step
 
-PR 8 应增加 100～250 ms Mac 本地只降不升的拥塞通道，并共享 Decrease Hold/Decision Identity，避免 Receiver Loop 对同一事件重复下降。
+已由 [PR 8 本地快速拥塞策略](mac-local-fast-congestion-decrease.zh-CN.md)实现。PR 9 应设计/测试协商式 Android Binary Frame Header 与分配优化。
