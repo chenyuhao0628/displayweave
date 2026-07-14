@@ -21,13 +21,14 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 
 下述真机恢复与高刷新观察来自 Preview 2 验证，继续作为既有证据；本版本没有在第二台 Android 上重新执行这些项目。
 
-## 下载 `v0.2.0-preview.2`
+## 下载 `v0.2.0-preview.3`
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.2)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.3)
 
 | 平台 | 产物 | 分发边界 |
 | --- | --- | --- |
-| macOS | `DisplayWeave-macOS.zip` | ad-hoc 签名且未公证；首个支持更新的版本需手动安装 |
+| macOS | `DisplayWeave-macOS.dmg` | 推荐的引导式首次安装包；ad-hoc 签名且未公证 |
+| macOS 更新 | `DisplayWeave-macOS.zip` | Sparkle 更新包，也可作为等价的手动安装选项 |
 | Android | `DisplayWeave-Android.apk` | 离线 v2 签名 APK；后续应用内下载会先验证，再由系统确认 |
 | iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | 未签名自签输入包，不能直接安装 |
 | Mac 更新源 | `appcast.xml` | 由 Mac 应用内置公钥认证的 Sparkle 更新源 |
@@ -36,12 +37,11 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 
 这是开发预览版，不是生产签名的商店版本。使用前请验证校验和；Android 用户还应核对[发布检查清单](docs/release-checklist.zh-CN.md)中的证书指纹。
 
-新的 Mac 打包流程会在后续 Release 中同时生成 `DisplayWeave-macOS.dmg`
-和 ZIP。DMG 是推荐的首次安装包：把 DisplayWeave 拖入“应用程序”，并按照背景中
+新的 Mac 打包流程会同时生成 `DisplayWeave-macOS.dmg` 和 ZIP。DMG 是推荐的
+首次安装包：把 DisplayWeave 拖入“应用程序”，并按照背景中
 显示的首次运行说明操作。ZIP 继续作为 Sparkle 更新包，也可以手动解压安装。两种
 容器里是同一个 `DisplayWeave.app`，放入 `/Applications` 后都能收到后续 Sparkle
-更新。当前已经发布的 `v0.2.0-preview.2` 早于 DMG 产物，因此上方历史表格仍如实
-只列出 ZIP。
+更新。
 
 新版 Mac 构建使用 DisplayWeave 自有应用身份。设置会从旧 OpenDisplay/OpenSidecar 偏好域迁移，但升级后需要在 macOS 重新授予屏幕录制、辅助功能和本地网络权限。
 

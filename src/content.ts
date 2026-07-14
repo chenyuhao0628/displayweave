@@ -1,7 +1,7 @@
 export type Locale = "en" | "zh"
 export type EvidenceState = "verified" | "experimental" | "deferred"
 
-export const releaseTag = "v0.2.0-preview.2"
+export const releaseTag = "v0.2.0-preview.3"
 export const releaseBase = `https://github.com/chenyuhao0628/displayweave/releases/download/${releaseTag}`
 
 export type ReleaseAsset = {
@@ -34,13 +34,13 @@ export type SiteCopy = {
 }
 
 const enAssets: ReleaseAsset[] = [
-  { platform: "macOS", role: "Sender", title: "Update-capable Mac sender", file: "DisplayWeave-macOS.zip", description: "Install manually once; later releases use EdDSA-authenticated Sparkle updates. Ad-hoc signed, not notarized, and may require Gatekeeper approval.", action: "Download macOS ZIP" },
+  { platform: "macOS", role: "Sender", title: "Guided Mac first install", file: "DisplayWeave-macOS.dmg", description: "Drag DisplayWeave into Applications; later releases use EdDSA-authenticated Sparkle updates. Ad-hoc signed, not notarized, and may require Gatekeeper approval.", action: "Download macOS DMG" },
   { platform: "Android", role: "Receiver", title: "Verified in-app updates", file: "DisplayWeave-Android.apk", description: "Install over the existing app once. Later downloads are checked by size, hash, package, version, SDK, and pinned signing certificate before system confirmation.", action: "Download Android APK" },
   { platform: "iOS / iPadOS", role: "Receiver input", title: "Unsigned re-signing input", file: "DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa", description: "Not directly installable. You must lawfully sign it with your own Apple identity before device installation.", action: "Download re-signing input" },
 ]
 
 const zhAssets: ReleaseAsset[] = [
-  { platform: "macOS", role: "发送端", title: "支持更新的 Mac 发送端", file: "DisplayWeave-macOS.zip", description: "首次手动安装，后续版本使用 EdDSA 认证的 Sparkle 更新。应用为 ad-hoc 签名、未公证，可能需要手动允许 Gatekeeper。", action: "下载 macOS ZIP" },
+  { platform: "macOS", role: "发送端", title: "带引导的 Mac 首次安装", file: "DisplayWeave-macOS.dmg", description: "把 DisplayWeave 拖入“应用程序”，后续版本使用 EdDSA 认证的 Sparkle 更新。应用为 ad-hoc 签名、未公证，可能需要手动允许 Gatekeeper。", action: "下载 macOS DMG" },
   { platform: "Android", role: "接收端", title: "已验证的应用内更新", file: "DisplayWeave-Android.apk", description: "首次覆盖安装到现有应用；后续下载会校验大小、哈希、包名、版本、SDK 和固定签名证书，再由系统确认。", action: "下载 Android APK" },
   { platform: "iOS / iPadOS", role: "接收端输入包", title: "未签名自签输入包", file: "DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa", description: "不能直接安装；需使用你自己的 Apple 身份依法签名后才能安装到设备。", action: "下载自签输入包" },
 ]

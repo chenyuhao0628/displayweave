@@ -23,13 +23,14 @@ The physical-device recovery and high-refresh observations below were recorded
 during Preview 2 validation and remain prior evidence; they were not rerun on a
 second Android device for this release.
 
-## Download `v0.2.0-preview.2`
+## Download `v0.2.0-preview.3`
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.2)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.3)
 
 | Platform | Asset | Distribution boundary |
 | --- | --- | --- |
-| macOS | `DisplayWeave-macOS.zip` | Ad-hoc signed and not notarized; first update-capable build is installed manually |
+| macOS | `DisplayWeave-macOS.dmg` | Recommended guided first-install package; ad-hoc signed and not notarized |
+| macOS update | `DisplayWeave-macOS.zip` | Sparkle update payload and equivalent manual install option |
 | Android | `DisplayWeave-Android.apk` | Offline v2-signed APK; future in-app downloads are verified before system confirmation |
 | iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | Unsigned re-signing input; cannot be installed directly |
 | Mac feed | `appcast.xml` | Sparkle feed authenticated by the public key embedded in the Mac app |
@@ -38,14 +39,12 @@ second Android device for this release.
 
 This is a development preview, not a production-signed store release. Verify the checksum before use. Android users should also compare the certificate fingerprint in the [release checklist](docs/release-checklist.md).
 
-The guided Mac packaging flow now produces `DisplayWeave-macOS.dmg` beside the
-ZIP for future releases. The DMG is the recommended first-install package: drag
+The guided Mac packaging flow produces `DisplayWeave-macOS.dmg` beside the ZIP.
+The DMG is the recommended first-install package: drag
 DisplayWeave into Applications and follow the first-run guidance shown in its
 background. The ZIP remains the Sparkle update payload and an equivalent manual
 install option. Both containers hold the same `DisplayWeave.app`, so either
 installation receives later Sparkle updates after the app is in `/Applications`.
-The currently published `v0.2.0-preview.2` release predates the DMG asset and
-therefore keeps the historical ZIP-only table above.
 
 The refreshed Mac build uses a DisplayWeave-owned application identity. Settings migrate from the legacy OpenDisplay/OpenSidecar preference domains, but macOS will require Screen Recording, Accessibility, and Local Network permission to be granted again after the upgrade.
 

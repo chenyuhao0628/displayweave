@@ -11,11 +11,10 @@ DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases an
 - Android artifact: `DisplayWeave-Android.apk`
 
 The current migration release is
-[`v0.2.0-preview.2`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.2).
+[`v0.2.0-preview.3`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.3).
 Older builds cannot discover this channel by themselves: install this release
 manually once, then use automatic updates for later versions.
-The published `v0.2.0-preview.2` migration release has the ZIP but predates the
-guided DMG asset; later releases built by the current workflow include both.
+This release includes both the guided DMG and the Sparkle ZIP payload.
 
 The Mac build is ad-hoc signed and not notarized. Sparkle authenticates its ZIP with the embedded EdDSA public key, so subsequent updates can be verified without Apple Developer Program credentials. This does not make the first download Gatekeeper-trusted or equivalent to a notarized release.
 
@@ -54,7 +53,8 @@ Run the **Release** workflow. The first run may create or update the release-ple
 2. generates an EdDSA-signed appcast and a pinned-certificate Android JSON feed;
 3. verifies versions, hashes, archive structure, and Android signing;
 4. uploads immutable assets; and
-5. commits both feeds under `public/` and dispatches the Pages workflow.
+5. passes both signed feeds to a protected Pages deployment job without a bot
+   commit to `main`.
 
 Do not replace or use `--clobber` on a published update asset. Publish a new, higher build number for every correction.
 

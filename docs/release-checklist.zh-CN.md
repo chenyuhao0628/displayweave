@@ -1,26 +1,28 @@
 [English](release-checklist.md) | [简体中文](release-checklist.zh-CN.md)
 
-# `v0.2.0-preview.2` 发布检查清单
+# `v0.2.0-preview.3` 发布检查清单
 
 ## 已发布身份
 
-- Release：https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.2
-- 版本：`v0.2.0-preview.2`
-- 单调递增 build/version code：`3`
-- Release 目标提交：`adcc576f0b8667385b35ae04a76e8d5b9848c721`
-- 公开更新源提交：`66d2dcfaa26297cc4e3cb7059e367a018eaa74ad`
-- 成功的 Pages run：`29300403928`
+- Release：https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.3
+- 版本：`v0.2.0-preview.3`
+- 单调递增 build/version code：`4`
+- Release 目标提交：`1f159b44f256f64da53ae2c8cc3c1b96754bcad3`
+- 公开更新源提交：`dbf730bd01d26df18a5717e34fb86d0b38b8809c`
+- 成功的 Release run：`29323273404`
+- 成功的 Pages run：`29323640794`
 
 ## 产物与完整性
 
 | 产物 | SHA-256 / 检查 |
 | --- | --- |
-| `DisplayWeave-macOS.zip` | `0c0bbd61625a90ef5264097da3f25db0d77c1383421e506a97aab0c6eb50b501` |
-| `DisplayWeave-Android.apk` | `04a7433deb4fa893ef95f216d9b4e35e01ff5466bda56d801b88792b0122b2e1` |
-| `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `7a188576fec361daff62efbbb978f9800ae4fac55d269ffbfecb1806646289f4` |
-| `appcast.xml` | `523252198c6bbd987281a9a60225576a53ba18e1f6421fbb2604be837868ec1f` |
-| `android-update.json` | `25764708231ddcbc3f8eb7796a7ce8a9108ca10a9bee06665ccba2c49da09bd1` |
-| `SHA256SUMS.txt` | 已存在并覆盖以上五个文件 |
+| `DisplayWeave-macOS.zip` | `32cade719d825d3f3562483cb72b9a4d65223e4b2518d54389ff2d661a1742ae` |
+| `DisplayWeave-macOS.dmg` | `68b3737f09f8d02da135aef89167896aa4057d453d65fa20861e2ae58a142a29` |
+| `DisplayWeave-Android.apk` | `98356346793932bd494a31585ff7ca788b880bd62cd6b8e2762aadc8ff0541c1` |
+| `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `7eb93eedd24e44bbabccb38ab145a2e2122e4c53bd52dbe8e9d2b3d08e21eb16` |
+| `appcast.xml` | `3606e4f32678319f1bcea1e94e97bcba1a1171a6810ed935be3b00264f4795c8` |
+| `android-update.json` | `90adbfe6345de384c8541b986673cae28c256a6cef8017e000fb93ff7cfdbf70` |
+| `SHA256SUMS.txt` | 已存在并覆盖以上六个文件 |
 
 Android 签名证书 SHA-256：
 

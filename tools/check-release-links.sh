@@ -4,26 +4,30 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
-tag="v0.2.0-preview.2"
+tag="v0.2.0-preview.3"
 assets=(
   "DisplayWeave-Android.apk"
   "DisplayWeave-macOS.zip"
+  "DisplayWeave-macOS.dmg"
   "DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa"
   "appcast.xml"
   "android-update.json"
   "SHA256SUMS.txt"
 )
 hashes=(
-  "0c0bbd61625a90ef5264097da3f25db0d77c1383421e506a97aab0c6eb50b501"
-  "04a7433deb4fa893ef95f216d9b4e35e01ff5466bda56d801b88792b0122b2e1"
-  "7a188576fec361daff62efbbb978f9800ae4fac55d269ffbfecb1806646289f4"
+  "32cade719d825d3f3562483cb72b9a4d65223e4b2518d54389ff2d661a1742ae"
+  "68b3737f09f8d02da135aef89167896aa4057d453d65fa20861e2ae58a142a29"
+  "98356346793932bd494a31585ff7ca788b880bd62cd6b8e2762aadc8ff0541c1"
+  "7eb93eedd24e44bbabccb38ab145a2e2122e4c53bd52dbe8e9d2b3d08e21eb16"
+  "3606e4f32678319f1bcea1e94e97bcba1a1171a6810ed935be3b00264f4795c8"
+  "90adbfe6345de384c8541b986673cae28c256a6cef8017e000fb93ff7cfdbf70"
 )
 sources=(
   src index.html README.md README.zh-CN.md
   AndroidReceiver/README.md AndroidReceiver/README.zh-CN.md
   docs/development-preview.md docs/development-preview.zh-CN.md
-  docs/release-notes-v0.2.0-preview.2.md
-  docs/release-notes-v0.2.0-preview.2.zh-CN.md
+  docs/release-notes-v0.2.0-preview.3.md
+  docs/release-notes-v0.2.0-preview.3.zh-CN.md
   docs/release-checklist.md docs/release-checklist.zh-CN.md
   docs/automatic-updates.md docs/automatic-updates.zh-CN.md
 )
