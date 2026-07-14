@@ -42,7 +42,7 @@ public final class H264SurfaceDecoder {
         void onDecoderConfigurationFailed(DecoderRuntimeInfo info);
         void onDecoderNeedsKeyframe();
         void onDecoderCodecFailure(String codec, String message);
-        void onDecoderFrameDropped();
+        void onDecoderFrameDropped(AndroidDropReason reason, VideoFrameTelemetry telemetry);
         void onDecoderFrameDecoded();
         void onDecoderFrameRendered(VideoFrameTelemetry telemetry);
     }
@@ -85,6 +85,16 @@ public final class H264SurfaceDecoder {
 
     public synchronized void queueFrame(byte[] wirePayload, VideoFrameTelemetry telemetry) {
         byte[] payload = AnnexB.stripTelemetryPrefix(wirePayload);
+        if (!surface.isValid()) {
+            listener.onDecoderFrameDropped(
+                    AndroidDropReason.SURFACE_UNAVAILABLE, telemetry);
+            return;
+        }
+        if (payload.length == 0 || AnnexB.nalUnits(payload).isEmpty()) {
+            listener.onDecoderFrameDropped(
+                    AndroidDropReason.MALFORMED_ANNEX_B, telemetry);
+            return;
+        }
         boolean hevc = streamConfig.isHevc();
         byte[] vps = hevc
                 ? AnnexB.findNalUnit(payload, streamConfig.vpsNalType(), true)
@@ -116,6 +126,8 @@ public final class H264SurfaceDecoder {
             } catch (IOException | RuntimeException error) {
                 String message = "解码器启动失败：" + error.getMessage();
                 listener.onDecoderStatus(message);
+                listener.onDecoderFrameDropped(
+                        AndroidDropReason.DECODER_EXCEPTION, telemetry);
                 listener.onDecoderCodecFailure(streamConfig.codec, message);
                 release();
                 return;
@@ -125,13 +137,20 @@ public final class H264SurfaceDecoder {
         try {
             int input = codec.dequeueInputBuffer(0);
             if (input < 0) {
-                listener.onDecoderFrameDropped();
+                listener.onDecoderFrameDropped(
+                        AndroidDropReason.DECODER_INPUT_UNAVAILABLE, telemetry);
                 return;
             }
             java.nio.ByteBuffer buffer = codec.getInputBuffer(input);
-            if (buffer == null || payload.length > buffer.capacity()) {
+            if (buffer == null) {
+                listener.onDecoderFrameDropped(
+                        AndroidDropReason.DECODER_INPUT_UNAVAILABLE, telemetry);
+                return;
+            }
+            if (payload.length > buffer.capacity()) {
                 listener.onDecoderStatus("视频帧过大，已丢弃");
-                listener.onDecoderFrameDropped();
+                listener.onDecoderFrameDropped(
+                        AndroidDropReason.DECODER_INPUT_OVERSIZE, telemetry);
                 return;
             }
             buffer.clear();
@@ -144,7 +163,8 @@ public final class H264SurfaceDecoder {
             drainOutput();
         } catch (IllegalStateException error) {
             listener.onDecoderStatus("解码器异常，正在请求关键帧");
-            listener.onDecoderFrameDropped();
+            listener.onDecoderFrameDropped(
+                    AndroidDropReason.DECODER_EXCEPTION, telemetry);
             release();
             listener.onDecoderNeedsKeyframe();
         }

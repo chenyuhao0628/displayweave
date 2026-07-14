@@ -37,6 +37,7 @@ public final class VideoStreamPolicySelfTest {
         testDecoderRuntimeFailureMetrics();
         testWifiLowLatencyLifecycle();
         testSurfaceFrameRateLifecycle();
+        testAndroidDropReasonClassification();
         testAcceptedSocketOptions();
         testWifiTransportCarriesFramedPayloads();
         testWifiTransportKeepsLegacyFrameLimit();
@@ -110,6 +111,14 @@ public final class VideoStreamPolicySelfTest {
         assertTrue(session.matchesIdentity(8, 12));
         assertFalse(session.matchesIdentity(8, 11));
         assertTrue(session.acceptFrame(3, telemetry(8, 12, 1)));
+        assertEquals(AndroidDropReason.STALE_CONNECTION_GENERATION,
+                session.frameRejectionReason(2, telemetry(8, 12, 2)));
+        assertEquals(AndroidDropReason.STALE_SESSION_EPOCH,
+                session.frameRejectionReason(3, telemetry(7, 12, 3)));
+        assertEquals(AndroidDropReason.STALE_CONFIG_VERSION,
+                session.frameRejectionReason(3, telemetry(8, 11, 4)));
+        assertEquals(AndroidDropReason.STALE_CONFIG_VERSION,
+                session.frameRejectionReason(3, telemetry(8, 12, 1)));
         assertFalse(session.acceptFrame(2, telemetry(8, 12, 2)));
         assertFalse(session.acceptFrame(3, telemetry(7, 12, 3)));
         assertFalse(session.acceptFrame(3, telemetry(8, 11, 4)));
@@ -126,6 +135,8 @@ public final class VideoStreamPolicySelfTest {
         assertTrue(session.acceptFrame(3, telemetry(8, 13, 1)));
 
         session.onConnected(4);
+        assertEquals(AndroidDropReason.CODEC_RECONFIGURE_DROP,
+                session.frameRejectionReason(4, telemetry(8, 12, 3)));
         assertFalse(session.acceptFrame(4, telemetry(8, 12, 3)));
         assertTrue(session.acceptStreamConfig(4, 1, 0, 0));
         assertFalse(session.isNegotiatedV2());
@@ -425,6 +436,46 @@ public final class VideoStreamPolicySelfTest {
         assertEquals(3, clearCount[0]);
         lifecycle.onDestroy();
         assertEquals(3, clearCount[0]);
+    }
+
+    private static void testAndroidDropReasonClassification() {
+        assertEquals(15, AndroidDropReason.values().length);
+        assertTrue(AndroidDropReason.LATEST_SLOT_REPLACED.congestionRelevant);
+        assertTrue(AndroidDropReason.DECODER_INPUT_UNAVAILABLE.congestionRelevant);
+        assertTrue(AndroidDropReason.FRAME_AGE_EXPIRED.congestionRelevant);
+        assertFalse(AndroidDropReason.SURFACE_UNAVAILABLE.congestionRelevant);
+        assertFalse(AndroidDropReason.STALE_CONNECTION_GENERATION.congestionRelevant);
+        assertFalse(AndroidDropReason.STALE_SESSION_EPOCH.congestionRelevant);
+        assertFalse(AndroidDropReason.STALE_CONFIG_VERSION.congestionRelevant);
+        assertFalse(AndroidDropReason.CODEC_RECONFIGURE_DROP.congestionRelevant);
+
+        AndroidDropTracker tracker = new AndroidDropTracker();
+        AndroidDropTracker.Context context = new AndroidDropTracker.Context(
+                3, 8, 12, 44, "hevc", "wifi");
+        tracker.record(AndroidDropReason.SURFACE_UNAVAILABLE, context);
+        tracker.record(AndroidDropReason.DECODER_INPUT_UNAVAILABLE, context);
+        tracker.record(AndroidDropReason.DECODER_INPUT_UNAVAILABLE, context);
+
+        AndroidDropTracker.Snapshot first = tracker.snapshotAndResetWindow();
+        assertEquals(1L, first.windowCount(AndroidDropReason.SURFACE_UNAVAILABLE));
+        assertEquals(2L, first.windowCount(AndroidDropReason.DECODER_INPUT_UNAVAILABLE));
+        assertEquals(2L, first.congestionRelevantWindowCount);
+        assertEquals(3L, first.totalDropCount);
+        assertEquals("decoderInputUnavailable", first.lastEvent.reason);
+        assertEquals(2L, first.lastEvent.countWindow);
+        assertEquals(2L, first.lastEvent.countTotal);
+        assertEquals(3L, first.lastEvent.generation);
+        assertEquals(8L, first.lastEvent.sessionEpoch);
+        assertEquals(12L, first.lastEvent.configVersion);
+        assertEquals(44L, first.lastEvent.frameSequence);
+        assertEquals("hevc", first.lastEvent.codec);
+        assertEquals("wifi", first.lastEvent.transport);
+
+        AndroidDropTracker.Snapshot second = tracker.snapshotAndResetWindow();
+        assertEquals(0L, second.windowDropCount);
+        assertEquals(3L, second.totalDropCount);
+        assertEquals(2L, second.totalCount(
+                AndroidDropReason.DECODER_INPUT_UNAVAILABLE));
     }
 
     private static void testMetricDistribution() {

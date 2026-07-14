@@ -42,6 +42,10 @@ USB mode never silently becomes WiFi. WiFi mode never creates an ADB forward.
 
 **Settings & Help → WiFi Low Latency** defaults to Auto. On API 29+, Auto/On holds `WIFI_MODE_FULL_LOW_LATENCY` only while the app is foreground, the Surface is valid, video is Streaming, and the actual Mac transport is WiFi. USB, disconnect, background, Surface loss, and app exit release it. The Surface frame-rate hint uses fixed-source and only-if-seamless behavior, is reapplied for Surface/config/decoder lifecycle events, and is cleared when streaming stops. See [WiFi low latency and Surface frame rate](../docs/android-wifi-low-latency-surface-frame-rate.md).
 
+## Drop attribution
+
+Receiver stats retain the aggregate Android drop count and also publish per-reason window/lifetime counts plus the last drop's connection/config/frame identity. Auto bitrate ignores lifecycle, stale, malformed, transport, and reconfiguration drops; classified decoder-throughput pressure must persist for two windows before it can lower bitrate. See [the Android drop-reason policy](../docs/android-drop-reason-policy.md).
+
 ## Build and test
 
 ```bash

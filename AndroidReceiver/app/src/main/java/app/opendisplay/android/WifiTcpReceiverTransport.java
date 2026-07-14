@@ -202,6 +202,8 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
             }
         } catch (IOException error) {
             if (running && isCurrent(context)) {
+                listener.onTransportDrop(
+                        context.generation, "transportReadFailure");
                 listener.onError(context.generation,
                         "连接已断开，等待 Mac 重新连接…");
             }
@@ -269,6 +271,8 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
         closeConnection(context);
         Listener activeListener = listener;
         if (activeListener != null) {
+            activeListener.onTransportDrop(
+                    context.generation, "transportWriteFailure");
             activeListener.onError(context.generation, message);
             activeListener.onDisconnected(context.generation);
         }

@@ -55,6 +55,7 @@ public final class ReceiverStatsSnapshot {
     public final boolean wifiLowLatencyAcquired;
     public final boolean wifiLowLatencyActive;
     public final String wifiLowLatencyReleaseReason;
+    public final AndroidDropTracker.Snapshot androidDropMetrics;
 
     public ReceiverStatsSnapshot(
             long timestamp, String deviceModel, String transport, String codec,
@@ -76,7 +77,8 @@ public final class ReceiverStatsSnapshot {
             String decoderLowLatencyMode, String frameRateApplyResult,
             String wifiLowLatencyMode, boolean wifiLowLatencyRequested,
             boolean wifiLowLatencyAcquired, boolean wifiLowLatencyActive,
-            String wifiLowLatencyReleaseReason) {
+            String wifiLowLatencyReleaseReason,
+            AndroidDropTracker.Snapshot androidDropMetrics) {
         this.timestamp = timestamp;
         this.deviceModel = deviceModel;
         this.transport = transport;
@@ -126,6 +128,7 @@ public final class ReceiverStatsSnapshot {
         this.wifiLowLatencyAcquired = wifiLowLatencyAcquired;
         this.wifiLowLatencyActive = wifiLowLatencyActive;
         this.wifiLowLatencyReleaseReason = wifiLowLatencyReleaseReason;
+        this.androidDropMetrics = androidDropMetrics;
     }
 
     public String toJson() {
@@ -179,6 +182,17 @@ public final class ReceiverStatsSnapshot {
         values.put("wifiLowLatencyAcquired", wifiLowLatencyAcquired);
         values.put("wifiLowLatencyActive", wifiLowLatencyActive);
         values.put("wifiLowLatencyReleaseReason", safe(wifiLowLatencyReleaseReason));
+        if (androidDropMetrics != null) {
+            values.put("androidDropCountsWindow",
+                    androidDropMetrics.windowCountsMap());
+            values.put("androidDropCountsTotal",
+                    androidDropMetrics.totalCountsMap());
+            values.put("androidCongestionDrops",
+                    androidDropMetrics.congestionRelevantWindowCount);
+            values.put("androidDropTotal", androidDropMetrics.totalDropCount);
+            values.put("androidLastDrop", androidDropMetrics.lastEvent == null
+                    ? null : androidDropMetrics.lastEvent.asMap());
+        }
         return LengthPrefixedProtocol.statsJson(values);
     }
 

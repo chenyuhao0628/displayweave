@@ -11,7 +11,7 @@
 - [Mac and Android automatic updates](automatic-updates.md)
 - [Stability and physical-device evidence](stability-test-report.md)
 - [Performance metrics audit](performance-metrics-audit.md)
-- [Android stability and latency audit](android-stability-latency-audit.md), [connection generation model](android-connection-generation.md), [Protocol V2 negotiation](android-protocol-v2-negotiation.md), [frame-size negotiation](frame-size-negotiation.md), [decoder low-latency selection](android-decoder-low-latency.md), and [WiFi low latency / Surface frame rate](android-wifi-low-latency-surface-frame-rate.md)
+- [Android stability and latency audit](android-stability-latency-audit.md), [connection generation model](android-connection-generation.md), [Protocol V2 negotiation](android-protocol-v2-negotiation.md), [frame-size negotiation](frame-size-negotiation.md), [decoder low-latency selection](android-decoder-low-latency.md), [WiFi low latency / Surface frame rate](android-wifi-low-latency-surface-frame-rate.md), and [drop-reason policy](android-drop-reason-policy.md)
 - [Short benchmark guide](benchmark-guide.md)
 - [Latency measurement](latency-measurement.md)
 - [USB versus WiFi benchmark protocol](usb-vs-wifi-benchmark.md)

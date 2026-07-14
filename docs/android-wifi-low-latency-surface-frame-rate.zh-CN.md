@@ -83,4 +83,4 @@ Receiver Stats 与 Mac CSV/JSONL 记录：
 
 ## Next Step
 
-PR 7 应增加 Android Drop-reason Classification，并过滤 Adaptive-bitrate Input，避免把 Lifecycle/Stale/Reconfiguration Drop 当成网络拥塞。
+已由 [PR 7 Drop 原因策略](android-drop-reason-policy.zh-CN.md)实现。PR 8 应增加有界的 Mac 本地快速下降通道。

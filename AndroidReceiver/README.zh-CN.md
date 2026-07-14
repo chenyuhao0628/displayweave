@@ -40,6 +40,10 @@ USB 模式不会静默变成 WiFi，WiFi 模式不会创建 ADB forward。
 
 “**设置与帮助 → WiFi 低延迟**”默认使用“自动”。API 29+ 上，Auto/On 仅在 App 位于前台、Surface 有效、视频已进入 Streaming 且 Mac 实际 Transport 为 WiFi 时持有 `WIFI_MODE_FULL_LOW_LATENCY`；USB、断开、后台、Surface 丢失和 App 退出都会释放。Surface 帧率提示使用 Fixed-source 与 Only-if-seamless 行为，在 Surface/Config/Decoder 生命周期事件重应用，并在停止 Streaming 时清理。参见 [WiFi 低延迟与 Surface 帧率](../docs/android-wifi-low-latency-surface-frame-rate.zh-CN.md)。
 
+## Drop 归因
+
+Receiver Stats 保留 Android 汇总 Drop，同时发布按原因拆分的窗口/累计计数，以及最后一次 Drop 的连接/配置/帧身份。Auto Bitrate 忽略 Lifecycle、Stale、Malformed、Transport 和 Reconfiguration Drop；已分类 Decoder Throughput Pressure 必须持续两个窗口才可降低码率。参见 [Android Drop 原因策略](../docs/android-drop-reason-policy.zh-CN.md)。
+
 ## 构建与测试
 
 ```bash

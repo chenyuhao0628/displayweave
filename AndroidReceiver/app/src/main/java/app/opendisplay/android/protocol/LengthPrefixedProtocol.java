@@ -310,20 +310,46 @@ public final class LengthPrefixedProtocol {
         StringBuilder out = new StringBuilder("{\"type\":\"stats\"");
         for (Map.Entry<String, Object> entry : values.entrySet()) {
             out.append(",\"").append(escape(entry.getKey())).append("\":");
-            Object value = entry.getValue();
-            if (value == null) {
-                out.append("null");
-            } else if (value instanceof Double && !Double.isFinite((Double) value)) {
-                out.append("null");
-            } else if (value instanceof Float && !Float.isFinite((Float) value)) {
-                out.append("null");
-            } else if (value instanceof Number || value instanceof Boolean) {
-                out.append(value);
-            } else {
-                out.append("\"").append(escape(String.valueOf(value))).append("\"");
-            }
+            appendJsonValue(out, entry.getValue());
         }
         return out.append("}").toString();
+    }
+
+    private static void appendJsonValue(StringBuilder out, Object value) {
+        if (value == null
+                || (value instanceof Double && !Double.isFinite((Double) value))
+                || (value instanceof Float && !Float.isFinite((Float) value))) {
+            out.append("null");
+        } else if (value instanceof Number || value instanceof Boolean) {
+            out.append(value);
+        } else if (value instanceof Map) {
+            out.append("{");
+            boolean first = true;
+            for (Object rawEntry : ((Map<?, ?>) value).entrySet()) {
+                Map.Entry<?, ?> entry = (Map.Entry<?, ?>) rawEntry;
+                if (!first) {
+                    out.append(",");
+                }
+                out.append("\"").append(escape(String.valueOf(entry.getKey())))
+                        .append("\":");
+                appendJsonValue(out, entry.getValue());
+                first = false;
+            }
+            out.append("}");
+        } else if (value instanceof Iterable) {
+            out.append("[");
+            boolean first = true;
+            for (Object item : (Iterable<?>) value) {
+                if (!first) {
+                    out.append(",");
+                }
+                appendJsonValue(out, item);
+                first = false;
+            }
+            out.append("]");
+        } else {
+            out.append("\"").append(escape(String.valueOf(value))).append("\"");
+        }
     }
 
     public static double nowMs() {

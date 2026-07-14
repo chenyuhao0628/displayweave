@@ -16,6 +16,7 @@ pairs=(
   "docs/automatic-updates.md:docs/automatic-updates.zh-CN.md"
   "docs/android-connection-generation.md:docs/android-connection-generation.zh-CN.md"
   "docs/android-decoder-low-latency.md:docs/android-decoder-low-latency.zh-CN.md"
+  "docs/android-drop-reason-policy.md:docs/android-drop-reason-policy.zh-CN.md"
   "docs/android-protocol-v2-negotiation.md:docs/android-protocol-v2-negotiation.zh-CN.md"
   "docs/android-stability-latency-audit.md:docs/android-stability-latency-audit.zh-CN.md"
   "docs/android-wifi-low-latency-surface-frame-rate.md:docs/android-wifi-low-latency-surface-frame-rate.zh-CN.md"

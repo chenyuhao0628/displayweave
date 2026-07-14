@@ -7,6 +7,7 @@ public interface ReceiverTransport {
         void onPayload(long generation, byte[] payload);
         default void onFrameLengthRejected(long generation, String reason,
                                            int frameBytes, int maximumBytes) {}
+        default void onTransportDrop(long generation, String reason) {}
         void onDisconnected(long generation);
         void onError(long generation, String message);
     }

@@ -12,6 +12,8 @@ import java.util.Map;
 
 import app.opendisplay.android.ControlMessageWriter;
 import app.opendisplay.android.ReceiverStatsSnapshot;
+import app.opendisplay.android.AndroidDropReason;
+import app.opendisplay.android.AndroidDropTracker;
 import app.opendisplay.android.ScrollGestureTracker;
 import app.opendisplay.android.TouchGestureCoordinator;
 import app.opendisplay.android.TouchEventMapper;
@@ -215,6 +217,10 @@ public final class ProtocolSelfTest {
     }
 
     private static void testReceiverStatsJsonUsesCanonicalFieldsAndNulls() {
+        AndroidDropTracker dropTracker = new AndroidDropTracker();
+        dropTracker.record(AndroidDropReason.DECODER_INPUT_UNAVAILABLE,
+                new AndroidDropTracker.Context(
+                        3, 8, 12, 44, "hevc", "wifi"));
         ReceiverStatsSnapshot snapshot = new ReceiverStatsSnapshot(
                 1234L, "Pixel \"Tablet\"\\Pro", "usb", "hevc",
                 2560, 1600, 120, 120.0, 119.88,
@@ -226,7 +232,8 @@ public final class ProtocolSelfTest {
                 "c2.vendor.hevc.decoder", true, false, true,
                 true, true, true, "", "auto",
                 "applied:streamConfig:window=120Hz,surface=onlyIfSeamless",
-                "auto", true, true, true, "");
+                "auto", true, true, true, "",
+                dropTracker.snapshotAndResetWindow());
         String json = snapshot.toJson();
         assertContains(json, "\"type\":\"stats\"");
         assertContains(json, "\"timestamp\":1234");
@@ -255,6 +262,12 @@ public final class ProtocolSelfTest {
         assertContains(json, "\"wifiLowLatencyRequested\":true");
         assertContains(json, "\"wifiLowLatencyAcquired\":true");
         assertContains(json, "\"wifiLowLatencyActive\":true");
+        assertContains(json, "\"androidDropCountsWindow\":{"
+                + "\"decoderInputUnavailable\":1}");
+        assertContains(json, "\"androidCongestionDrops\":1");
+        assertContains(json, "\"androidLastDrop\":{"
+                + "\"reason\":\"decoderInputUnavailable\"");
+        assertContains(json, "\"frameSequence\":44");
         assertFalse(json.contains("\"null\""));
     }
 

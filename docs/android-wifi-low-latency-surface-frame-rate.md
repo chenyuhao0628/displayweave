@@ -83,4 +83,4 @@ No Android device was attached during implementation, so no physical result is i
 
 ## Next step
 
-PR 7 should add Android drop-reason classification and filter adaptive-bitrate inputs so lifecycle/stale/reconfiguration drops are not treated as network congestion.
+Implemented in [PR 7's drop-reason policy](android-drop-reason-policy.md). PR 8 should add the bounded Mac-local fast decrease path.

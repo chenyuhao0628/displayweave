@@ -1,5 +1,17 @@
 import Foundation
 
+struct AndroidDropEvent: Decodable {
+    var reason: String
+    var countWindow: Double
+    var countTotal: Double
+    var generation: Double
+    var sessionEpoch: Double
+    var configVersion: Double
+    var frameSequence: Double
+    var codec: String
+    var transport: String
+}
+
 struct ReceiverStats: Decodable {
     var type: String
     var timestamp: Double?
@@ -29,6 +41,11 @@ struct ReceiverStats: Decodable {
     var sendToRenderEstimatedMs: Double?
     var androidQueueDepth: Double?
     var androidDroppedFrames: Double?
+    var androidDropCountsWindow: [String: Double]?
+    var androidDropCountsTotal: [String: Double]?
+    var androidCongestionDrops: Double?
+    var androidDropTotal: Double?
+    var androidLastDrop: AndroidDropEvent?
     var inputP50Ms: Double?
     var inputP95Ms: Double?
     var currentFrameBytes: Double?
@@ -130,6 +147,19 @@ struct BenchmarkSample {
     var androidQueue: Double?
     var macDrops: Double?
     var androidDrops: Double?
+    var androidDropCountsWindow: [String: Double]?
+    var androidDropCountsTotal: [String: Double]?
+    var androidCongestionDrops: Double?
+    var androidDropTotal: Double?
+    var androidLastDropReason: String?
+    var androidLastDropCountWindow: Double?
+    var androidLastDropCountTotal: Double?
+    var androidLastDropGeneration: Double?
+    var androidLastDropSessionEpoch: Double?
+    var androidLastDropConfigVersion: Double?
+    var androidLastDropFrameSequence: Double?
+    var androidLastDropCodec: String?
+    var androidLastDropTransport: String?
     var inputP50Ms: Double?
     var inputP95Ms: Double?
     var macCPU: Double?
@@ -242,6 +272,19 @@ struct BenchmarkSample {
         androidQueue = receiver.androidQueueDepth
         self.macDrops = macDrops
         androidDrops = receiver.androidDroppedFrames
+        androidDropCountsWindow = receiver.androidDropCountsWindow
+        androidDropCountsTotal = receiver.androidDropCountsTotal
+        androidCongestionDrops = receiver.androidCongestionDrops
+        androidDropTotal = receiver.androidDropTotal
+        androidLastDropReason = receiver.androidLastDrop?.reason
+        androidLastDropCountWindow = receiver.androidLastDrop?.countWindow
+        androidLastDropCountTotal = receiver.androidLastDrop?.countTotal
+        androidLastDropGeneration = receiver.androidLastDrop?.generation
+        androidLastDropSessionEpoch = receiver.androidLastDrop?.sessionEpoch
+        androidLastDropConfigVersion = receiver.androidLastDrop?.configVersion
+        androidLastDropFrameSequence = receiver.androidLastDrop?.frameSequence
+        androidLastDropCodec = receiver.androidLastDrop?.codec
+        androidLastDropTransport = receiver.androidLastDrop?.transport
         inputP50Ms = receiver.inputP50Ms
         inputP95Ms = receiver.inputP95Ms
         self.macCPU = macCPU
@@ -266,7 +309,13 @@ struct BenchmarkSample {
         "sendToRenderEstimatedMs", "rttMs", "clockOffsetMs", "offsetConfidenceMs",
         "clockState", "frameAgeAvgMs", "frameAgeLatestMs", "frameAgeP50Ms",
         "frameAgeP95Ms", "frameAgeP99Ms", "estimatedE2ELatencyMs", "pendingSends",
-        "macQueue", "androidQueue", "macDrops", "androidDrops", "inputP50Ms", "inputP95Ms",
+        "macQueue", "androidQueue", "macDrops", "androidDrops",
+        "androidDropCountsWindow", "androidDropCountsTotal", "androidCongestionDrops",
+        "androidDropTotal", "androidLastDropReason", "androidLastDropCountWindow",
+        "androidLastDropCountTotal", "androidLastDropGeneration",
+        "androidLastDropSessionEpoch", "androidLastDropConfigVersion",
+        "androidLastDropFrameSequence", "androidLastDropCodec",
+        "androidLastDropTransport", "inputP50Ms", "inputP95Ms",
         "macCPU", "macMemory", "previousBitrateMbps", "newBitrateMbps",
         "bitrateChangeReason", "networkState", "keyframeCount", "averageKeyframeSize",
         "peakFrameSize", "keyframeQueueDepth", "keyframeFrameAgeP95Ms",
@@ -301,7 +350,15 @@ struct BenchmarkSample {
          number(frameAgeAvgMs), number(frameAgeLatestMs), number(frameAgeP50Ms),
          number(frameAgeP95Ms), number(frameAgeP99Ms), number(estimatedE2ELatencyMs),
          number(pendingSends), number(macQueue), number(androidQueue), number(macDrops),
-         number(androidDrops), number(inputP50Ms), number(inputP95Ms), number(macCPU),
+         number(androidDrops), Self.dropCounts(androidDropCountsWindow),
+         Self.dropCounts(androidDropCountsTotal), number(androidCongestionDrops),
+         number(androidDropTotal), androidLastDropReason ?? Self.notAvailable,
+         number(androidLastDropCountWindow), number(androidLastDropCountTotal),
+         number(androidLastDropGeneration), number(androidLastDropSessionEpoch),
+         number(androidLastDropConfigVersion), number(androidLastDropFrameSequence),
+         androidLastDropCodec ?? Self.notAvailable,
+         androidLastDropTransport ?? Self.notAvailable,
+         number(inputP50Ms), number(inputP95Ms), number(macCPU),
          number(macMemory), number(previousBitrateMbps), number(newBitrateMbps),
          bitrateChangeReason ?? Self.notAvailable, networkState ?? Self.notAvailable,
          number(keyframeCount), number(averageKeyframeSize), number(peakFrameSize),
@@ -368,7 +425,21 @@ struct BenchmarkSample {
             "frameAgeP95Ms": frameAgeP95Ms, "frameAgeP99Ms": frameAgeP99Ms,
             "estimatedE2ELatencyMs": estimatedE2ELatencyMs, "pendingSends": pendingSends,
             "macQueue": macQueue, "androidQueue": androidQueue, "macDrops": macDrops,
-            "androidDrops": androidDrops, "inputP50Ms": inputP50Ms, "inputP95Ms": inputP95Ms,
+            "androidDrops": androidDrops,
+            "androidDropCountsWindow": androidDropCountsWindow,
+            "androidDropCountsTotal": androidDropCountsTotal,
+            "androidCongestionDrops": androidCongestionDrops,
+            "androidDropTotal": androidDropTotal,
+            "androidLastDropReason": androidLastDropReason,
+            "androidLastDropCountWindow": androidLastDropCountWindow,
+            "androidLastDropCountTotal": androidLastDropCountTotal,
+            "androidLastDropGeneration": androidLastDropGeneration,
+            "androidLastDropSessionEpoch": androidLastDropSessionEpoch,
+            "androidLastDropConfigVersion": androidLastDropConfigVersion,
+            "androidLastDropFrameSequence": androidLastDropFrameSequence,
+            "androidLastDropCodec": androidLastDropCodec,
+            "androidLastDropTransport": androidLastDropTransport,
+            "inputP50Ms": inputP50Ms, "inputP95Ms": inputP95Ms,
             "macCPU": macCPU, "macMemory": macMemory,
             "previousBitrateMbps": previousBitrateMbps, "newBitrateMbps": newBitrateMbps,
             "bitrateChangeReason": bitrateChangeReason, "networkState": networkState,
@@ -405,6 +476,14 @@ struct BenchmarkSample {
     private func boolean(_ value: Bool?) -> String {
         guard let value else { return Self.notAvailable }
         return value ? "true" : "false"
+    }
+
+    private static func dropCounts(_ counts: [String: Double]?) -> String {
+        guard let counts, !counts.isEmpty else { return notAvailable }
+        return counts.keys.sorted().map { key in
+            let value = counts[key] ?? 0
+            return "\(key)=\(String(format: "%.0f", value))"
+        }.joined(separator: ";")
     }
 
     private static func escapeCSV(_ value: String) -> String {

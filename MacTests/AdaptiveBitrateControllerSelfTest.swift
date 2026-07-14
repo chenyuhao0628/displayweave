@@ -7,10 +7,12 @@ private func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
 private func metrics(_ time: TimeInterval, pending: Int = 0, encoded: Double = 60,
                      sent: Double = 60, rtt: Double = 8, age: Double = 12,
                      macDrops: Int = 0, androidDrops: Int = 0,
+                     androidCongestionDrops: Int = 0,
                      androidQueue: Int = 0) -> AdaptiveBitrateMetrics {
     AdaptiveBitrateMetrics(timestamp: time, pendingSends: pending, encodedFps: encoded,
         sentFps: sent, rttMs: rtt, frameAgeP95Ms: age, macDrops: macDrops,
-        androidDrops: androidDrops, androidQueueDepth: androidQueue)
+        androidDrops: androidDrops, androidCongestionDrops: androidCongestionDrops,
+        androidQueueDepth: androidQueue)
 }
 
 @main
@@ -57,8 +59,24 @@ struct AdaptiveBitrateControllerSelfTest {
         _ = trends.evaluate(metrics(23, rtt: 8, age: 30), mode: .auto)
         let risingRTT = trends.evaluate(metrics(24, rtt: 20, age: 30), mode: .auto)
         expect(risingRTT?.reason == "rtt-rising", "RTT jump decreases")
-        let androidDrop = trends.evaluate(metrics(26, androidDrops: 1), mode: .auto)
-        expect(androidDrop?.reason == "android-drops", "Android drops decrease")
+        expect(trends.evaluate(metrics(26, androidDrops: 1), mode: .auto) == nil,
+               "unclassified Android drops do not imply congestion")
+        expect(trends.evaluate(metrics(27, androidDrops: 2), mode: .auto) == nil,
+               "non-congestion Android drops remain filtered")
+        expect(trends.evaluate(metrics(28, androidDrops: 1,
+                                       androidCongestionDrops: 1), mode: .auto) == nil,
+               "one congestion-related Android drop window is not sustained")
+        let androidDrop = trends.evaluate(metrics(
+            29, androidDrops: 1, androidCongestionDrops: 1), mode: .auto)
+        expect(androidDrop?.reason == "android-decoder-throughput",
+               "sustained congestion-related Android drops decrease")
+
+        let filteredRecovery = AdaptiveBitrateController(
+            initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
+        _ = filteredRecovery.evaluate(metrics(0, androidDrops: 3), mode: .auto)
+        expect(filteredRecovery.evaluate(metrics(5, androidDrops: 2), mode: .auto)?.reason
+                == "stable-5s",
+               "non-congestion Android drops do not block stable recovery")
 
         let floor = AdaptiveBitrateController(
             initialBitrate: 21_000_000, bounds: 20_000_000...100_000_000)

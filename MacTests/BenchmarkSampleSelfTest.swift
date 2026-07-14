@@ -102,7 +102,22 @@ let statsJSON = """
   "wifiLowLatencyRequested": true,
   "wifiLowLatencyAcquired": true,
   "wifiLowLatencyActive": true,
-  "wifiLowLatencyReleaseReason": ""
+  "wifiLowLatencyReleaseReason": "",
+  "androidDropCountsWindow": {"decoderInputUnavailable": 2, "surfaceUnavailable": 1},
+  "androidDropCountsTotal": {"decoderInputUnavailable": 7, "surfaceUnavailable": 3},
+  "androidCongestionDrops": 2,
+  "androidDropTotal": 10,
+  "androidLastDrop": {
+    "reason": "decoderInputUnavailable",
+    "countWindow": 2,
+    "countTotal": 7,
+    "generation": 3,
+    "sessionEpoch": 8,
+    "configVersion": 12,
+    "frameSequence": 44,
+    "codec": "hevc",
+    "transport": "wifi"
+  }
 }
 """
 
@@ -127,6 +142,12 @@ expect(stats.frameRateApplyResult?.contains("onlyIfSeamless") == true,
        "Surface apply result decodes")
 expect(stats.wifiLowLatencyRequested == true && stats.wifiLowLatencyActive == true,
        "WiFi low-latency lifecycle state decodes")
+expect(stats.androidDropCountsWindow?["decoderInputUnavailable"] == 2,
+       "Android drop reason window counts decode")
+expect(stats.androidCongestionDrops == 2,
+       "congestion-relevant Android drop count decodes")
+expect(stats.androidLastDrop?.frameSequence == 44,
+       "last Android drop context decodes")
 
 let sample = BenchmarkSample(
     timestamp: Date(timeIntervalSince1970: 1_700_000_000.125),
@@ -193,6 +214,10 @@ expect(BenchmarkSample.csvHeader.contains("requestedSurfaceFrameRate"),
        "header records requested Surface frame rate")
 expect(BenchmarkSample.csvHeader.contains("wifiLowLatencyActive"),
        "header records WiFi low-latency active state")
+expect(BenchmarkSample.csvHeader.contains("androidDropCountsWindow"),
+       "header records Android drop reasons")
+expect(BenchmarkSample.csvHeader.contains("androidLastDropFrameSequence"),
+       "header records Android drop identity context")
 expect(BenchmarkSample.csvHeader.last == "decoderRecoveryEvent", "fixed header ends with recovery event")
 var nonFiniteSample = sample
 nonFiniteSample.macCPU = Double.infinity
@@ -251,6 +276,12 @@ expect(jsonObject["wifiLowLatencyActive"] as? Bool == true,
        "WiFi low-latency lifecycle activity is recorded")
 expect(jsonObject["wifiLowLatencyReleaseReason"] as? String == "",
        "WiFi low-latency release reason is recorded")
+expect((jsonObject["androidDropCountsWindow"] as? [String: Double])?["decoderInputUnavailable"] == 2,
+       "Android drop reason counts are recorded")
+expect(jsonObject["androidCongestionDrops"] as? Double == 2,
+       "congestion-relevant Android drops are recorded")
+expect(jsonObject["androidLastDropFrameSequence"] as? Double == 44,
+       "Android last-drop identity is recorded")
 expect((jsonObject["resolution"] as? [String: Any])?["width"] as? Int == 1920, "JSONL contains resolution")
 expect((jsonObject["timestamp"] as? String)?.hasSuffix("Z") == true, "wall timestamp is ISO8601")
 expect(jsonObject["monotonicElapsedMs"] as? Double == 1234.5, "monotonic elapsed is caller supplied")

@@ -28,6 +28,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private final ReceiverConnectionCoordinator connectionCoordinator;
     private final ReceiverProtocolSession protocolSession = new ReceiverProtocolSession();
     private final FrameSizeMetrics frameSizeMetrics = new FrameSizeMetrics();
+    private final AndroidDropTracker androidDropTracker = new AndroidDropTracker();
     private DecoderLowLatencyMode decoderLowLatencyMode = DecoderLowLatencyMode.AUTO;
     private volatile boolean wifiAdvertisingEnabled;
     private volatile int listeningPort;
@@ -46,7 +47,6 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private int renderedFrames;
     private int decodedFrames;
     private int receivedFrames;
-    private int droppedFramesAndroid;
     private int queueDepthAndroid;
     private long latestFrameAgeMsSum;
     private int latestFrameAgeSamples;
@@ -219,11 +219,26 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                         failure = LengthPrefixedProtocol.FrameLengthFailure.INVALID_LENGTH;
                     }
                     frameSizeMetrics.recordRejected(failure);
+                    recordDrop(AndroidDropReason.INVALID_FRAME_LENGTH,
+                            generation, null);
                     android.util.Log.w("DisplayWeave",
                             "frame length rejected generation=" + generation
                                     + " reason=" + reason
                                     + " frameBytes=" + frameBytes
                                     + " maximumBytes=" + maximumBytes);
+                });
+            }
+
+            @Override
+            public void onTransportDrop(long generation, String reason) {
+                executeTransportEvent(() -> {
+                    if (!connectionCoordinator.isCurrent(generation)) {
+                        return;
+                    }
+                    AndroidDropReason classified = "transportWriteFailure".equals(reason)
+                            ? AndroidDropReason.TRANSPORT_WRITE_FAILURE
+                            : AndroidDropReason.TRANSPORT_READ_FAILURE;
+                    recordDrop(classified, generation, null);
                 });
             }
 
@@ -325,7 +340,14 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         lastVideoReceivedMs = System.currentTimeMillis();
         VideoFrameTelemetry telemetry = VideoFrameTelemetry.fromWirePayload(
                 payload, System.currentTimeMillis());
-        if (!protocolSession.acceptFrame(generation, telemetry)) {
+        AndroidDropReason rejection =
+                protocolSession.frameRejectionReason(generation, telemetry);
+        if (rejection != null || !protocolSession.acceptFrame(generation, telemetry)) {
+            if (rejection != AndroidDropReason.STALE_CONNECTION_GENERATION) {
+                recordDrop(rejection == null
+                                ? AndroidDropReason.STALE_CONFIG_VERSION : rejection,
+                        generation, telemetry);
+            }
             return;
         }
         frameSizeMetrics.recordFrame(
@@ -339,10 +361,12 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 boolean incomingImportant = VideoFrameClassifier.isImportant(
                         payload, currentStreamConfig);
                 if (queuedImportant && !incomingImportant) {
-                    droppedFramesAndroid++;
+                    recordDrop(AndroidDropReason.IMPORTANT_FRAME_PROTECTED,
+                            generation, telemetry);
                     return;
                 }
-                droppedFramesAndroid++;
+                recordDrop(AndroidDropReason.LATEST_SLOT_REPLACED,
+                        latestVideoFrameGeneration, latestVideoFrameTelemetry);
             }
             latestVideoFrame = payload;
             latestVideoFrameTelemetry = telemetry;
@@ -678,13 +702,52 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private synchronized void queueFrameIfCurrentDecoder(
             long generation, byte[] frame, VideoFrameTelemetry telemetry) {
         H264SurfaceDecoder activeDecoder = decoder;
-        if (activeDecoder != null && decoderGeneration == generation
-                && !decoderAwaitingFreshConfig
-                && protocolSession.matchesIdentity(
-                        decoderSessionEpoch, decoderConfigVersion)
-                && protocolSession.matchesCurrentFrame(telemetry)) {
-            activeDecoder.queueFrame(frame, telemetry);
+        if (activeDecoder == null) {
+            recordDrop(surface == null
+                            ? AndroidDropReason.SURFACE_UNAVAILABLE
+                            : AndroidDropReason.CODEC_RECONFIGURE_DROP,
+                    generation, telemetry);
+            return;
         }
+        if (decoderGeneration != generation) {
+            return;
+        }
+        if (decoderAwaitingFreshConfig) {
+            recordDrop(AndroidDropReason.CODEC_RECONFIGURE_DROP,
+                    generation, telemetry);
+            return;
+        }
+        if (!protocolSession.matchesIdentity(
+                decoderSessionEpoch, decoderConfigVersion)) {
+            AndroidDropReason reason = telemetry != null
+                    && telemetry.sessionEpoch != protocolSession.sessionEpoch()
+                    ? AndroidDropReason.STALE_SESSION_EPOCH
+                    : AndroidDropReason.STALE_CONFIG_VERSION;
+            recordDrop(reason, generation, telemetry);
+            return;
+        }
+        if (!protocolSession.matchesCurrentFrame(telemetry)) {
+            recordDrop(AndroidDropReason.STALE_CONFIG_VERSION,
+                    generation, telemetry);
+            return;
+        }
+        activeDecoder.queueFrame(frame, telemetry);
+    }
+
+    private void recordDrop(AndroidDropReason reason, long generation,
+                            VideoFrameTelemetry telemetry) {
+        if (reason == null) {
+            return;
+        }
+        long sessionEpoch = telemetry != null && telemetry.sessionEpoch >= 0
+                ? telemetry.sessionEpoch : protocolSession.sessionEpoch();
+        long configVersion = telemetry != null && telemetry.configVersion >= 0
+                ? telemetry.configVersion : protocolSession.configVersion();
+        long frameSequence = telemetry != null && telemetry.frameSequence >= 0
+                ? telemetry.frameSequence : 0;
+        androidDropTracker.record(reason, new AndroidDropTracker.Context(
+                generation, sessionEpoch, configVersion, frameSequence,
+                currentStreamConfig.codec, lastMacTransport));
     }
 
     private synchronized boolean releaseCodecForRecovery(
@@ -767,10 +830,12 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         }
 
         @Override
-        public void onDecoderFrameDropped() {
+        public void onDecoderFrameDropped(
+                AndroidDropReason reason, VideoFrameTelemetry telemetry) {
             executeTransportEvent(() -> {
                 if (isCurrentIdentity()) {
-                    OpenDisplayServer.this.onDecoderFrameDropped(generation);
+                    OpenDisplayServer.this.onDecoderFrameDropped(
+                            generation, reason, telemetry);
                 }
             });
         }
@@ -852,11 +917,13 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         sendJson(LengthPrefixedProtocol.codecFailureJson(codec, message));
     }
 
-    private synchronized void onDecoderFrameDropped(long generation) {
+    private synchronized void onDecoderFrameDropped(
+            long generation, AndroidDropReason reason,
+            VideoFrameTelemetry telemetry) {
         if (!connectionCoordinator.isCurrent(generation)) {
             return;
         }
-        droppedFramesAndroid++;
+        recordDrop(reason, generation, telemetry);
     }
 
     private synchronized void onDecoderFrameDecoded(long generation) {
@@ -950,7 +1017,10 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             int renderedFps = (int) Math.round(renderedFrames * 1000.0 / elapsed);
             int decodedFps = (int) Math.round(decodedFrames * 1000.0 / elapsed);
             int receivedFps = (int) Math.round(receivedFrames * 1000.0 / elapsed);
-            int dropped = droppedFramesAndroid;
+            AndroidDropTracker.Snapshot dropSnapshot =
+                    androidDropTracker.snapshotAndResetWindow();
+            int dropped = (int) Math.min(
+                    dropSnapshot.windowDropCount, Integer.MAX_VALUE);
             int latestFrameAgeMs = averageAndResetLatestFrameAge();
             int endToEndLatencyMs = averageAndResetEndToEndLatency();
             int decodeLatencyMs = averageAndResetDecodeLatency();
@@ -959,7 +1029,6 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             renderedFrames = 0;
             decodedFrames = 0;
             receivedFrames = 0;
-            droppedFramesAndroid = 0;
             metricsWindowStartMs = now;
             float actualAndroidHz = listener.currentDisplayRefreshRate();
             float requestedSurfaceFps = listener.requestedSurfaceFrameRate();
@@ -1044,7 +1113,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     wifiLowLatency != null && wifiLowLatency.acquired,
                     wifiLowLatency != null && wifiLowLatency.active,
                     wifiLowLatency == null
-                            ? "stateUnavailable" : wifiLowLatency.releaseReason);
+                            ? "stateUnavailable" : wifiLowLatency.releaseReason,
+                    dropSnapshot);
             sendJson(snapshot.toJson());
         }
     }

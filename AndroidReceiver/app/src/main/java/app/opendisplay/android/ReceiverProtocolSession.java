@@ -45,7 +45,7 @@ final class ReceiverProtocolSession {
     }
 
     synchronized boolean acceptFrame(long generation, VideoFrameTelemetry telemetry) {
-        if (!configured || generation != this.generation || telemetry == null) {
+        if (frameRejectionReason(generation, telemetry) != null) {
             return false;
         }
         if (!negotiatedV2) {
@@ -58,6 +58,30 @@ final class ReceiverProtocolSession {
         }
         lastFrameSequence = telemetry.frameSequence;
         return true;
+    }
+
+    synchronized AndroidDropReason frameRejectionReason(
+            long generation, VideoFrameTelemetry telemetry) {
+        if (generation != this.generation) {
+            return AndroidDropReason.STALE_CONNECTION_GENERATION;
+        }
+        if (!configured) {
+            return AndroidDropReason.CODEC_RECONFIGURE_DROP;
+        }
+        if (telemetry == null) {
+            return AndroidDropReason.MALFORMED_ANNEX_B;
+        }
+        if (!negotiatedV2) {
+            return null;
+        }
+        if (telemetry.sessionEpoch != sessionEpoch) {
+            return AndroidDropReason.STALE_SESSION_EPOCH;
+        }
+        if (telemetry.configVersion != configVersion
+                || telemetry.frameSequence <= lastFrameSequence) {
+            return AndroidDropReason.STALE_CONFIG_VERSION;
+        }
+        return null;
     }
 
     synchronized boolean isNegotiatedV2() {

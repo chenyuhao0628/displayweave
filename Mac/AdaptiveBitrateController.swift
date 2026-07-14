@@ -10,6 +10,7 @@ struct AdaptiveBitrateMetrics {
     // Per-window counts. Producers reset both after publishing each sample.
     var macDrops: Int
     var androidDrops: Int
+    var androidCongestionDrops: Int
     var androidQueueDepth: Int
 }
 
@@ -35,6 +36,7 @@ final class AdaptiveBitrateController {
     private var lastChangeAt = -Double.greatestFiniteMagnitude
     private var hasCongested = false
     private var consecutiveReceiverQueueWindows = 0
+    private var consecutiveAndroidCongestionWindows = 0
 
     init(initialBitrate: Int, bounds: ClosedRange<Int>,
          decreaseHoldSeconds: TimeInterval = 1,
@@ -66,6 +68,7 @@ final class AdaptiveBitrateController {
             previousMetrics = metrics
             normalSince = nil
             consecutiveReceiverQueueWindows = 0
+            consecutiveAndroidCongestionWindows = 0
             return nil
         }
 
@@ -73,6 +76,11 @@ final class AdaptiveBitrateController {
             consecutiveReceiverQueueWindows += 1
         } else {
             consecutiveReceiverQueueWindows = 0
+        }
+        if metrics.androidCongestionDrops > 0 {
+            consecutiveAndroidCongestionWindows += 1
+        } else {
+            consecutiveAndroidCongestionWindows = 0
         }
 
         if let reason = congestionReason(metrics),
@@ -119,7 +127,9 @@ final class AdaptiveBitrateController {
     private func congestionReason(_ metrics: AdaptiveBitrateMetrics) -> String? {
         if metrics.pendingSends >= 2 { return "pending-sends" }
         if metrics.macDrops > 0 { return "mac-drops" }
-        if metrics.androidDrops > 0 { return "android-drops" }
+        if consecutiveAndroidCongestionWindows >= 2 {
+            return "android-decoder-throughput"
+        }
         if consecutiveReceiverQueueWindows >= 2 { return "android-queue" }
         if metrics.encodedFps > 0, metrics.sentFps / metrics.encodedFps < 0.85 {
             return "send-deficit"
@@ -142,7 +152,7 @@ final class AdaptiveBitrateController {
             && metrics.sentFps >= 0
             && metrics.pendingSends == 0
             && metrics.macDrops == 0
-            && metrics.androidDrops == 0
+            && metrics.androidCongestionDrops == 0
             && metrics.androidQueueDepth <= 1
             && metrics.sentFps / metrics.encodedFps >= 0.95
             && congestionReason(metrics) == nil
@@ -156,6 +166,7 @@ final class AdaptiveBitrateController {
             && metrics.pendingSends >= 0
             && metrics.macDrops >= 0
             && metrics.androidDrops >= 0
+            && metrics.androidCongestionDrops >= 0
             && metrics.androidQueueDepth >= 0
             && (metrics.rttMs.map { $0.isFinite && $0 >= 0 } ?? true)
             && (metrics.frameAgeP95Ms.map { $0.isFinite && $0 >= 0 } ?? true)
@@ -172,6 +183,7 @@ final class AdaptiveBitrateController {
         previousMetrics = nil
         normalSince = nil
         consecutiveReceiverQueueWindows = 0
+        consecutiveAndroidCongestionWindows = 0
         if !keepLastChange { lastChangeAt = -Double.greatestFiniteMagnitude }
     }
 

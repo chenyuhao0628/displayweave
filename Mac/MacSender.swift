@@ -1579,6 +1579,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 rttMs: receiver.rttMs, frameAgeP95Ms: receiver.frameAgeP95Ms,
                 macDrops: lastMacDropsSnapshot,
                 androidDrops: max(Int(receiver.androidDroppedFrames ?? 0), 0),
+                androidCongestionDrops: max(
+                    Int(receiver.androidCongestionDrops ?? 0), 0),
                 androidQueueDepth: max(Int(receiver.androidQueueDepth ?? 0), 0)),
             mode: settings.bitrateMode)
         guard let decision, let encoder else { return }
