@@ -11,7 +11,7 @@
 
 本文是 Android 连接稳定性与低延迟工作的阶段零审计，记录 Connection Generation 实现前的真实行为。配置的 FPS、码率和刷新率请求不会被当成实测结果；本文也不声称已经完成长时间或多设备验证。
 
-> 实现状态更新（2026-07-14）：PR 1 Connection Generation、PR 2 Negotiated Identity/Progress、PR 3 Keyframe/Drop Correction 与 PR 4 Frame-size Negotiation 此后均已实现。下表刻意保留阶段零 Baseline；当前 PR 4 行为见[帧尺寸协商](frame-size-negotiation.zh-CN.md)。
+> 实现状态更新（2026-07-14）：PR 1 Connection Generation、PR 2 Negotiated Identity/Progress、PR 3 Keyframe/Drop Correction、PR 4 Frame-size Negotiation 与 PR 5 Decoder Low-latency Selection 此后均已实现。下表刻意保留阶段零 Baseline；当前行为见[帧尺寸协商](frame-size-negotiation.zh-CN.md)与[Decoder 低延迟选择](android-decoder-low-latency.zh-CN.md)。
 
 ## 执行摘要
 

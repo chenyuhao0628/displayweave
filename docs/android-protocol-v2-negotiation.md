@@ -121,7 +121,7 @@ No same-condition physical A/B run has been completed, so this PR does not claim
 - Epoch values are process-local counters, not cryptographic or persistent identities.
 - The existing 1 MiB legacy frame limit remains unchanged.
 - Frames still use the JSON telemetry prefix; binary header V2 and allocation/NAL-scan work remain later stages.
-- Decoder low-latency capability is reported, but PR 2 deliberately does not enable `KEY_LOW_LATENCY`.
+- PR 2 only reported decoder low-latency capability. PR 5 now enables it with capability gating and same-decoder fallback; see [decoder low-latency selection](android-decoder-low-latency.md).
 - Timeout values are deterministic-test candidates, not yet tuned from physical-device data.
 - Simulator build proves source compatibility, not old TestFlight receiver runtime behavior.
 

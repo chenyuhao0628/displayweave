@@ -34,6 +34,10 @@ Download `DisplayWeave-Android.apk` from [`v0.2.0-preview.3`](https://github.com
 
 USB mode never silently becomes WiFi. WiFi mode never creates an ADB forward.
 
+## Decoder low latency
+
+**Settings & Help → Decoder Low Latency** defaults to Auto. Auto/On requests MediaCodec low latency only when the actual API 30+ decoder advertises support; a rejected parameter is retried on the same decoder without low latency. Off never sets the parameter. Changing this setting rebuilds the receiver session once. See [the decoder low-latency policy](../docs/android-decoder-low-latency.md).
+
 ## Build and test
 
 ```bash

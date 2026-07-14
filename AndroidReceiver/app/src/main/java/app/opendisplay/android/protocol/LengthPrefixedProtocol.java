@@ -264,17 +264,21 @@ public final class LengthPrefixedProtocol {
 
     public static String decoderReadyJson(
             long sessionEpoch, long configVersion, String codec, String decoderName,
-            boolean hardwareAccelerated, boolean softwareOnly, boolean lowLatencySupported,
-            boolean lowLatencyEnabled) {
+            boolean hardwareAccelerated, boolean softwareOnly, boolean vendor,
+            boolean lowLatencySupported, boolean lowLatencyEnabled,
+            boolean configureSuccess, String fallbackReason) {
         return String.format(Locale.US,
                 "{\"type\":\"decoderReady\",\"sessionEpoch\":%d,"
                         + "\"configVersion\":%d,\"codec\":\"%s\","
                         + "\"decoderName\":\"%s\",\"hardwareAccelerated\":%s,"
-                        + "\"softwareOnly\":%s,\"lowLatencySupported\":%s,"
-                        + "\"lowLatencyEnabled\":%s}",
+                        + "\"softwareOnly\":%s,\"vendor\":%s,"
+                        + "\"lowLatencySupported\":%s,"
+                        + "\"lowLatencyEnabled\":%s,\"configureSuccess\":%s,"
+                        + "\"fallbackReason\":\"%s\"}",
                 Math.max(0, sessionEpoch), Math.max(0, configVersion), escape(codec),
-                escape(decoderName), hardwareAccelerated, softwareOnly,
-                lowLatencySupported, lowLatencyEnabled);
+                escape(decoderName), hardwareAccelerated, softwareOnly, vendor,
+                lowLatencySupported, lowLatencyEnabled, configureSuccess,
+                escape(fallbackReason));
     }
 
     public static String firstFrameRenderedJson(

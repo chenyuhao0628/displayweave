@@ -41,6 +41,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private static final String KEY_SHOW_STATUS = "showStatusOverlay";
     private static final String KEY_SHOW_METRICS = "showMetrics";
     private static final String KEY_DISPLAY_PROFILE = "displayProfile";
+    private static final String KEY_DECODER_LOW_LATENCY = "decoderLowLatency";
 
     private FrameLayout root;
     private SurfaceView surfaceView;
@@ -384,6 +385,12 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         quality.setOnClickListener(v -> showDisplayProfileDialog());
         content.addView(quality, matchWrap());
 
+        Button decoderLowLatency = new Button(this);
+        decoderLowLatency.setText("解码器低延迟："
+                + currentDecoderLowLatencyMode().label);
+        decoderLowLatency.setOnClickListener(v -> showDecoderLowLatencyDialog());
+        content.addView(decoderLowLatency, matchWrap());
+
         TextView version = text("当前版本：" + installedVersionLabel()
                         + "\n更新状态：" + updateState,
                 13, Color.rgb(95, 105, 120), false);
@@ -509,6 +516,35 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 .show();
     }
 
+    private void showDecoderLowLatencyDialog() {
+        DecoderLowLatencyMode[] modes = DecoderLowLatencyMode.values();
+        String[] labels = new String[modes.length];
+        int checked = 0;
+        DecoderLowLatencyMode current = currentDecoderLowLatencyMode();
+        for (int i = 0; i < modes.length; i++) {
+            labels[i] = modes[i].label;
+            if (modes[i] == current) {
+                checked = i;
+            }
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("解码器低延迟")
+                .setSingleChoiceItems(labels, checked, (dialog, which) -> {
+                    DecoderLowLatencyMode selected = modes[which];
+                    prefs.edit().putString(
+                            KEY_DECODER_LOW_LATENCY, selected.key).apply();
+                    if (server != null) {
+                        stopServer();
+                        startServerIfReady();
+                    }
+                    setStatus("解码器低延迟已设为" + selected.label
+                            + "，正在重新建立有限会话…");
+                    dialog.dismiss();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
     private void showOnboardingIfNeeded() {
         if (prefs.getBoolean(KEY_ONBOARDING_DISMISSED, false)) {
             return;
@@ -533,6 +569,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 hasNearbyWifiPermission());
         server = new OpenDisplayServer(MainActivity.this, currentDisplaySpec(),
                 MainActivity.this, advertiseWifi);
+        server.setDecoderLowLatencyMode(currentDecoderLowLatencyMode());
         server.start(activeSurface.getSurface());
         if (!advertiseWifi) {
             setStatus("USB 已就绪；授予附近设备权限后可使用 WiFi 发现");
@@ -546,6 +583,11 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         }
         server.stop();
         server = null;
+    }
+
+    private DecoderLowLatencyMode currentDecoderLowLatencyMode() {
+        return DecoderLowLatencyMode.fromStoredValue(
+                prefs.getString(KEY_DECODER_LOW_LATENCY, null));
     }
 
     private boolean hasNearbyWifiPermission() {

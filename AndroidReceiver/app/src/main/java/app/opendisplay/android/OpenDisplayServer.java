@@ -28,12 +28,14 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private final ReceiverConnectionCoordinator connectionCoordinator;
     private final ReceiverProtocolSession protocolSession = new ReceiverProtocolSession();
     private final FrameSizeMetrics frameSizeMetrics = new FrameSizeMetrics();
+    private DecoderLowLatencyMode decoderLowLatencyMode = DecoderLowLatencyMode.AUTO;
     private volatile boolean wifiAdvertisingEnabled;
     private volatile int listeningPort;
     private volatile DisplaySpec displaySpec;
     private volatile boolean running;
     private Surface surface;
     private volatile H264SurfaceDecoder decoder;
+    private volatile DecoderRuntimeInfo decoderRuntimeInfo;
     private volatile long decoderGeneration;
     private volatile long decoderSessionEpoch;
     private volatile long decoderConfigVersion;
@@ -182,6 +184,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     lastFrameRenderedMs = System.currentTimeMillis();
                     lastDecoderRecoveryMs = 0;
                     streamingGeneration = 0;
+                    decoderRuntimeInfo = null;
                     replaceDecoder(generation);
                     listener.onStatus("Mac 已连接：" + peer);
                     sendHello();
@@ -242,6 +245,14 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         });
         timer.scheduleAtFixedRate(this::sendPingIfConnected, 2, 2, TimeUnit.SECONDS);
         timer.scheduleAtFixedRate(this::publishStatsSafely, 1, 1, TimeUnit.SECONDS);
+    }
+
+    public synchronized void setDecoderLowLatencyMode(DecoderLowLatencyMode mode) {
+        if (running) {
+            throw new IllegalStateException(
+                    "decoder low-latency mode must be set before start");
+        }
+        decoderLowLatencyMode = mode == null ? DecoderLowLatencyMode.AUTO : mode;
     }
 
     public void stop() {
@@ -576,7 +587,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         decoderConfigVersion = 0;
         decoderAwaitingFreshConfig = false;
         decoder = new H264SurfaceDecoder(
-                surface, new GenerationDecoderListener(generation, 0, 0));
+                surface, new GenerationDecoderListener(generation, 0, 0),
+                decoderLowLatencyMode);
     }
 
     private void configureDecoderForIdentity(
@@ -618,7 +630,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                         || decoder != null) {
                     return;
                 }
-                next = new H264SurfaceDecoder(surface, nextListener);
+                next = new H264SurfaceDecoder(
+                        surface, nextListener, decoderLowLatencyMode);
                 decoder = next;
             }
             next.applyStreamConfig(config.codec, config.fps, config.width, config.height);
@@ -649,6 +662,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private H264SurfaceDecoder detachDecoder() {
         H264SurfaceDecoder activeDecoder = decoder;
         decoder = null;
+        decoderRuntimeInfo = null;
         decoderGeneration = 0;
         decoderSessionEpoch = 0;
         decoderConfigVersion = 0;
@@ -712,6 +726,19 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             executeTransportEvent(() -> {
                 if (isCurrentIdentity()) {
                     OpenDisplayServer.this.onDecoderReady(generation, info);
+                }
+            });
+        }
+
+        @Override
+        public void onDecoderConfigurationFailed(DecoderRuntimeInfo info) {
+            executeTransportEvent(() -> {
+                if (isCurrentIdentity()) {
+                    decoderRuntimeInfo = info;
+                    android.util.Log.w("DisplayWeaveDecoder",
+                            "decoder configure failed generation=" + generation
+                                    + " decoder=" + info.decoderName
+                                    + " fallbackReason=" + info.fallbackReason);
                 }
             });
         }
@@ -782,6 +809,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 sessionEpoch, configVersion)) {
             return;
         }
+        decoderRuntimeInfo = info;
         if (protocolSession.isNegotiatedV2()) {
             sendJson(LengthPrefixedProtocol.decoderReadyJson(
                     sessionEpoch,
@@ -790,8 +818,11 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     info.decoderName,
                     info.hardwareAccelerated,
                     info.softwareOnly,
+                    info.vendor,
                     info.lowLatencySupported,
-                    info.lowLatencyEnabled));
+                    info.lowLatencyEnabled,
+                    info.configureSuccess,
+                    info.fallbackReason));
         }
         connectionCoordinator.transition(
                 generation, ReceiverConnectionState.WAITING_FIRST_FRAME, "decoderReady",
@@ -953,6 +984,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             boolean stableClock = clockEstimator.state() == ClockOffsetEstimator.State.STABLE;
             DisplaySpec spec = displaySpec;
             FrameSizeMetrics.Snapshot frameSizes = frameSizeMetrics.snapshot();
+            DecoderRuntimeInfo runtimeInfo = decoderRuntimeInfo;
             ReceiverStatsSnapshot snapshot = new ReceiverStatsSnapshot(
                     now,
                     spec == null ? "" : spec.deviceModel,
@@ -986,7 +1018,16 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     frameSizes.currentKeyframeBytes,
                     frameSizes.maxKeyframeBytesObserved,
                     frameSizes.oversizeFrameCount,
-                    frameSizes.invalidFrameLengthCount);
+                    frameSizes.invalidFrameLengthCount,
+                    runtimeInfo == null ? null : runtimeInfo.decoderName,
+                    runtimeInfo == null ? null : runtimeInfo.hardwareAccelerated,
+                    runtimeInfo == null ? null : runtimeInfo.softwareOnly,
+                    runtimeInfo == null ? null : runtimeInfo.vendor,
+                    runtimeInfo == null ? null : runtimeInfo.lowLatencySupported,
+                    runtimeInfo == null ? null : runtimeInfo.lowLatencyEnabled,
+                    runtimeInfo == null ? null : runtimeInfo.configureSuccess,
+                    runtimeInfo == null ? null : runtimeInfo.fallbackReason,
+                    decoderLowLatencyMode.key);
             sendJson(snapshot.toJson());
         }
     }

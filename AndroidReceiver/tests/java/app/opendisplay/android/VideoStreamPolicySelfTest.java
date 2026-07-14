@@ -32,6 +32,9 @@ public final class VideoStreamPolicySelfTest {
         testCodecFallbackStatus();
         testDecoderStallRecoveryPolicy();
         testDecoderReconfigurationPolicy();
+        testDecoderLowLatencyMode();
+        testDecoderSelectionAndFallbackOrder();
+        testDecoderRuntimeFailureMetrics();
         testAcceptedSocketOptions();
         testWifiTransportCarriesFramedPayloads();
         testWifiTransportKeepsLegacyFrameLimit();
@@ -226,6 +229,63 @@ public final class VideoStreamPolicySelfTest {
                 current, VideoStreamConfig.from("hevc", 60, 3040, 1904, 64_000_000)));
         assertTrue(DecoderReconfigurationPolicy.requiresReplacement(
                 current, VideoStreamConfig.from("hevc", 120, 2280, 1428, 64_000_000)));
+    }
+
+    private static void testDecoderLowLatencyMode() {
+        assertEquals(DecoderLowLatencyMode.AUTO,
+                DecoderLowLatencyMode.fromStoredValue(null));
+        assertEquals(DecoderLowLatencyMode.AUTO,
+                DecoderLowLatencyMode.fromStoredValue("unexpected"));
+        assertEquals(DecoderLowLatencyMode.ON,
+                DecoderLowLatencyMode.fromStoredValue("on"));
+        assertEquals(DecoderLowLatencyMode.OFF,
+                DecoderLowLatencyMode.fromStoredValue("off"));
+        assertTrue(DecoderLowLatencyMode.AUTO.requestsLowLatency());
+        assertTrue(DecoderLowLatencyMode.ON.requestsLowLatency());
+        assertFalse(DecoderLowLatencyMode.OFF.requestsLowLatency());
+    }
+
+    private static void testDecoderSelectionAndFallbackOrder() {
+        List<DecoderSelectionPolicy.Candidate> candidates = java.util.Arrays.asList(
+                new DecoderSelectionPolicy.Candidate(
+                        "c2.android.hevc.decoder", false, true, false, true),
+                new DecoderSelectionPolicy.Candidate(
+                        "c2.vendor.hevc.decoder", true, false, true, false),
+                new DecoderSelectionPolicy.Candidate(
+                        "c2.vendor.hevc.low_latency", true, false, true, true));
+
+        List<DecoderSelectionPolicy.Attempt> automatic =
+                DecoderSelectionPolicy.attempts(candidates, DecoderLowLatencyMode.AUTO);
+        assertEquals(5, automatic.size());
+        assertEquals("c2.vendor.hevc.low_latency", automatic.get(0).decoderName);
+        assertTrue(automatic.get(0).enableLowLatency);
+        assertEquals("c2.vendor.hevc.low_latency", automatic.get(1).decoderName);
+        assertFalse(automatic.get(1).enableLowLatency);
+        assertEquals("c2.vendor.hevc.decoder", automatic.get(2).decoderName);
+        assertFalse(automatic.get(2).enableLowLatency);
+        assertEquals("c2.android.hevc.decoder", automatic.get(3).decoderName);
+        assertTrue(automatic.get(3).enableLowLatency);
+        assertEquals("c2.android.hevc.decoder", automatic.get(4).decoderName);
+        assertFalse(automatic.get(4).enableLowLatency);
+
+        List<DecoderSelectionPolicy.Attempt> disabled =
+                DecoderSelectionPolicy.attempts(candidates, DecoderLowLatencyMode.OFF);
+        assertEquals(3, disabled.size());
+        assertEquals("c2.vendor.hevc.decoder", disabled.get(0).decoderName);
+        for (DecoderSelectionPolicy.Attempt attempt : disabled) {
+            assertFalse(attempt.enableLowLatency);
+        }
+    }
+
+    private static void testDecoderRuntimeFailureMetrics() {
+        DecoderRuntimeInfo failure = new DecoderRuntimeInfo(
+                "hevc", "c2.vendor.hevc.decoder", true, false, true,
+                true, false, false,
+                "decoderConfigureFailed:c2.vendor.hevc.decoder:CodecException");
+        assertFalse(failure.configureSuccess);
+        assertFalse(failure.lowLatencyEnabled);
+        assertEquals("decoderConfigureFailed:c2.vendor.hevc.decoder:CodecException",
+                failure.fallbackReason);
     }
 
     private static void testMetricDistribution() {

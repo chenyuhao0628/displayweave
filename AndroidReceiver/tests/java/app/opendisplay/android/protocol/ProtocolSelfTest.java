@@ -142,12 +142,14 @@ public final class ProtocolSelfTest {
 
         String ready = LengthPrefixedProtocol.decoderReadyJson(
                 8, 12, "hevc", "c2.vendor.hevc.decoder", true,
-                true, false, false);
+                false, true, true, true, true, "");
         assertContains(ready, "\"type\":\"decoderReady\"");
         assertContains(ready, "\"decoderName\":\"c2.vendor.hevc.decoder\"");
         assertContains(ready, "\"hardwareAccelerated\":true");
-        assertContains(ready, "\"lowLatencySupported\":false");
-        assertContains(ready, "\"lowLatencyEnabled\":false");
+        assertContains(ready, "\"vendor\":true");
+        assertContains(ready, "\"lowLatencySupported\":true");
+        assertContains(ready, "\"lowLatencyEnabled\":true");
+        assertContains(ready, "\"configureSuccess\":true");
 
         String first = LengthPrefixedProtocol.firstFrameRenderedJson(8, 12, 41);
         assertContains(first, "\"type\":\"firstFrameRendered\"");
@@ -220,7 +222,9 @@ public final class ProtocolSelfTest {
                 null, null, null, "estimating",
                 8.25, 9L, 6L, 14L, 20L,
                 null, null, 1, 2, 3.5, 7.5,
-                2048, 4096, 3072, 6144, 2, 3);
+                2048, 4096, 3072, 6144, 2, 3,
+                "c2.vendor.hevc.decoder", true, false, true,
+                true, true, true, "", "auto");
         String json = snapshot.toJson();
         assertContains(json, "\"type\":\"stats\"");
         assertContains(json, "\"timestamp\":1234");
@@ -238,6 +242,11 @@ public final class ProtocolSelfTest {
         assertContains(json, "\"maxKeyframeBytesObserved\":6144");
         assertContains(json, "\"oversizeFrameCount\":2");
         assertContains(json, "\"invalidFrameLengthCount\":3");
+        assertContains(json, "\"decoderName\":\"c2.vendor.hevc.decoder\"");
+        assertContains(json, "\"hardwareAccelerated\":true");
+        assertContains(json, "\"lowLatencyEnabled\":true");
+        assertContains(json, "\"decoderConfigureSuccess\":true");
+        assertContains(json, "\"decoderLowLatencyMode\":\"auto\"");
         assertFalse(json.contains("\"null\""));
     }
 

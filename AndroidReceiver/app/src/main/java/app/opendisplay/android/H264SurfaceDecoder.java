@@ -1,6 +1,8 @@
 package app.opendisplay.android;
 
 import android.media.MediaCodec;
+import android.media.MediaCodecInfo;
+import android.media.MediaCodecList;
 import android.media.MediaFormat;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -9,6 +11,8 @@ import android.view.Surface;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -19,6 +23,7 @@ import app.opendisplay.android.protocol.SpsParser;
 public final class H264SurfaceDecoder {
     private static final String LOG_TAG = "DisplayWeaveDecoder";
     private final Surface surface;
+    private final DecoderLowLatencyMode lowLatencyMode;
     private volatile Listener listener;
     private MediaCodec codec;
     private int configuredWidth;
@@ -34,6 +39,7 @@ public final class H264SurfaceDecoder {
     public interface Listener {
         void onDecoderStatus(String status);
         void onDecoderReady(DecoderRuntimeInfo info);
+        void onDecoderConfigurationFailed(DecoderRuntimeInfo info);
         void onDecoderNeedsKeyframe();
         void onDecoderCodecFailure(String codec, String message);
         void onDecoderFrameDropped();
@@ -42,8 +48,15 @@ public final class H264SurfaceDecoder {
     }
 
     public H264SurfaceDecoder(Surface surface, Listener listener) {
+        this(surface, listener, DecoderLowLatencyMode.AUTO);
+    }
+
+    public H264SurfaceDecoder(Surface surface, Listener listener,
+                              DecoderLowLatencyMode lowLatencyMode) {
         this.surface = surface;
         this.listener = listener;
+        this.lowLatencyMode = lowLatencyMode == null
+                ? DecoderLowLatencyMode.AUTO : lowLatencyMode;
     }
 
     public synchronized boolean rebindIfConfigured(Listener nextListener) {
@@ -139,12 +152,9 @@ public final class H264SurfaceDecoder {
 
     public synchronized void release() {
         if (codec != null) {
-            try {
-                codec.stop();
-            } catch (RuntimeException ignored) {
-            }
-            codec.release();
+            MediaCodec activeCodec = codec;
             codec = null;
+            releaseCandidate(activeCodec);
             lastRuntimeInfo = null;
             pendingTelemetry.clear();
             renderedTelemetry.clear();
@@ -155,8 +165,114 @@ public final class H264SurfaceDecoder {
         }
     }
 
-    private void configure(int width, int height, byte[] vps, byte[] sps, byte[] pps) throws IOException {
-        codec = MediaCodec.createDecoderByType(streamConfig.mimeType);
+    private void configure(int width, int height, byte[] vps, byte[] sps, byte[] pps)
+            throws IOException {
+        List<DecoderSelectionPolicy.Candidate> candidates = decoderCandidates();
+        List<DecoderSelectionPolicy.Attempt> attempts =
+                DecoderSelectionPolicy.attempts(candidates, lowLatencyMode);
+        Throwable lastError = null;
+        String fallbackReason = "";
+        DecoderSelectionPolicy.Attempt lastAttempt = null;
+        for (DecoderSelectionPolicy.Attempt attempt : attempts) {
+            lastAttempt = attempt;
+            try {
+                configureAttempt(width, height, vps, sps, pps, attempt);
+            } catch (IOException | RuntimeException error) {
+                lastError = error;
+                if (attempt.enableLowLatency) {
+                    fallbackReason = "lowLatencyConfigureFailed:"
+                            + error.getClass().getSimpleName();
+                    Log.w(LOG_TAG, "low-latency configure failed; retrying decoder without it"
+                            + " decoder=" + attempt.decoderName, error);
+                } else {
+                    fallbackReason = "decoderConfigureFailed:"
+                            + attempt.decoderName + ":"
+                            + error.getClass().getSimpleName();
+                    Log.w(LOG_TAG, "decoder configure failed; trying next candidate"
+                            + " decoder=" + attempt.decoderName, error);
+                }
+                continue;
+            }
+            if (fallbackReason.length() == 0) {
+                if (lowLatencyMode == DecoderLowLatencyMode.OFF) {
+                    fallbackReason = "disabledByUser";
+                } else if (!attempt.lowLatencySupported) {
+                    fallbackReason = "unsupportedByDecoder";
+                }
+            }
+            lastRuntimeInfo = new DecoderRuntimeInfo(
+                    streamConfig.codec,
+                    attempt.decoderName,
+                    attempt.hardwareAccelerated,
+                    attempt.softwareOnly,
+                    attempt.vendor,
+                    attempt.lowLatencySupported,
+                    attempt.enableLowLatency,
+                    true,
+                    fallbackReason);
+            listener.onDecoderReady(lastRuntimeInfo);
+            listener.onDecoderStatus("正在接收 " + configuredWidth + "×" + configuredHeight
+                    + " · " + streamConfig.codec + " · " + streamConfig.fps + "fps");
+            return;
+        }
+        if (fallbackReason.length() == 0) {
+            fallbackReason = "noDecoderCandidate";
+        }
+        lastRuntimeInfo = new DecoderRuntimeInfo(
+                streamConfig.codec,
+                lastAttempt == null ? "" : lastAttempt.decoderName,
+                lastAttempt != null && lastAttempt.hardwareAccelerated,
+                lastAttempt != null && lastAttempt.softwareOnly,
+                lastAttempt != null && lastAttempt.vendor,
+                lastAttempt != null && lastAttempt.lowLatencySupported,
+                false,
+                false,
+                fallbackReason);
+        listener.onDecoderConfigurationFailed(lastRuntimeInfo);
+        throw new IOException("no usable decoder for " + streamConfig.mimeType,
+                lastError);
+    }
+
+    private void configureAttempt(
+            int width, int height, byte[] vps, byte[] sps, byte[] pps,
+            DecoderSelectionPolicy.Attempt attempt) throws IOException {
+        MediaCodec candidateCodec = null;
+        HandlerThread candidateCallbackThread = null;
+        try {
+            candidateCodec = MediaCodec.createByCodecName(attempt.decoderName);
+            MediaFormat format = decoderFormat(width, height, vps, sps, pps);
+            if (attempt.enableLowLatency && android.os.Build.VERSION.SDK_INT >= 30) {
+                format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1);
+            }
+            candidateCodec.configure(format, surface, null, 0);
+            HandlerThread callbackThread =
+                    new HandlerThread("OpenDisplayFrameRendered");
+            candidateCallbackThread = callbackThread;
+            callbackThread.start();
+            candidateCodec.setOnFrameRenderedListener(
+                    (mediaCodec, presentationTimeUs, nanoTime) -> {
+                        VideoFrameTelemetry telemetry =
+                                renderedTelemetry.remove(presentationTimeUs);
+                        listener.onDecoderFrameRendered(telemetry);
+                    },
+                    new Handler(callbackThread.getLooper()));
+            candidateCodec.start();
+            codec = candidateCodec;
+            renderedCallbackThread = candidateCallbackThread;
+            configuredWidth = width;
+            configuredHeight = height;
+            presentationUs = 0;
+        } catch (IOException | RuntimeException error) {
+            releaseCandidate(candidateCodec);
+            if (candidateCallbackThread != null) {
+                candidateCallbackThread.quitSafely();
+            }
+            throw error;
+        }
+    }
+
+    private MediaFormat decoderFormat(
+            int width, int height, byte[] vps, byte[] sps, byte[] pps) {
         MediaFormat format = MediaFormat.createVideoFormat(streamConfig.mimeType, width, height);
         format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, Math.max(width * height, 1 << 20));
         format.setInteger(MediaFormat.KEY_PRIORITY, 0);
@@ -177,28 +293,49 @@ public final class H264SurfaceDecoder {
                 format.setByteBuffer("csd-1", java.nio.ByteBuffer.wrap(AnnexB.withStartCode(pps)));
             }
         }
-        codec.configure(format, surface, null, 0);
-        renderedCallbackThread = new HandlerThread("OpenDisplayFrameRendered");
-        renderedCallbackThread.start();
-        codec.setOnFrameRenderedListener((mediaCodec, presentationTimeUs, nanoTime) -> {
-            VideoFrameTelemetry telemetry = renderedTelemetry.remove(presentationTimeUs);
-            listener.onDecoderFrameRendered(telemetry);
-        }, new Handler(renderedCallbackThread.getLooper()));
-        codec.start();
-        configuredWidth = width;
-        configuredHeight = height;
-        presentationUs = 0;
-        lastRuntimeInfo = runtimeInfo();
-        listener.onDecoderReady(lastRuntimeInfo);
-        listener.onDecoderStatus("正在接收 " + configuredWidth + "×" + configuredHeight
-                + " · " + streamConfig.codec + " · " + streamConfig.fps + "fps");
+        return format;
     }
 
-    private DecoderRuntimeInfo runtimeInfo() {
-        android.media.MediaCodecInfo info = codec.getCodecInfo();
-        boolean hardwareAccelerated = false;
-        boolean softwareOnly = false;
-        boolean vendor = false;
+    private List<DecoderSelectionPolicy.Candidate> decoderCandidates() {
+        List<DecoderSelectionPolicy.Candidate> result = new ArrayList<>();
+        boolean enumerationFailed = false;
+        try {
+            for (MediaCodecInfo info :
+                    new MediaCodecList(MediaCodecList.ALL_CODECS).getCodecInfos()) {
+                if (info.isEncoder() || !supportsType(info, streamConfig.mimeType)) {
+                    continue;
+                }
+                String normalizedName =
+                        info.getName().toLowerCase(java.util.Locale.US);
+                if (streamConfig.isHevc()
+                        && CodecCapabilities.isKnownBrokenHevcName(normalizedName)) {
+                    continue;
+                }
+                result.add(candidateFromInfo(info));
+            }
+        } catch (RuntimeException error) {
+            enumerationFailed = true;
+            Log.w(LOG_TAG, "decoder enumeration failed; probing platform default", error);
+        }
+        if (result.isEmpty() && enumerationFailed) {
+            MediaCodec probe = null;
+            try {
+                probe = MediaCodec.createDecoderByType(streamConfig.mimeType);
+                result.add(candidateFromInfo(probe.getCodecInfo()));
+            } catch (IOException | RuntimeException error) {
+                Log.w(LOG_TAG, "default decoder probe failed", error);
+            } finally {
+                releaseCandidate(probe);
+            }
+        }
+        return result;
+    }
+
+    private DecoderSelectionPolicy.Candidate candidateFromInfo(MediaCodecInfo info) {
+        String normalizedName = info.getName().toLowerCase(java.util.Locale.US);
+        boolean softwareOnly = CodecCapabilities.isSoftwareDecoderName(normalizedName);
+        boolean hardwareAccelerated = !softwareOnly;
+        boolean vendor = !softwareOnly;
         if (android.os.Build.VERSION.SDK_INT >= 29) {
             hardwareAccelerated = info.isHardwareAccelerated();
             softwareOnly = info.isSoftwareOnly();
@@ -209,18 +346,36 @@ public final class H264SurfaceDecoder {
             try {
                 lowLatencySupported = info.getCapabilitiesForType(streamConfig.mimeType)
                         .isFeatureSupported(
-                                android.media.MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency);
-            } catch (IllegalArgumentException ignored) {
+                                MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency);
+            } catch (RuntimeException ignored) {
             }
         }
-        return new DecoderRuntimeInfo(
-                streamConfig.codec,
-                codec.getName(),
-                hardwareAccelerated,
-                softwareOnly,
-                vendor,
-                lowLatencySupported,
-                false);
+        return new DecoderSelectionPolicy.Candidate(
+                info.getName(), hardwareAccelerated, softwareOnly, vendor,
+                lowLatencySupported);
+    }
+
+    private static boolean supportsType(MediaCodecInfo info, String mimeType) {
+        for (String supported : info.getSupportedTypes()) {
+            if (supported.equalsIgnoreCase(mimeType)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void releaseCandidate(MediaCodec candidate) {
+        if (candidate == null) {
+            return;
+        }
+        try {
+            candidate.stop();
+        } catch (RuntimeException ignored) {
+        }
+        try {
+            candidate.release();
+        } catch (RuntimeException ignored) {
+        }
     }
 
     private void drainOutput() {

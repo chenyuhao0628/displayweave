@@ -39,6 +39,15 @@ public final class ReceiverStatsSnapshot {
     public final long maxKeyframeBytesObserved;
     public final long oversizeFrameCount;
     public final long invalidFrameLengthCount;
+    public final String decoderName;
+    public final Boolean hardwareAccelerated;
+    public final Boolean softwareOnly;
+    public final Boolean vendor;
+    public final Boolean lowLatencySupported;
+    public final Boolean lowLatencyEnabled;
+    public final Boolean decoderConfigureSuccess;
+    public final String decoderFallbackReason;
+    public final String decoderLowLatencyMode;
 
     public ReceiverStatsSnapshot(
             long timestamp, String deviceModel, String transport, String codec,
@@ -52,7 +61,11 @@ public final class ReceiverStatsSnapshot {
             Double inputP50Ms, Double inputP95Ms,
             long currentFrameBytes, long maxFrameBytesObserved,
             long currentKeyframeBytes, long maxKeyframeBytesObserved,
-            long oversizeFrameCount, long invalidFrameLengthCount) {
+            long oversizeFrameCount, long invalidFrameLengthCount,
+            String decoderName, Boolean hardwareAccelerated, Boolean softwareOnly,
+            Boolean vendor, Boolean lowLatencySupported, Boolean lowLatencyEnabled,
+            Boolean decoderConfigureSuccess, String decoderFallbackReason,
+            String decoderLowLatencyMode) {
         this.timestamp = timestamp;
         this.deviceModel = deviceModel;
         this.transport = transport;
@@ -86,6 +99,15 @@ public final class ReceiverStatsSnapshot {
         this.maxKeyframeBytesObserved = maxKeyframeBytesObserved;
         this.oversizeFrameCount = oversizeFrameCount;
         this.invalidFrameLengthCount = invalidFrameLengthCount;
+        this.decoderName = decoderName;
+        this.hardwareAccelerated = hardwareAccelerated;
+        this.softwareOnly = softwareOnly;
+        this.vendor = vendor;
+        this.lowLatencySupported = lowLatencySupported;
+        this.lowLatencyEnabled = lowLatencyEnabled;
+        this.decoderConfigureSuccess = decoderConfigureSuccess;
+        this.decoderFallbackReason = decoderFallbackReason;
+        this.decoderLowLatencyMode = decoderLowLatencyMode;
     }
 
     public String toJson() {
@@ -123,6 +145,15 @@ public final class ReceiverStatsSnapshot {
         values.put("maxKeyframeBytesObserved", maxKeyframeBytesObserved);
         values.put("oversizeFrameCount", oversizeFrameCount);
         values.put("invalidFrameLengthCount", invalidFrameLengthCount);
+        values.put("decoderName", decoderName);
+        values.put("hardwareAccelerated", hardwareAccelerated);
+        values.put("softwareOnly", softwareOnly);
+        values.put("vendor", vendor);
+        values.put("lowLatencySupported", lowLatencySupported);
+        values.put("lowLatencyEnabled", lowLatencyEnabled);
+        values.put("decoderConfigureSuccess", decoderConfigureSuccess);
+        values.put("decoderFallbackReason", decoderFallbackReason);
+        values.put("decoderLowLatencyMode", decoderLowLatencyMode);
         return LengthPrefixedProtocol.statsJson(values);
     }
 

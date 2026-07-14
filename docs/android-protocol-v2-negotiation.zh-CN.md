@@ -121,7 +121,7 @@ Failure-first Test 覆盖完整与不完整协商、Legacy iOS Fallback、进程
 - Epoch 是进程内 Counter，不是加密或持久 Identity。
 - 现有 1 MiB Legacy Frame Limit 未改变。
 - Frame 仍使用 JSON Telemetry Prefix；Binary Header V2、Allocation 与 NAL Scan 优化属于后续阶段。
-- 本 PR 报告 Decoder Low Latency Capability，但明确不启用 `KEY_LOW_LATENCY`。
+- PR 2 当时只报告 Decoder Low Latency Capability；PR 5 现已通过 Capability Gate 与 Same-decoder Fallback 启用，见 [Decoder 低延迟选择](android-decoder-low-latency.zh-CN.md)。
 - Timeout 值由确定性测试覆盖，但尚未使用真机数据调优。
 - Simulator Build 证明源码兼容，不证明旧 TestFlight Receiver 的运行时行为。
 

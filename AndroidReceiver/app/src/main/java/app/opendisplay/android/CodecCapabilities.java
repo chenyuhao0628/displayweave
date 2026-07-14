@@ -65,11 +65,11 @@ public final class CodecCapabilities {
         return false;
     }
 
-    private static boolean isSoftwareDecoderName(String name) {
+    static boolean isSoftwareDecoderName(String name) {
         return name.startsWith("c2.android.") || name.startsWith("omx.google.");
     }
 
-    private static boolean isKnownBrokenHevcName(String name) {
+    static boolean isKnownBrokenHevcName(String name) {
         return name.startsWith("omx.sprd.") || name.startsWith("c2.sprd.");
     }
 }

@@ -86,7 +86,16 @@ let statsJSON = """
   "currentKeyframeBytes": 7600000,
   "maxKeyframeBytesObserved": 8100000,
   "oversizeFrameCount": 2,
-  "invalidFrameLengthCount": 3
+  "invalidFrameLengthCount": 3,
+  "decoderName": "c2.vendor.hevc.decoder",
+  "hardwareAccelerated": true,
+  "softwareOnly": false,
+  "vendor": true,
+  "lowLatencySupported": true,
+  "lowLatencyEnabled": true,
+  "decoderConfigureSuccess": true,
+  "decoderFallbackReason": "",
+  "decoderLowLatencyMode": "auto"
 }
 """
 
@@ -100,6 +109,11 @@ expect(stats.inputP95Ms == nil, "explicit JSON null remains nil")
 expect(stats.maxFrameBytesObserved == 8_100_000, "maximum frame size metric decodes")
 expect(stats.oversizeFrameCount == 2 && stats.invalidFrameLengthCount == 3,
        "frame-length rejection counters decode")
+expect(stats.decoderName == "c2.vendor.hevc.decoder" && stats.hardwareAccelerated == true,
+       "actual decoder identity and acceleration decode")
+expect(stats.lowLatencySupported == true && stats.lowLatencyEnabled == true,
+       "decoder low-latency state decodes")
+expect(stats.decoderLowLatencyMode == "auto", "requested low-latency mode decodes")
 
 let sample = BenchmarkSample(
     timestamp: Date(timeIntervalSince1970: 1_700_000_000.125),
@@ -145,6 +159,8 @@ let sample = BenchmarkSample(
 let csv = sample.csv(includeHeader: true)
 let headerCount = BenchmarkSample.csvHeader.count
 expect(sample.csvFields.count == headerCount, "fixed header count equals row count")
+expect(Set(BenchmarkSample.csvHeader).count == headerCount,
+       "fixed header contains no duplicate column names")
 let parsedCSV = parseCSV(csv)
 expect(parsedCSV.count == 2, "RFC 4180 parser sees header and one data record, got \(parsedCSV.count)")
 expect(parsedCSV[0].count == headerCount && parsedCSV[1].count == headerCount,
@@ -158,6 +174,8 @@ expect(BenchmarkSample.csvHeader.contains("keyframeRequestCount"), "header recor
 expect(BenchmarkSample.csvHeader.contains("keyframeCoalescedCount"), "header records coalesced requests")
 expect(BenchmarkSample.csvHeader.contains("maxFrameBytesObserved"), "header records maximum frame size")
 expect(BenchmarkSample.csvHeader.contains("invalidFrameLengthCount"), "header records invalid lengths")
+expect(BenchmarkSample.csvHeader.contains("decoderName"), "header records actual decoder")
+expect(BenchmarkSample.csvHeader.contains("lowLatencyEnabled"), "header records low-latency state")
 expect(BenchmarkSample.csvHeader.last == "decoderRecoveryEvent", "fixed header ends with recovery event")
 var nonFiniteSample = sample
 nonFiniteSample.macCPU = Double.infinity
@@ -193,6 +211,15 @@ expect(jsonObject["currentKeyframeBytes"] as? Double == 7_600_000, "current keyf
 expect(jsonObject["maxKeyframeBytesObserved"] as? Double == 8_100_000, "maximum keyframe bytes are recorded")
 expect(jsonObject["oversizeFrameCount"] as? Double == 2, "oversize frame count is recorded")
 expect(jsonObject["invalidFrameLengthCount"] as? Double == 3, "invalid frame length count is recorded")
+expect(jsonObject["decoderName"] as? String == "c2.vendor.hevc.decoder", "decoder name is recorded")
+expect(jsonObject["hardwareAccelerated"] as? Bool == true, "hardware acceleration is recorded")
+expect(jsonObject["softwareOnly"] as? Bool == false, "software-only state is recorded")
+expect(jsonObject["decoderVendor"] as? Bool == true, "decoder vendor state is recorded")
+expect(jsonObject["lowLatencySupported"] as? Bool == true, "low-latency support is recorded")
+expect(jsonObject["lowLatencyEnabled"] as? Bool == true, "low-latency enablement is recorded")
+expect(jsonObject["decoderConfigureSuccess"] as? Bool == true, "decoder configure success is recorded")
+expect(jsonObject["decoderFallbackReason"] as? String == "", "decoder fallback reason is recorded")
+expect(jsonObject["decoderLowLatencyMode"] as? String == "auto", "requested decoder mode is recorded")
 expect((jsonObject["resolution"] as? [String: Any])?["width"] as? Int == 1920, "JSONL contains resolution")
 expect((jsonObject["timestamp"] as? String)?.hasSuffix("Z") == true, "wall timestamp is ISO8601")
 expect(jsonObject["monotonicElapsedMs"] as? Double == 1234.5, "monotonic elapsed is caller supplied")

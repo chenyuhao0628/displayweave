@@ -35,6 +35,15 @@ struct ReceiverStats: Decodable {
     var maxKeyframeBytesObserved: Double?
     var oversizeFrameCount: Double?
     var invalidFrameLengthCount: Double?
+    var decoderName: String?
+    var hardwareAccelerated: Bool?
+    var softwareOnly: Bool?
+    var vendor: Bool?
+    var lowLatencySupported: Bool?
+    var lowLatencyEnabled: Bool?
+    var decoderConfigureSuccess: Bool?
+    var decoderFallbackReason: String?
+    var decoderLowLatencyMode: String?
 
     // Forward-compatible fields that may be supplied by a newer receiver.
     var actualBitrateMbps: Double?
@@ -81,6 +90,15 @@ struct BenchmarkSample {
     var maxKeyframeBytesObserved: Double?
     var oversizeFrameCount: Double?
     var invalidFrameLengthCount: Double?
+    var decoderName: String?
+    var hardwareAccelerated: Bool?
+    var softwareOnly: Bool?
+    var decoderVendor: Bool?
+    var lowLatencySupported: Bool?
+    var lowLatencyEnabled: Bool?
+    var decoderConfigureSuccess: Bool?
+    var decoderFallbackReason: String?
+    var decoderLowLatencyMode: String?
     var encodeLatencyMs: Double?
     var sendToRenderEstimatedMs: Double?
     var rttMs: Double?
@@ -177,6 +195,15 @@ struct BenchmarkSample {
         maxKeyframeBytesObserved = receiver.maxKeyframeBytesObserved
         oversizeFrameCount = receiver.oversizeFrameCount
         invalidFrameLengthCount = receiver.invalidFrameLengthCount
+        decoderName = receiver.decoderName
+        hardwareAccelerated = receiver.hardwareAccelerated
+        softwareOnly = receiver.softwareOnly
+        decoderVendor = receiver.vendor
+        lowLatencySupported = receiver.lowLatencySupported
+        lowLatencyEnabled = receiver.lowLatencyEnabled
+        decoderConfigureSuccess = receiver.decoderConfigureSuccess
+        decoderFallbackReason = receiver.decoderFallbackReason
+        decoderLowLatencyMode = receiver.decoderLowLatencyMode
         self.encodeLatencyMs = encodeLatencyMs
         sendToRenderEstimatedMs = receiver.sendToRenderEstimatedMs
         rttMs = receiver.rttMs
@@ -208,6 +235,9 @@ struct BenchmarkSample {
         "targetBitrateMbps", "actualBitrateMbps", "averageFrameSize",
         "currentFrameBytes", "maxFrameBytesObserved", "currentKeyframeBytes",
         "maxKeyframeBytesObserved", "oversizeFrameCount", "invalidFrameLengthCount",
+        "decoderName", "hardwareAccelerated", "softwareOnly", "decoderVendor",
+        "lowLatencySupported", "lowLatencyEnabled", "decoderConfigureSuccess",
+        "decoderFallbackReason", "decoderLowLatencyMode",
         "encodeLatencyMs",
         "sendToRenderEstimatedMs", "rttMs", "clockOffsetMs", "offsetConfidenceMs",
         "clockState", "frameAgeAvgMs", "frameAgeLatestMs", "frameAgeP50Ms",
@@ -230,6 +260,12 @@ struct BenchmarkSample {
          number(currentFrameBytes), number(maxFrameBytesObserved),
          number(currentKeyframeBytes), number(maxKeyframeBytesObserved),
          number(oversizeFrameCount), number(invalidFrameLengthCount),
+         decoderName ?? Self.notAvailable, boolean(hardwareAccelerated),
+         boolean(softwareOnly), boolean(decoderVendor),
+         boolean(lowLatencySupported), boolean(lowLatencyEnabled),
+         boolean(decoderConfigureSuccess),
+         decoderFallbackReason ?? Self.notAvailable,
+         decoderLowLatencyMode ?? Self.notAvailable,
          number(encodeLatencyMs), number(sendToRenderEstimatedMs), number(rttMs),
          number(clockOffsetMs), number(offsetConfidenceMs), clockState ?? Self.notAvailable,
          number(frameAgeAvgMs), number(frameAgeLatestMs), number(frameAgeP50Ms),
@@ -278,6 +314,15 @@ struct BenchmarkSample {
             "maxKeyframeBytesObserved": maxKeyframeBytesObserved,
             "oversizeFrameCount": oversizeFrameCount,
             "invalidFrameLengthCount": invalidFrameLengthCount,
+            "decoderName": decoderName,
+            "hardwareAccelerated": hardwareAccelerated,
+            "softwareOnly": softwareOnly,
+            "decoderVendor": decoderVendor,
+            "lowLatencySupported": lowLatencySupported,
+            "lowLatencyEnabled": lowLatencyEnabled,
+            "decoderConfigureSuccess": decoderConfigureSuccess,
+            "decoderFallbackReason": decoderFallbackReason,
+            "decoderLowLatencyMode": decoderLowLatencyMode,
             "encodeLatencyMs": encodeLatencyMs,
             "sendToRenderEstimatedMs": sendToRenderEstimatedMs, "rttMs": rttMs,
             "clockOffsetMs": clockOffsetMs, "offsetConfidenceMs": offsetConfidenceMs,
@@ -318,6 +363,11 @@ struct BenchmarkSample {
     private func number(_ value: Double?) -> String {
         guard let value, value.isFinite else { return Self.notAvailable }
         return String(format: "%.3f", value)
+    }
+
+    private func boolean(_ value: Bool?) -> String {
+        guard let value else { return Self.notAvailable }
+        return value ? "true" : "false"
     }
 
     private static func escapeCSV(_ value: String) -> String {
