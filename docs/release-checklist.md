@@ -49,7 +49,7 @@ Android signing certificate SHA-256:
 
 - [x] Live Mac feed: https://chenyuhao0628.github.io/displayweave/appcast.xml
 - [x] Live Android feed: https://chenyuhao0628.github.io/displayweave/android-update.json
-- [x] Both live files were compared byte-for-byte with their Release assets after deployment.
+- [x] Android's live feed is byte-for-byte identical to its Release asset. The live repository-backed Sparkle XML differs only by its trailing newline; version, build, URL, length, and EdDSA enclosure signature match the Release asset.
 - [x] Mac feed advertises short version `0.2.0-preview.4`, build `5`, ZIP size `2714987`, and the new EdDSA signature.
 - [x] Android feed advertises version code `5`, APK size `213308`, the expected package, SHA-256, minimum SDK, and pinned certificate.
 - [x] Repository `public/` feeds contain the same values so later Pages deployments cannot roll the update channel back to preview.3.

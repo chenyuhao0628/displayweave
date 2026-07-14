@@ -25,7 +25,7 @@
 
 发布前，同一目标还通过 22 个 Swift Standalone Test、Android 61-task Debug Build、无签名 macOS/iOS Debug Build、Production Site、34 对双语文档及 Release-link Validation。
 
-部署后，线上 [Sparkle Feed](https://chenyuhao0628.github.io/displayweave/appcast.xml) 和 [Android Update Feed](https://chenyuhao0628.github.io/displayweave/android-update.json) 已与签名 Release 资产逐字节比较，一致。
+部署后已验证线上 [Sparkle Feed](https://chenyuhao0628.github.io/displayweave/appcast.xml) 和 [Android Update Feed](https://chenyuhao0628.github.io/displayweave/android-update.json)。Android Feed 与 Release 资产逐字节一致；仓库持久化的 Sparkle Feed 具有相同 Version、Build、URL、Size 与 EdDSA Enclosure Signature，唯一字节差异是提交 XML 的末尾换行。
 
 ## 分发边界
 

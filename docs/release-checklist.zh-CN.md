@@ -49,7 +49,7 @@ Android 签名证书 SHA-256：
 
 - [x] 在线 Mac Feed：https://chenyuhao0628.github.io/displayweave/appcast.xml
 - [x] 在线 Android Feed：https://chenyuhao0628.github.io/displayweave/android-update.json
-- [x] 部署后两个在线文件都与 Release 资产逐字节比较，一致。
+- [x] Android 在线 Feed 与 Release 资产逐字节一致。仓库持久化的 Sparkle XML 只相差末尾换行；Version、Build、URL、Length 与 EdDSA Enclosure Signature 均与 Release 资产一致。
 - [x] Mac Feed 声明 Short Version `0.2.0-preview.4`、build `5`、ZIP 大小 `2714987` 与新的 EdDSA 签名。
 - [x] Android Feed 声明 Version Code `5`、APK 大小 `213308`、预期包名、SHA-256、Minimum SDK 与固定证书。
 - [x] 仓库 `public/` Feed 包含相同值，后续 Pages 部署不会把更新渠道回退到 preview.3。

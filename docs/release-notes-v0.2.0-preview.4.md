@@ -25,7 +25,7 @@ The manually dispatched Release workflow built target commit `f300f88e84423f2a89
 
 Before publication, the same target also passed all 22 standalone Swift tests, Android's 61-task Debug build, unsigned macOS/iOS Debug builds, the production site, 34 bilingual documentation pairs, and release-link validation.
 
-The live [Sparkle feed](https://chenyuhao0628.github.io/displayweave/appcast.xml) and [Android update feed](https://chenyuhao0628.github.io/displayweave/android-update.json) were compared byte-for-byte with the signed Release assets after deployment.
+The live [Sparkle feed](https://chenyuhao0628.github.io/displayweave/appcast.xml) and [Android update feed](https://chenyuhao0628.github.io/displayweave/android-update.json) were verified after deployment. The Android feed is byte-for-byte identical to its Release asset. The repository-backed Sparkle feed has the same version, build, URL, size, and EdDSA enclosure signature; its only byte difference is a trailing newline added to the committed XML.
 
 ## Distribution boundary
 
