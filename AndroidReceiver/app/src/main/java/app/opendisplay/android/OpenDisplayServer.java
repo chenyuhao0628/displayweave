@@ -27,6 +27,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private final ReceiverTransport transport;
     private final ReceiverConnectionCoordinator connectionCoordinator;
     private final ReceiverProtocolSession protocolSession = new ReceiverProtocolSession();
+    private final FrameSizeMetrics frameSizeMetrics = new FrameSizeMetrics();
     private volatile boolean wifiAdvertisingEnabled;
     private volatile int listeningPort;
     private volatile DisplaySpec displaySpec;
@@ -175,6 +176,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                         return;
                     }
                     protocolSession.onConnected(generation);
+                    frameSizeMetrics.resetCurrent();
                     resetClockSynchronization();
                     lastVideoReceivedMs = 0;
                     lastFrameRenderedMs = System.currentTimeMillis();
@@ -192,6 +194,29 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     if (connectionCoordinator.isCurrent(generation)) {
                         handleTransportPayload(generation, payload);
                     }
+                });
+            }
+
+            @Override
+            public void onFrameLengthRejected(
+                    long generation, String reason, int frameBytes, int maximumBytes) {
+                executeTransportEvent(() -> {
+                    if (!connectionCoordinator.isCurrent(generation)) {
+                        return;
+                    }
+                    LengthPrefixedProtocol.FrameLengthFailure failure;
+                    try {
+                        failure = LengthPrefixedProtocol.FrameLengthFailure.valueOf(
+                                reason.toUpperCase(java.util.Locale.US));
+                    } catch (IllegalArgumentException error) {
+                        failure = LengthPrefixedProtocol.FrameLengthFailure.INVALID_LENGTH;
+                    }
+                    frameSizeMetrics.recordRejected(failure);
+                    android.util.Log.w("DisplayWeave",
+                            "frame length rejected generation=" + generation
+                                    + " reason=" + reason
+                                    + " frameBytes=" + frameBytes
+                                    + " maximumBytes=" + maximumBytes);
                 });
             }
 
@@ -288,6 +313,9 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         if (!protocolSession.acceptFrame(generation, telemetry)) {
             return;
         }
+        frameSizeMetrics.recordFrame(
+                payload.length,
+                VideoFrameClassifier.isKeyframe(payload, currentStreamConfig));
         synchronized (this) {
             receivedFrames++;
             if (latestVideoFrame != null) {
@@ -413,6 +441,16 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                                 + " configVersion=" + configVersion);
                         return;
                     }
+                    int negotiatedMaxFrameBytes = LengthPrefixedProtocol.LEGACY_MAX_FRAME_BYTES;
+                    if (protocolSession.isNegotiatedV2()) {
+                        int requestedMaxFrameBytes = object.optInt(
+                                "maxFrameBytes",
+                                LengthPrefixedProtocol.V2_DEFAULT_MAX_FRAME_BYTES);
+                        negotiatedMaxFrameBytes =
+                                LengthPrefixedProtocol.negotiatedV2FrameLimit(
+                                        requestedMaxFrameBytes);
+                    }
+                    transport.setMaxFrameBytes(generation, negotiatedMaxFrameBytes);
                     resetQueuedFrames();
                     if (protocolSession.isNegotiatedV2()) {
                         connectionCoordinator.transition(
@@ -914,6 +952,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     lastMacTransport));
             boolean stableClock = clockEstimator.state() == ClockOffsetEstimator.State.STABLE;
             DisplaySpec spec = displaySpec;
+            FrameSizeMetrics.Snapshot frameSizes = frameSizeMetrics.snapshot();
             ReceiverStatsSnapshot snapshot = new ReceiverStatsSnapshot(
                     now,
                     spec == null ? "" : spec.deviceModel,
@@ -941,7 +980,13 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     queueDepthAndroid,
                     dropped,
                     lastInputP50Ms > 0 ? lastInputP50Ms : null,
-                    lastInputP95Ms > 0 ? lastInputP95Ms : null);
+                    lastInputP95Ms > 0 ? lastInputP95Ms : null,
+                    frameSizes.currentFrameBytes,
+                    frameSizes.maxFrameBytesObserved,
+                    frameSizes.currentKeyframeBytes,
+                    frameSizes.maxKeyframeBytesObserved,
+                    frameSizes.oversizeFrameCount,
+                    frameSizes.invalidFrameLengthCount);
             sendJson(snapshot.toJson());
         }
     }

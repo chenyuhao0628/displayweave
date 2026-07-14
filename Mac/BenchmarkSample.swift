@@ -29,6 +29,12 @@ struct ReceiverStats: Decodable {
     var androidDroppedFrames: Double?
     var inputP50Ms: Double?
     var inputP95Ms: Double?
+    var currentFrameBytes: Double?
+    var maxFrameBytesObserved: Double?
+    var currentKeyframeBytes: Double?
+    var maxKeyframeBytesObserved: Double?
+    var oversizeFrameCount: Double?
+    var invalidFrameLengthCount: Double?
 
     // Forward-compatible fields that may be supplied by a newer receiver.
     var actualBitrateMbps: Double?
@@ -69,6 +75,12 @@ struct BenchmarkSample {
     var targetBitrateMbps: Double?
     var actualBitrateMbps: Double?
     var averageFrameSize: Double?
+    var currentFrameBytes: Double?
+    var maxFrameBytesObserved: Double?
+    var currentKeyframeBytes: Double?
+    var maxKeyframeBytesObserved: Double?
+    var oversizeFrameCount: Double?
+    var invalidFrameLengthCount: Double?
     var encodeLatencyMs: Double?
     var sendToRenderEstimatedMs: Double?
     var rttMs: Double?
@@ -159,6 +171,12 @@ struct BenchmarkSample {
         self.keyframeCoalescedCount = keyframeCoalescedCount
         self.decoderRecoveryEvent = decoderRecoveryEvent
         averageFrameSize = localAverageFrameSize ?? receiver.averageFrameSize
+        currentFrameBytes = receiver.currentFrameBytes
+        maxFrameBytesObserved = receiver.maxFrameBytesObserved
+        currentKeyframeBytes = receiver.currentKeyframeBytes
+        maxKeyframeBytesObserved = receiver.maxKeyframeBytesObserved
+        oversizeFrameCount = receiver.oversizeFrameCount
+        invalidFrameLengthCount = receiver.invalidFrameLengthCount
         self.encodeLatencyMs = encodeLatencyMs
         sendToRenderEstimatedMs = receiver.sendToRenderEstimatedMs
         rttMs = receiver.rttMs
@@ -187,7 +205,10 @@ struct BenchmarkSample {
         "deviceModel", "transport", "codec", "width", "height", "requestedFps",
         "actualVirtualDisplayRefreshRate", "actualAndroidDisplayRefreshRate", "captureFps",
         "encodedFps", "sentFps", "receivedFps", "decodedFps", "renderedFps",
-        "targetBitrateMbps", "actualBitrateMbps", "averageFrameSize", "encodeLatencyMs",
+        "targetBitrateMbps", "actualBitrateMbps", "averageFrameSize",
+        "currentFrameBytes", "maxFrameBytesObserved", "currentKeyframeBytes",
+        "maxKeyframeBytesObserved", "oversizeFrameCount", "invalidFrameLengthCount",
+        "encodeLatencyMs",
         "sendToRenderEstimatedMs", "rttMs", "clockOffsetMs", "offsetConfidenceMs",
         "clockState", "frameAgeAvgMs", "frameAgeLatestMs", "frameAgeP50Ms",
         "frameAgeP95Ms", "frameAgeP99Ms", "estimatedE2ELatencyMs", "pendingSends",
@@ -206,6 +227,9 @@ struct BenchmarkSample {
          number(actualAndroidDisplayRefreshRate), number(captureFps), number(encodedFps),
          number(sentFps), number(receivedFps), number(decodedFps), number(renderedFps),
          number(targetBitrateMbps), number(actualBitrateMbps), number(averageFrameSize),
+         number(currentFrameBytes), number(maxFrameBytesObserved),
+         number(currentKeyframeBytes), number(maxKeyframeBytesObserved),
+         number(oversizeFrameCount), number(invalidFrameLengthCount),
          number(encodeLatencyMs), number(sendToRenderEstimatedMs), number(rttMs),
          number(clockOffsetMs), number(offsetConfidenceMs), clockState ?? Self.notAvailable,
          number(frameAgeAvgMs), number(frameAgeLatestMs), number(frameAgeP50Ms),
@@ -247,7 +271,14 @@ struct BenchmarkSample {
             "captureFps": captureFps, "encodedFps": encodedFps, "sentFps": sentFps,
             "receivedFps": receivedFps, "decodedFps": decodedFps, "renderedFps": renderedFps,
             "targetBitrateMbps": targetBitrateMbps, "actualBitrateMbps": actualBitrateMbps,
-            "averageFrameSize": averageFrameSize, "encodeLatencyMs": encodeLatencyMs,
+            "averageFrameSize": averageFrameSize,
+            "currentFrameBytes": currentFrameBytes,
+            "maxFrameBytesObserved": maxFrameBytesObserved,
+            "currentKeyframeBytes": currentKeyframeBytes,
+            "maxKeyframeBytesObserved": maxKeyframeBytesObserved,
+            "oversizeFrameCount": oversizeFrameCount,
+            "invalidFrameLengthCount": invalidFrameLengthCount,
+            "encodeLatencyMs": encodeLatencyMs,
             "sendToRenderEstimatedMs": sendToRenderEstimatedMs, "rttMs": rttMs,
             "clockOffsetMs": clockOffsetMs, "offsetConfidenceMs": offsetConfidenceMs,
             "clockState": clockState, "frameAgeAvgMs": frameAgeAvgMs,

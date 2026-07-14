@@ -33,6 +33,12 @@ public final class ReceiverStatsSnapshot {
     public final int androidDroppedFrames;
     public final Double inputP50Ms;
     public final Double inputP95Ms;
+    public final long currentFrameBytes;
+    public final long maxFrameBytesObserved;
+    public final long currentKeyframeBytes;
+    public final long maxKeyframeBytesObserved;
+    public final long oversizeFrameCount;
+    public final long invalidFrameLengthCount;
 
     public ReceiverStatsSnapshot(
             long timestamp, String deviceModel, String transport, String codec,
@@ -43,7 +49,10 @@ public final class ReceiverStatsSnapshot {
             Long frameAgeP50Ms, Long frameAgeP95Ms, Long frameAgeP99Ms,
             Double estimatedE2ELatencyMs, Double sendToRenderEstimatedMs,
             int androidQueueDepth, int androidDroppedFrames,
-            Double inputP50Ms, Double inputP95Ms) {
+            Double inputP50Ms, Double inputP95Ms,
+            long currentFrameBytes, long maxFrameBytesObserved,
+            long currentKeyframeBytes, long maxKeyframeBytesObserved,
+            long oversizeFrameCount, long invalidFrameLengthCount) {
         this.timestamp = timestamp;
         this.deviceModel = deviceModel;
         this.transport = transport;
@@ -71,6 +80,12 @@ public final class ReceiverStatsSnapshot {
         this.androidDroppedFrames = androidDroppedFrames;
         this.inputP50Ms = inputP50Ms;
         this.inputP95Ms = inputP95Ms;
+        this.currentFrameBytes = currentFrameBytes;
+        this.maxFrameBytesObserved = maxFrameBytesObserved;
+        this.currentKeyframeBytes = currentKeyframeBytes;
+        this.maxKeyframeBytesObserved = maxKeyframeBytesObserved;
+        this.oversizeFrameCount = oversizeFrameCount;
+        this.invalidFrameLengthCount = invalidFrameLengthCount;
     }
 
     public String toJson() {
@@ -102,6 +117,12 @@ public final class ReceiverStatsSnapshot {
         values.put("androidDroppedFrames", androidDroppedFrames);
         values.put("inputP50Ms", inputP50Ms);
         values.put("inputP95Ms", inputP95Ms);
+        values.put("currentFrameBytes", currentFrameBytes);
+        values.put("maxFrameBytesObserved", maxFrameBytesObserved);
+        values.put("currentKeyframeBytes", currentKeyframeBytes);
+        values.put("maxKeyframeBytesObserved", maxKeyframeBytesObserved);
+        values.put("oversizeFrameCount", oversizeFrameCount);
+        values.put("invalidFrameLengthCount", invalidFrameLengthCount);
         return LengthPrefixedProtocol.statsJson(values);
     }
 

@@ -22,6 +22,7 @@ public final class VideoStreamPolicySelfTest {
         testProtocolV2SessionFiltering();
         testRefreshModeSelection();
         testFrameClassifier();
+        testFrameSizeMetrics();
         testFrameTelemetry();
         testStreamMetricsLatencyFields();
         testMetricDistribution();
@@ -33,6 +34,9 @@ public final class VideoStreamPolicySelfTest {
         testDecoderReconfigurationPolicy();
         testAcceptedSocketOptions();
         testWifiTransportCarriesFramedPayloads();
+        testWifiTransportKeepsLegacyFrameLimit();
+        testWifiTransportAcceptsV2FrameSize();
+        testWifiTransportRejectsOversizeWithReason();
         testWifiTransportReplacesBlockedConnection();
         testWifiTransportIgnoresSendAfterStop();
         System.out.println("VideoStreamPolicySelfTest PASS");
@@ -75,6 +79,22 @@ public final class VideoStreamPolicySelfTest {
         assertEquals(8L, telemetry.sessionEpoch);
         assertEquals(12L, telemetry.configVersion);
         assertEquals(41L, telemetry.frameSequence);
+    }
+
+    private static void testFrameSizeMetrics() {
+        FrameSizeMetrics metrics = new FrameSizeMetrics();
+        metrics.recordFrame(1_024, false);
+        metrics.recordFrame(4_096, true);
+        metrics.recordFrame(2_048, false);
+        metrics.recordRejected(LengthPrefixedProtocol.FrameLengthFailure.OVERSIZE);
+        metrics.recordRejected(LengthPrefixedProtocol.FrameLengthFailure.INVALID_LENGTH);
+        FrameSizeMetrics.Snapshot snapshot = metrics.snapshot();
+        assertEquals(2_048L, snapshot.currentFrameBytes);
+        assertEquals(4_096L, snapshot.maxFrameBytesObserved);
+        assertEquals(4_096L, snapshot.currentKeyframeBytes);
+        assertEquals(4_096L, snapshot.maxKeyframeBytesObserved);
+        assertEquals(1L, snapshot.oversizeFrameCount);
+        assertEquals(2L, snapshot.invalidFrameLengthCount);
     }
 
     private static void testProtocolV2SessionFiltering() {
@@ -129,11 +149,16 @@ public final class VideoStreamPolicySelfTest {
         VideoStreamConfig h264 = VideoStreamConfig.from("h264", 60, 1920, 1080, 0);
         assertTrue(VideoFrameClassifier.isImportant(
                 annexB((byte) 0x67, (byte) 0x68, (byte) 0x65), h264));
+        assertTrue(VideoFrameClassifier.isKeyframe(annexB((byte) 0x65), h264));
+        assertFalse(VideoFrameClassifier.isKeyframe(annexB((byte) 0x67), h264));
         assertFalse(VideoFrameClassifier.isImportant(annexB((byte) 0x41), h264));
 
         VideoStreamConfig hevc = VideoStreamConfig.from("hevc", 120, 2560, 1600, 0);
         assertTrue(VideoFrameClassifier.isImportant(
                 hevcAnnexB(32, 33, 19), hevc));
+        assertTrue(VideoFrameClassifier.isKeyframe(hevcAnnexB(19), hevc));
+        assertTrue(VideoFrameClassifier.isKeyframe(hevcAnnexB(20), hevc));
+        assertFalse(VideoFrameClassifier.isKeyframe(hevcAnnexB(32), hevc));
         assertFalse(VideoFrameClassifier.isImportant(hevcAnnexB(1), hevc));
     }
 
@@ -280,7 +305,7 @@ public final class VideoStreamPolicySelfTest {
     }
 
     private static void testWifiTransportCarriesFramedPayloads() {
-        ReceiverTransport transport = new WifiTcpReceiverTransport(0);
+        WifiTcpReceiverTransport transport = new WifiTcpReceiverTransport(0);
         AtomicInteger listeningPort = new AtomicInteger();
         AtomicReference<byte[]> received = new AtomicReference<>();
         AtomicLong generation = new AtomicLong();
@@ -339,6 +364,163 @@ public final class VideoStreamPolicySelfTest {
             assertTrue(socket.getKeepAlive());
         } catch (Exception error) {
             throw new AssertionError("accepted socket options failed", error);
+        }
+    }
+
+    private static void testWifiTransportAcceptsV2FrameSize() {
+        ReceiverTransport transport = new WifiTcpReceiverTransport(0);
+        AtomicInteger listeningPort = new AtomicInteger();
+        CountDownLatch listening = new CountDownLatch(1);
+        CountDownLatch connected = new CountDownLatch(1);
+        CountDownLatch received = new CountDownLatch(1);
+        int frameBytes = LengthPrefixedProtocol.LEGACY_MAX_FRAME_BYTES + 1;
+
+        transport.start(new ReceiverTransport.Listener() {
+            @Override public void onListening(int port) {
+                listeningPort.set(port);
+                listening.countDown();
+            }
+            @Override public void onConnected(long generation, String peer) {
+                connected.countDown();
+            }
+            @Override public void onPayload(long generation, byte[] payload) {
+                if (LengthPrefixedProtocol.isPureJsonControl(payload)) {
+                    return;
+                }
+                assertEquals(frameBytes, payload.length);
+                received.countDown();
+            }
+            @Override public void onDisconnected(long generation) { }
+            @Override public void onError(long generation, String message) { }
+        });
+
+        try {
+            assertTrue(listening.await(2, TimeUnit.SECONDS));
+            try (Socket client = new Socket("127.0.0.1", listeningPort.get())) {
+                assertTrue(connected.await(2, TimeUnit.SECONDS));
+                LengthPrefixedProtocol.write(
+                        new BufferedOutputStream(client.getOutputStream()),
+                        ("{\"type\":\"streamConfig\",\"protocolVersion\":2,"
+                                + "\"maxFrameBytes\":8388608}")
+                                .getBytes(StandardCharsets.UTF_8));
+                LengthPrefixedProtocol.write(
+                        new BufferedOutputStream(client.getOutputStream()),
+                        new byte[frameBytes]);
+                assertTrue(received.await(2, TimeUnit.SECONDS));
+            }
+        } catch (Exception error) {
+            throw new AssertionError("V2 frame limit loopback failed", error);
+        } finally {
+            transport.stop();
+        }
+    }
+
+    private static void testWifiTransportKeepsLegacyFrameLimit() {
+        WifiTcpReceiverTransport transport = new WifiTcpReceiverTransport(0);
+        AtomicInteger listeningPort = new AtomicInteger();
+        AtomicInteger rejectedMaximum = new AtomicInteger();
+        CountDownLatch listening = new CountDownLatch(1);
+        CountDownLatch connected = new CountDownLatch(1);
+        CountDownLatch rejected = new CountDownLatch(1);
+
+        transport.start(new ReceiverTransport.Listener() {
+            @Override public void onListening(int port) {
+                listeningPort.set(port);
+                listening.countDown();
+            }
+            @Override public void onConnected(long generation, String peer) {
+                connected.countDown();
+            }
+            @Override public void onPayload(long generation, byte[] payload) { }
+            @Override public void onFrameLengthRejected(
+                    long generation, String reason, int frameBytes, int maximumBytes) {
+                rejectedMaximum.set(maximumBytes);
+                rejected.countDown();
+            }
+            @Override public void onDisconnected(long generation) { }
+            @Override public void onError(long generation, String message) { }
+        });
+
+        try {
+            assertTrue(listening.await(2, TimeUnit.SECONDS));
+            try (Socket client = new Socket("127.0.0.1", listeningPort.get())) {
+                assertTrue(connected.await(2, TimeUnit.SECONDS));
+                LengthPrefixedProtocol.write(
+                        new BufferedOutputStream(client.getOutputStream()),
+                        "{\"type\":\"streamConfig\"}"
+                                .getBytes(StandardCharsets.UTF_8));
+                byte[] header = java.nio.ByteBuffer.allocate(4)
+                        .order(java.nio.ByteOrder.BIG_ENDIAN)
+                        .putInt(LengthPrefixedProtocol.LEGACY_MAX_FRAME_BYTES + 1)
+                        .array();
+                client.getOutputStream().write(header);
+                client.getOutputStream().flush();
+                assertTrue(rejected.await(2, TimeUnit.SECONDS));
+                assertEquals(LengthPrefixedProtocol.LEGACY_MAX_FRAME_BYTES,
+                        rejectedMaximum.get());
+            }
+        } catch (Exception error) {
+            throw new AssertionError("legacy frame limit loopback failed", error);
+        } finally {
+            transport.stop();
+        }
+    }
+
+    private static void testWifiTransportRejectsOversizeWithReason() {
+        ReceiverTransport transport = new WifiTcpReceiverTransport(0);
+        AtomicInteger listeningPort = new AtomicInteger();
+        AtomicReference<String> rejectedReason = new AtomicReference<>();
+        AtomicInteger rejectedLength = new AtomicInteger();
+        CountDownLatch listening = new CountDownLatch(1);
+        CountDownLatch connected = new CountDownLatch(1);
+        CountDownLatch rejected = new CountDownLatch(1);
+        CountDownLatch disconnected = new CountDownLatch(1);
+
+        transport.start(new ReceiverTransport.Listener() {
+            @Override public void onListening(int port) {
+                listeningPort.set(port);
+                listening.countDown();
+            }
+            @Override public void onConnected(long generation, String peer) {
+                connected.countDown();
+            }
+            @Override public void onPayload(long generation, byte[] payload) { }
+            @Override public void onFrameLengthRejected(
+                    long generation, String reason, int frameBytes, int maximumBytes) {
+                rejectedReason.set(reason);
+                rejectedLength.set(frameBytes);
+                assertEquals(LengthPrefixedProtocol.V2_DEFAULT_MAX_FRAME_BYTES, maximumBytes);
+                rejected.countDown();
+            }
+            @Override public void onDisconnected(long generation) {
+                disconnected.countDown();
+            }
+            @Override public void onError(long generation, String message) { }
+        });
+
+        try {
+            assertTrue(listening.await(2, TimeUnit.SECONDS));
+            try (Socket client = new Socket("127.0.0.1", listeningPort.get())) {
+                assertTrue(connected.await(2, TimeUnit.SECONDS));
+                LengthPrefixedProtocol.write(
+                        new BufferedOutputStream(client.getOutputStream()),
+                        ("{\"type\":\"streamConfig\",\"protocolVersion\":2,"
+                                + "\"maxFrameBytes\":8388608}")
+                                .getBytes(StandardCharsets.UTF_8));
+                int length = LengthPrefixedProtocol.V2_DEFAULT_MAX_FRAME_BYTES + 1;
+                byte[] header = java.nio.ByteBuffer.allocate(4)
+                        .order(java.nio.ByteOrder.BIG_ENDIAN).putInt(length).array();
+                client.getOutputStream().write(header);
+                client.getOutputStream().flush();
+                assertTrue(rejected.await(2, TimeUnit.SECONDS));
+                assertTrue(disconnected.await(2, TimeUnit.SECONDS));
+                assertEquals("oversize", rejectedReason.get());
+                assertEquals(length, rejectedLength.get());
+            }
+        } catch (Exception error) {
+            throw new AssertionError("oversize frame rejection failed", error);
+        } finally {
+            transport.stop();
         }
     }
 

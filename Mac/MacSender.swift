@@ -1473,7 +1473,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             height: height,
             bitrate: streamBitrate,
             transport: transportName,
-            identity: identity)
+            identity: identity,
+            maxFrameBytes: lastHello?.negotiatedMaxFrameBytes)
         sendJSONFrame(message.json)
         if let identity {
             scheduleProtocolTimeout(identity: identity, phase: .awaitingStreamConfigAck)
@@ -1483,6 +1484,21 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     private func sendFramed(_ payload: Data) {
         guard let connection, connectionReady else { return }
+        let negotiatedMaxBytes = lastHello?.negotiatedMaxFrameBytes
+        guard FrameSizePolicy.permits(
+            payloadBytes: payload.count,
+            negotiatedMaxBytes: negotiatedMaxBytes
+        ) else {
+            Log.info("outbound video frame rejected before write: bytes=\(payload.count) negotiatedMaxBytes=\(negotiatedMaxBytes ?? 0) absoluteMaxBytes=\(FrameSizePolicy.absoluteMaxBytes)")
+            queue.async { [weak self] in
+                guard let self, self.connectionReady else { return }
+                self.dropsThisWindow += 1
+                self.dropsTotal += 1
+                Task { await self.status("视频帧超过协商上限，正在重新连接…") }
+                self.scheduleReconnect()
+            }
+            return
+        }
         var header = UInt32(payload.count).bigEndian
         var frame = Data(bytes: &header, count: 4)
         frame.append(payload)

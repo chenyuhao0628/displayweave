@@ -139,13 +139,16 @@ struct StreamEncodingPolicySelfTest {
                    "fallback stream config should announce the H.264 profile")
         assertTrue(!fallbackConfig.contains("sessionEpoch"),
                    "legacy stream config must not gain protocol-v2 fields")
+        assertTrue(!fallbackConfig.contains("maxFrameBytes"),
+                   "legacy stream config must not negotiate a larger frame")
 
         var identity = StreamProtocolIdentity()
         identity.beginConnection()
         let firstConfig = identity.beginConfiguration()
         let negotiatedConfig = StreamConfigMessage(
             codec: .hevc, fps: 120, width: 2560, height: 1600,
-            bitrate: 60_000_000, transport: "wifi", identity: firstConfig
+            bitrate: 60_000_000, transport: "wifi", identity: firstConfig,
+            maxFrameBytes: 8 * 1_024 * 1_024
         ).json
         assertTrue(negotiatedConfig.contains("\"protocolVersion\":2"),
                    "negotiated stream config declares protocol v2")
@@ -153,6 +156,24 @@ struct StreamEncodingPolicySelfTest {
                    "first connection starts epoch one")
         assertTrue(negotiatedConfig.contains("\"configVersion\":1"),
                    "first configuration starts version one")
+        assertTrue(negotiatedConfig.contains("\"maxFrameBytes\":8388608"),
+                   "negotiated stream config echoes the bounded receiver limit")
+        assertTrue(FrameSizePolicy.permits(
+            payloadBytes: 8 * 1_024 * 1_024,
+            negotiatedMaxBytes: 8 * 1_024 * 1_024),
+            "a frame at the negotiated V2 limit is allowed")
+        assertTrue(!FrameSizePolicy.permits(
+            payloadBytes: 8 * 1_024 * 1_024 + 1,
+            negotiatedMaxBytes: 8 * 1_024 * 1_024),
+            "a frame above the negotiated V2 limit is rejected before write")
+        assertTrue(!FrameSizePolicy.permits(
+            payloadBytes: 0,
+            negotiatedMaxBytes: 8 * 1_024 * 1_024),
+            "a zero-length payload is never a valid frame")
+        assertTrue(FrameSizePolicy.permits(
+            payloadBytes: FrameSizePolicy.legacyMaxBytes + 1,
+            negotiatedMaxBytes: nil),
+            "legacy send behavior stays unnegotiated and unchanged")
         let frameOne = identity.nextFrame()
         let frameTwo = identity.nextFrame()
         assertEqual(1, Int(frameOne.frameSequence), "first frame sequence")

@@ -32,6 +32,8 @@ struct DeviceCapabilitiesSelfTest {
                     "legacy iOS remains H.264")
         assertEqual(false, legacyIOSHello.supportsProtocolV2,
                     "legacy iOS must stay on the legacy wire path")
+        assertEqual(nil, legacyIOSHello.negotiatedMaxFrameBytes,
+                    "legacy iOS keeps the existing unnegotiated frame path")
         assertEqual("unknown", legacyIOSHello.negotiatedTransport,
                     "legacy iOS needs no transport field")
 
@@ -41,7 +43,8 @@ struct DeviceCapabilitiesSelfTest {
          "preferredCodec":"HEVC","deviceModel":"Android Tablet","androidSdk":35,
          "transport":"wifi","protocolVersion":2,
          "capabilities":["streamConfigAck","decoderReady","firstFrameRendered",
-                         "sessionEpoch","configVersion","frameSequence"]}
+                         "sessionEpoch","configVersion","frameSequence","maxFrameBytes"],
+         "maxFrameBytes":8388608}
         """.utf8))
         assertEqual(120, modernHello.negotiatedRefreshRate,
                     "modern hello preserves 120Hz display capability")
@@ -55,6 +58,8 @@ struct DeviceCapabilitiesSelfTest {
                     "transport metadata is preserved")
         assertEqual(true, modernHello.supportsProtocolV2,
                     "complete Android capability advertisement enables protocol v2")
+        assertEqual(8 * 1_024 * 1_024, modernHello.negotiatedMaxFrameBytes,
+                    "negotiated Android v2 frame limit is retained")
 
         let partialV2 = try JSONDecoder().decode(PhoneInfo.self, from: Data("""
         {"pixelsWide":2560,"pixelsHigh":1600,"scale":2.0,"device":"Android",
@@ -62,6 +67,17 @@ struct DeviceCapabilitiesSelfTest {
         """.utf8))
         assertEqual(false, partialV2.supportsProtocolV2,
                     "partial capability sets must fall back to the legacy wire path")
+        assertEqual(nil, partialV2.negotiatedMaxFrameBytes,
+                    "partial capability sets cannot enable large frames")
+
+        let excessiveFrameLimit = try JSONDecoder().decode(PhoneInfo.self, from: Data("""
+        {"pixelsWide":2560,"pixelsHigh":1600,"scale":2.0,"device":"Android",
+         "protocolVersion":2,"capabilities":["streamConfigAck","decoderReady",
+         "firstFrameRendered","sessionEpoch","configVersion","frameSequence","maxFrameBytes"],
+         "maxFrameBytes":33554432}
+        """.utf8))
+        assertEqual(16 * 1_024 * 1_024, excessiveFrameLimit.negotiatedMaxFrameBytes,
+                    "advertised limits are clamped to the absolute safety ceiling")
 
         let unsupportedPreference = try JSONDecoder().decode(PhoneInfo.self, from: Data("""
         {"pixelsWide":1280,"pixelsHigh":720,"scale":1.0,

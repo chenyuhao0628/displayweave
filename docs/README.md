@@ -11,7 +11,7 @@
 - [Mac and Android automatic updates](automatic-updates.md)
 - [Stability and physical-device evidence](stability-test-report.md)
 - [Performance metrics audit](performance-metrics-audit.md)
-- [Android stability and latency audit](android-stability-latency-audit.md), [connection generation model](android-connection-generation.md), and [Protocol V2 negotiation](android-protocol-v2-negotiation.md)
+- [Android stability and latency audit](android-stability-latency-audit.md), [connection generation model](android-connection-generation.md), [Protocol V2 negotiation](android-protocol-v2-negotiation.md), and [frame-size negotiation](frame-size-negotiation.md)
 - [Short benchmark guide](benchmark-guide.md)
 - [Latency measurement](latency-measurement.md)
 - [USB versus WiFi benchmark protocol](usb-vs-wifi-benchmark.md)

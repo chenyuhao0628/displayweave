@@ -11,6 +11,8 @@
 
 本文是 Android 连接稳定性与低延迟工作的阶段零审计，记录 Connection Generation 实现前的真实行为。配置的 FPS、码率和刷新率请求不会被当成实测结果；本文也不声称已经完成长时间或多设备验证。
 
+> 实现状态更新（2026-07-14）：PR 1 Connection Generation、PR 2 Negotiated Identity/Progress、PR 3 Keyframe/Drop Correction 与 PR 4 Frame-size Negotiation 此后均已实现。下表刻意保留阶段零 Baseline；当前 PR 4 行为见[帧尺寸协商](frame-size-negotiation.zh-CN.md)。
+
 ## 执行摘要
 
 当前接收端已经具备可工作的旧版长度前缀 TCP 链路；Android WiFi 与 ADB Forward USB 共用该链路；TCP_NODELAY 已启用；Ping/Pong 遥测已存在；Android 使用容量为一帧的 Latest Frame Wins 队列；UI 会请求匹配的视频/Surface 刷新率。Frame Age 分位数、RTT/时钟偏移、流水线 FPS、队列深度和汇总丢帧数等测量基础也已经存在。

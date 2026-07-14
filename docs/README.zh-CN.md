@@ -11,7 +11,7 @@
 - [Mac 与 Android 自动更新](automatic-updates.zh-CN.md)
 - [稳定性与真机证据](stability-test-report.zh-CN.md)
 - [性能指标审计](performance-metrics-audit.zh-CN.md)
-- [Android 稳定性与延迟审计](android-stability-latency-audit.zh-CN.md)、[连接 Generation 模型](android-connection-generation.zh-CN.md)与 [Protocol V2 协商](android-protocol-v2-negotiation.zh-CN.md)
+- [Android 稳定性与延迟审计](android-stability-latency-audit.zh-CN.md)、[连接 Generation 模型](android-connection-generation.zh-CN.md)、[Protocol V2 协商](android-protocol-v2-negotiation.zh-CN.md)与[帧尺寸协商](frame-size-negotiation.zh-CN.md)
 - [短时 Benchmark 指南](benchmark-guide.zh-CN.md)
 - [延迟测量](latency-measurement.zh-CN.md)
 - [USB/WiFi Benchmark 规程](usb-vs-wifi-benchmark.zh-CN.md)

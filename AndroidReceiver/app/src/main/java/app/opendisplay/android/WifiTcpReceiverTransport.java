@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -31,6 +32,7 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
         final Object writeLock = new Object();
         final long connectedAtMs;
         volatile long lastPayloadAtMs;
+        volatile int maxFrameBytes = LengthPrefixedProtocol.LEGACY_MAX_FRAME_BYTES;
 
         ConnectionContext(long generation, Socket socket,
                           BufferedInputStream input, BufferedOutputStream output,
@@ -88,6 +90,14 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
             });
         } catch (RejectedExecutionException ignored) {
             // stop() may race with a final timer/control send.
+        }
+    }
+
+    @Override
+    public void setMaxFrameBytes(long generation, int maximumBytes) {
+        ConnectionContext context = current(generation);
+        if (context != null) {
+            context.maxFrameBytes = LengthPrefixedProtocol.boundedFrameLimit(maximumBytes);
         }
     }
 
@@ -168,11 +178,27 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
     private void readLoop(ConnectionContext context) {
         try {
             while (running && isCurrent(context) && !context.socket.isClosed()) {
-                byte[] payload = LengthPrefixedProtocol.read(context.input);
+                byte[] payload = LengthPrefixedProtocol.read(
+                        context.input,
+                        context.maxFrameBytes);
                 context.lastPayloadAtMs = System.currentTimeMillis();
+                applyNegotiatedFrameLimit(context, payload);
                 if (isCurrent(context)) {
                     listener.onPayload(context.generation, payload);
                 }
+            }
+        } catch (LengthPrefixedProtocol.FrameLengthException error) {
+            if (running && isCurrent(context)) {
+                listener.onFrameLengthRejected(
+                        context.generation,
+                        error.failure.name().toLowerCase(Locale.US),
+                        error.frameBytes,
+                        error.maximumBytes);
+                listener.onError(context.generation,
+                        "帧长度被拒绝（" + error.frameBytes + " 字节，限制 "
+                                + error.maximumBytes + " 字节，原因 "
+                                + error.failure.name().toLowerCase(Locale.US)
+                                + "），已关闭当前连接并等待有限恢复");
             }
         } catch (IOException error) {
             if (running && isCurrent(context)) {
@@ -191,6 +217,14 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
     static void configureAcceptedSocket(Socket socket) throws IOException {
         socket.setTcpNoDelay(true);
         socket.setKeepAlive(true);
+    }
+
+    private static void applyNegotiatedFrameLimit(
+            ConnectionContext context, byte[] payload) {
+        int negotiatedLimit = LengthPrefixedProtocol.streamConfigFrameLimit(payload);
+        if (negotiatedLimit > 0) {
+            context.maxFrameBytes = negotiatedLimit;
+        }
     }
 
     synchronized long currentGeneration() {

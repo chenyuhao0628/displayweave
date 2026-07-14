@@ -26,6 +26,24 @@ public final class VideoFrameClassifier {
         return false;
     }
 
+    public static boolean isKeyframe(byte[] wirePayload, VideoStreamConfig config) {
+        if (wirePayload == null || config == null) {
+            return false;
+        }
+        byte[] payload = AnnexB.stripTelemetryPrefix(wirePayload);
+        for (byte[] unit : AnnexB.nalUnits(payload)) {
+            if (unit.length == 0) {
+                continue;
+            }
+            int type = nalType(unit, config.isHevc());
+            if (type == config.keyframeNalType()
+                    || (config.isHevc() && type == 20)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static int nalType(byte[] unit, boolean hevc) {
         if (hevc) {
             return unit.length > 1 ? (unit[0] >> 1) & 0x3F : -1;

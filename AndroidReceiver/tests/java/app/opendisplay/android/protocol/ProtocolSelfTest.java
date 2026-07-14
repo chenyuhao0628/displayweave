@@ -2,6 +2,9 @@ package app.opendisplay.android.protocol;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.LinkedHashMap;
@@ -16,6 +19,7 @@ import app.opendisplay.android.TouchEventMapper;
 public final class ProtocolSelfTest {
     public static void main(String[] args) throws Exception {
         testLengthPrefixedRoundTrip();
+        testNegotiatedFrameSizeLimits();
         testJsonClassification();
         testHelloJsonIncludesDisplayCapabilities();
         testHelloJsonAdvertisesNegotiatedProtocolV2();
@@ -42,6 +46,43 @@ public final class ProtocolSelfTest {
         byte[] encoded = LengthPrefixedProtocol.encode("hello".getBytes("UTF-8"));
         byte[] decoded = LengthPrefixedProtocol.read(new ByteArrayInputStream(encoded));
         assertEquals("hello", new String(decoded, "UTF-8"));
+    }
+
+    private static void testNegotiatedFrameSizeLimits() throws Exception {
+        int largerThanLegacy = LengthPrefixedProtocol.LEGACY_MAX_FRAME_BYTES + 1;
+        byte[] payload = new byte[largerThanLegacy];
+        byte[] framed = LengthPrefixedProtocol.encode(payload);
+
+        assertFrameLengthFailure(
+                framed,
+                LengthPrefixedProtocol.LEGACY_MAX_FRAME_BYTES,
+                LengthPrefixedProtocol.FrameLengthFailure.OVERSIZE);
+        assertEquals(largerThanLegacy,
+                LengthPrefixedProtocol.read(
+                        new ByteArrayInputStream(framed),
+                        LengthPrefixedProtocol.V2_DEFAULT_MAX_FRAME_BYTES).length);
+
+        assertFrameLengthFailure(
+                lengthHeader(LengthPrefixedProtocol.V2_DEFAULT_MAX_FRAME_BYTES + 1),
+                LengthPrefixedProtocol.V2_DEFAULT_MAX_FRAME_BYTES,
+                LengthPrefixedProtocol.FrameLengthFailure.OVERSIZE);
+        assertFrameLengthFailure(
+                lengthHeader(LengthPrefixedProtocol.ABSOLUTE_MAX_FRAME_BYTES + 1),
+                LengthPrefixedProtocol.ABSOLUTE_MAX_FRAME_BYTES,
+                LengthPrefixedProtocol.FrameLengthFailure.ABSOLUTE_LIMIT);
+        assertFrameLengthFailure(
+                lengthHeader(0),
+                LengthPrefixedProtocol.V2_DEFAULT_MAX_FRAME_BYTES,
+                LengthPrefixedProtocol.FrameLengthFailure.INVALID_LENGTH);
+        assertEquals(LengthPrefixedProtocol.LEGACY_MAX_FRAME_BYTES,
+                LengthPrefixedProtocol.streamConfigFrameLimit(
+                        "{\"type\":\"streamConfig\"}".getBytes("UTF-8")));
+        assertEquals(LengthPrefixedProtocol.V2_DEFAULT_MAX_FRAME_BYTES,
+                LengthPrefixedProtocol.streamConfigFrameLimit(
+                        ("{\"type\":\"streamConfig\",\"protocolVersion\":2,"
+                                + "\"maxFrameBytes\":8388608}").getBytes("UTF-8")));
+        assertEquals(-1, LengthPrefixedProtocol.streamConfigFrameLimit(
+                "{\"type\":\"ping\"}".getBytes("UTF-8")));
     }
 
     private static void testJsonClassification() {
@@ -84,9 +125,10 @@ public final class ProtocolSelfTest {
                 new String[] {"hevc", "h264"}, "hevc", "Android Tablet", 35,
                 "wifi", "Android", "install-1");
         assertContains(json, "\"protocolVersion\":2");
+        assertContains(json, "\"maxFrameBytes\":8388608");
         assertContains(json, "\"capabilities\":[\"streamConfigAck\",\"decoderReady\","
                 + "\"firstFrameRendered\",\"sessionEpoch\",\"configVersion\","
-                + "\"frameSequence\"]");
+                + "\"frameSequence\",\"maxFrameBytes\"]");
     }
 
     private static void testProtocolV2ProgressMessages() {
@@ -118,6 +160,24 @@ public final class ProtocolSelfTest {
         assertContains(state, "\"reason\":\"decoderReady\"");
         assertContains(state, "\"enteredAt\":1234");
         assertContains(state, "\"generation\":3");
+    }
+
+    private static byte[] lengthHeader(int length) {
+        return ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(length).array();
+    }
+
+    private static void assertFrameLengthFailure(
+            byte[] framed, int maximum, LengthPrefixedProtocol.FrameLengthFailure expected)
+            throws Exception {
+        try {
+            LengthPrefixedProtocol.read(new ByteArrayInputStream(framed), maximum);
+            throw new AssertionError("expected frame length failure " + expected);
+        } catch (LengthPrefixedProtocol.FrameLengthException error) {
+            assertEquals(expected.name(), error.failure.name());
+            assertEquals(maximum, error.maximumBytes);
+        } catch (IOException error) {
+            throw new AssertionError("expected typed frame length failure", error);
+        }
     }
 
     private static void testDecoderResetRequestPreservesLegacyAndRequestsFreshV2Config() {
@@ -159,7 +219,8 @@ public final class ProtocolSelfTest {
                 118, 117, 116, null,
                 null, null, null, "estimating",
                 8.25, 9L, 6L, 14L, 20L,
-                null, null, 1, 2, 3.5, 7.5);
+                null, null, 1, 2, 3.5, 7.5,
+                2048, 4096, 3072, 6144, 2, 3);
         String json = snapshot.toJson();
         assertContains(json, "\"type\":\"stats\"");
         assertContains(json, "\"timestamp\":1234");
@@ -171,6 +232,12 @@ public final class ProtocolSelfTest {
         assertContains(json, "\"estimatedE2ELatencyMs\":null");
         assertContains(json, "\"sendToRenderEstimatedMs\":null");
         assertContains(json, "\"inputP95Ms\":7.5");
+        assertContains(json, "\"currentFrameBytes\":2048");
+        assertContains(json, "\"maxFrameBytesObserved\":4096");
+        assertContains(json, "\"currentKeyframeBytes\":3072");
+        assertContains(json, "\"maxKeyframeBytesObserved\":6144");
+        assertContains(json, "\"oversizeFrameCount\":2");
+        assertContains(json, "\"invalidFrameLengthCount\":3");
         assertFalse(json.contains("\"null\""));
     }
 

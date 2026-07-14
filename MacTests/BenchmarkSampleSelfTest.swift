@@ -80,7 +80,13 @@ let statsJSON = """
   "androidQueueDepth": 2,
   "androidDroppedFrames": 3,
   "inputP50Ms": 7.0,
-  "inputP95Ms": null
+  "inputP95Ms": null,
+  "currentFrameBytes": 420000,
+  "maxFrameBytesObserved": 8100000,
+  "currentKeyframeBytes": 7600000,
+  "maxKeyframeBytesObserved": 8100000,
+  "oversizeFrameCount": 2,
+  "invalidFrameLengthCount": 3
 }
 """
 
@@ -91,6 +97,9 @@ expect(stats.frameAgeP99Ms == 35 && stats.androidQueueDepth == 2, "canonical met
 expect(stats.clockRttMs == nil, "canonical nullable clock field remains nil")
 expect(stats.sendToRenderEstimatedMs == 31.25, "canonical send-to-render metric decodes")
 expect(stats.inputP95Ms == nil, "explicit JSON null remains nil")
+expect(stats.maxFrameBytesObserved == 8_100_000, "maximum frame size metric decodes")
+expect(stats.oversizeFrameCount == 2 && stats.invalidFrameLengthCount == 3,
+       "frame-length rejection counters decode")
 
 let sample = BenchmarkSample(
     timestamp: Date(timeIntervalSince1970: 1_700_000_000.125),
@@ -147,6 +156,8 @@ expect(BenchmarkSample.csvHeader.first == "timestamp", "fixed header starts with
 expect(BenchmarkSample.csvHeader.contains("keyframeRequestReason"), "header records keyframe request reason")
 expect(BenchmarkSample.csvHeader.contains("keyframeRequestCount"), "header records keyframe request count")
 expect(BenchmarkSample.csvHeader.contains("keyframeCoalescedCount"), "header records coalesced requests")
+expect(BenchmarkSample.csvHeader.contains("maxFrameBytesObserved"), "header records maximum frame size")
+expect(BenchmarkSample.csvHeader.contains("invalidFrameLengthCount"), "header records invalid lengths")
 expect(BenchmarkSample.csvHeader.last == "decoderRecoveryEvent", "fixed header ends with recovery event")
 var nonFiniteSample = sample
 nonFiniteSample.macCPU = Double.infinity
@@ -176,6 +187,12 @@ expect(jsonObject["keyframeRequestCount"] as? Double == 4, "keyframe request cou
 expect(jsonObject["keyframeCoalescedCount"] as? Double == 2, "coalesced keyframe count is recorded")
 expect(jsonObject["decoderRecoveryEvent"] as? String == "receiver-kf", "recovery event is recorded")
 expect(jsonObject["averageFrameSize"] as? Double == 41_234.5, "local frame size stays measured")
+expect(jsonObject["currentFrameBytes"] as? Double == 420_000, "current frame bytes are recorded")
+expect(jsonObject["maxFrameBytesObserved"] as? Double == 8_100_000, "maximum frame bytes are recorded")
+expect(jsonObject["currentKeyframeBytes"] as? Double == 7_600_000, "current keyframe bytes are recorded")
+expect(jsonObject["maxKeyframeBytesObserved"] as? Double == 8_100_000, "maximum keyframe bytes are recorded")
+expect(jsonObject["oversizeFrameCount"] as? Double == 2, "oversize frame count is recorded")
+expect(jsonObject["invalidFrameLengthCount"] as? Double == 3, "invalid frame length count is recorded")
 expect((jsonObject["resolution"] as? [String: Any])?["width"] as? Int == 1920, "JSONL contains resolution")
 expect((jsonObject["timestamp"] as? String)?.hasSuffix("Z") == true, "wall timestamp is ISO8601")
 expect(jsonObject["monotonicElapsedMs"] as? Double == 1234.5, "monotonic elapsed is caller supplied")

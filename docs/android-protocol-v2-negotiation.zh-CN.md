@@ -25,12 +25,14 @@ Android Hello 声明 Protocol Version 2 和完整 Capability Set：
     "firstFrameRendered",
     "sessionEpoch",
     "configVersion",
-    "frameSequence"
-  ]
+    "frameSequence",
+    "maxFrameBytes"
+  ],
+  "maxFrameBytes": 8388608
 }
 ```
 
-只有 Peer 明确识别为 Android 且所有必需 Capability 都存在时，Mac 才启用 PR 2。Version 缺失、Capability 不完整、旧 Android Hello 或 iOS Hello 都选择未改动的 Legacy Path。
+只有 Peer 明确识别为 Android 且 PR 2 的六项核心 Capability 都存在时，Mac 才启用 Identity/Progress 行为。PR 4 将 `maxFrameBytes` 作为单独 Gate 的扩展；参见[帧尺寸协商](frame-size-negotiation.zh-CN.md)。Version 缺失、核心 Capability 不完整、旧 Android Hello 或 iOS Hello 都选择未改动的 Legacy Path。
 
 ## Identity Rules
 
@@ -140,4 +142,4 @@ Failure-first Test 覆盖完整与不完整协商、Legacy iOS Fallback、进程
 
 ## Next Step
 
-完成 PR 1/PR 2 真机验证后，PR 3 应处理 Pre-encode Drop、Keyframe Reason Policy 与 Keyframe-request Coalescing。MediaCodec Async、Binary Frame Header V2、Buffer Pool、UDP 和 QUIC 仍不在当前范围。
+PR 3 Keyframe/Drop Policy 与 PR 4 Frame-size Negotiation 已分别记录。下一实现阶段 PR 5 处理 MediaCodec Low-latency Selection 与 Fallback。MediaCodec Async、Binary Frame Header V2、Buffer Pool、UDP 和 QUIC 仍不在当前范围。

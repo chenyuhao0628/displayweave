@@ -133,6 +133,7 @@ struct StreamConfigMessage {
     var bitrate: Int
     var transport: String
     var identity: StreamProtocolFrameIdentity? = nil
+    var maxFrameBytes: Int? = nil
 
     var profile: String {
         codec == .hevc ? "main" : "high"
@@ -148,10 +149,14 @@ struct StreamConfigMessage {
             + "\"profile\":\"\(profile)\","
             + "\"transport\":\"\(escaped(transport))\""
         guard let identity else { return legacy + "}" }
-        return legacy
+        var negotiated = legacy
             + ",\"protocolVersion\":2"
             + ",\"sessionEpoch\":\(identity.sessionEpoch)"
-            + ",\"configVersion\":\(identity.configVersion)}"
+            + ",\"configVersion\":\(identity.configVersion)"
+        if let maxFrameBytes, maxFrameBytes > 0 {
+            negotiated += ",\"maxFrameBytes\":\(min(maxFrameBytes, FrameSizePolicy.absoluteMaxBytes))"
+        }
+        return negotiated + "}"
     }
 
     private func escaped(_ value: String) -> String {

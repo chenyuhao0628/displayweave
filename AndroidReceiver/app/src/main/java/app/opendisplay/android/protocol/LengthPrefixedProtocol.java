@@ -9,9 +9,20 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class LengthPrefixedProtocol {
-    public static final int MAX_FRAME_BYTES = 1 << 20;
+    private static final Pattern STREAM_CONFIG_TYPE = Pattern.compile(
+            "\\\"type\\\"\\s*:\\s*\\\"streamConfig\\\"");
+    private static final Pattern PROTOCOL_VERSION_FIELD = Pattern.compile(
+            "\\\"protocolVersion\\\"\\s*:\\s*(-?\\d+)");
+    private static final Pattern MAX_FRAME_BYTES_FIELD = Pattern.compile(
+            "\\\"maxFrameBytes\\\"\\s*:\\s*(-?\\d+)");
+    public static final int LEGACY_MAX_FRAME_BYTES = 1 << 20;
+    public static final int V2_DEFAULT_MAX_FRAME_BYTES = 8 << 20;
+    public static final int ABSOLUTE_MAX_FRAME_BYTES = 16 << 20;
+    public static final int MAX_FRAME_BYTES = LEGACY_MAX_FRAME_BYTES;
     public static final int NEGOTIATED_PROTOCOL_VERSION = 2;
     public static final String[] NEGOTIATED_CAPABILITIES = new String[] {
             "streamConfigAck",
@@ -19,8 +30,31 @@ public final class LengthPrefixedProtocol {
             "firstFrameRendered",
             "sessionEpoch",
             "configVersion",
-            "frameSequence"
+            "frameSequence",
+            "maxFrameBytes"
     };
+
+    public enum FrameLengthFailure {
+        INVALID_LENGTH,
+        OVERSIZE,
+        ABSOLUTE_LIMIT
+    }
+
+    public static final class FrameLengthException extends IOException {
+        public final FrameLengthFailure failure;
+        public final int frameBytes;
+        public final int maximumBytes;
+
+        FrameLengthException(
+                FrameLengthFailure failure, int frameBytes, int maximumBytes) {
+            super("invalid OpenDisplay frame length: " + frameBytes
+                    + " reason=" + failure.name().toLowerCase(Locale.US)
+                    + " maximum=" + maximumBytes);
+            this.failure = failure;
+            this.frameBytes = frameBytes;
+            this.maximumBytes = maximumBytes;
+        }
+    }
 
     private LengthPrefixedProtocol() {}
 
@@ -37,12 +71,66 @@ public final class LengthPrefixedProtocol {
     }
 
     public static byte[] read(InputStream in) throws IOException {
+        return read(in, LEGACY_MAX_FRAME_BYTES);
+    }
+
+    public static byte[] read(InputStream in, int maximumBytes) throws IOException {
         byte[] header = readExact(in, 4);
         int length = ByteBuffer.wrap(header).order(ByteOrder.BIG_ENDIAN).getInt();
-        if (length <= 0 || length > MAX_FRAME_BYTES) {
-            throw new IOException("invalid OpenDisplay frame length: " + length);
+        int boundedMaximum = boundedFrameLimit(maximumBytes);
+        if (length <= 0) {
+            throw new FrameLengthException(
+                    FrameLengthFailure.INVALID_LENGTH, length, boundedMaximum);
+        }
+        if (length > ABSOLUTE_MAX_FRAME_BYTES) {
+            throw new FrameLengthException(
+                    FrameLengthFailure.ABSOLUTE_LIMIT, length, boundedMaximum);
+        }
+        if (length > boundedMaximum) {
+            throw new FrameLengthException(
+                    FrameLengthFailure.OVERSIZE, length, boundedMaximum);
         }
         return readExact(in, length);
+    }
+
+    public static int boundedFrameLimit(int requestedBytes) {
+        if (requestedBytes <= 0) {
+            return LEGACY_MAX_FRAME_BYTES;
+        }
+        return Math.min(requestedBytes, ABSOLUTE_MAX_FRAME_BYTES);
+    }
+
+    public static int negotiatedV2FrameLimit(int requestedBytes) {
+        return Math.min(V2_DEFAULT_MAX_FRAME_BYTES, boundedFrameLimit(requestedBytes));
+    }
+
+    public static int streamConfigFrameLimit(byte[] payload) {
+        if (!isPureJsonControl(payload)) {
+            return -1;
+        }
+        String json = new String(payload, StandardCharsets.UTF_8);
+        if (!STREAM_CONFIG_TYPE.matcher(json).find()) {
+            return -1;
+        }
+        int protocolVersion = integerField(json, PROTOCOL_VERSION_FIELD, 1);
+        if (protocolVersion < NEGOTIATED_PROTOCOL_VERSION) {
+            return LEGACY_MAX_FRAME_BYTES;
+        }
+        int requested = integerField(
+                json, MAX_FRAME_BYTES_FIELD, V2_DEFAULT_MAX_FRAME_BYTES);
+        return negotiatedV2FrameLimit(requested);
+    }
+
+    private static int integerField(String json, Pattern field, int fallback) {
+        Matcher matcher = field.matcher(json);
+        if (!matcher.find()) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(matcher.group(1));
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
     }
 
     public static byte[] readExact(InputStream in, int length) throws IOException {
@@ -90,7 +178,8 @@ public final class LengthPrefixedProtocol {
                         + "\"refreshRate\":%d,\"maxFps\":%d,\"supportedCodecs\":%s,"
                         + "\"preferredCodec\":\"%s\",\"deviceModel\":\"%s\",\"androidSdk\":%d,"
                         + "\"transport\":\"%s\",\"device\":\"%s\",\"id\":\"%s\","
-                        + "\"protocolVersion\":%d,\"capabilities\":%s}",
+                        + "\"protocolVersion\":%d,\"maxFrameBytes\":%d,"
+                        + "\"capabilities\":%s}",
                 pixelsWide, pixelsHigh, scale,
                 sanitizeFps(refreshRate), sanitizeFps(maxFps),
                 stringArrayJson(supportedCodecs),
@@ -101,6 +190,7 @@ public final class LengthPrefixedProtocol {
                 escape(device),
                 escape(installId),
                 NEGOTIATED_PROTOCOL_VERSION,
+                V2_DEFAULT_MAX_FRAME_BYTES,
                 stringArrayJson(NEGOTIATED_CAPABILITIES));
     }
 

@@ -15,6 +15,7 @@ struct PhoneInfo: Decodable {
     let transport: String?
     let protocolVersion: Int?
     let capabilities: [String]?
+    let maxFrameBytes: Int?
 
     var kind: String { device ?? "设备" }
     var negotiatedRefreshRate: Int { Self.supportedFpsBucket(refreshRate ?? 60) }
@@ -43,6 +44,12 @@ struct PhoneInfo: Decodable {
             "sessionEpoch", "configVersion", "frameSequence"
         ]
         return required.isSubset(of: advertised)
+    }
+    var negotiatedMaxFrameBytes: Int? {
+        FrameSizePolicy.negotiatedMaxBytes(
+            supportsProtocolV2: supportsProtocolV2,
+            capabilities: capabilities ?? [],
+            advertisedBytes: maxFrameBytes)
     }
 
     private static func supportedFpsBucket(_ value: Int) -> Int {

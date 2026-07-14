@@ -25,12 +25,14 @@ The Android hello advertises protocol version 2 and the complete capability set:
     "firstFrameRendered",
     "sessionEpoch",
     "configVersion",
-    "frameSequence"
-  ]
+    "frameSequence",
+    "maxFrameBytes"
+  ],
+  "maxFrameBytes": 8388608
 }
 ```
 
-The Mac enables PR 2 only when the peer is identified as Android and every required capability is present. A missing version, partial capability set, legacy Android hello, or iOS hello selects the unchanged legacy path.
+The Mac enables PR 2 identity/progress behavior only when the peer is identified as Android and all six core PR 2 capabilities are present. PR 4 adds `maxFrameBytes` as a separately gated extension; see [frame-size negotiation](frame-size-negotiation.md). A missing version, partial core capability set, legacy Android hello, or iOS hello selects the unchanged legacy path.
 
 ## Identity rules
 
@@ -140,4 +142,4 @@ No same-condition physical A/B run has been completed, so this PR does not claim
 
 ## Next step
 
-After physical PR 1/PR 2 validation, PR 3 should address pre-encode drops, keyframe reason policy, and keyframe-request coalescing. MediaCodec Async, binary frame header V2, buffer pools, UDP, and QUIC remain out of scope.
+PR 3 keyframe/drop policy and PR 4 frame-size negotiation are documented separately. PR 5 is the next implementation stage and covers MediaCodec low-latency selection and fallback. MediaCodec Async, binary frame header V2, buffer pools, UDP, and QUIC remain out of scope.
