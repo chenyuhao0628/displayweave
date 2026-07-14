@@ -3,13 +3,13 @@
     <channel>
         <title>DisplayWeave</title>
         <item>
-            <title>0.2.0-preview.4</title>
-            <pubDate>Tue, 14 Jul 2026 16:03:55 +0000</pubDate>
+            <title>0.2.0-preview.5</title>
+            <pubDate>Tue, 14 Jul 2026 16:45:40 +0000</pubDate>
             <link>https://github.com/chenyuhao0628/displayweave</link>
-            <sparkle:version>5</sparkle:version>
-            <sparkle:shortVersionString>0.2.0-preview.4</sparkle:shortVersionString>
+            <sparkle:version>6</sparkle:version>
+            <sparkle:shortVersionString>0.2.0-preview.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/chenyuhao0628/displayweave/releases/download/v0.2.0-preview.4/DisplayWeave-macOS.zip" length="2714987" type="application/octet-stream" sparkle:edSignature="u4Wtd839YgthBdglEA2BsG+tylmOBQzT8rDo8RT25hVm8zBPLseeeSINwDRlCL6UP/hbAcZiJ/kIj7viovHKCw=="/>
+            <enclosure url="https://github.com/chenyuhao0628/displayweave/releases/download/v0.2.0-preview.5/DisplayWeave-macOS.zip" length="2715381" type="application/octet-stream" sparkle:edSignature="rEBiAbiPLFFp/aUkhlWAx17RA9Y+WKdSrMQiMnupRbxVRHk5i6UPY9CM3AESior0Aom86QlRFLjNL0sO+ICPDQ=="/>
         </item>
     </channel>
 </rss>
