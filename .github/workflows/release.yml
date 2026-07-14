@@ -2,6 +2,15 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing tag/prerelease to build (for example v0.2.0-preview.2)"
+        required: false
+        type: string
+      build_number:
+        description: "Optional monotonic Mac build / Android version code"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -13,7 +22,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release-please:
+  release_please:
+    if: inputs.release_tag == ''
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
@@ -25,8 +35,10 @@ jobs:
           release-type: simple
 
   build-updates:
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    needs: release_please
+    if: >-
+      always() &&
+      (inputs.release_tag != '' || needs.release_please.outputs.release_created == 'true')
     runs-on: macos-26
     env:
       SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
@@ -34,11 +46,12 @@ jobs:
       DISPLAYWEAVE_ANDROID_STORE_PASSWORD: ${{ secrets.DISPLAYWEAVE_ANDROID_STORE_PASSWORD }}
       DISPLAYWEAVE_ANDROID_KEY_ALIAS: ${{ secrets.DISPLAYWEAVE_ANDROID_KEY_ALIAS }}
       DISPLAYWEAVE_ANDROID_KEY_PASSWORD: ${{ secrets.DISPLAYWEAVE_ANDROID_KEY_PASSWORD }}
-      DISPLAYWEAVE_ANDROID_KEYSTORE: ${{ runner.temp }}/displayweave-android-release.jks
       DISPLAYWEAVE_OUTPUT_DIR: ${{ github.workspace }}/build/update-release
       DISPLAYWEAVE_UPDATE_RELEASE: "1"
-      DISPLAYWEAVE_BUILD_NUMBER: ${{ github.run_number }}
-      DISPLAYWEAVE_RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+      DISPLAYWEAVE_BUILD_NUMBER: >-
+        ${{ inputs.build_number != '' && inputs.build_number || github.run_number }}
+      DISPLAYWEAVE_RELEASE_TAG: >-
+        ${{ inputs.release_tag != '' && inputs.release_tag || needs.release_please.outputs.tag_name }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -52,9 +65,11 @@ jobs:
         run: |
           set -euo pipefail
           echo "DISPLAYWEAVE_VERSION_NAME=${DISPLAYWEAVE_RELEASE_TAG#v}" >> "$GITHUB_ENV"
+          keystore="$RUNNER_TEMP/displayweave-android-release.jks"
+          echo "DISPLAYWEAVE_ANDROID_KEYSTORE=$keystore" >> "$GITHUB_ENV"
           printf '%s' "$DISPLAYWEAVE_ANDROID_KEYSTORE_BASE64" \
-            | base64 -D > "$DISPLAYWEAVE_ANDROID_KEYSTORE"
-          chmod 600 "$DISPLAYWEAVE_ANDROID_KEYSTORE"
+            | base64 -D > "$keystore"
+          chmod 600 "$keystore"
 
       - name: Build and test Mac, unsigned iOS, and signed Android
         run: |

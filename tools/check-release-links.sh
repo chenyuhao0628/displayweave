@@ -64,6 +64,7 @@ fi
 
 workflow=".github/workflows/release.yml"
 workflow_contract=(
+  "release_tag"
   "SPARKLE_PRIVATE_KEY"
   "DISPLAYWEAVE_ANDROID_KEYSTORE_BASE64"
   "DISPLAYWEAVE_ANDROID_STORE_PASSWORD"
@@ -85,6 +86,11 @@ for marker in "${workflow_contract[@]}"; do
     exit 1
   }
 done
+
+if grep -Fq '${{ runner.temp }}' "$workflow"; then
+  echo "release workflow uses runner.temp before the runner context exists" >&2
+  exit 1
+fi
 
 if grep -Eiq 'MATCH_|Developer ID|notari[sz]|TestFlight|fastlane' "$workflow"; then
   echo "release workflow still depends on credential-bound Apple publication" >&2
