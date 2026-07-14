@@ -45,6 +45,10 @@ struct PhoneInfo: Decodable {
         ]
         return required.isSubset(of: advertised)
     }
+    var supportsBinaryFrameHeaderV2: Bool {
+        supportsProtocolV2
+            && Set(capabilities ?? []).contains("binaryFrameHeaderV2")
+    }
     var negotiatedMaxFrameBytes: Int? {
         FrameSizePolicy.negotiatedMaxBytes(
             supportsProtocolV2: supportsProtocolV2,

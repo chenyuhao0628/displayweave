@@ -105,6 +105,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var protocolIdentity = StreamProtocolIdentity()
     private var protocolHandshake = ReceiverProtocolHandshake()
     private var protocolFailureBudget = ReceiverProtocolFailureBudget(maxReconnects: 1)
+    // VideoToolbox callbacks can arrive after a disconnect or reconnect. Tie
+    // every encode to the ready connection that accepted it so an old frame
+    // can never be written to a newer peer.
+    private var wireConnectionGeneration: UInt64 = 0
 
     // Liveness: both sides ping every 2s; if nothing arrives for 5s the link
     // is half-open (e.g. usbmuxd accepted but the device is gone) — reconnect.
@@ -542,6 +546,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func becomeReady(_ conn: NWConnection) {
         Log.info("connection ready to \(endpointName)")
         connectionReady = true
+        wireConnectionGeneration &+= 1
         protocolIdentity.beginConnection()
         everConnected = true
         let hasConfiguredStream = encoder != nil
@@ -1292,6 +1297,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func encode(_ pixelBuffer: CVPixelBuffer, pts: CMTime) {
         guard let encoder else { return }
         let capturedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let encodedForWireGeneration = wireConnectionGeneration
         let protocolFrameIdentity = lastHello?.supportsProtocolV2 == true
             ? protocolIdentity.nextFrame()
             : nil
@@ -1321,6 +1327,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                     buffer: buffer,
                     forcedKeyframeReason: forcedKeyframeReason,
                     capturedAtMs: capturedAtMs,
+                    encodedForWireGeneration: encodedForWireGeneration,
                     protocolFrameIdentity: protocolFrameIdentity,
                     encodeStart: encodeStart)
             }
@@ -1332,6 +1339,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         buffer: CMSampleBuffer?,
         forcedKeyframeReason: FrameDropReason?,
         capturedAtMs: Int64,
+        encodedForWireGeneration: UInt64,
         protocolFrameIdentity: StreamProtocolFrameIdentity?,
         encodeStart: Date
     ) {
@@ -1346,19 +1354,33 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         if forcedKeyframeReason != nil {
             keyframeRequests.completeInFlightRequest(encodedKeyframe: isKeyframe)
         }
+        guard connectionReady,
+              encodedForWireGeneration == wireConnectionGeneration else {
+            Log.info("dropping encoded frame from stale wire connection generation")
+            return
+        }
         guard let data = annexB(from: buffer) else {
             requestKeyframe(.encodedFrameDiscarded)
             return
         }
-        // Telemetry prefix before the first start code — the receiver parses it
-        // and skips to Annex B. cap→snd approximates encode duration.
         let sndMs = Int64(Date().timeIntervalSince1970 * 1000)
-        let prefix = VideoTelemetryPrefix.json(
-            captureMs: capturedAtMs,
-            sendMs: sndMs,
-            identity: protocolFrameIdentity)
-        var framed = Data(prefix.utf8)
-        framed.append(data)
+        let framed: Data
+        do {
+            framed = try VideoFrameWirePayload.encode(
+                annexB: data,
+                codec: streamCodec,
+                isKeyframe: isKeyframe,
+                captureTimestampMs: capturedAtMs,
+                sendTimestampMs: sndMs,
+                identity: protocolFrameIdentity,
+                binaryHeaderEnabled: protocolFrameIdentity?.sessionEpoch
+                    == protocolIdentity.sessionEpoch
+                    && lastHello?.supportsBinaryFrameHeaderV2 == true)
+        } catch {
+            Log.info("video frame wire encode failed: \(error)")
+            requestKeyframe(.encodedFrameDiscarded)
+            return
+        }
         recordEncodedFrame(
             bytes: data.count,
             isKeyframe: isKeyframe,

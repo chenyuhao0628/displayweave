@@ -15,6 +15,7 @@ pairs=(
   "docs/120hz-migration-plan.md:docs/120hz-migration-plan.zh-CN.md"
   "docs/automatic-updates.md:docs/automatic-updates.zh-CN.md"
   "docs/android-connection-generation.md:docs/android-connection-generation.zh-CN.md"
+  "docs/android-binary-frame-header-v2.md:docs/android-binary-frame-header-v2.zh-CN.md"
   "docs/android-decoder-low-latency.md:docs/android-decoder-low-latency.zh-CN.md"
   "docs/android-drop-reason-policy.md:docs/android-drop-reason-policy.zh-CN.md"
   "docs/android-protocol-v2-negotiation.md:docs/android-protocol-v2-negotiation.zh-CN.md"

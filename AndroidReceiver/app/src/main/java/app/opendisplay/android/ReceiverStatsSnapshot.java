@@ -40,6 +40,11 @@ public final class ReceiverStatsSnapshot {
     public final long maxKeyframeBytesObserved;
     public final long oversizeFrameCount;
     public final long invalidFrameLengthCount;
+    public final long allocatedFrameBytes;
+    public final long bufferReuseCount;
+    public final long bufferPoolMiss;
+    public final long gcCount;
+    public final long gcTimeMs;
     public final String decoderName;
     public final Boolean hardwareAccelerated;
     public final Boolean softwareOnly;
@@ -71,6 +76,8 @@ public final class ReceiverStatsSnapshot {
             long currentFrameBytes, long maxFrameBytesObserved,
             long currentKeyframeBytes, long maxKeyframeBytesObserved,
             long oversizeFrameCount, long invalidFrameLengthCount,
+            long allocatedFrameBytes, long bufferReuseCount,
+            long bufferPoolMiss, long gcCount, long gcTimeMs,
             String decoderName, Boolean hardwareAccelerated, Boolean softwareOnly,
             Boolean vendor, Boolean lowLatencySupported, Boolean lowLatencyEnabled,
             Boolean decoderConfigureSuccess, String decoderFallbackReason,
@@ -113,6 +120,11 @@ public final class ReceiverStatsSnapshot {
         this.maxKeyframeBytesObserved = maxKeyframeBytesObserved;
         this.oversizeFrameCount = oversizeFrameCount;
         this.invalidFrameLengthCount = invalidFrameLengthCount;
+        this.allocatedFrameBytes = allocatedFrameBytes;
+        this.bufferReuseCount = bufferReuseCount;
+        this.bufferPoolMiss = bufferPoolMiss;
+        this.gcCount = gcCount;
+        this.gcTimeMs = gcTimeMs;
         this.decoderName = decoderName;
         this.hardwareAccelerated = hardwareAccelerated;
         this.softwareOnly = softwareOnly;
@@ -167,6 +179,11 @@ public final class ReceiverStatsSnapshot {
         values.put("maxKeyframeBytesObserved", maxKeyframeBytesObserved);
         values.put("oversizeFrameCount", oversizeFrameCount);
         values.put("invalidFrameLengthCount", invalidFrameLengthCount);
+        values.put("allocatedFrameBytes", allocatedFrameBytes);
+        values.put("bufferReuseCount", bufferReuseCount);
+        values.put("bufferPoolMiss", bufferPoolMiss);
+        values.put("gcCount", gcCount);
+        values.put("gcTimeMs", gcTimeMs);
         values.put("decoderName", decoderName);
         values.put("hardwareAccelerated", hardwareAccelerated);
         values.put("softwareOnly", softwareOnly);

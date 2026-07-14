@@ -13,16 +13,19 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import app.opendisplay.android.protocol.LengthPrefixedProtocol;
+import app.opendisplay.android.protocol.BinaryFrameHeaderV2;
 
 public final class VideoStreamPolicySelfTest {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         testStreamConfigDefaults();
         testCodecMapping();
         testProtocolV2FrameIdentity();
         testProtocolV2SessionFiltering();
         testRefreshModeSelection();
         testFrameClassifier();
+        testVideoFramePacketUsesZeroCopyBinaryPayloadView();
         testFrameSizeMetrics();
+        testFrameAllocationMetrics();
         testFrameTelemetry();
         testStreamMetricsLatencyFields();
         testMetricDistribution();
@@ -103,6 +106,20 @@ public final class VideoStreamPolicySelfTest {
         assertEquals(2L, snapshot.invalidFrameLengthCount);
     }
 
+    private static void testFrameAllocationMetrics() {
+        FrameAllocationMetrics metrics = new FrameAllocationMetrics();
+        metrics.recordTransportFrame(1_024, true);
+        metrics.recordTransportFrame(2_048, true);
+        FrameAllocationMetrics.Snapshot first = metrics.snapshotAndResetWindow();
+        assertEquals(3_072L, first.allocatedFrameBytes);
+        assertEquals(2L, first.bufferReuseCount);
+        assertEquals(2L, first.bufferPoolMiss);
+        FrameAllocationMetrics.Snapshot second = metrics.snapshotAndResetWindow();
+        assertEquals(0L, second.allocatedFrameBytes);
+        assertEquals(0L, second.bufferReuseCount);
+        assertEquals(0L, second.bufferPoolMiss);
+    }
+
     private static void testProtocolV2SessionFiltering() {
         ReceiverProtocolSession session = new ReceiverProtocolSession();
         session.onConnected(3);
@@ -176,6 +193,41 @@ public final class VideoStreamPolicySelfTest {
         assertTrue(VideoFrameClassifier.isKeyframe(hevcAnnexB(20), hevc));
         assertFalse(VideoFrameClassifier.isKeyframe(hevcAnnexB(32), hevc));
         assertFalse(VideoFrameClassifier.isImportant(hevcAnnexB(1), hevc));
+    }
+
+    private static void testVideoFramePacketUsesZeroCopyBinaryPayloadView() throws Exception {
+        VideoStreamConfig h264 = VideoStreamConfig.from("h264", 60, 1920, 1080, 0);
+        byte[] annexB = annexB((byte) 0x67, (byte) 0x68, (byte) 0x65);
+        byte[] binary = BinaryFrameHeaderV2.encode(
+                BinaryFrameHeaderV2.FLAG_KEYFRAME
+                        | BinaryFrameHeaderV2.FLAG_CODEC_CONFIG
+                        | BinaryFrameHeaderV2.FLAG_H264,
+                8, 12, 44, 1_000, 1_010, annexB);
+        VideoFramePacket packet = VideoFramePacket.parse(binary, 2_000, h264);
+        assertTrue(packet.bytes == binary);
+        assertEquals(BinaryFrameHeaderV2.HEADER_BYTES, packet.payloadOffset);
+        assertEquals(annexB.length, packet.payloadLength);
+        assertTrue(packet.binaryHeaderV2);
+        assertTrue(packet.keyframe);
+        assertTrue(packet.codecConfig);
+        assertTrue(packet.isImportant());
+        assertTrue(packet.codecMatches(h264));
+        assertFalse(packet.codecMatches(
+                VideoStreamConfig.from("hevc", 60, 1920, 1080, 0)));
+        assertEquals(8L, packet.telemetry.sessionEpoch);
+        assertEquals(12L, packet.telemetry.configVersion);
+        assertEquals(44L, packet.telemetry.frameSequence);
+        assertTrue(packet.nalSummary(h264).source == binary);
+
+        byte[] legacy = concat(
+                "{\"cap\":1000,\"snd\":1010}".getBytes(StandardCharsets.UTF_8),
+                annexB);
+        VideoFramePacket legacyPacket = VideoFramePacket.parse(legacy, 2_000, h264);
+        assertTrue(legacyPacket.bytes == legacy);
+        assertFalse(legacyPacket.binaryHeaderV2);
+        assertTrue(legacyPacket.payloadOffset > 0);
+        assertTrue(legacyPacket.nalSummary(h264).source == legacy);
+        assertTrue(legacyPacket.keyframe);
     }
 
     private static void testFrameTelemetry() {

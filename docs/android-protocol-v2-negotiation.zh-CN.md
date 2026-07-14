@@ -2,7 +2,7 @@
 
 # Android Protocol V2 协商
 
-本文描述 PR 2：在 PR 1 Connection Generation 之上，为 Android 增加可协商的 Session Identity 与 Receiver Progress Report。本 PR 不引入后续 Binary Frame Header，也不改变旧 OpenDisplay iOS Receiver 路径。
+本文描述 PR 2：在 PR 1 Connection Generation 之上，为 Android 增加可协商的 Session Identity 与 Receiver Progress Report。PR 9 现已增加独立 Gate 的 [Binary Frame Header](android-binary-frame-header-v2.zh-CN.md)，但不改变旧 OpenDisplay iOS Receiver 路径。
 
 ## Purpose
 
@@ -26,13 +26,14 @@ Android Hello 声明 Protocol Version 2 和完整 Capability Set：
     "sessionEpoch",
     "configVersion",
     "frameSequence",
-    "maxFrameBytes"
+    "maxFrameBytes",
+    "binaryFrameHeaderV2"
   ],
   "maxFrameBytes": 8388608
 }
 ```
 
-只有 Peer 明确识别为 Android 且 PR 2 的六项核心 Capability 都存在时，Mac 才启用 Identity/Progress 行为。PR 4 将 `maxFrameBytes` 作为单独 Gate 的扩展；参见[帧尺寸协商](frame-size-negotiation.zh-CN.md)。Version 缺失、核心 Capability 不完整、旧 Android Hello 或 iOS Hello 都选择未改动的 Legacy Path。
+只有 Peer 明确识别为 Android 且 PR 2 的六项核心 Capability 都存在时，Mac 才启用 Identity/Progress 行为。PR 4 的 `maxFrameBytes` 与 PR 9 的 `binaryFrameHeaderV2` 都是独立 Gate 的扩展；参见[帧尺寸协商](frame-size-negotiation.zh-CN.md)和[Binary Framing/分配](android-binary-frame-header-v2.zh-CN.md)。Version 缺失、核心 Capability 不完整、旧 Android Hello 或 iOS Hello 都选择未改动的 Legacy Path。
 
 ## Identity Rules
 

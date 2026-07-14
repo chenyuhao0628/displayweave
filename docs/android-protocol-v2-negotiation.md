@@ -2,7 +2,7 @@
 
 # Android Protocol V2 Negotiation
 
-This document describes PR 2, which adds negotiated Android session identity and receiver progress reporting on top of PR 1 Connection Generation. It does not introduce the later binary frame-header format and does not change the legacy OpenDisplay iOS receiver path.
+This document describes PR 2, which adds negotiated Android session identity and receiver progress reporting on top of PR 1 Connection Generation. PR 9 now adds the separately gated [binary frame-header format](android-binary-frame-header-v2.md); it does not change the legacy OpenDisplay iOS receiver path.
 
 ## Purpose
 
@@ -26,13 +26,14 @@ The Android hello advertises protocol version 2 and the complete capability set:
     "sessionEpoch",
     "configVersion",
     "frameSequence",
-    "maxFrameBytes"
+    "maxFrameBytes",
+    "binaryFrameHeaderV2"
   ],
   "maxFrameBytes": 8388608
 }
 ```
 
-The Mac enables PR 2 identity/progress behavior only when the peer is identified as Android and all six core PR 2 capabilities are present. PR 4 adds `maxFrameBytes` as a separately gated extension; see [frame-size negotiation](frame-size-negotiation.md). A missing version, partial core capability set, legacy Android hello, or iOS hello selects the unchanged legacy path.
+The Mac enables PR 2 identity/progress behavior only when the peer is identified as Android and all six core PR 2 capabilities are present. PR 4 adds `maxFrameBytes` and PR 9 adds `binaryFrameHeaderV2` as independently gated extensions; see [frame-size negotiation](frame-size-negotiation.md) and [binary framing/allocation](android-binary-frame-header-v2.md). A missing version, partial core capability set, legacy Android hello, or iOS hello selects the unchanged legacy path.
 
 ## Identity rules
 

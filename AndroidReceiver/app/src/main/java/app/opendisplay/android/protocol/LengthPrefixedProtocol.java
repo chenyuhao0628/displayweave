@@ -31,7 +31,8 @@ public final class LengthPrefixedProtocol {
             "sessionEpoch",
             "configVersion",
             "frameSequence",
-            "maxFrameBytes"
+            "maxFrameBytes",
+            "binaryFrameHeaderV2"
     };
 
     public enum FrameLengthFailure {
@@ -75,8 +76,7 @@ public final class LengthPrefixedProtocol {
     }
 
     public static byte[] read(InputStream in, int maximumBytes) throws IOException {
-        byte[] header = readExact(in, 4);
-        int length = ByteBuffer.wrap(header).order(ByteOrder.BIG_ENDIAN).getInt();
+        int length = readInt32(in);
         int boundedMaximum = boundedFrameLimit(maximumBytes);
         if (length <= 0) {
             throw new FrameLengthException(
@@ -91,6 +91,17 @@ public final class LengthPrefixedProtocol {
                     FrameLengthFailure.OVERSIZE, length, boundedMaximum);
         }
         return readExact(in, length);
+    }
+
+    private static int readInt32(InputStream in) throws IOException {
+        int b0 = in.read();
+        int b1 = in.read();
+        int b2 = in.read();
+        int b3 = in.read();
+        if ((b0 | b1 | b2 | b3) < 0) {
+            throw new EOFException("stream ended inside 4-byte frame header");
+        }
+        return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
     }
 
     public static int boundedFrameLimit(int requestedBytes) {

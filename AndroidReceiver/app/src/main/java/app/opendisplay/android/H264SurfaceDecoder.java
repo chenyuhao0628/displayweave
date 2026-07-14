@@ -83,32 +83,39 @@ public final class H264SurfaceDecoder {
         listener.onDecoderStatus("视频配置 " + streamConfig.codec + " / " + streamConfig.fps + "fps");
     }
 
-    public synchronized void queueFrame(byte[] wirePayload, VideoFrameTelemetry telemetry) {
-        byte[] payload = AnnexB.stripTelemetryPrefix(wirePayload);
+    public synchronized void queueFrame(VideoFramePacket frame) {
+        byte[] payload = frame.bytes;
+        int payloadOffset = frame.payloadOffset;
+        int payloadLength = frame.payloadLength;
+        VideoFrameTelemetry telemetry = frame.telemetry;
         if (!surface.isValid()) {
             listener.onDecoderFrameDropped(
                     AndroidDropReason.SURFACE_UNAVAILABLE, telemetry);
             return;
         }
-        if (payload.length == 0 || AnnexB.nalUnits(payload).isEmpty()) {
+        if (!frame.hasAnnexBPayload()) {
             listener.onDecoderFrameDropped(
                     AndroidDropReason.MALFORMED_ANNEX_B, telemetry);
             return;
         }
         boolean hevc = streamConfig.isHevc();
-        byte[] vps = hevc
-                ? AnnexB.findNalUnit(payload, streamConfig.vpsNalType(), true)
-                : null;
-        byte[] sps = AnnexB.findNalUnit(payload, streamConfig.spsNalType(), hevc);
-        byte[] pps = AnnexB.findNalUnit(payload, streamConfig.ppsNalType(), hevc);
+        AnnexB.NalSummary summary = null;
+        byte[] vps = null;
+        byte[] sps = null;
+        byte[] pps = null;
         if (codec == null) {
+            summary = frame.nalSummary(streamConfig);
+            vps = hevc ? summary.copyVps() : null;
+            sps = summary.copySps();
+            pps = summary.copyPps();
             if (sps == null) {
                 long now = System.currentTimeMillis();
                 if (now - lastMissingParameterLogMs >= 1000) {
                     lastMissingParameterLogMs = now;
                     Log.w(LOG_TAG, "decoder has no SPS; codec=" + streamConfig.codec
-                            + " bytes=" + payload.length
-                            + " nalTypes=" + describeNalTypes(payload, hevc));
+                            + " bytes=" + payloadLength
+                            + " nalTypes=" + describeNalTypes(
+                                    payload, payloadOffset, payloadLength, hevc));
                 }
                 listener.onDecoderNeedsKeyframe();
                 return;
@@ -147,17 +154,16 @@ public final class H264SurfaceDecoder {
                         AndroidDropReason.DECODER_INPUT_UNAVAILABLE, telemetry);
                 return;
             }
-            if (payload.length > buffer.capacity()) {
+            if (payloadLength > buffer.capacity()) {
                 listener.onDecoderStatus("视频帧过大，已丢弃");
                 listener.onDecoderFrameDropped(
                         AndroidDropReason.DECODER_INPUT_OVERSIZE, telemetry);
                 return;
             }
             buffer.clear();
-            buffer.put(payload);
-            int flags = containsNalType(payload, streamConfig.keyframeNalType(), streamConfig.isHevc())
-                    ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
-            codec.queueInputBuffer(input, 0, payload.length, presentationUs, flags);
+            buffer.put(payload, payloadOffset, payloadLength);
+            int flags = frame.keyframe ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
+            codec.queueInputBuffer(input, 0, payloadLength, presentationUs, flags);
             pendingTelemetry.add(telemetry);
             presentationUs += 1_000_000L / Math.max(streamConfig.fps, 1);
             drainOutput();
@@ -429,33 +435,30 @@ public final class H264SurfaceDecoder {
         out.write(withStart, 0, withStart.length);
     }
 
-    private static boolean containsNalType(byte[] payload, int type, boolean hevc) {
-        for (byte[] unit : AnnexB.nalUnits(payload)) {
-            if (!hevc && unit.length > 0 && (unit[0] & 0x1F) == type) {
-                return true;
-            }
-            if (hevc && unit.length > 1 && ((unit[0] >> 1) & 0x3F) == type) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static String describeNalTypes(byte[] payload, boolean hevc) {
+    private static String describeNalTypes(
+            byte[] payload, int offset, int length, boolean hevc) {
         StringBuilder result = new StringBuilder();
         int count = 0;
-        for (byte[] unit : AnnexB.nalUnits(payload)) {
-            if (unit.length == 0) {
+        int end = offset + length;
+        int start = AnnexB.firstStartCode(payload, offset, length);
+        while (start >= 0 && count < 12) {
+            int nalOffset = start + 4;
+            int next = AnnexB.firstStartCode(payload, nalOffset, end - nalOffset);
+            int nalEnd = next >= 0 ? next : end;
+            if (nalEnd <= nalOffset) {
+                if (next < 0) break;
+                start = next;
                 continue;
             }
             if (count > 0) {
                 result.append(',');
             }
-            result.append(hevc ? ((unit[0] >> 1) & 0x3F) : (unit[0] & 0x1F));
+            result.append(hevc
+                    ? ((payload[nalOffset] >> 1) & 0x3F)
+                    : (payload[nalOffset] & 0x1F));
             count++;
-            if (count == 12) {
-                break;
-            }
+            if (next < 0) break;
+            start = next;
         }
         return result.toString();
     }

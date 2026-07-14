@@ -89,6 +89,11 @@ let statsJSON = """
   "maxKeyframeBytesObserved": 8100000,
   "oversizeFrameCount": 2,
   "invalidFrameLengthCount": 3,
+  "allocatedFrameBytes": 8388608,
+  "bufferReuseCount": 58,
+  "bufferPoolMiss": 58,
+  "gcCount": 4,
+  "gcTimeMs": 17,
   "decoderName": "c2.vendor.hevc.decoder",
   "hardwareAccelerated": true,
   "softwareOnly": false,
@@ -131,6 +136,10 @@ expect(stats.inputP95Ms == nil, "explicit JSON null remains nil")
 expect(stats.maxFrameBytesObserved == 8_100_000, "maximum frame size metric decodes")
 expect(stats.oversizeFrameCount == 2 && stats.invalidFrameLengthCount == 3,
        "frame-length rejection counters decode")
+expect(stats.allocatedFrameBytes == 8_388_608 && stats.bufferReuseCount == 58,
+       "frame-allocation and zero-copy reuse counters decode")
+expect(stats.bufferPoolMiss == 58 && stats.gcCount == 4 && stats.gcTimeMs == 17,
+       "pool-miss and runtime GC counters decode")
 expect(stats.decoderName == "c2.vendor.hevc.decoder" && stats.hardwareAccelerated == true,
        "actual decoder identity and acceleration decode")
 expect(stats.lowLatencySupported == true && stats.lowLatencyEnabled == true,
@@ -216,6 +225,12 @@ expect(BenchmarkSample.csvHeader.contains("keyframeRequestCount"), "header recor
 expect(BenchmarkSample.csvHeader.contains("keyframeCoalescedCount"), "header records coalesced requests")
 expect(BenchmarkSample.csvHeader.contains("maxFrameBytesObserved"), "header records maximum frame size")
 expect(BenchmarkSample.csvHeader.contains("invalidFrameLengthCount"), "header records invalid lengths")
+expect(BenchmarkSample.csvHeader.contains("allocatedFrameBytes"),
+       "header records frame allocation volume")
+expect(BenchmarkSample.csvHeader.contains("bufferReuseCount"),
+       "header records zero-copy buffer reuse")
+expect(BenchmarkSample.csvHeader.contains("gcTimeMs"),
+       "header records Android runtime GC time")
 expect(BenchmarkSample.csvHeader.contains("decoderName"), "header records actual decoder")
 expect(BenchmarkSample.csvHeader.contains("lowLatencyEnabled"), "header records low-latency state")
 expect(BenchmarkSample.csvHeader.contains("requestedSurfaceFrameRate"),
@@ -268,6 +283,14 @@ expect(jsonObject["currentKeyframeBytes"] as? Double == 7_600_000, "current keyf
 expect(jsonObject["maxKeyframeBytesObserved"] as? Double == 8_100_000, "maximum keyframe bytes are recorded")
 expect(jsonObject["oversizeFrameCount"] as? Double == 2, "oversize frame count is recorded")
 expect(jsonObject["invalidFrameLengthCount"] as? Double == 3, "invalid frame length count is recorded")
+expect(jsonObject["allocatedFrameBytes"] as? Double == 8_388_608,
+       "frame allocation bytes are recorded")
+expect(jsonObject["bufferReuseCount"] as? Double == 58,
+       "zero-copy buffer reuse count is recorded")
+expect(jsonObject["bufferPoolMiss"] as? Double == 58,
+       "transport buffer pool misses are recorded")
+expect(jsonObject["gcCount"] as? Double == 4 && jsonObject["gcTimeMs"] as? Double == 17,
+       "Android runtime GC metrics are recorded")
 expect(jsonObject["decoderName"] as? String == "c2.vendor.hevc.decoder", "decoder name is recorded")
 expect(jsonObject["hardwareAccelerated"] as? Bool == true, "hardware acceleration is recorded")
 expect(jsonObject["softwareOnly"] as? Bool == false, "software-only state is recorded")

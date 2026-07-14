@@ -9,45 +9,24 @@ public final class VideoFrameClassifier {
         if (wirePayload == null || config == null) {
             return false;
         }
-        byte[] payload = AnnexB.stripTelemetryPrefix(wirePayload);
-        for (byte[] unit : AnnexB.nalUnits(payload)) {
-            if (unit.length == 0) {
-                continue;
-            }
-            int type = nalType(unit, config.isHevc());
-            if (type == config.vpsNalType()
-                    || type == config.spsNalType()
-                    || type == config.ppsNalType()
-                    || type == config.keyframeNalType()
-                    || (config.isHevc() && type == 20)) {
-                return true;
-            }
-        }
-        return false;
+        AnnexB.NalSummary summary = summary(wirePayload, config);
+        return summary.hasCodecConfig() || summary.isKeyframe;
     }
 
     public static boolean isKeyframe(byte[] wirePayload, VideoStreamConfig config) {
         if (wirePayload == null || config == null) {
             return false;
         }
-        byte[] payload = AnnexB.stripTelemetryPrefix(wirePayload);
-        for (byte[] unit : AnnexB.nalUnits(payload)) {
-            if (unit.length == 0) {
-                continue;
-            }
-            int type = nalType(unit, config.isHevc());
-            if (type == config.keyframeNalType()
-                    || (config.isHevc() && type == 20)) {
-                return true;
-            }
-        }
-        return false;
+        return summary(wirePayload, config).isKeyframe;
     }
 
-    private static int nalType(byte[] unit, boolean hevc) {
-        if (hevc) {
-            return unit.length > 1 ? (unit[0] >> 1) & 0x3F : -1;
-        }
-        return unit[0] & 0x1F;
+    private static AnnexB.NalSummary summary(
+            byte[] wirePayload, VideoStreamConfig config) {
+        int offset = AnnexB.firstStartCode(wirePayload);
+        int safeOffset = offset >= 0 ? offset : 0;
+        return AnnexB.scan(
+                wirePayload, safeOffset, wirePayload.length - safeOffset,
+                config.isHevc(), config.vpsNalType(), config.spsNalType(),
+                config.ppsNalType(), config.keyframeNalType());
     }
 }

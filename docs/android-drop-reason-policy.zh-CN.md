@@ -92,4 +92,4 @@ Auto Bitrate 不再因为 `androidDroppedFrames > 0` 就下降。只有连续两
 
 ## Next Step
 
-已由 [PR 8 本地快速拥塞策略](mac-local-fast-congestion-decrease.zh-CN.md)实现。PR 9 应设计/测试协商式 Android Binary Frame Header 与分配优化。
+PR 8 见[本地快速拥塞策略](mac-local-fast-congestion-decrease.zh-CN.md)，PR 9 已在 [Android Binary Framing/分配](android-binary-frame-header-v2.zh-CN.md)中实现。剩余步骤是真机兼容/恢复证据。

@@ -32,6 +32,8 @@ struct DeviceCapabilitiesSelfTest {
                     "legacy iOS remains H.264")
         assertEqual(false, legacyIOSHello.supportsProtocolV2,
                     "legacy iOS must stay on the legacy wire path")
+        assertEqual(false, legacyIOSHello.supportsBinaryFrameHeaderV2,
+                    "legacy iOS must never receive the Android binary frame header")
         assertEqual(nil, legacyIOSHello.negotiatedMaxFrameBytes,
                     "legacy iOS keeps the existing unnegotiated frame path")
         assertEqual("unknown", legacyIOSHello.negotiatedTransport,
@@ -43,7 +45,8 @@ struct DeviceCapabilitiesSelfTest {
          "preferredCodec":"HEVC","deviceModel":"Android Tablet","androidSdk":35,
          "transport":"wifi","protocolVersion":2,
          "capabilities":["streamConfigAck","decoderReady","firstFrameRendered",
-                         "sessionEpoch","configVersion","frameSequence","maxFrameBytes"],
+                         "sessionEpoch","configVersion","frameSequence","maxFrameBytes",
+                         "binaryFrameHeaderV2"],
          "maxFrameBytes":8388608}
         """.utf8))
         assertEqual(120, modernHello.negotiatedRefreshRate,
@@ -58,6 +61,8 @@ struct DeviceCapabilitiesSelfTest {
                     "transport metadata is preserved")
         assertEqual(true, modernHello.supportsProtocolV2,
                     "complete Android capability advertisement enables protocol v2")
+        assertEqual(true, modernHello.supportsBinaryFrameHeaderV2,
+                    "the independent capability enables the binary frame header")
         assertEqual(8 * 1_024 * 1_024, modernHello.negotiatedMaxFrameBytes,
                     "negotiated Android v2 frame limit is retained")
 
@@ -67,8 +72,20 @@ struct DeviceCapabilitiesSelfTest {
         """.utf8))
         assertEqual(false, partialV2.supportsProtocolV2,
                     "partial capability sets must fall back to the legacy wire path")
+        assertEqual(false, partialV2.supportsBinaryFrameHeaderV2,
+                    "partial capability sets cannot enable binary framing")
         assertEqual(nil, partialV2.negotiatedMaxFrameBytes,
                     "partial capability sets cannot enable large frames")
+
+        let coreOnlyV2 = try JSONDecoder().decode(PhoneInfo.self, from: Data("""
+        {"pixelsWide":2560,"pixelsHigh":1600,"scale":2.0,"device":"Android",
+         "protocolVersion":2,"capabilities":["streamConfigAck","decoderReady",
+         "firstFrameRendered","sessionEpoch","configVersion","frameSequence"]}
+        """.utf8))
+        assertEqual(true, coreOnlyV2.supportsProtocolV2,
+                    "core protocol v2 remains usable without binary framing")
+        assertEqual(false, coreOnlyV2.supportsBinaryFrameHeaderV2,
+                    "missing independent capability preserves JSON telemetry framing")
 
         let excessiveFrameLimit = try JSONDecoder().decode(PhoneInfo.self, from: Data("""
         {"pixelsWide":2560,"pixelsHigh":1600,"scale":2.0,"device":"Android",

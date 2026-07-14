@@ -11,7 +11,7 @@ Scope: the current working tree, including pre-existing uncommitted lifecycle an
 
 This is the phase-zero audit for the Android connection-stability and latency work. It records observed behavior before the connection-generation implementation. It does not treat configured FPS, bitrate, or refresh-rate requests as measured results. No long-duration or multi-device validation is claimed.
 
-> Implementation update (2026-07-14): PR 1 connection generation through PR 8 local fast congestion decrease have since been implemented. The table below intentionally remains the phase-zero baseline; current behavior is documented in [frame-size negotiation](frame-size-negotiation.md), [decoder low-latency selection](android-decoder-low-latency.md), [WiFi low latency / Surface frame rate](android-wifi-low-latency-surface-frame-rate.md), [drop-reason policy](android-drop-reason-policy.md), and [local fast congestion decrease](mac-local-fast-congestion-decrease.md).
+> Implementation update (2026-07-14): PR 1 connection generation through PR 9 negotiated binary framing/allocation work have since been implemented. The table below intentionally remains the phase-zero baseline; current behavior is documented in [frame-size negotiation](frame-size-negotiation.md), [decoder low-latency selection](android-decoder-low-latency.md), [WiFi low latency / Surface frame rate](android-wifi-low-latency-surface-frame-rate.md), [drop-reason policy](android-drop-reason-policy.md), [local fast congestion decrease](mac-local-fast-congestion-decrease.md), and [binary framing/allocation](android-binary-frame-header-v2.md).
 
 ## Executive summary
 

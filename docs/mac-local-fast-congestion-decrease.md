@@ -84,4 +84,4 @@ No physical receiver was attached during implementation.
 
 ## Next step
 
-PR 9 should design/test the negotiated Android binary frame header and reduce repeated NAL scans/per-frame allocation without changing Legacy iOS framing.
+PR 9 is implemented in [Android binary framing/allocation](android-binary-frame-header-v2.md). Next, complete the final compatibility/recovery evidence audit.

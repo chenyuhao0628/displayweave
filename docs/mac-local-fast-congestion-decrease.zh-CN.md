@@ -84,4 +84,4 @@ Local 与 Receiver Path 使用同一个 Controller，并发布：
 
 ## Next Step
 
-PR 9 应设计/测试协商式 Android Binary Frame Header，并减少重复 NAL Scan/Per-frame Allocation，同时不改变 Legacy iOS Framing。
+PR 9 已在 [Android Binary Framing/分配](android-binary-frame-header-v2.zh-CN.md)中实现。下一步完成最终兼容/恢复证据审计。

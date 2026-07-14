@@ -92,4 +92,4 @@ No Android device was attached during implementation, so build success is not ph
 
 ## Next step
 
-Implemented in [PR 8's local fast congestion policy](mac-local-fast-congestion-decrease.md). PR 9 should design/test the negotiated Android binary frame header and allocation reductions.
+PR 8 is documented in [local fast congestion policy](mac-local-fast-congestion-decrease.md), and PR 9 is implemented in [Android binary framing/allocation](android-binary-frame-header-v2.md). The remaining step is physical compatibility/recovery evidence.

@@ -25,6 +25,9 @@ public final class ProtocolSelfTest {
         testJsonClassification();
         testHelloJsonIncludesDisplayCapabilities();
         testHelloJsonAdvertisesNegotiatedProtocolV2();
+        testBinaryFrameHeaderV2RoundTrip();
+        testBinaryFrameHeaderV2RejectsMalformedInput();
+        testBinaryFrameHeaderV2LegacyFallback();
         testStreamConfigJson();
         testProtocolV2ProgressMessages();
         testDecoderResetRequestPreservesLegacyAndRequestsFreshV2Config();
@@ -32,6 +35,7 @@ public final class ProtocolSelfTest {
         testReceiverStatsJsonUsesCanonicalFieldsAndNulls();
         testStatsJsonRejectsNonFiniteNumbers();
         testAnnexBTelemetryAndNalus();
+        testAnnexBSinglePassSummaryUsesPayloadRanges();
         testAnnexBFindsHevcParameterSets();
         testSpsParser();
         testMacCursorControlMessage();
@@ -130,7 +134,90 @@ public final class ProtocolSelfTest {
         assertContains(json, "\"maxFrameBytes\":8388608");
         assertContains(json, "\"capabilities\":[\"streamConfigAck\",\"decoderReady\","
                 + "\"firstFrameRendered\",\"sessionEpoch\",\"configVersion\","
-                + "\"frameSequence\",\"maxFrameBytes\"]");
+                + "\"frameSequence\",\"maxFrameBytes\",\"binaryFrameHeaderV2\"]");
+    }
+
+    private static void testBinaryFrameHeaderV2RoundTrip() throws Exception {
+        byte[] payload = new byte[] {0, 0, 0, 1, 0x65, 1, 2, 3};
+        int flags = BinaryFrameHeaderV2.FLAG_KEYFRAME
+                | BinaryFrameHeaderV2.FLAG_CODEC_CONFIG
+                | BinaryFrameHeaderV2.FLAG_H264;
+        byte[] encoded = BinaryFrameHeaderV2.encode(
+                flags, 8, 12, 44, 1_000, 1_010, payload);
+        BinaryFrameHeaderV2.Parsed parsed = BinaryFrameHeaderV2.parse(encoded);
+        assertTrue(parsed.frame == encoded);
+        assertEquals(BinaryFrameHeaderV2.HEADER_BYTES, parsed.payloadOffset);
+        assertEquals(payload.length, parsed.payloadLength);
+        assertEquals(8L, parsed.sessionEpoch);
+        assertEquals(12L, parsed.configVersion);
+        assertEquals(44L, parsed.frameSequence);
+        assertEquals(1_000L, parsed.captureTimestampMs);
+        assertEquals(1_010L, parsed.sendTimestampMs);
+        assertTrue(parsed.isKeyframe());
+        assertTrue(parsed.hasCodecConfig());
+        assertTrue(parsed.isH264());
+        assertFalse(parsed.isHevc());
+        for (int i = 0; i < payload.length; i++) {
+            assertEquals(payload[i], encoded[parsed.payloadOffset + i]);
+        }
+    }
+
+    private static void testBinaryFrameHeaderV2RejectsMalformedInput() throws Exception {
+        byte[] payload = new byte[] {0, 0, 0, 1, 0x26};
+        byte[] valid = BinaryFrameHeaderV2.encode(
+                BinaryFrameHeaderV2.FLAG_KEYFRAME | BinaryFrameHeaderV2.FLAG_HEVC,
+                1, 1, 1, 10, 20, payload);
+
+        byte[] unknownVersion = valid.clone();
+        unknownVersion[4] = 3;
+        assertBinaryFailure(unknownVersion, BinaryFrameHeaderV2.Failure.UNKNOWN_VERSION);
+
+        byte[] invalidHeaderLength = valid.clone();
+        invalidHeaderLength[6] = 0;
+        invalidHeaderLength[7] = 48;
+        assertBinaryFailure(
+                invalidHeaderLength, BinaryFrameHeaderV2.Failure.INVALID_HEADER_LENGTH);
+
+        byte[] conflictingCodecFlags = valid.clone();
+        conflictingCodecFlags[5] |= BinaryFrameHeaderV2.FLAG_H264;
+        assertBinaryFailure(conflictingCodecFlags, BinaryFrameHeaderV2.Failure.INVALID_FLAGS);
+
+        byte[] invalidPayloadLength = valid.clone();
+        ByteBuffer.wrap(invalidPayloadLength)
+                .order(ByteOrder.BIG_ENDIAN)
+                .putInt(48, payload.length + 1);
+        assertBinaryFailure(
+                invalidPayloadLength, BinaryFrameHeaderV2.Failure.INVALID_PAYLOAD_LENGTH);
+
+        byte[] oversize = java.util.Arrays.copyOf(
+                valid,
+                BinaryFrameHeaderV2.HEADER_BYTES
+                        + LengthPrefixedProtocol.ABSOLUTE_MAX_FRAME_BYTES + 1);
+        ByteBuffer.wrap(oversize)
+                .order(ByteOrder.BIG_ENDIAN)
+                .putInt(48, LengthPrefixedProtocol.ABSOLUTE_MAX_FRAME_BYTES + 1);
+        assertBinaryFailure(oversize, BinaryFrameHeaderV2.Failure.OVERSIZE_PAYLOAD);
+
+        assertBinaryFailure(
+                java.util.Arrays.copyOf(valid, 20),
+                BinaryFrameHeaderV2.Failure.TRUNCATED_HEADER);
+    }
+
+    private static void testBinaryFrameHeaderV2LegacyFallback() {
+        byte[] legacy = "{\"cap\":10,\"snd\":20}\u0000\u0000\u0000\u0001e"
+                .getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+        assertFalse(BinaryFrameHeaderV2.looksLikeBinary(legacy));
+        assertTrue(AnnexB.firstStartCode(legacy) > 0);
+    }
+
+    private static void assertBinaryFailure(
+            byte[] frame, BinaryFrameHeaderV2.Failure expected) throws Exception {
+        try {
+            BinaryFrameHeaderV2.parse(frame);
+            throw new AssertionError("expected binary header failure " + expected);
+        } catch (BinaryFrameHeaderV2.ParseException error) {
+            assertEquals(expected.name(), error.failure.name());
+        }
     }
 
     private static void testProtocolV2ProgressMessages() {
@@ -193,6 +280,26 @@ public final class ProtocolSelfTest {
         assertContains(negotiated, "\"streamConfigRequired\":true");
     }
 
+    private static void testAnnexBSinglePassSummaryUsesPayloadRanges() {
+        byte[] prefixed = new byte[] {
+                '{', '}',
+                0, 0, 0, 1, 0x67, 1, 2,
+                0, 0, 0, 1, 0x68, 3,
+                0, 0, 0, 1, 0x65, 4, 5
+        };
+        int offset = AnnexB.firstStartCode(prefixed);
+        AnnexB.NalSummary summary = AnnexB.scan(
+                prefixed, offset, prefixed.length - offset,
+                false, -1, 7, 8, 5);
+        assertTrue(summary.hasNalUnits);
+        assertTrue(summary.hasCodecConfig());
+        assertTrue(summary.isKeyframe);
+        assertEquals(3, summary.nalUnitCount);
+        assertTrue(summary.source == prefixed);
+        assertEquals(0x67, Byte.toUnsignedInt(summary.copySps()[0]));
+        assertEquals(0x68, Byte.toUnsignedInt(summary.copyPps()[0]));
+    }
+
     private static void testStreamConfigJson() {
         String json = LengthPrefixedProtocol.streamConfigJson(
                 "hevc",
@@ -229,6 +336,7 @@ public final class ProtocolSelfTest {
                 8.25, 9L, 6L, 14L, 20L,
                 null, null, 1, 2, 3.5, 7.5,
                 2048, 4096, 3072, 6144, 2, 3,
+                8192, 4, 5, 6, 7,
                 "c2.vendor.hevc.decoder", true, false, true,
                 true, true, true, "", "auto",
                 "applied:streamConfig:window=120Hz,surface=onlyIfSeamless",
@@ -252,6 +360,11 @@ public final class ProtocolSelfTest {
         assertContains(json, "\"maxKeyframeBytesObserved\":6144");
         assertContains(json, "\"oversizeFrameCount\":2");
         assertContains(json, "\"invalidFrameLengthCount\":3");
+        assertContains(json, "\"allocatedFrameBytes\":8192");
+        assertContains(json, "\"bufferReuseCount\":4");
+        assertContains(json, "\"bufferPoolMiss\":5");
+        assertContains(json, "\"gcCount\":6");
+        assertContains(json, "\"gcTimeMs\":7");
         assertContains(json, "\"decoderName\":\"c2.vendor.hevc.decoder\"");
         assertContains(json, "\"hardwareAccelerated\":true");
         assertContains(json, "\"lowLatencyEnabled\":true");

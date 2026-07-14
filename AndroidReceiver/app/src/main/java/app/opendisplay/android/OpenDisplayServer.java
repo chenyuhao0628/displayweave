@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 
 import app.opendisplay.android.protocol.LengthPrefixedProtocol;
 import app.opendisplay.android.protocol.MacControlMessage;
+import app.opendisplay.android.protocol.BinaryFrameHeaderV2;
 
 public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private static final int PORT = 9000;
@@ -28,6 +29,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private final ReceiverConnectionCoordinator connectionCoordinator;
     private final ReceiverProtocolSession protocolSession = new ReceiverProtocolSession();
     private final FrameSizeMetrics frameSizeMetrics = new FrameSizeMetrics();
+    private final FrameAllocationMetrics frameAllocationMetrics =
+            new FrameAllocationMetrics();
     private final AndroidDropTracker androidDropTracker = new AndroidDropTracker();
     private DecoderLowLatencyMode decoderLowLatencyMode = DecoderLowLatencyMode.AUTO;
     private volatile boolean wifiAdvertisingEnabled;
@@ -70,8 +73,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private int lastMacDroppedFrames;
     private String lastMacTransport = "wifi";
     private VideoStreamConfig currentStreamConfig = VideoStreamConfig.DEFAULT;
-    private byte[] latestVideoFrame;
-    private VideoFrameTelemetry latestVideoFrameTelemetry;
+    private VideoFramePacket latestVideoFrame;
     private long latestVideoFrameGeneration;
     private final DecodeWorkerState decodeWorkerState = new DecodeWorkerState();
     private volatile long lastVideoReceivedMs;
@@ -337,39 +339,61 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         if (!connectionCoordinator.isCurrent(generation)) {
             return;
         }
+        VideoFramePacket frame;
+        try {
+            frame = VideoFramePacket.parse(
+                    payload, System.currentTimeMillis(), currentStreamConfig);
+        } catch (BinaryFrameHeaderV2.ParseException error) {
+            AndroidDropReason reason = error.failure
+                    == BinaryFrameHeaderV2.Failure.INVALID_PAYLOAD_LENGTH
+                    || error.failure == BinaryFrameHeaderV2.Failure.OVERSIZE_PAYLOAD
+                    ? AndroidDropReason.INVALID_FRAME_LENGTH
+                    : AndroidDropReason.MALFORMED_ANNEX_B;
+            recordDrop(reason, generation, null);
+            return;
+        }
+        VideoFrameTelemetry telemetry = frame.telemetry;
+        if (frame.binaryHeaderV2 && !protocolSession.isNegotiatedV2()) {
+            recordDrop(AndroidDropReason.MALFORMED_ANNEX_B, generation, telemetry);
+            return;
+        }
+        if (!frame.hasAnnexBPayload()) {
+            recordDrop(AndroidDropReason.MALFORMED_ANNEX_B, generation, telemetry);
+            return;
+        }
+        frameAllocationMetrics.recordTransportFrame(
+                payload.length, frame.bytes == payload);
         lastVideoReceivedMs = System.currentTimeMillis();
-        VideoFrameTelemetry telemetry = VideoFrameTelemetry.fromWirePayload(
-                payload, System.currentTimeMillis());
         AndroidDropReason rejection =
                 protocolSession.frameRejectionReason(generation, telemetry);
-        if (rejection != null || !protocolSession.acceptFrame(generation, telemetry)) {
+        if (rejection != null) {
             if (rejection != AndroidDropReason.STALE_CONNECTION_GENERATION) {
-                recordDrop(rejection == null
-                                ? AndroidDropReason.STALE_CONFIG_VERSION : rejection,
-                        generation, telemetry);
+                recordDrop(rejection, generation, telemetry);
             }
             return;
         }
+        if (!frame.codecMatches(currentStreamConfig)) {
+            recordDrop(AndroidDropReason.MALFORMED_ANNEX_B, generation, telemetry);
+            return;
+        }
+        if (!protocolSession.acceptFrame(generation, telemetry)) {
+            recordDrop(AndroidDropReason.STALE_CONFIG_VERSION, generation, telemetry);
+            return;
+        }
         frameSizeMetrics.recordFrame(
-                payload.length,
-                VideoFrameClassifier.isKeyframe(payload, currentStreamConfig));
+                frame.payloadLength, frame.keyframe);
         synchronized (this) {
             receivedFrames++;
             if (latestVideoFrame != null) {
-                boolean queuedImportant = VideoFrameClassifier.isImportant(
-                        latestVideoFrame, currentStreamConfig);
-                boolean incomingImportant = VideoFrameClassifier.isImportant(
-                        payload, currentStreamConfig);
-                if (queuedImportant && !incomingImportant) {
+                if (latestVideoFrame.isImportant() && !frame.isImportant()) {
                     recordDrop(AndroidDropReason.IMPORTANT_FRAME_PROTECTED,
                             generation, telemetry);
                     return;
                 }
                 recordDrop(AndroidDropReason.LATEST_SLOT_REPLACED,
-                        latestVideoFrameGeneration, latestVideoFrameTelemetry);
+                        latestVideoFrameGeneration, latestVideoFrame.telemetry);
             }
-            latestVideoFrame = payload;
-            latestVideoFrameTelemetry = telemetry;
+            latestVideoFrame = frame;
             latestVideoFrameGeneration = generation;
             queueDepthAndroid = 1;
             if (decodeWorkerState.markFrameAvailable()) {
@@ -380,15 +404,12 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
     private void drainLatestVideoFrames() {
         while (running) {
-            byte[] frame;
-            VideoFrameTelemetry telemetry;
+            VideoFramePacket frame;
             long generation;
             synchronized (this) {
                 frame = latestVideoFrame;
-                telemetry = latestVideoFrameTelemetry;
                 generation = latestVideoFrameGeneration;
                 latestVideoFrame = null;
-                latestVideoFrameTelemetry = null;
                 latestVideoFrameGeneration = 0;
                 queueDepthAndroid = 0;
                 if (frame == null) {
@@ -399,7 +420,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             if (!connectionCoordinator.isCurrent(generation)) {
                 continue;
             }
-            queueFrameIfCurrentDecoder(generation, frame, telemetry);
+            queueFrameIfCurrentDecoder(generation, frame);
         }
         synchronized (this) {
             decodeWorkerState.markIdle();
@@ -600,7 +621,6 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
     private synchronized void resetQueuedFrames() {
         latestVideoFrame = null;
-        latestVideoFrameTelemetry = null;
         latestVideoFrameGeneration = 0;
         queueDepthAndroid = 0;
         decodeWorkerState.markQueueReset();
@@ -700,7 +720,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     }
 
     private synchronized void queueFrameIfCurrentDecoder(
-            long generation, byte[] frame, VideoFrameTelemetry telemetry) {
+            long generation, VideoFramePacket frame) {
+        VideoFrameTelemetry telemetry = frame.telemetry;
         H264SurfaceDecoder activeDecoder = decoder;
         if (activeDecoder == null) {
             recordDrop(surface == null
@@ -731,7 +752,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     generation, telemetry);
             return;
         }
-        activeDecoder.queueFrame(frame, telemetry);
+        activeDecoder.queueFrame(frame);
     }
 
     private void recordDrop(AndroidDropReason reason, long generation,
@@ -1062,6 +1083,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             boolean stableClock = clockEstimator.state() == ClockOffsetEstimator.State.STABLE;
             DisplaySpec spec = displaySpec;
             FrameSizeMetrics.Snapshot frameSizes = frameSizeMetrics.snapshot();
+            FrameAllocationMetrics.Snapshot frameAllocations =
+                    frameAllocationMetrics.snapshotAndResetWindow();
             DecoderRuntimeInfo runtimeInfo = decoderRuntimeInfo;
             ReceiverStatsSnapshot snapshot = new ReceiverStatsSnapshot(
                     now,
@@ -1098,6 +1121,11 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     frameSizes.maxKeyframeBytesObserved,
                     frameSizes.oversizeFrameCount,
                     frameSizes.invalidFrameLengthCount,
+                    frameAllocations.allocatedFrameBytes,
+                    frameAllocations.bufferReuseCount,
+                    frameAllocations.bufferPoolMiss,
+                    frameAllocations.gcCount,
+                    frameAllocations.gcTimeMs,
                     runtimeInfo == null ? null : runtimeInfo.decoderName,
                     runtimeInfo == null ? null : runtimeInfo.hardwareAccelerated,
                     runtimeInfo == null ? null : runtimeInfo.softwareOnly,

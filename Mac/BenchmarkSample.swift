@@ -54,6 +54,11 @@ struct ReceiverStats: Decodable {
     var maxKeyframeBytesObserved: Double?
     var oversizeFrameCount: Double?
     var invalidFrameLengthCount: Double?
+    var allocatedFrameBytes: Double?
+    var bufferReuseCount: Double?
+    var bufferPoolMiss: Double?
+    var gcCount: Double?
+    var gcTimeMs: Double?
     var decoderName: String?
     var hardwareAccelerated: Bool?
     var softwareOnly: Bool?
@@ -116,6 +121,11 @@ struct BenchmarkSample {
     var maxKeyframeBytesObserved: Double?
     var oversizeFrameCount: Double?
     var invalidFrameLengthCount: Double?
+    var allocatedFrameBytes: Double?
+    var bufferReuseCount: Double?
+    var bufferPoolMiss: Double?
+    var gcCount: Double?
+    var gcTimeMs: Double?
     var decoderName: String?
     var hardwareAccelerated: Bool?
     var softwareOnly: Bool?
@@ -266,6 +276,11 @@ struct BenchmarkSample {
         maxKeyframeBytesObserved = receiver.maxKeyframeBytesObserved
         oversizeFrameCount = receiver.oversizeFrameCount
         invalidFrameLengthCount = receiver.invalidFrameLengthCount
+        allocatedFrameBytes = receiver.allocatedFrameBytes
+        bufferReuseCount = receiver.bufferReuseCount
+        bufferPoolMiss = receiver.bufferPoolMiss
+        gcCount = receiver.gcCount
+        gcTimeMs = receiver.gcTimeMs
         decoderName = receiver.decoderName
         hardwareAccelerated = receiver.hardwareAccelerated
         softwareOnly = receiver.softwareOnly
@@ -325,6 +340,8 @@ struct BenchmarkSample {
         "targetBitrateMbps", "actualBitrateMbps", "averageFrameSize",
         "currentFrameBytes", "maxFrameBytesObserved", "currentKeyframeBytes",
         "maxKeyframeBytesObserved", "oversizeFrameCount", "invalidFrameLengthCount",
+        "allocatedFrameBytes", "bufferReuseCount", "bufferPoolMiss", "gcCount",
+        "gcTimeMs",
         "decoderName", "hardwareAccelerated", "softwareOnly", "decoderVendor",
         "lowLatencySupported", "lowLatencyEnabled", "decoderConfigureSuccess",
         "decoderFallbackReason", "decoderLowLatencyMode",
@@ -363,6 +380,8 @@ struct BenchmarkSample {
          number(currentFrameBytes), number(maxFrameBytesObserved),
          number(currentKeyframeBytes), number(maxKeyframeBytesObserved),
          number(oversizeFrameCount), number(invalidFrameLengthCount),
+         number(allocatedFrameBytes), number(bufferReuseCount),
+         number(bufferPoolMiss), number(gcCount), number(gcTimeMs),
          decoderName ?? Self.notAvailable, boolean(hardwareAccelerated),
          boolean(softwareOnly), boolean(decoderVendor),
          boolean(lowLatencySupported), boolean(lowLatencyEnabled),
@@ -436,6 +455,11 @@ struct BenchmarkSample {
             "maxKeyframeBytesObserved": maxKeyframeBytesObserved,
             "oversizeFrameCount": oversizeFrameCount,
             "invalidFrameLengthCount": invalidFrameLengthCount,
+            "allocatedFrameBytes": allocatedFrameBytes,
+            "bufferReuseCount": bufferReuseCount,
+            "bufferPoolMiss": bufferPoolMiss,
+            "gcCount": gcCount,
+            "gcTimeMs": gcTimeMs,
             "decoderName": decoderName,
             "hardwareAccelerated": hardwareAccelerated,
             "softwareOnly": softwareOnly,

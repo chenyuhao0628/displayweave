@@ -1,6 +1,7 @@
 package app.opendisplay.android;
 
 import app.opendisplay.android.protocol.AnnexB;
+import app.opendisplay.android.protocol.BinaryFrameHeaderV2;
 
 public final class VideoFrameTelemetry {
     public static final long MISSING_MS = -1L;
@@ -36,6 +37,17 @@ public final class VideoFrameTelemetry {
                 parseLongField(prefix, "se"),
                 parseLongField(prefix, "cv"),
                 parseLongField(prefix, "fs"));
+    }
+
+    public static VideoFrameTelemetry fromBinaryHeader(
+            BinaryFrameHeaderV2.Parsed header, long receivedAndroidMs) {
+        return new VideoFrameTelemetry(
+                header.captureTimestampMs,
+                header.sendTimestampMs,
+                receivedAndroidMs,
+                header.sessionEpoch,
+                header.configVersion,
+                header.frameSequence);
     }
 
     public long latestFrameAgeMs(long nowAndroidMs) {

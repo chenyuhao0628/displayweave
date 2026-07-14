@@ -42,6 +42,8 @@ Auto prefers USB. A protocol-level grace period and bounded 0.5/1/2/4/8-second r
 
 Legacy Apple receivers use H.264. Android advertises codec and refresh capabilities, accepts `streamConfig`, and prefers HEVC when both sides support it. Codec failure produces a control message and falls back to H.264. Android negotiates 30/60/90/120fps targets and requests a compatible display mode; requested FPS is not proof of rendered FPS.
 
+All peers retain the outer four-byte network-order frame length. Legacy iOS and non-negotiated Android frames use the JSON telemetry prefix plus Annex-B payload. Only Android peers that independently advertise `binaryFrameHeaderV2` receive the fixed `DWV2` identity/timestamp/flags header; the receiver then hands an offset/length view of the original bounded transport array to MediaCodec. See [the binary-header and allocation contract](docs/android-binary-frame-header-v2.md).
+
 ## Lifecycle and input
 
 The Android receiver owns a TCP server on port 9000 and restarts idempotently when the rendering surface returns. On reconnect, the Mac resends stream configuration before requesting a keyframe and treats a peer protocol message—not only TCP connect—as readiness.
