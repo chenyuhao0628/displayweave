@@ -56,13 +56,13 @@ draw(
     font: .systemFont(ofSize: 30, weight: .semibold)
 )
 draw(
-    "拖入“应用程序”完成安装",
+    "第 1 步 · 将 DisplayWeave 拖入“应用程序”",
     at: NSPoint(x: 80, y: 350),
     width: 600,
     font: .systemFont(ofSize: 21, weight: .medium)
 )
 draw(
-    "Drag DisplayWeave to Applications",
+    "Step 1 · Drag DisplayWeave to Applications",
     at: NSPoint(x: 80, y: 320),
     width: 600,
     font: .systemFont(ofSize: 15),
@@ -76,13 +76,13 @@ draw(
     color: NSColor(calibratedRed: 0.35, green: 0.78, blue: 1, alpha: 1)
 )
 draw(
-    "首次运行若被拦截：系统设置 → 隐私与安全性 → 仍要打开",
+    "第 2 步 · 首次运行若被拦截：隐私与安全性 → 仍要打开",
     at: NSPoint(x: 60, y: 55),
     width: 640,
     font: .systemFont(ofSize: 14, weight: .medium)
 )
 draw(
-    "First run: System Settings → Privacy & Security → Open Anyway",
+    "Step 2 · First run: Privacy & Security → Open Anyway",
     at: NSPoint(x: 60, y: 28),
     width: 640,
     font: .systemFont(ofSize: 12),

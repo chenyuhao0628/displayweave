@@ -9,6 +9,7 @@ ANDROID_APK="$ROOT_DIR/AndroidReceiver/app/build/outputs/apk/release/app-release
 VERSION_NAME="${DISPLAYWEAVE_VERSION_NAME:-0.1.0}"
 BUILD_NUMBER="${DISPLAYWEAVE_BUILD_NUMBER:-1}"
 UPDATE_RELEASE="${DISPLAYWEAVE_UPDATE_RELEASE:-0}"
+MAC_DMG_NAME="DisplayWeave-macOS.dmg"
 APKSIGNER="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}/build-tools/36.1.0/apksigner"
 KEYSTORE_PATH="${DISPLAYWEAVE_ANDROID_KEYSTORE:-$HOME/Library/Application Support/DisplayWeave/Signing/android-preview.jks}"
 KEY_ALIAS="${DISPLAYWEAVE_ANDROID_KEY_ALIAS:-displayweave-preview}"
@@ -54,6 +55,8 @@ MAC_APP="$MAC_DERIVED/Build/Products/Release/DisplayWeave.app"
 codesign --verify --deep --strict --verbose=2 "$MAC_APP"
 ditto -c -k --sequesterRsrc --keepParent \
   "$MAC_APP" "$OUT_DIR/$MAC_ARCHIVE_NAME"
+"$ROOT_DIR/tools/create-guided-dmg.sh" \
+  "$MAC_APP" "$OUT_DIR/$MAC_DMG_NAME"
 
 IOS_ARCHIVE_NAME="DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa"
 xcodebuild -quiet \
@@ -122,6 +125,7 @@ cp "$ANDROID_APK" "$OUT_DIR/$ANDROID_ARCHIVE_NAME"
 cd "$OUT_DIR"
 shasum -a 256 \
   "$MAC_ARCHIVE_NAME" \
+  "$MAC_DMG_NAME" \
   "$ANDROID_ARCHIVE_NAME" \
   "$IOS_ARCHIVE_NAME" > SHA256SUMS.txt
 
