@@ -1,4 +1,4 @@
-[English](release-notes-v0.2.0-preview.3.md) | [简体中文](release-notes-v0.2.0-preview.3.zh-CN.md)
+[English](https://github.com/chenyuhao0628/displayweave/blob/main/docs/release-notes-v0.2.0-preview.3.md) | [简体中文](https://github.com/chenyuhao0628/displayweave/blob/main/docs/release-notes-v0.2.0-preview.3.zh-CN.md)
 
 # DisplayWeave `v0.2.0-preview.3` 发布说明
 
