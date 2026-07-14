@@ -35,6 +35,7 @@ The receiver recognizes these stable reason keys:
 | `codecReconfigureDrop` | No | decoder/config replacement made the work ineligible |
 | `transportReadFailure` | No | the current transport read failed |
 | `transportWriteFailure` | No | the current transport write failed |
+| `referenceChainBroken` | No | an encoded inter-frame was discarded; dependent frames wait for a fresh keyframe |
 
 Every recorded event captures `reason`, `countWindow`, `countTotal`, `generation`, `sessionEpoch`, `configVersion`, `frameSequence`, `codec`, and `transport`. Receiver stats publish:
 
@@ -54,7 +55,7 @@ When connected to an older receiver that lacks classification fields, the Mac tr
 
 ## Tests
 
-- failure-first Android tests cover all 15 reason keys, congestion membership, window/lifetime counters, reset behavior, and complete last-event context;
+- failure-first Android tests cover all 16 reason keys, congestion membership, window/lifetime counters, reset behavior, and complete last-event context;
 - protocol tests cover nested reason maps and last-event JSON;
 - adaptive-controller tests prove that unclassified/non-congestion drops are filtered, one congestion window is insufficient, two consecutive windows decrease, and filtered drops do not block stable recovery;
 - Benchmark tests cover reason maps, congestion count, identity context, stable/unique CSV columns, and JSONL output.

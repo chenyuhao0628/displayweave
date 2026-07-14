@@ -8,16 +8,22 @@ public final class RefreshRateController {
             return fallback;
         }
         float requested = sanitizeFps(requestedFps);
-        float best = fallback;
-        float bestDistance = Float.MAX_VALUE;
+        float bestAtOrAbove = Float.MAX_VALUE;
+        float bestBelow = -1f;
         for (float rate : supportedRates) {
-            float distance = Math.abs(rate - requested);
-            if (distance < bestDistance) {
-                best = rate;
-                bestDistance = distance;
+            if (!Float.isFinite(rate) || rate <= 0f) {
+                continue;
+            }
+            if (rate >= requested && rate < bestAtOrAbove) {
+                bestAtOrAbove = rate;
+            } else if (rate < requested && rate > bestBelow) {
+                bestBelow = rate;
             }
         }
-        return best;
+        if (bestAtOrAbove != Float.MAX_VALUE) {
+            return bestAtOrAbove;
+        }
+        return bestBelow > 0f ? bestBelow : fallback;
     }
 
     public static int sanitizeFps(int fps) {

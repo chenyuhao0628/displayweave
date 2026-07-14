@@ -76,6 +76,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private VideoStreamConfig currentStreamConfig = VideoStreamConfig.DEFAULT;
     private VideoFramePacket latestVideoFrame;
     private long latestVideoFrameGeneration;
+    private boolean awaitingRecoveryKeyframe;
     private final DecodeWorkerState decodeWorkerState = new DecodeWorkerState();
     private volatile long lastVideoReceivedMs;
     private volatile long lastFrameRenderedMs;
@@ -386,6 +387,14 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 frame.payloadLength, frame.keyframe);
         synchronized (this) {
             receivedFrames++;
+            if (awaitingRecoveryKeyframe) {
+                if (!frame.keyframe) {
+                    recordDrop(AndroidDropReason.REFERENCE_CHAIN_BROKEN,
+                            generation, telemetry);
+                    return;
+                }
+                awaitingRecoveryKeyframe = false;
+            }
             if (latestVideoFrame != null) {
                 if (latestVideoFrame.isImportant() && !frame.isImportant()) {
                     recordDrop(AndroidDropReason.IMPORTANT_FRAME_PROTECTED,
@@ -394,6 +403,16 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 }
                 recordDrop(AndroidDropReason.LATEST_SLOT_REPLACED,
                         latestVideoFrameGeneration, latestVideoFrame.telemetry);
+                if (!frame.keyframe) {
+                    latestVideoFrame = null;
+                    latestVideoFrameGeneration = 0;
+                    queueDepthAndroid = 0;
+                    awaitingRecoveryKeyframe = true;
+                    recordDrop(AndroidDropReason.REFERENCE_CHAIN_BROKEN,
+                            generation, telemetry);
+                    sendJson(LengthPrefixedProtocol.keyframeRequestJson());
+                    return;
+                }
             }
             latestVideoFrame = frame;
             latestVideoFrameGeneration = generation;
@@ -624,6 +643,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private synchronized void resetQueuedFrames() {
         latestVideoFrame = null;
         latestVideoFrameGeneration = 0;
+        awaitingRecoveryKeyframe = false;
         queueDepthAndroid = 0;
         decodeWorkerState.markQueueReset();
     }

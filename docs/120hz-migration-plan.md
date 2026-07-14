@@ -623,7 +623,7 @@ Verification:
 Implemented so far:
 
 - Added `AndroidReceiver/app/src/main/java/app/opendisplay/android/RefreshRateController.java`
-  to select the nearest supported display refresh rate for requested fps.
+  to select the smallest supported display refresh rate at or above the requested fps.
 - `OpenDisplayServer` now forwards stream config to `MainActivity`.
 - `MainActivity` requests the selected refresh rate through
   `WindowManager.LayoutParams.preferredRefreshRate`.

@@ -35,6 +35,7 @@ Receiver 使用以下稳定 Reason Key：
 | `codecReconfigureDrop` | 否 | Decoder/Config 替换使工作失效 |
 | `transportReadFailure` | 否 | 当前 Transport Read 失败 |
 | `transportWriteFailure` | 否 | 当前 Transport Write 失败 |
+| `referenceChainBroken` | 否 | 已编码预测帧被丢弃；后续依赖帧等待新的关键帧 |
 
 每个已记录事件包含 `reason`、`countWindow`、`countTotal`、`generation`、`sessionEpoch`、`configVersion`、`frameSequence`、`codec` 与 `transport`。Receiver Stats 发布：
 
@@ -54,7 +55,7 @@ Auto Bitrate 不再因为 `androidDroppedFrames > 0` 就下降。只有连续两
 
 ## Tests
 
-- Failure-first Android Test 覆盖全部 15 个 Reason Key、拥塞成员、窗口/累计计数、Reset 行为与完整 Last-event Context；
+- Failure-first Android Test 覆盖全部 16 个 Reason Key、拥塞成员、窗口/累计计数、Reset 行为与完整 Last-event Context；
 - Protocol Test 覆盖嵌套 Reason Map 与 Last-event JSON；
 - Adaptive-controller Test 证明 Unclassified/Non-congestion Drop 被过滤、单窗口不足、连续双窗口才下降，且被过滤 Drop 不阻止 Stable Recovery；
 - Benchmark Test 覆盖 Reason Map、Congestion Count、Identity Context、稳定且唯一的 CSV Column 与 JSONL Output。

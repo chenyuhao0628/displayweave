@@ -15,6 +15,7 @@ public enum AndroidDropReason {
     CODEC_RECONFIGURE_DROP("codecReconfigureDrop", false),
     TRANSPORT_READ_FAILURE("transportReadFailure", false),
     TRANSPORT_WRITE_FAILURE("transportWriteFailure", false),
+    REFERENCE_CHAIN_BROKEN("referenceChainBroken", false),
     FRAME_AGE_EXPIRED("frameAgeExpired", true);
 
     public final String key;

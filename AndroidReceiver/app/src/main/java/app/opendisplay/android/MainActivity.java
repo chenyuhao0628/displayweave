@@ -1015,7 +1015,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         int scaledW = Math.max(2, ((int) Math.round(width * profile.scale)) & ~1);
         int scaledH = Math.max(2, ((int) Math.round(height * profile.scale)) & ~1);
         int refreshRate = bucketRefreshRate(currentRefreshRate());
-        int maxFps = bucketRefreshRate(maxSupportedRefreshRate(refreshRate));
+        int displayMaxFps = bucketRefreshRate(maxSupportedRefreshRate(refreshRate));
+        int maxFps = CodecCapabilities.maxSupportedFps(
+                scaledW, scaledH, displayMaxFps);
         String[] supportedCodecs = CodecCapabilities.supportedVideoCodecs();
         String preferredCodec = CodecCapabilities.preferredVideoCodec();
         return new DisplaySpec(scaledW, scaledH, density,

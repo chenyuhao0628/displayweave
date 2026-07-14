@@ -25,7 +25,7 @@ The Android framework can report that this app owns the lock, but public API 29 
 
 ## Surface frame-rate lifecycle
 
-The requested video FPS is mapped to the nearest supported display rate. The window and Surface receive a hint with fixed-source compatibility. API 31+ explicitly passes `CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS`; API 30 uses the two-argument overload, which has the same only-if-seamless default.
+The requested video FPS is mapped to the smallest supported display rate at or above it, falling below only when no higher mode exists. This avoids mapping 90 FPS down to 60 Hz on devices that expose 60/120/165 Hz modes. The window and Surface receive a hint with fixed-source compatibility. API 31+ explicitly passes `CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS`; API 30 uses the two-argument overload, which has the same only-if-seamless default.
 
 The hint is applied or reapplied for Surface creation/change, foreground resume, StreamConfig FPS change, decoder rebuild, and Streaming start. It is cleared with frame rate zero when streaming stops, the app backgrounds, the Surface is destroyed, or the Activity exits. No non-seamless switch is requested by default.
 

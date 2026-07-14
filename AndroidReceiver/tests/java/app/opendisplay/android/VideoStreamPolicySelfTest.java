@@ -195,6 +195,12 @@ public final class VideoStreamPolicySelfTest {
         assertEquals(90f, RefreshRateController.chooseRefreshRate(90, modes, 60f));
         assertEquals(60f, RefreshRateController.chooseRefreshRate(75, modes, 60f));
         assertEquals(60f, RefreshRateController.chooseRefreshRate(120, new float[] {60f}, 60f));
+        assertEquals(120f, RefreshRateController.chooseRefreshRate(
+                90, new float[] {60f, 120f, 165f}, 60f));
+        assertEquals(120f, RefreshRateController.chooseRefreshRate(
+                90, new float[] {165f, 60f, 120f}, 60f));
+        assertEquals(165f, RefreshRateController.chooseRefreshRate(
+                120, new float[] {60f, 165f}, 60f));
     }
 
     private static void testFrameClassifier() {
@@ -510,7 +516,7 @@ public final class VideoStreamPolicySelfTest {
     }
 
     private static void testAndroidDropReasonClassification() {
-        assertEquals(15, AndroidDropReason.values().length);
+        assertEquals(16, AndroidDropReason.values().length);
         assertTrue(AndroidDropReason.LATEST_SLOT_REPLACED.congestionRelevant);
         assertTrue(AndroidDropReason.DECODER_INPUT_UNAVAILABLE.congestionRelevant);
         assertTrue(AndroidDropReason.FRAME_AGE_EXPIRED.congestionRelevant);
@@ -519,6 +525,7 @@ public final class VideoStreamPolicySelfTest {
         assertFalse(AndroidDropReason.STALE_SESSION_EPOCH.congestionRelevant);
         assertFalse(AndroidDropReason.STALE_CONFIG_VERSION.congestionRelevant);
         assertFalse(AndroidDropReason.CODEC_RECONFIGURE_DROP.congestionRelevant);
+        assertFalse(AndroidDropReason.REFERENCE_CHAIN_BROKEN.congestionRelevant);
 
         AndroidDropTracker tracker = new AndroidDropTracker();
         AndroidDropTracker.Context context = new AndroidDropTracker.Context(

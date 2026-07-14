@@ -13,7 +13,6 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -30,7 +29,9 @@ public final class H264SurfaceDecoder {
     private int configuredHeight;
     private long presentationUs;
     private VideoStreamConfig streamConfig = VideoStreamConfig.DEFAULT;
-    private final Queue<VideoFrameTelemetry> pendingTelemetry = new ArrayDeque<>();
+    private final ArrayDeque<Integer> availableInputBuffers = new ArrayDeque<>();
+    private VideoFramePacket pendingInputFrame;
+    private boolean awaitingKeyframe;
     private final ConcurrentMap<Long, VideoFrameTelemetry> renderedTelemetry = new ConcurrentHashMap<>();
     private HandlerThread renderedCallbackThread;
     private long lastMissingParameterLogMs;
@@ -70,12 +71,15 @@ public final class H264SurfaceDecoder {
         return true;
     }
 
-    public synchronized void applyStreamConfig(String codecName, int fps, int width, int height) {
+    public void applyStreamConfig(String codecName, int fps, int width, int height) {
         VideoStreamConfig next = VideoStreamConfig.from(codecName, fps, width, height, 0);
-        boolean changed = !streamConfig.codec.equals(next.codec) || streamConfig.fps != next.fps
-                || (configuredWidth > 0 && width > 0 && configuredWidth != width)
-                || (configuredHeight > 0 && height > 0 && configuredHeight != height);
-        streamConfig = next;
+        boolean changed;
+        synchronized (this) {
+            changed = !streamConfig.codec.equals(next.codec) || streamConfig.fps != next.fps
+                    || (configuredWidth > 0 && width > 0 && configuredWidth != width)
+                    || (configuredHeight > 0 && height > 0 && configuredHeight != height);
+            streamConfig = next;
+        }
         if (changed) {
             release();
             listener.onDecoderNeedsKeyframe();
@@ -136,58 +140,30 @@ public final class H264SurfaceDecoder {
                 listener.onDecoderFrameDropped(
                         AndroidDropReason.DECODER_EXCEPTION, telemetry);
                 listener.onDecoderCodecFailure(streamConfig.codec, message);
-                release();
                 return;
             }
         }
 
-        try {
-            int input = codec.dequeueInputBuffer(0);
-            if (input < 0) {
-                listener.onDecoderFrameDropped(
-                        AndroidDropReason.DECODER_INPUT_UNAVAILABLE, telemetry);
-                return;
-            }
-            java.nio.ByteBuffer buffer = codec.getInputBuffer(input);
-            if (buffer == null) {
-                listener.onDecoderFrameDropped(
-                        AndroidDropReason.DECODER_INPUT_UNAVAILABLE, telemetry);
-                return;
-            }
-            if (payloadLength > buffer.capacity()) {
-                listener.onDecoderStatus("视频帧过大，已丢弃");
-                listener.onDecoderFrameDropped(
-                        AndroidDropReason.DECODER_INPUT_OVERSIZE, telemetry);
-                return;
-            }
-            buffer.clear();
-            buffer.put(payload, payloadOffset, payloadLength);
-            int flags = frame.keyframe ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
-            codec.queueInputBuffer(input, 0, payloadLength, presentationUs, flags);
-            pendingTelemetry.add(telemetry);
-            presentationUs += 1_000_000L / Math.max(streamConfig.fps, 1);
-            drainOutput();
-        } catch (IllegalStateException error) {
-            listener.onDecoderStatus("解码器异常，正在请求关键帧");
-            listener.onDecoderFrameDropped(
-                    AndroidDropReason.DECODER_EXCEPTION, telemetry);
-            release();
-            listener.onDecoderNeedsKeyframe();
-        }
+        submitOrHoldFrame(frame);
     }
 
-    public synchronized void release() {
-        if (codec != null) {
-            MediaCodec activeCodec = codec;
+    public void release() {
+        MediaCodec activeCodec;
+        HandlerThread callbackThread;
+        synchronized (this) {
+            activeCodec = codec;
             codec = null;
-            releaseCandidate(activeCodec);
+            availableInputBuffers.clear();
+            pendingInputFrame = null;
+            awaitingKeyframe = false;
             lastRuntimeInfo = null;
-            pendingTelemetry.clear();
             renderedTelemetry.clear();
-        }
-        if (renderedCallbackThread != null) {
-            renderedCallbackThread.quitSafely();
+            callbackThread = renderedCallbackThread;
             renderedCallbackThread = null;
+        }
+        releaseCandidate(activeCodec);
+        if (callbackThread != null) {
+            callbackThread.quitSafely();
         }
     }
 
@@ -275,6 +251,29 @@ public final class H264SurfaceDecoder {
                     new HandlerThread("OpenDisplayFrameRendered");
             candidateCallbackThread = callbackThread;
             callbackThread.start();
+            final MediaCodec callbackCodec = candidateCodec;
+            candidateCodec.setCallback(new MediaCodec.Callback() {
+                @Override
+                public void onInputBufferAvailable(MediaCodec mediaCodec, int index) {
+                    handleInputBufferAvailable(callbackCodec, index);
+                }
+
+                @Override
+                public void onOutputBufferAvailable(
+                        MediaCodec mediaCodec, int index, MediaCodec.BufferInfo info) {
+                    handleOutputBufferAvailable(callbackCodec, index, info);
+                }
+
+                @Override
+                public void onError(MediaCodec mediaCodec, MediaCodec.CodecException error) {
+                    handleCodecError(callbackCodec, error);
+                }
+
+                @Override
+                public void onOutputFormatChanged(MediaCodec mediaCodec, MediaFormat format) {
+                    handleOutputFormatChanged(callbackCodec, format);
+                }
+            }, new Handler(callbackThread.getLooper()));
             candidateCodec.setOnFrameRenderedListener(
                     (mediaCodec, presentationTimeUs, nanoTime) -> {
                         VideoFrameTelemetry telemetry =
@@ -282,13 +281,23 @@ public final class H264SurfaceDecoder {
                         listener.onDecoderFrameRendered(telemetry);
                     },
                     new Handler(callbackThread.getLooper()));
-            candidateCodec.start();
             codec = candidateCodec;
             renderedCallbackThread = candidateCallbackThread;
+            availableInputBuffers.clear();
+            pendingInputFrame = null;
+            awaitingKeyframe = false;
+            candidateCodec.start();
             configuredWidth = width;
             configuredHeight = height;
             presentationUs = 0;
         } catch (IOException | RuntimeException error) {
+            if (codec == candidateCodec) {
+                codec = null;
+                renderedCallbackThread = null;
+                availableInputBuffers.clear();
+                pendingInputFrame = null;
+                awaitingKeyframe = false;
+            }
             releaseCandidate(candidateCodec);
             if (candidateCallbackThread != null) {
                 candidateCallbackThread.quitSafely();
@@ -404,27 +413,137 @@ public final class H264SurfaceDecoder {
         }
     }
 
-    private void drainOutput() {
-        MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-        while (true) {
-            int output = codec.dequeueOutputBuffer(info, 0);
-            if (output >= 0) {
-                VideoFrameTelemetry telemetry = pendingTelemetry.poll();
-                if (telemetry != null) {
-                    renderedTelemetry.put(info.presentationTimeUs, telemetry);
-                }
-                listener.onDecoderFrameDecoded();
-                codec.releaseOutputBuffer(output, true);
-            } else if (output == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                MediaFormat format = codec.getOutputFormat();
-                configuredWidth = format.getInteger(MediaFormat.KEY_WIDTH);
-                configuredHeight = format.getInteger(MediaFormat.KEY_HEIGHT);
-                listener.onDecoderStatus("正在接收 " + configuredWidth + "×" + configuredHeight
-                        + " · " + streamConfig.codec + " · " + streamConfig.fps + "fps");
-            } else {
+    private synchronized void submitOrHoldFrame(VideoFramePacket frame) {
+        if (codec == null) {
+            listener.onDecoderFrameDropped(
+                    AndroidDropReason.CODEC_RECONFIGURE_DROP, frame.telemetry);
+            return;
+        }
+        if (awaitingKeyframe) {
+            if (!frame.keyframe) {
+                listener.onDecoderFrameDropped(
+                        AndroidDropReason.REFERENCE_CHAIN_BROKEN, frame.telemetry);
                 return;
             }
+            awaitingKeyframe = false;
         }
+        Integer input = availableInputBuffers.pollFirst();
+        if (input == null) {
+            if (pendingInputFrame != null) {
+                if (pendingInputFrame.isImportant() && !frame.isImportant()) {
+                    listener.onDecoderFrameDropped(
+                            AndroidDropReason.IMPORTANT_FRAME_PROTECTED, frame.telemetry);
+                    return;
+                }
+                listener.onDecoderFrameDropped(
+                        AndroidDropReason.LATEST_SLOT_REPLACED,
+                        pendingInputFrame.telemetry);
+                if (!frame.keyframe) {
+                    pendingInputFrame = null;
+                    awaitingKeyframe = true;
+                    listener.onDecoderFrameDropped(
+                            AndroidDropReason.REFERENCE_CHAIN_BROKEN, frame.telemetry);
+                    listener.onDecoderNeedsKeyframe();
+                    return;
+                }
+            }
+            pendingInputFrame = frame;
+            return;
+        }
+        submitFrame(codec, input, frame);
+    }
+
+    private synchronized void handleInputBufferAvailable(MediaCodec activeCodec, int index) {
+        if (codec != activeCodec) {
+            return;
+        }
+        VideoFramePacket frame = pendingInputFrame;
+        if (frame == null) {
+            availableInputBuffers.addLast(index);
+            return;
+        }
+        pendingInputFrame = null;
+        submitFrame(activeCodec, index, frame);
+    }
+
+    private void submitFrame(MediaCodec activeCodec, int input, VideoFramePacket frame) {
+        try {
+            java.nio.ByteBuffer buffer = activeCodec.getInputBuffer(input);
+            if (buffer == null) {
+                listener.onDecoderFrameDropped(
+                        AndroidDropReason.DECODER_INPUT_UNAVAILABLE, frame.telemetry);
+                returnInputBuffer(activeCodec, input);
+                listener.onDecoderNeedsKeyframe();
+                return;
+            }
+            if (frame.payloadLength > buffer.capacity()) {
+                listener.onDecoderStatus("视频帧过大，已丢弃");
+                listener.onDecoderFrameDropped(
+                        AndroidDropReason.DECODER_INPUT_OVERSIZE, frame.telemetry);
+                returnInputBuffer(activeCodec, input);
+                listener.onDecoderNeedsKeyframe();
+                return;
+            }
+            buffer.clear();
+            buffer.put(frame.bytes, frame.payloadOffset, frame.payloadLength);
+            long framePresentationUs = presentationUs;
+            int flags = frame.keyframe ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
+            activeCodec.queueInputBuffer(
+                    input, 0, frame.payloadLength, framePresentationUs, flags);
+            renderedTelemetry.put(framePresentationUs, frame.telemetry);
+            presentationUs += 1_000_000L / Math.max(streamConfig.fps, 1);
+        } catch (IllegalStateException error) {
+            listener.onDecoderStatus("解码器异常，正在请求关键帧");
+            listener.onDecoderFrameDropped(
+                    AndroidDropReason.DECODER_EXCEPTION, frame.telemetry);
+            listener.onDecoderNeedsKeyframe();
+        }
+    }
+
+    private void returnInputBuffer(MediaCodec activeCodec, int input) {
+        try {
+            activeCodec.queueInputBuffer(input, 0, 0, presentationUs, 0);
+        } catch (IllegalStateException ignored) {
+        }
+    }
+
+    private synchronized void handleOutputBufferAvailable(
+            MediaCodec activeCodec, int index, MediaCodec.BufferInfo info) {
+        if (codec != activeCodec) {
+            return;
+        }
+        listener.onDecoderFrameDecoded();
+        try {
+            activeCodec.releaseOutputBuffer(index, true);
+        } catch (IllegalStateException error) {
+            listener.onDecoderFrameDropped(AndroidDropReason.DECODER_EXCEPTION, null);
+            listener.onDecoderNeedsKeyframe();
+        }
+    }
+
+    private synchronized void handleOutputFormatChanged(
+            MediaCodec activeCodec, MediaFormat format) {
+        if (codec != activeCodec) {
+            return;
+        }
+        if (format.containsKey(MediaFormat.KEY_WIDTH)) {
+            configuredWidth = format.getInteger(MediaFormat.KEY_WIDTH);
+        }
+        if (format.containsKey(MediaFormat.KEY_HEIGHT)) {
+            configuredHeight = format.getInteger(MediaFormat.KEY_HEIGHT);
+        }
+        listener.onDecoderStatus("正在接收 " + configuredWidth + "×" + configuredHeight
+                + " · " + streamConfig.codec + " · " + streamConfig.fps + "fps");
+    }
+
+    private synchronized void handleCodecError(
+            MediaCodec activeCodec, MediaCodec.CodecException error) {
+        if (codec != activeCodec) {
+            return;
+        }
+        listener.onDecoderStatus("解码器异常，正在恢复：" + error.getDiagnosticInfo());
+        listener.onDecoderFrameDropped(AndroidDropReason.DECODER_EXCEPTION, null);
+        listener.onDecoderNeedsKeyframe();
     }
 
     private static void appendParameterSet(java.io.ByteArrayOutputStream out, byte[] parameterSet) {

@@ -112,6 +112,7 @@ Android release signing uses a keystore stored outside the repository. See [deve
 - [USB/WiFi benchmark protocol](docs/usb-vs-wifi-benchmark.md)
 - [Bitrate modes](docs/bitrate-modes.md) and [adaptive bitrate](docs/adaptive-bitrate.md)
 - [Queue analysis](docs/low-latency-queue-analysis.md) and [keyframe strategy](docs/keyframe-strategy.md)
+- [Android decoder throughput, reference recovery, and Surface-rate mapping](docs/android-decoder-throughput-recovery.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)

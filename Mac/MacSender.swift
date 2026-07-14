@@ -66,11 +66,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // multiple OpenDisplay monitors apart and persist their arrangement.
     private let displaySerial: UInt32
 
-    // Backpressure: outstanding sends. If the socket can't keep up we drop
-    // the raw capture before VideoToolbox rather than queueing latency. That
-    // does not break the encoded reference chain and must not force an IDR.
-    // Kept tight: at 60fps each queued send is ~17ms of added latency.
+    // Backpressure covers both VideoToolbox work and outstanding sends. A
+    // send-only budget lets the asynchronous encoder accept hundreds of raw
+    // frames while the socket still looks empty, then emit a stale burst.
+    // Drop before encode when the entire pipeline budget is full; this does
+    // not break the encoded reference chain and must not force an IDR.
     private var pendingSends = 0
+    private var pendingEncodes = 0
     private var nextPendingSendID: UInt64 = 0
     private var pendingSendStartedAt: [UInt64: TimeInterval] = [:]
     private var lastSendCompletionDelayMs: Double = 0
@@ -1280,7 +1282,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         // No receiver, or the socket is backed up: skip this frame entirely.
         guard connectionReady else { return }
         let queueDecision = SendQueuePolicy.decision(
-            pendingSends: pendingSends, budget: maxPendingSends,
+            pendingSends: pendingSends, pendingEncodes: pendingEncodes,
+            budget: maxPendingSends,
             currentDroppedFrames: dropsThisWindow)
         if queueDecision.shouldDrop {
             if queueDecision.forceKeyframe, let reason = queueDecision.reason {
@@ -1296,6 +1299,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     private func encode(_ pixelBuffer: CVPixelBuffer, pts: CMTime) {
         guard let encoder else { return }
+        pendingEncodes += 1
         let capturedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
         let encodedForWireGeneration = wireConnectionGeneration
         let protocolFrameIdentity = lastHello?.supportsProtocolV2 == true
@@ -1312,7 +1316,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         let duration = CMTime(
             value: 1,
             timescale: CMTimeScale(StreamEncodingPolicy.frameDurationTimescale(fps: requestedCaptureFps)))
-        VTCompressionSessionEncodeFrame(
+        let status = VTCompressionSessionEncodeFrame(
             encoder,
             imageBuffer: pixelBuffer,
             presentationTimeStamp: pts,
@@ -1332,6 +1336,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                     encodeStart: encodeStart)
             }
         }
+        if status != noErr {
+            pendingEncodes = max(0, pendingEncodes - 1)
+            if forcedKeyframeReason != nil {
+                keyframeRequests.completeInFlightRequest(encodedKeyframe: false)
+            }
+            handleEncodeFailure(status: status)
+        }
     }
 
     private func handleEncodedFrame(
@@ -1343,6 +1354,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         protocolFrameIdentity: StreamProtocolFrameIdentity?,
         encodeStart: Date
     ) {
+        pendingEncodes = max(0, pendingEncodes - 1)
         guard status == noErr, let buffer else {
             if forcedKeyframeReason != nil {
                 keyframeRequests.completeInFlightRequest(encodedKeyframe: false)
