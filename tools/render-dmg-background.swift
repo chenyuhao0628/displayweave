@@ -1,6 +1,8 @@
 #!/usr/bin/env swift
 import AppKit
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 guard CommandLine.arguments.count == 2 else {
     fputs("usage: render-dmg-background.swift OUTPUT.png\n", stderr)
@@ -8,24 +10,24 @@ guard CommandLine.arguments.count == 2 else {
 }
 
 let size = NSSize(width: 760, height: 500)
-guard let bitmap = NSBitmapImageRep(
-    bitmapDataPlanes: nil,
-    pixelsWide: Int(size.width),
-    pixelsHigh: Int(size.height),
-    bitsPerSample: 8,
-    samplesPerPixel: 4,
-    hasAlpha: true,
-    isPlanar: false,
-    colorSpaceName: .deviceRGB,
-    bytesPerRow: 0,
-    bitsPerPixel: 0
-), let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+guard let bitmapContext = CGContext(
+    data: nil,
+    width: Int(size.width),
+    height: Int(size.height),
+    bitsPerComponent: 8,
+    bytesPerRow: Int(size.width) * 4,
+    space: CGColorSpaceCreateDeviceRGB(),
+    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+) else {
     fputs("unable to create background bitmap\n", stderr)
     exit(2)
 }
 
 NSGraphicsContext.saveGraphicsState()
-NSGraphicsContext.current = context
+NSGraphicsContext.current = NSGraphicsContext(
+    cgContext: bitmapContext,
+    flipped: false
+)
 NSColor(calibratedRed: 0.055, green: 0.075, blue: 0.12, alpha: 1).setFill()
 NSBezierPath(rect: NSRect(origin: .zero, size: size)).fill()
 
@@ -88,15 +90,23 @@ draw(
     font: .systemFont(ofSize: 12),
     color: NSColor(white: 0.72, alpha: 1)
 )
-context.flushGraphics()
+NSGraphicsContext.current?.flushGraphics()
 NSGraphicsContext.restoreGraphicsState()
 
-guard let png = bitmap.representation(using: .png, properties: [:]) else {
+let outputURL = URL(fileURLWithPath: CommandLine.arguments[1])
+guard let image = bitmapContext.makeImage(),
+      let destination = CGImageDestinationCreateWithURL(
+          outputURL as CFURL,
+          UTType.png.identifier as CFString,
+          1,
+          nil
+      ) else {
     fputs("unable to encode background PNG\n", stderr)
     exit(2)
 }
 
-try png.write(
-    to: URL(fileURLWithPath: CommandLine.arguments[1]),
-    options: .atomic
-)
+CGImageDestinationAddImage(destination, image, nil)
+guard CGImageDestinationFinalize(destination) else {
+    fputs("unable to write background PNG\n", stderr)
+    exit(2)
+}

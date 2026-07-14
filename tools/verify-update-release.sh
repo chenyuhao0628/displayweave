@@ -88,6 +88,12 @@ DMG_DEVICE="$(awk '$1 ~ /^\/dev\// { print $1; exit }' <<<"$attach_output")"
 [[ -n "$DMG_DEVICE" ]] \
   || { echo "Unable to determine Mac DMG device." >&2; exit 3; }
 DMG_APP="$DMG_MOUNT/DisplayWeave.app"
+[[ -f "$DMG_MOUNT/.DS_Store" ]] \
+  || { echo "Mac DMG has no Finder layout metadata." >&2; exit 3; }
+[[ -f "$DMG_MOUNT/.background/DisplayWeave.png" ]] \
+  || { echo "Mac DMG has no guided background image." >&2; exit 3; }
+strings "$DMG_MOUNT/.DS_Store" | grep -q 'backgroundImageAlias' \
+  || { echo "Mac DMG Finder metadata has no background image alias." >&2; exit 3; }
 DMG_PLIST="$DMG_APP/Contents/Info.plist"
 [[ -d "$DMG_APP" ]] || { echo "Mac DMG has no DisplayWeave.app." >&2; exit 3; }
 [[ -L "$DMG_MOUNT/Applications" ]] \

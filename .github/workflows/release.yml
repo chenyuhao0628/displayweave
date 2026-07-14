@@ -61,6 +61,9 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Install DMG metadata tools
+        run: python3 -m pip install -r tools/dmg-requirements.txt
+
       - name: Prepare release versions and Android signing
         run: |
           set -euo pipefail

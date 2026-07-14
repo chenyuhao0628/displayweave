@@ -96,6 +96,7 @@ cd AndroidReceiver
 Create the complete offline Preview package set:
 
 ```bash
+python3 -m pip install -r tools/dmg-requirements.txt
 ./tools/package-preview-0.1.sh
 ```
 

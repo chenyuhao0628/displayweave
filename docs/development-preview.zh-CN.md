@@ -31,7 +31,8 @@ Android 签名证书 SHA-256：
 - **iOS/iPadOS：** 输入包不能直接安装，用户必须提供有效签名身份；本版本
   不包含 iOS 自动更新。
 
-运行 `./tools/package-preview-0.1.sh` 可生成本地产物集合。Android keystore
+先运行 `python3 -m pip install -r tools/dmg-requirements.txt` 安装固定版本的
+DMG 元数据依赖，再运行 `./tools/package-preview-0.1.sh` 生成本地产物集合。Android keystore
 位于 `~/Library/Application Support/DisplayWeave/Signing/`，密码存于
 Keychain，均不得提交 Git。免费 Apple Personal Team 只适合维护者在已登记
 设备测试，不适合公开通用分发；项目不背书第三方签名服务。

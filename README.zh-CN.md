@@ -90,6 +90,7 @@ cd AndroidReceiver
 生成完整离线 Preview 产物：
 
 ```bash
+python3 -m pip install -r tools/dmg-requirements.txt
 ./tools/package-preview-0.1.sh
 ```
 

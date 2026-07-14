@@ -149,35 +149,15 @@ if [[ -z "$DEVICE" || -z "$MOUNT" || ! -d "$MOUNT" ]]; then
   exit 3
 fi
 
-osascript <<OSA
-tell application "Finder"
-  tell disk "$VOLUME_NAME"
-    open
-    set current view of container window to icon view
-    set toolbar visible of container window to false
-    set statusbar visible of container window to false
-    set bounds of container window to {120, 120, 880, 620}
-    set arrangement of icon view options of container window to not arranged
-    set icon size of icon view options of container window to 104
-    set text size of icon view options of container window to 13
-    set background picture of icon view options of container window to file ".background:DisplayWeave.png"
-    set position of item "DisplayWeave.app" of container window to {190, 245}
-    set position of item "Applications" of container window to {570, 245}
-    set position of item "安装与首次运行说明.rtf" of container window to {380, 405}
-    update without registering applications
-    delay 2
-    close
-  end tell
-end tell
-OSA
-
+if ! python3 -c 'import ds_store, mac_alias' 2>/dev/null; then
+  echo "missing DMG metadata dependencies" >&2
+  echo "install with: python3 -m pip install -r $ROOT/tools/dmg-requirements.txt" >&2
+  exit 69
+fi
+python3 "$ROOT/tools/write-dmg-finder-metadata.py" "$MOUNT"
 sync
-for _ in 1 2 3 4 5; do
-  [[ -f "$MOUNT/.DS_Store" ]] && break
-  sleep 1
-done
-if [[ ! -f "$MOUNT/.DS_Store" ]]; then
-  echo "Finder did not persist the DMG layout" >&2
+if ! strings "$MOUNT/.DS_Store" | grep -q 'backgroundImageAlias'; then
+  echo "DMG Finder metadata is missing the background image alias" >&2
   exit 3
 fi
 
@@ -205,6 +185,10 @@ test "$(readlink "$VERIFY_MOUNT/Applications")" = /Applications
 test -f "$VERIFY_MOUNT/安装与首次运行说明.rtf"
 test -f "$VERIFY_MOUNT/.background/DisplayWeave.png"
 test -f "$VERIFY_MOUNT/.DS_Store"
+if ! strings "$VERIFY_MOUNT/.DS_Store" | grep -q 'backgroundImageAlias'; then
+  echo "final DMG lost its Finder background image alias" >&2
+  exit 3
+fi
 codesign --verify --deep --strict --verbose=2 \
   "$VERIFY_MOUNT/DisplayWeave.app"
 hdiutil detach "$DEVICE" -quiet

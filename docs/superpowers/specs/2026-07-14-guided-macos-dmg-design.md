@@ -71,12 +71,14 @@ create-guided-dmg.sh <DisplayWeave.app> <output.dmg>
 1. 校验输入是结构完整且签名验证通过的 `DisplayWeave.app`。
 2. 创建临时工作目录，复制 App、建立 `/Applications` 符号链接并生成双语 RTF。
 3. 使用一个小型 Swift/AppKit 辅助脚本生成确定尺寸的双语背景 PNG。
-4. 用 `hdiutil` 创建可写临时镜像、挂载镜像，并用 Finder AppleScript 设置窗口大小、
-   图标位置、图标尺寸、背景和隐藏工具栏。
-5. 确认根目录 `.DS_Store` 和 `.background` 资源已写入后卸载镜像。
+4. 用 `hdiutil` 创建并挂载可写临时镜像，再通过固定版本的 `ds_store` 与
+   `mac_alias` 直接写入 Finder 窗口大小、图标位置、图标尺寸和背景图片 Alias。
+   这样构建不依赖 Finder 自动化权限，也不受无图形界面 CI 影响。
+5. 确认根目录 `.DS_Store` 不仅存在，而且包含 `backgroundImageAlias`；同时确认
+   `.background/DisplayWeave.png` 已写入后再卸载镜像。
 6. 转换为只读压缩 UDZO DMG，执行结构和镜像校验，再原子移动到目标路径。
 
-所有临时目录和挂载点都由 `trap` 清理。输入缺失、签名失败、Finder 布局未写入、
+所有临时目录和挂载点都由 `trap` 清理。输入缺失、签名失败、Finder Alias 未写入、
 卸载失败或最终校验失败时，脚本返回非零，并删除未完成的输出，防止 CI 发布降级产物。
 
 `tools/package-preview-0.1.sh` 在完成 App 签名验证后，先生成原有 ZIP，再调用该脚本

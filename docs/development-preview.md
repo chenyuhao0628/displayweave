@@ -32,7 +32,9 @@ Android signing certificate SHA-256:
 - **iOS/iPadOS:** the input is not directly installable. The user must provide
   a valid signing identity; this release does not add iOS automatic updates.
 
-Build the local package set with `./tools/package-preview-0.1.sh`. The Android
+Install the pinned DMG metadata dependencies with
+`python3 -m pip install -r tools/dmg-requirements.txt`, then build the local
+package set with `./tools/package-preview-0.1.sh`. The Android
 keystore lives under `~/Library/Application Support/DisplayWeave/Signing/` and
 its password is stored in Keychain. Neither belongs in Git. A free Apple
 Personal Team is suitable only for maintainer testing on registered devices,

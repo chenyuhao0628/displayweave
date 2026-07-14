@@ -46,6 +46,10 @@ test "$(readlink "$MOUNT/Applications")" = /Applications
 test -f "$MOUNT/安装与首次运行说明.rtf"
 test -f "$MOUNT/.background/DisplayWeave.png"
 test -f "$MOUNT/.DS_Store"
+if ! strings "$MOUNT/.DS_Store" | grep -q 'backgroundImageAlias'; then
+  echo "guided DMG background image alias is missing from Finder view options" >&2
+  exit 1
+fi
 strings "$MOUNT/安装与首次运行说明.rtf" | grep -q 'Control'
 strings "$MOUNT/安装与首次运行说明.rtf" | grep -q 'Open Anyway'
 test "$(plutil -extract CFBundleIdentifier raw "$MOUNT/DisplayWeave.app/Contents/Info.plist")" = app.displayweave.mac
