@@ -5,7 +5,7 @@
 ## Current user guides
 
 - [Development preview distribution](development-preview.md)
-- [`v0.2.0-preview.1` release notes](release-notes-v0.2.0-preview.1.md)
+- [`v0.2.0-preview.2` release notes](release-notes-v0.2.0-preview.2.md)
 - [Release checklist](release-checklist.md)
 - [Mac and Android automatic updates](automatic-updates.md)
 - [Stability and physical-device evidence](stability-test-report.md)
@@ -23,7 +23,8 @@ Root guides cover [architecture](../ARCHITECTURE.md), [security](../SECURITY.md)
 
 ## Historical/internal records
 
-The [Preview 0.1 / Preview 2 release notes](release-notes-preview-0.1.md),
+The [`v0.2.0-preview.1` release notes](release-notes-v0.2.0-preview.1.md),
+[Preview 0.1 / Preview 2 release notes](release-notes-preview-0.1.md),
 files under `docs/superpowers/specs/` and `docs/superpowers/plans/`, and
 `android-usb-transport-design.md` record prior releases or design decisions.
 They may remain in their authored language and must not be treated as the only

@@ -1,7 +1,7 @@
 export type Locale = "en" | "zh"
 export type EvidenceState = "verified" | "experimental" | "deferred"
 
-export const releaseTag = "v0.2.0-preview.1"
+export const releaseTag = "v0.2.0-preview.2"
 export const releaseBase = `https://github.com/chenyuhao0628/displayweave/releases/download/${releaseTag}`
 
 export type ReleaseAsset = {

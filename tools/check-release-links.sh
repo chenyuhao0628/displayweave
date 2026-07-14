@@ -4,7 +4,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
-tag="v0.2.0-preview.1"
+tag="v0.2.0-preview.2"
 assets=(
   "DisplayWeave-Android.apk"
   "DisplayWeave-macOS.zip"
@@ -14,16 +14,16 @@ assets=(
   "SHA256SUMS.txt"
 )
 hashes=(
-  "35c828abc9200affe8a63602519f63e56ca7aff4ca6a88d6bbcb2f2bf009bec5"
-  "24588906ccde36958355d8e72bae54fa1e6f8244c3fca832b81c9a05bd7519d9"
-  "fee1b7d8c1b81bac33b91b11dfaeeb608ccc35050ccc4bcd796178227acdedfa"
+  "0c0bbd61625a90ef5264097da3f25db0d77c1383421e506a97aab0c6eb50b501"
+  "04a7433deb4fa893ef95f216d9b4e35e01ff5466bda56d801b88792b0122b2e1"
+  "7a188576fec361daff62efbbb978f9800ae4fac55d269ffbfecb1806646289f4"
 )
 sources=(
   src index.html README.md README.zh-CN.md
   AndroidReceiver/README.md AndroidReceiver/README.zh-CN.md
   docs/development-preview.md docs/development-preview.zh-CN.md
-  docs/release-notes-v0.2.0-preview.1.md
-  docs/release-notes-v0.2.0-preview.1.zh-CN.md
+  docs/release-notes-v0.2.0-preview.2.md
+  docs/release-notes-v0.2.0-preview.2.zh-CN.md
   docs/release-checklist.md docs/release-checklist.zh-CN.md
   docs/automatic-updates.md docs/automatic-updates.zh-CN.md
 )

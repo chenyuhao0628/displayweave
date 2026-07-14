@@ -10,7 +10,7 @@ DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases an
 - Android artifact: `DisplayWeave-Android.apk`
 
 The current migration release is
-[`v0.2.0-preview.1`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.1).
+[`v0.2.0-preview.2`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.2).
 Older builds cannot discover this channel by themselves: install this release
 manually once, then use automatic updates for later versions.
 

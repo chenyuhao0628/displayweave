@@ -1,25 +1,25 @@
 [English](release-checklist.md) | [简体中文](release-checklist.zh-CN.md)
 
-# `v0.2.0-preview.1` release checklist
+# `v0.2.0-preview.2` release checklist
 
 ## Published identity
 
-- Release: https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.1
-- Version: `v0.2.0-preview.1`
-- Monotonic build/version code: `2`
-- Release target commit: `bb50d919beae57db893222565e6b2980afb21ff3`
-- Public feed commit: `b8e22c8137bb71e58699f785517a4dd338ccdc72`
-- Successful Pages run: `29269282121`
+- Release: https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.2
+- Version: `v0.2.0-preview.2`
+- Monotonic build/version code: `3`
+- Release target commit: `adcc576f0b8667385b35ae04a76e8d5b9848c721`
+- Public feed commit: `66d2dcfaa26297cc4e3cb7059e367a018eaa74ad`
+- Successful Pages run: `29300403928`
 
 ## Assets and integrity
 
 | Asset | SHA-256 / check |
 | --- | --- |
-| `DisplayWeave-macOS.zip` | `35c828abc9200affe8a63602519f63e56ca7aff4ca6a88d6bbcb2f2bf009bec5` |
-| `DisplayWeave-Android.apk` | `24588906ccde36958355d8e72bae54fa1e6f8244c3fca832b81c9a05bd7519d9` |
-| `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `fee1b7d8c1b81bac33b91b11dfaeeb608ccc35050ccc4bcd796178227acdedfa` |
-| `appcast.xml` | `efc966fd6f051417a6f06bf12fe31edca9d8728fa19ae730619e694a1df1d250` |
-| `android-update.json` | `453c7e27ed3c261cfbca5f5bf1ba7c4d8861f7c0563cf8fc207254185176bf38` |
+| `DisplayWeave-macOS.zip` | `0c0bbd61625a90ef5264097da3f25db0d77c1383421e506a97aab0c6eb50b501` |
+| `DisplayWeave-Android.apk` | `04a7433deb4fa893ef95f216d9b4e35e01ff5466bda56d801b88792b0122b2e1` |
+| `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `7a188576fec361daff62efbbb978f9800ae4fac55d269ffbfecb1806646289f4` |
+| `appcast.xml` | `523252198c6bbd987281a9a60225576a53ba18e1f6421fbb2604be837868ec1f` |
+| `android-update.json` | `25764708231ddcbc3f8eb7796a7ce8a9108ca10a9bee06665ccba2c49da09bd1` |
 | `SHA256SUMS.txt` | Present and covers the five files above |
 
 Android signing certificate SHA-256:

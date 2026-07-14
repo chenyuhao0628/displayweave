@@ -1,14 +1,14 @@
 [English](development-preview.md) | [简体中文](development-preview.zh-CN.md)
 
-# DisplayWeave `v0.2.0-preview.1` Development Distribution
+# DisplayWeave `v0.2.0-preview.2` Development Distribution
 
-[GitHub prerelease](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.1)
+[GitHub prerelease](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.0-preview.2)
 
 | Platform/feed | Asset | SHA-256 or trust boundary |
 | --- | --- | --- |
-| macOS | `DisplayWeave-macOS.zip` | `35c828abc9200affe8a63602519f63e56ca7aff4ca6a88d6bbcb2f2bf009bec5`; ad-hoc signed and not notarized |
-| Android | `DisplayWeave-Android.apk` | `24588906ccde36958355d8e72bae54fa1e6f8244c3fca832b81c9a05bd7519d9`; v2 signed with the pinned project key |
-| iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `fee1b7d8c1b81bac33b91b11dfaeeb608ccc35050ccc4bcd796178227acdedfa`; unsigned re-signing input |
+| macOS | `DisplayWeave-macOS.zip` | `0c0bbd61625a90ef5264097da3f25db0d77c1383421e506a97aab0c6eb50b501`; ad-hoc signed and not notarized |
+| Android | `DisplayWeave-Android.apk` | `04a7433deb4fa893ef95f216d9b4e35e01ff5466bda56d801b88792b0122b2e1`; v2 signed with the pinned project key |
+| iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `7a188576fec361daff62efbbb978f9800ae4fac55d269ffbfecb1806646289f4`; unsigned re-signing input |
 | Mac update feed | `appcast.xml` | [Live Sparkle feed](https://chenyuhao0628.github.io/displayweave/appcast.xml) |
 | Android update feed | `android-update.json` | [Live verified metadata](https://chenyuhao0628.github.io/displayweave/android-update.json) |
 | Checksums | `SHA256SUMS.txt` | Hashes all five release files above |
