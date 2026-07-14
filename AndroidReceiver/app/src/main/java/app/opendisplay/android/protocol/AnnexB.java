@@ -115,7 +115,10 @@ public final class AnnexB {
                 int type = hevc
                         ? (nalLength > 1 ? ((payload[nalOffset] >> 1) & 0x3F) : -1)
                         : (payload[nalOffset] & 0x1F);
-                if (type == keyframeType || (hevc && type == 20)) {
+                // HEVC IRAP pictures are NAL types 16...23 (BLA, IDR, CRA
+                // and reserved IRAP). Any of them can start a fresh decoder
+                // reference chain when earlier dependent pictures are dropped.
+                if (type == keyframeType || (hevc && type >= 16 && type <= 23)) {
                     keyframe = true;
                 }
                 if (type == vpsType && vpsLength == 0) {

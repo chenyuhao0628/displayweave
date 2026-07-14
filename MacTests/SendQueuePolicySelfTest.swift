@@ -21,6 +21,18 @@ enum SendQueuePolicySelfTest {
         precondition(decision.shouldDrop && decision.droppedFrames == 5)
         precondition(decision.reason == .preEncodeCaptureSkip)
         precondition(!decision.forceKeyframe)
+
+        var work = GenerationWorkCounter()
+        work.begin(generation: 1)
+        work.begin(generation: 1)
+        precondition(work.count(generation: 1) == 2 && work.peak == 2)
+        work.begin(generation: 2)
+        precondition(work.count(generation: 2) == 1)
+        precondition(work.complete(generation: 1))
+        precondition(work.count(generation: 2) == 1,
+                     "old completion must not decrement current generation")
+        precondition(!work.complete(generation: 3))
+        precondition(work.unmatchedCompletions == 1)
         print("SendQueuePolicySelfTest PASS")
     }
 }

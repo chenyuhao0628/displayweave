@@ -1,13 +1,13 @@
 [English](android-stability-latency-audit.md) | [简体中文](android-stability-latency-audit.zh-CN.md)
 
-# Android Stability and Latency Audit
+# Android Stability and Latency Baseline Audit
 
 Audit date: 2026-07-14
 
 Branch and revision: `main` at `e6debbcad68a0bac1b0c286fbbbdf1ef2edd7c98`
 
 Release reviewed: `v0.2.0-preview.2` (GitHub pre-release, published 2026-07-14)
-Scope: the current working tree, including pre-existing uncommitted lifecycle and decoder-recovery edits.
+Scope: the historical working tree at the revision above. This is not the current implementation status; see [Android stability and latency current state](android-stability-latency-current.md).
 
 This is the phase-zero audit for the Android connection-stability and latency work. It records observed behavior before the connection-generation implementation. It does not treat configured FPS, bitrate, or refresh-rate requests as measured results. No long-duration or multi-device validation is claimed.
 

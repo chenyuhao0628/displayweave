@@ -1,13 +1,13 @@
 [English](android-stability-latency-audit.md) | [简体中文](android-stability-latency-audit.zh-CN.md)
 
-# Android 稳定性与延迟完整审计
+# Android 稳定性与延迟基线审计
 
 审计日期：2026-07-14
 
 分支与版本：`main`，`e6debbcad68a0bac1b0c286fbbbdf1ef2edd7c98`
 
 已检查 Release：`v0.2.0-preview.2`（GitHub 预发布版，发布于 2026-07-14）
-审计范围：当前工作区，包括审计开始前已经存在、尚未提交的生命周期和解码器恢复改动。
+审计范围：上述历史版本当时的工作区。本文不是当前实现状态；当前状态见 [Android 稳定性与延迟当前状态](android-stability-latency-current.zh-CN.md)。
 
 本文是 Android 连接稳定性与低延迟工作的阶段零审计，记录 Connection Generation 实现前的真实行为。配置的 FPS、码率和刷新率请求不会被当成实测结果；本文也不声称已经完成长时间或多设备验证。
 

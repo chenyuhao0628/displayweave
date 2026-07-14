@@ -88,7 +88,7 @@ No same-condition physical A/B has been collected. This PR proves fewer software
 
 - Android WiFi and ADB USB HEVC/H.264 connection with the negotiated header;
 - confirm Ack, Decoder Ready, First Frame, reconnect, transport switch, and stale-frame rejection;
-- compare `allocatedFrameBytes`, reuse/miss counts, GC count/time, Frame Age P50/P95/P99, rendered FPS, and decoder drops under the same scene;
+- compare per-window `allocatedFrameBytes`, reuse/miss counts, GC count/time deltas, Frame Age P50/P95/P99, rendered FPS, and decoder drops under the same scene;
 - recheck an old Android build and the Legacy OpenDisplay iOS Receiver to prove byte-for-byte fallback behavior.
 
 No physical receiver was attached during implementation.

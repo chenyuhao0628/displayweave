@@ -95,6 +95,59 @@ struct TransportSelectionPolicySelfTest {
         check(true,
               ReconnectPeerReadinessPolicy.clearsDisconnectGrace(for: .peerMessage),
               "a protocol message proves the Receiver is alive")
+        let lastPeerMessage = Date(timeIntervalSince1970: 100)
+        let watchdogDetection = Date(timeIntervalSince1970: 106)
+        let graceStart = DisconnectGracePolicy.startedAt(
+            existing: nil, failureObservedAt: lastPeerMessage)
+        check(lastPeerMessage, graceStart,
+              "a silent disconnect grace must start at the last peer message")
+        check(4,
+              DisconnectGracePolicy.remainingSeconds(
+                startedAt: graceStart, now: watchdogDetection, graceSeconds: 10),
+              "watchdog detection time must not add a second full grace period")
+        check(false,
+              DisconnectGracePolicy.hasExpired(
+                startedAt: graceStart,
+                now: Date(timeIntervalSince1970: 109.999), graceSeconds: 10),
+              "disconnect grace must remain active before its deadline")
+        check(true,
+              DisconnectGracePolicy.hasExpired(
+                startedAt: graceStart,
+                now: Date(timeIntervalSince1970: 110), graceSeconds: 10),
+              "disconnect grace must expire exactly ten seconds after peer activity")
+        check(lastPeerMessage,
+              DisconnectGracePolicy.startedAt(
+                existing: lastPeerMessage,
+                failureObservedAt: Date(timeIntervalSince1970: 108)),
+              "reconnect attempts must preserve the original disconnect deadline")
+        check(true,
+              ConnectionGenerationPolicy.accepts(
+                callbackGeneration: 2, currentGeneration: 2,
+                isCurrentObject: true, stopped: false),
+              "the current connection callback must be accepted")
+        check(false,
+              ConnectionGenerationPolicy.accepts(
+                callbackGeneration: 1, currentGeneration: 2,
+                isCurrentObject: false, stopped: false),
+              "an old connection callback must not mutate current state")
+        check(false,
+              ConnectionGenerationPolicy.accepts(
+                callbackGeneration: 2, currentGeneration: 2,
+                isCurrentObject: false, stopped: false),
+              "generation equality cannot replace current-object identity")
+        check(false,
+              ConnectionGenerationPolicy.accepts(
+                callbackGeneration: 2, currentGeneration: 2,
+                isCurrentObject: true, stopped: true),
+              "callbacks after stop must be rejected")
+        check(true,
+              ConnectionGenerationPolicy.acceptsReconnectTask(
+                taskGeneration: 4, currentGeneration: 4, stopped: false),
+              "the current reconnect task must run")
+        check(false,
+              ConnectionGenerationPolicy.acceptsReconnectTask(
+                taskGeneration: 3, currentGeneration: 4, stopped: false),
+              "an expired reconnect task must not dial")
         check(.endSession,
               ConnectionClosurePolicy.action(for: .cleanEnd, peer: .legacyApple),
               "a legacy Apple receiver that cleanly closes must end its session")

@@ -80,6 +80,37 @@ enum ReconnectPeerReadinessPolicy {
     }
 }
 
+enum DisconnectGracePolicy {
+    static func startedAt(existing: Date?, failureObservedAt: Date) -> Date {
+        existing ?? failureObservedAt
+    }
+
+    static func hasExpired(startedAt: Date, now: Date,
+                           graceSeconds: TimeInterval) -> Bool {
+        now.timeIntervalSince(startedAt) >= graceSeconds
+    }
+
+    static func remainingSeconds(startedAt: Date, now: Date,
+                                 graceSeconds: TimeInterval) -> Int {
+        Int(ceil(max(0, graceSeconds - now.timeIntervalSince(startedAt))))
+    }
+}
+
+enum ConnectionGenerationPolicy {
+    static func accepts(callbackGeneration: UInt64,
+                        currentGeneration: UInt64,
+                        isCurrentObject: Bool,
+                        stopped: Bool) -> Bool {
+        !stopped && isCurrentObject && callbackGeneration == currentGeneration
+    }
+
+    static func acceptsReconnectTask(taskGeneration: UInt64,
+                                     currentGeneration: UInt64,
+                                     stopped: Bool) -> Bool {
+        !stopped && taskGeneration == currentGeneration
+    }
+}
+
 enum ConnectionClosureEvent: Equatable, Sendable {
     case cleanEnd
     case failure

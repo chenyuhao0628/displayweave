@@ -5,7 +5,9 @@ import android.media.MediaCodecList;
 import android.media.MediaFormat;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class CodecCapabilities {
     private CodecCapabilities() {}
@@ -34,10 +36,27 @@ public final class CodecCapabilities {
      * decoding guarantee.
      */
     public static int maxSupportedFps(int width, int height, int displayMaxFps) {
-        String mimeType = "hevc".equals(preferredVideoCodec())
+        boolean prefersHevc = "hevc".equals(preferredVideoCodec());
+        String mimeType = prefersHevc
                 ? MediaFormat.MIMETYPE_VIDEO_HEVC : MediaFormat.MIMETYPE_VIDEO_AVC;
         int displayCap = sanitizeFps(displayMaxFps);
+        int preferredCap = selectedDecoderMaxFps(
+                mimeType, width, height, displayCap);
+        if (!prefersHevc) {
+            return preferredCap;
+        }
+        // HEVC can fall back to H.264 without a new Hello exchange. Advertise
+        // a rate that remains valid for the selected candidate on both paths.
+        int h264FallbackCap = selectedDecoderMaxFps(
+                MediaFormat.MIMETYPE_VIDEO_AVC, width, height, displayCap);
+        return Math.min(preferredCap, h264FallbackCap);
+    }
+
+    private static int selectedDecoderMaxFps(
+            String mimeType, int width, int height, int displayCap) {
         int[] candidates = new int[] {120, 90, 60, 30};
+        List<DecoderSelectionPolicy.Candidate> selectionCandidates = new ArrayList<>();
+        Map<String, Integer> capsByName = new LinkedHashMap<>();
         try {
             for (MediaCodecInfo info :
                     new MediaCodecList(MediaCodecList.ALL_CODECS).getCodecInfos()) {
@@ -45,17 +64,45 @@ public final class CodecCapabilities {
                     continue;
                 }
                 String name = info.getName().toLowerCase(java.util.Locale.US);
-                if (isSoftwareDecoderName(name)
-                        || (MediaFormat.MIMETYPE_VIDEO_HEVC.equals(mimeType)
-                        && isKnownBrokenHevcName(name))) {
+                if (MediaFormat.MIMETYPE_VIDEO_HEVC.equals(mimeType)
+                        && isKnownBrokenHevcName(name)) {
                     continue;
                 }
+                boolean softwareOnly = isSoftwareDecoderName(name);
+                boolean hardwareAccelerated = !softwareOnly;
+                boolean vendor = !softwareOnly;
+                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                    hardwareAccelerated = info.isHardwareAccelerated();
+                    softwareOnly = info.isSoftwareOnly();
+                    vendor = info.isVendor();
+                }
+                boolean lowLatencySupported = false;
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    lowLatencySupported = info.getCapabilitiesForType(mimeType)
+                            .isFeatureSupported(
+                                    MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency);
+                }
+                selectionCandidates.add(new DecoderSelectionPolicy.Candidate(
+                        info.getName(), hardwareAccelerated, softwareOnly, vendor,
+                        lowLatencySupported));
                 MediaCodecInfo.VideoCapabilities video = info
                         .getCapabilitiesForType(mimeType).getVideoCapabilities();
+                int supportedCap = Math.min(displayCap, 30);
                 for (int fps : candidates) {
                     if (fps <= displayCap && supportsPerformance(video, width, height, fps)) {
-                        return fps;
+                        supportedCap = fps;
+                        break;
                     }
+                }
+                capsByName.put(info.getName(), supportedCap);
+            }
+            List<DecoderSelectionPolicy.Attempt> attempts =
+                    DecoderSelectionPolicy.attempts(
+                            selectionCandidates, DecoderLowLatencyMode.AUTO);
+            if (!attempts.isEmpty()) {
+                Integer selectedCap = capsByName.get(attempts.get(0).decoderName);
+                if (selectedCap != null) {
+                    return selectedCap;
                 }
             }
         } catch (RuntimeException ignored) {

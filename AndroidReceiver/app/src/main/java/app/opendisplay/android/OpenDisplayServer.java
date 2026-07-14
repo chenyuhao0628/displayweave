@@ -796,6 +796,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private synchronized boolean releaseCodecForRecovery(
             long generation, boolean requireFreshConfig) {
         if (decoder == null || decoderGeneration != generation
+                || decoderAwaitingFreshConfig
                 || !protocolSession.matchesIdentity(
                         decoderSessionEpoch, decoderConfigVersion)) {
             return false;
@@ -953,11 +954,23 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         if (!connectionCoordinator.isCurrent(generation)) {
             return;
         }
+        boolean negotiatedV2 = protocolSession.isNegotiatedV2();
+        if (!releaseCodecForRecovery(generation, negotiatedV2)) {
+            return;
+        }
+        streamingGeneration = 0;
+        connectionCoordinator.transition(
+                generation, ReceiverConnectionState.RECOVERING, "decoderCodecFailure",
+                protocolSession.sessionEpoch(), protocolSession.configVersion());
         String fallbackStatus = CodecFallbackStatus.messageForCodecFailure(codec);
         if (fallbackStatus != null) {
             listener.onStatus(fallbackStatus);
         }
-        sendJson(LengthPrefixedProtocol.codecFailureJson(codec, message));
+        if ("hevc".equalsIgnoreCase(codec)) {
+            sendJson(LengthPrefixedProtocol.codecFailureJson(codec, message));
+        } else {
+            sendJson(LengthPrefixedProtocol.decoderResetRequestJson(negotiatedV2));
+        }
     }
 
     private synchronized void onDecoderFrameDropped(

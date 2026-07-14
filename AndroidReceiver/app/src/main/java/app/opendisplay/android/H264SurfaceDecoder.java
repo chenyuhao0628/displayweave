@@ -10,17 +10,15 @@ import android.util.Log;
 import android.view.Surface;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 import app.opendisplay.android.protocol.AnnexB;
 import app.opendisplay.android.protocol.SpsParser;
 
 public final class H264SurfaceDecoder {
     private static final String LOG_TAG = "DisplayWeaveDecoder";
+    private static final int MAX_RENDERED_TELEMETRY = 512;
     private final Surface surface;
     private final DecoderLowLatencyMode lowLatencyMode;
     private volatile Listener listener;
@@ -29,10 +27,10 @@ public final class H264SurfaceDecoder {
     private int configuredHeight;
     private long presentationUs;
     private VideoStreamConfig streamConfig = VideoStreamConfig.DEFAULT;
-    private final ArrayDeque<Integer> availableInputBuffers = new ArrayDeque<>();
+    private final DecoderCallbackState callbackState =
+            new DecoderCallbackState(MAX_RENDERED_TELEMETRY);
     private VideoFramePacket pendingInputFrame;
     private boolean awaitingKeyframe;
-    private final ConcurrentMap<Long, VideoFrameTelemetry> renderedTelemetry = new ConcurrentHashMap<>();
     private HandlerThread renderedCallbackThread;
     private long lastMissingParameterLogMs;
     private DecoderRuntimeInfo lastRuntimeInfo;
@@ -153,11 +151,10 @@ public final class H264SurfaceDecoder {
         synchronized (this) {
             activeCodec = codec;
             codec = null;
-            availableInputBuffers.clear();
+            callbackState.invalidate();
             pendingInputFrame = null;
             awaitingKeyframe = false;
             lastRuntimeInfo = null;
-            renderedTelemetry.clear();
             callbackThread = renderedCallbackThread;
             renderedCallbackThread = null;
         }
@@ -242,6 +239,10 @@ public final class H264SurfaceDecoder {
         HandlerThread candidateCallbackThread = null;
         try {
             candidateCodec = MediaCodec.createByCodecName(attempt.decoderName);
+            final long callbackGeneration;
+            synchronized (this) {
+                callbackGeneration = callbackState.activate(candidateCodec);
+            }
             MediaFormat format = decoderFormat(width, height, vps, sps, pps);
             if (attempt.enableLowLatency && android.os.Build.VERSION.SDK_INT >= 30) {
                 format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1);
@@ -255,35 +256,34 @@ public final class H264SurfaceDecoder {
             candidateCodec.setCallback(new MediaCodec.Callback() {
                 @Override
                 public void onInputBufferAvailable(MediaCodec mediaCodec, int index) {
-                    handleInputBufferAvailable(callbackCodec, index);
+                    handleInputBufferAvailable(callbackGeneration, callbackCodec, index);
                 }
 
                 @Override
                 public void onOutputBufferAvailable(
                         MediaCodec mediaCodec, int index, MediaCodec.BufferInfo info) {
-                    handleOutputBufferAvailable(callbackCodec, index, info);
+                    handleOutputBufferAvailable(
+                            callbackGeneration, callbackCodec, index, info);
                 }
 
                 @Override
                 public void onError(MediaCodec mediaCodec, MediaCodec.CodecException error) {
-                    handleCodecError(callbackCodec, error);
+                    handleCodecError(callbackGeneration, callbackCodec, error);
                 }
 
                 @Override
                 public void onOutputFormatChanged(MediaCodec mediaCodec, MediaFormat format) {
-                    handleOutputFormatChanged(callbackCodec, format);
+                    handleOutputFormatChanged(callbackGeneration, callbackCodec, format);
                 }
             }, new Handler(callbackThread.getLooper()));
             candidateCodec.setOnFrameRenderedListener(
                     (mediaCodec, presentationTimeUs, nanoTime) -> {
-                        VideoFrameTelemetry telemetry =
-                                renderedTelemetry.remove(presentationTimeUs);
-                        listener.onDecoderFrameRendered(telemetry);
+                        handleFrameRendered(
+                                callbackGeneration, callbackCodec, presentationTimeUs);
                     },
                     new Handler(callbackThread.getLooper()));
             codec = candidateCodec;
             renderedCallbackThread = candidateCallbackThread;
-            availableInputBuffers.clear();
             pendingInputFrame = null;
             awaitingKeyframe = false;
             candidateCodec.start();
@@ -294,7 +294,7 @@ public final class H264SurfaceDecoder {
             if (codec == candidateCodec) {
                 codec = null;
                 renderedCallbackThread = null;
-                availableInputBuffers.clear();
+                callbackState.invalidate();
                 pendingInputFrame = null;
                 awaitingKeyframe = false;
             }
@@ -427,7 +427,7 @@ public final class H264SurfaceDecoder {
             }
             awaitingKeyframe = false;
         }
-        Integer input = availableInputBuffers.pollFirst();
+        Integer input = callbackState.pollInput();
         if (input == null) {
             if (pendingInputFrame != null) {
                 if (pendingInputFrame.isImportant() && !frame.isImportant()) {
@@ -453,13 +453,18 @@ public final class H264SurfaceDecoder {
         submitFrame(codec, input, frame);
     }
 
-    private synchronized void handleInputBufferAvailable(MediaCodec activeCodec, int index) {
-        if (codec != activeCodec) {
+    private synchronized void handleInputBufferAvailable(
+            long generation, MediaCodec activeCodec, int index) {
+        if (!isActive(generation, activeCodec)) {
             return;
         }
         VideoFramePacket frame = pendingInputFrame;
         if (frame == null) {
-            availableInputBuffers.addLast(index);
+            if (!callbackState.offerInput(index)) {
+                Log.w(LOG_TAG, "duplicate input buffer callback ignored generation="
+                        + generation + " index=" + index);
+                return;
+            }
             return;
         }
         pendingInputFrame = null;
@@ -490,13 +495,14 @@ public final class H264SurfaceDecoder {
             int flags = frame.keyframe ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
             activeCodec.queueInputBuffer(
                     input, 0, frame.payloadLength, framePresentationUs, flags);
-            renderedTelemetry.put(framePresentationUs, frame.telemetry);
+            callbackState.putTelemetry(framePresentationUs, frame.telemetry);
             presentationUs += 1_000_000L / Math.max(streamConfig.fps, 1);
         } catch (IllegalStateException error) {
-            listener.onDecoderStatus("解码器异常，正在请求关键帧");
+            listener.onDecoderStatus("解码器异常，正在重建解码器");
             listener.onDecoderFrameDropped(
                     AndroidDropReason.DECODER_EXCEPTION, frame.telemetry);
-            listener.onDecoderNeedsKeyframe();
+            listener.onDecoderCodecFailure(
+                    streamConfig.codec, "queueInputBuffer: " + error.getMessage());
         }
     }
 
@@ -508,8 +514,9 @@ public final class H264SurfaceDecoder {
     }
 
     private synchronized void handleOutputBufferAvailable(
-            MediaCodec activeCodec, int index, MediaCodec.BufferInfo info) {
-        if (codec != activeCodec) {
+            long generation, MediaCodec activeCodec,
+            int index, MediaCodec.BufferInfo info) {
+        if (!isActive(generation, activeCodec)) {
             return;
         }
         listener.onDecoderFrameDecoded();
@@ -517,13 +524,14 @@ public final class H264SurfaceDecoder {
             activeCodec.releaseOutputBuffer(index, true);
         } catch (IllegalStateException error) {
             listener.onDecoderFrameDropped(AndroidDropReason.DECODER_EXCEPTION, null);
-            listener.onDecoderNeedsKeyframe();
+            listener.onDecoderCodecFailure(
+                    streamConfig.codec, "releaseOutputBuffer: " + error.getMessage());
         }
     }
 
     private synchronized void handleOutputFormatChanged(
-            MediaCodec activeCodec, MediaFormat format) {
-        if (codec != activeCodec) {
+            long generation, MediaCodec activeCodec, MediaFormat format) {
+        if (!isActive(generation, activeCodec)) {
             return;
         }
         if (format.containsKey(MediaFormat.KEY_WIDTH)) {
@@ -537,13 +545,40 @@ public final class H264SurfaceDecoder {
     }
 
     private synchronized void handleCodecError(
-            MediaCodec activeCodec, MediaCodec.CodecException error) {
-        if (codec != activeCodec) {
+            long generation, MediaCodec activeCodec, MediaCodec.CodecException error) {
+        if (!isActive(generation, activeCodec)) {
             return;
         }
         listener.onDecoderStatus("解码器异常，正在恢复：" + error.getDiagnosticInfo());
         listener.onDecoderFrameDropped(AndroidDropReason.DECODER_EXCEPTION, null);
-        listener.onDecoderNeedsKeyframe();
+        listener.onDecoderCodecFailure(streamConfig.codec, error.getDiagnosticInfo());
+    }
+
+    private synchronized void handleFrameRendered(
+            long generation, MediaCodec activeCodec, long presentationTimeUs) {
+        if (!isActive(generation, activeCodec)) {
+            return;
+        }
+        VideoFrameTelemetry telemetry = callbackState.removeTelemetry(presentationTimeUs);
+        if (telemetry != null) {
+            listener.onDecoderFrameRendered(telemetry);
+        }
+    }
+
+    private boolean isActive(long generation, MediaCodec activeCodec) {
+        return callbackState.isActive(generation, activeCodec) && codec == activeCodec;
+    }
+
+    synchronized int renderedTelemetrySizeForTesting() {
+        return callbackState.telemetrySize();
+    }
+
+    synchronized long renderedTelemetryPeakForTesting() {
+        return callbackState.telemetryPeak();
+    }
+
+    synchronized long renderedTelemetryEvictedForTesting() {
+        return callbackState.telemetryEvicted();
     }
 
     private static void appendParameterSet(java.io.ByteArrayOutputStream out, byte[] parameterSet) {

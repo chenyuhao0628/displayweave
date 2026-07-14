@@ -29,6 +29,23 @@ enum MacSenderTestPatternContractSelfTest {
         expect(hidesBeforeDisplayRelease(stop),
                "disconnect hides the pattern before releasing its display")
 
+        expect(source.contains("private var connectionGeneration: UInt64 = 0"),
+               "NWConnection callbacks have an independent generation")
+        expect(source.contains("private var reconnectWorkItem: DispatchWorkItem?"),
+               "delayed reconnect work is cancellable and coalesced")
+        expect(source.contains("self.isCurrentConnection(conn, generation: generation)"),
+               "TCP state callbacks validate connection object and generation")
+        expect(source.contains("let connectionGeneration = self.adoptConnection(conn)"),
+               "an adopted USB connection receives its own callback generation")
+        expect(source.contains("self.becomeReady(conn, generation: connectionGeneration)"),
+               "USB readiness is gated by the adopted connection generation")
+        expect(source.contains("receiveControl(on conn: NWConnection, generation: UInt64)"),
+               "control reads carry the adopted connection generation")
+        expect(source.contains("guard reconnectWorkItem == nil else"),
+               "duplicate reconnect requests are coalesced")
+        expect(stop.contains("cancelPendingReconnect()"),
+               "stop cancels and invalidates delayed reconnect work")
+
         print("MacSenderTestPatternContractSelfTest PASS")
     }
 

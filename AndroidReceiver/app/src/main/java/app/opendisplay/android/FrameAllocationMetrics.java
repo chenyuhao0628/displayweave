@@ -26,6 +26,14 @@ public final class FrameAllocationMetrics {
     private long allocatedFrameBytes;
     private long bufferReuseCount;
     private long bufferPoolMiss;
+    private long lastGcCount;
+    private long lastGcTimeMs;
+
+    public FrameAllocationMetrics() {
+        long[] baseline = runtimeGcMetrics();
+        lastGcCount = baseline[0];
+        lastGcTimeMs = baseline[1];
+    }
 
     public synchronized void recordTransportFrame(int allocatedBytes, boolean zeroCopyView) {
         allocatedFrameBytes += Math.max(0, allocatedBytes);
@@ -37,13 +45,24 @@ public final class FrameAllocationMetrics {
 
     public synchronized Snapshot snapshotAndResetWindow() {
         long[] gc = runtimeGcMetrics();
+        long gcCountDelta = counterDelta(lastGcCount, gc[0]);
+        long gcTimeDelta = counterDelta(lastGcTimeMs, gc[1]);
+        lastGcCount = gc[0];
+        lastGcTimeMs = gc[1];
         Snapshot snapshot = new Snapshot(
                 allocatedFrameBytes, bufferReuseCount, bufferPoolMiss,
-                gc[0], gc[1]);
+                gcCountDelta, gcTimeDelta);
         allocatedFrameBytes = 0;
         bufferReuseCount = 0;
         bufferPoolMiss = 0;
         return snapshot;
+    }
+
+    static long counterDelta(long previous, long current) {
+        if (previous < 0 || current < 0 || current < previous) {
+            return 0;
+        }
+        return current - previous;
     }
 
     private static long[] runtimeGcMetrics() {

@@ -72,7 +72,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // Drop before encode when the entire pipeline budget is full; this does
     // not break the encoded reference chain and must not force an IDR.
     private var pendingSends = 0
-    private var pendingEncodes = 0
+    private var pendingEncodeWork = GenerationWorkCounter()
+    private var pendingEncodes: Int {
+        pendingEncodeWork.count(generation: encoderGeneration)
+    }
     private var nextPendingSendID: UInt64 = 0
     private var pendingSendStartedAt: [UInt64: TimeInterval] = [:]
     private var lastSendCompletionDelayMs: Double = 0
@@ -100,6 +103,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var everConnected = false
     private var disconnectedSince: Date?
     private let disconnectGraceSeconds: TimeInterval = 10
+    private var disconnectCallbackPending = false
 
     private var lastHello: PhoneInfo?
     private var helloContinuation: CheckedContinuation<PhoneInfo, Error>?
@@ -111,6 +115,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // every encode to the ready connection that accepted it so an old frame
     // can never be written to a newer peer.
     private var wireConnectionGeneration: UInt64 = 0
+    private var encoderGeneration: UInt64 = 0
+    // Owns every NWConnection callback. `dialGeneration` only protects an
+    // asynchronous usbmux dial before adoption; this generation protects the
+    // adopted connection for its entire callback lifetime.
+    private var connectionGeneration: UInt64 = 0
+    private var reconnectGeneration: UInt64 = 0
+    private var reconnectWorkItem: DispatchWorkItem?
 
     // Liveness: both sides ping every 2s; if nothing arrives for 5s the link
     // is half-open (e.g. usbmuxd accepted but the device is gone) — reconnect.
@@ -440,8 +451,14 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         cursorImageTimer = nil
         stream?.stopCapture { _ in }
         stream = nil
-        connection?.cancel()
-        connection = nil
+        queue.sync {
+            invalidateConnection()
+            cancelPendingReconnect()
+            dialGeneration &+= 1
+            connectionReady = false
+            pendingSends = 0
+            pendingSendStartedAt.removeAll()
+        }
         if let encoder { VTCompressionSessionInvalidate(encoder) }
         encoder = nil
         TestPattern.hide(ownerID: testPatternOwnerID)
@@ -499,6 +516,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             guard let self, !self.stopped else { return }
             Log.info("manual reconnect requested")
             self.disconnectedSince = Date()   // fresh grace window
+            self.disconnectCallbackPending = false
             self.scheduleReconnect()
         }
     }
@@ -545,7 +563,41 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     }
 
     /// Bookkeeping shared by both transports once a connection is live.
-    private func becomeReady(_ conn: NWConnection) {
+    private func adoptConnection(_ conn: NWConnection) -> UInt64 {
+        connectionGeneration &+= 1
+        connection = conn
+        return connectionGeneration
+    }
+
+    private func isCurrentConnection(_ conn: NWConnection,
+                                     generation: UInt64) -> Bool {
+        ConnectionGenerationPolicy.accepts(
+            callbackGeneration: generation,
+            currentGeneration: connectionGeneration,
+            isCurrentObject: connection === conn,
+            stopped: stopped)
+    }
+
+    private func invalidateConnection() {
+        connectionGeneration &+= 1
+        let previous = connection
+        connection = nil
+        previous?.stateUpdateHandler = nil
+        previous?.cancel()
+    }
+
+    private func cancelPendingReconnect() {
+        reconnectGeneration &+= 1
+        reconnectWorkItem?.cancel()
+        reconnectWorkItem = nil
+    }
+
+    private func becomeReady(_ conn: NWConnection, generation: UInt64) {
+        guard isCurrentConnection(conn, generation: generation) else {
+            Log.info("ignoring ready callback from stale connection generation=\(generation)")
+            return
+        }
+        cancelPendingReconnect()
         Log.info("connection ready to \(endpointName)")
         connectionReady = true
         wireConnectionGeneration &+= 1
@@ -570,7 +622,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         lastCursorPNGHash = 0
         lastCursorSent = (-1, -1, false)
         lastReceived = Date()  // fresh grace period for the watchdog
-        receiveControl(on: conn)
+        receiveControl(on: conn, generation: generation)
         Task { await self.status("正在连接到 \(self.endpointName)…") }
     }
 
@@ -579,12 +631,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         options.noDelay = true   // latency matters more than throughput here
         let params = NWParameters(tls: nil, tcp: options)
         let conn = NWConnection(to: endpoint, using: params)
-        connection = conn
+        let generation = adoptConnection(conn)
         conn.stateUpdateHandler = { [weak self] state in
-            guard let self else { return }
+            guard let self,
+                  self.isCurrentConnection(conn, generation: generation) else {
+                return
+            }
             switch state {
             case .ready:
-                self.becomeReady(conn)
+                self.becomeReady(conn, generation: generation)
             case .failed(let error):
                 Log.info("connection failed: \(error)")
                 self.connectionReady = false
@@ -620,9 +675,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                         conn.cancel()
                         return
                     }
-                    self.connection = conn
+                    let connectionGeneration = self.adoptConnection(conn)
                     conn.stateUpdateHandler = { [weak self] state in
-                        guard let self else { return }
+                        guard let self,
+                              self.isCurrentConnection(
+                                conn, generation: connectionGeneration) else {
+                            return
+                        }
                         switch state {
                         case .failed(let error):
                             Log.info("usb connection failed: \(error)")
@@ -634,7 +693,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                             break
                         }
                     }
-                    self.becomeReady(conn)
+                    self.becomeReady(conn, generation: connectionGeneration)
                 }
             } catch {
                 // Distinct guidance per failure: cable missing vs app closed.
@@ -657,29 +716,53 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         }
     }
 
-    private func scheduleReconnect() {
+    private func scheduleReconnect(failureObservedAt: Date = Date()) {
         guard !stopped else { return }
         if everConnected {
-            if let since = disconnectedSince {
-                if Date().timeIntervalSince(since) > disconnectGraceSeconds {
+            let now = Date()
+            let since = DisconnectGracePolicy.startedAt(
+                existing: disconnectedSince,
+                failureObservedAt: failureObservedAt)
+            if disconnectedSince == nil {
+                disconnectedSince = since
+                let remaining = DisconnectGracePolicy.remainingSeconds(
+                    startedAt: since, now: now,
+                    graceSeconds: disconnectGraceSeconds)
+                Task { await status("连接已断开，最多重试 \(remaining) 秒…") }
+            }
+            if DisconnectGracePolicy.hasExpired(
+                startedAt: since, now: now,
+                graceSeconds: disconnectGraceSeconds) {
+                if !disconnectCallbackPending {
+                    disconnectCallbackPending = true
                     Log.info("device gone for >\(Int(disconnectGraceSeconds))s — ending session")
                     Task { @MainActor in self.onDisconnected?() }
-                    return
                 }
-            } else {
-                disconnectedSince = Date()
-                Task { await status("连接已断开，正在重试 \(Int(disconnectGraceSeconds)) 秒…") }
+                return
             }
+        }
+        guard reconnectWorkItem == nil else {
+            Log.info("reconnect already scheduled — coalescing duplicate request")
+            return
         }
         connectionReady = false
         dialGeneration += 1   // a USB dial still in flight must not adopt
-        connection?.cancel()
-        connection = nil
+        invalidateConnection()
         pendingSends = 0
         pendingSendStartedAt.removeAll()
-        queue.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            self?.connect()
+        reconnectGeneration &+= 1
+        let generation = reconnectGeneration
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self,
+                  ConnectionGenerationPolicy.acceptsReconnectTask(
+                    taskGeneration: generation,
+                    currentGeneration: self.reconnectGeneration,
+                    stopped: self.stopped) else { return }
+            self.reconnectWorkItem = nil
+            self.connect()
         }
+        reconnectWorkItem = workItem
+        queue.asyncAfter(deadline: .now() + 1.0, execute: workItem)
     }
 
     // MARK: - Liveness (ping + watchdog)
@@ -783,7 +866,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             if self.connectionReady, Date().timeIntervalSince(self.lastReceived) > 5 {
                 Log.info("watchdog: nothing from the phone for >5s — reconnecting")
                 Task { await self.status("连接无响应，正在重新连接…") }
-                self.scheduleReconnect()
+                // Anchor the 10-second grace to the last proof that the peer
+                // was alive. Starting it here would add the watchdog's five
+                // seconds to the advertised disconnect timeout.
+                self.scheduleReconnect(failureObservedAt: self.lastReceived)
             }
             // A reconnect on a static screen produces no capture frames, so
             // the receiver would stay black — replay the last frame as IDR.
@@ -884,30 +970,41 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     // MARK: - Control messages (phone -> Mac)
 
-    private func receiveControl(on conn: NWConnection) {
+    private func receiveControl(on conn: NWConnection, generation: UInt64) {
         conn.receive(minimumIncompleteLength: 4, maximumLength: 4) { [weak self] data, _, isComplete, error in
-            guard let self else { return }
+            guard let self,
+                  self.isCurrentConnection(conn, generation: generation) else {
+                return
+            }
             guard error == nil, let data, data.count == 4 else {
-                self.handleControlReadEnd(on: conn, isComplete: isComplete, error: error)
+                self.handleControlReadEnd(
+                    on: conn, generation: generation,
+                    isComplete: isComplete, error: error)
                 return
             }
             let len = Int(UInt32(bigEndian: data.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }))
             guard len > 0, len < 1 << 20 else { return }
             conn.receive(minimumIncompleteLength: len, maximumLength: len) { [weak self] payload, _, isComplete, error in
-                guard let self else { return }
+                guard let self,
+                      self.isCurrentConnection(conn, generation: generation) else {
+                    return
+                }
                 guard error == nil, let payload, payload.count == len else {
-                    self.handleControlReadEnd(on: conn, isComplete: isComplete, error: error)
+                    self.handleControlReadEnd(
+                        on: conn, generation: generation,
+                        isComplete: isComplete, error: error)
                     return
                 }
                 self.handleControl(payload)
-                self.receiveControl(on: conn)
+                self.receiveControl(on: conn, generation: generation)
             }
         }
     }
 
-    private func handleControlReadEnd(on conn: NWConnection, isComplete: Bool,
+    private func handleControlReadEnd(on conn: NWConnection, generation: UInt64,
+                                      isComplete: Bool,
                                       error: NWError?) {
-        guard !stopped, connection === conn else { return }
+        guard isCurrentConnection(conn, generation: generation) else { return }
         let event: ConnectionClosureEvent = isComplete && error == nil ? .cleanEnd : .failure
         handleConnectionClosure(ConnectionClosurePolicy.action(
             for: event,
@@ -934,6 +1031,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         lastReceived = Date()
         if ReconnectPeerReadinessPolicy.clearsDisconnectGrace(for: .peerMessage) {
             disconnectedSince = nil
+            disconnectCallbackPending = false
         }
         guard let obj = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
               let type = obj["type"] as? String else {
@@ -1170,6 +1268,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // MARK: - Encoder setup
 
     private func setupEncoder(width: Int, height: Int, fps: Int, preferredCodec: StreamCodec) {
+        encoderGeneration &+= 1
         let finalFps = RefreshRatePolicy.sanitize(fps)
         streamCodec = preferredCodec
         let automaticBitrate = StreamEncodingPolicy.bitrate(
@@ -1299,9 +1398,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     private func encode(_ pixelBuffer: CVPixelBuffer, pts: CMTime) {
         guard let encoder else { return }
-        pendingEncodes += 1
         let capturedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
         let encodedForWireGeneration = wireConnectionGeneration
+        let encodedForEncoderGeneration = encoderGeneration
+        pendingEncodeWork.begin(generation: encodedForEncoderGeneration)
         let protocolFrameIdentity = lastHello?.supportsProtocolV2 == true
             ? protocolIdentity.nextFrame()
             : nil
@@ -1332,12 +1432,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                     forcedKeyframeReason: forcedKeyframeReason,
                     capturedAtMs: capturedAtMs,
                     encodedForWireGeneration: encodedForWireGeneration,
+                    encodedForEncoderGeneration: encodedForEncoderGeneration,
                     protocolFrameIdentity: protocolFrameIdentity,
                     encodeStart: encodeStart)
             }
         }
         if status != noErr {
-            pendingEncodes = max(0, pendingEncodes - 1)
+            pendingEncodeWork.complete(generation: encodedForEncoderGeneration)
             if forcedKeyframeReason != nil {
                 keyframeRequests.completeInFlightRequest(encodedKeyframe: false)
             }
@@ -1351,10 +1452,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         forcedKeyframeReason: FrameDropReason?,
         capturedAtMs: Int64,
         encodedForWireGeneration: UInt64,
+        encodedForEncoderGeneration: UInt64,
         protocolFrameIdentity: StreamProtocolFrameIdentity?,
         encodeStart: Date
     ) {
-        pendingEncodes = max(0, pendingEncodes - 1)
+        guard pendingEncodeWork.complete(
+                generation: encodedForEncoderGeneration) else {
+            Log.info("dropping duplicate/unmatched encode completion")
+            return
+        }
         guard status == noErr, let buffer else {
             if forcedKeyframeReason != nil {
                 keyframeRequests.completeInFlightRequest(encodedKeyframe: false)
@@ -1367,8 +1473,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             keyframeRequests.completeInFlightRequest(encodedKeyframe: isKeyframe)
         }
         guard connectionReady,
-              encodedForWireGeneration == wireConnectionGeneration else {
-            Log.info("dropping encoded frame from stale wire connection generation")
+              encodedForWireGeneration == wireConnectionGeneration,
+              encodedForEncoderGeneration == encoderGeneration else {
+            Log.info("dropping encoded frame from stale wire/encoder generation")
             return
         }
         guard let data = annexB(from: buffer) else {

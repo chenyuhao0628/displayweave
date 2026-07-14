@@ -26,6 +26,7 @@ public final class VideoStreamPolicySelfTest {
         testVideoFramePacketUsesZeroCopyBinaryPayloadView();
         testFrameSizeMetrics();
         testFrameAllocationMetrics();
+        testGcMetricDeltaSemantics();
         testAndroidPowerMetricsNormalization();
         testFrameTelemetry();
         testStreamMetricsLatencyFields();
@@ -38,6 +39,7 @@ public final class VideoStreamPolicySelfTest {
         testDecoderReconfigurationPolicy();
         testDecoderLowLatencyMode();
         testDecoderSelectionAndFallbackOrder();
+        testDecoderCallbackStateOwnership();
         testDecoderRuntimeFailureMetrics();
         testWifiLowLatencyLifecycle();
         testSurfaceFrameRateLifecycle();
@@ -119,6 +121,12 @@ public final class VideoStreamPolicySelfTest {
         assertEquals(0L, second.allocatedFrameBytes);
         assertEquals(0L, second.bufferReuseCount);
         assertEquals(0L, second.bufferPoolMiss);
+    }
+
+    private static void testGcMetricDeltaSemantics() {
+        assertEquals(3L, FrameAllocationMetrics.counterDelta(4, 7));
+        assertEquals(0L, FrameAllocationMetrics.counterDelta(7, 4));
+        assertEquals(0L, FrameAllocationMetrics.counterDelta(-1, 4));
     }
 
     private static void testAndroidPowerMetricsNormalization() {
@@ -216,8 +224,37 @@ public final class VideoStreamPolicySelfTest {
                 hevcAnnexB(32, 33, 19), hevc));
         assertTrue(VideoFrameClassifier.isKeyframe(hevcAnnexB(19), hevc));
         assertTrue(VideoFrameClassifier.isKeyframe(hevcAnnexB(20), hevc));
+        assertTrue(VideoFrameClassifier.isKeyframe(hevcAnnexB(21), hevc));
         assertFalse(VideoFrameClassifier.isKeyframe(hevcAnnexB(32), hevc));
         assertFalse(VideoFrameClassifier.isImportant(hevcAnnexB(1), hevc));
+    }
+
+    private static void testDecoderCallbackStateOwnership() {
+        DecoderCallbackState state = new DecoderCallbackState(2);
+        Object codecA = new Object();
+        Object codecB = new Object();
+        long generationA = state.activate(codecA);
+        assertTrue(state.isActive(generationA, codecA));
+        assertTrue(state.offerInput(3));
+        assertFalse(state.offerInput(3));
+        assertEquals(3, state.pollInput().intValue());
+        assertEquals(null, state.pollInput());
+
+        state.putTelemetry(1, telemetry(8, 12, 1));
+        state.putTelemetry(2, telemetry(8, 12, 2));
+        state.putTelemetry(3, telemetry(8, 12, 3));
+        assertEquals(2, state.telemetrySize());
+        assertEquals(3L, state.telemetryPeak());
+        assertEquals(1L, state.telemetryEvicted());
+        assertEquals(null, state.removeTelemetry(1));
+
+        long generationB = state.activate(codecB);
+        assertFalse(state.isActive(generationA, codecA));
+        assertTrue(state.isActive(generationB, codecB));
+        assertEquals(0, state.telemetrySize());
+        assertEquals(null, state.pollInput());
+        state.invalidate();
+        assertFalse(state.isActive(generationB, codecB));
     }
 
     private static void testVideoFramePacketUsesZeroCopyBinaryPayloadView() throws Exception {
