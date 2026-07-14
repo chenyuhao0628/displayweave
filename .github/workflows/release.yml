@@ -16,6 +16,8 @@ permissions:
   contents: write
   pull-requests: write
   actions: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -55,7 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ inputs.release_tag != '' && inputs.release_tag || needs.release_please.outputs.tag_name }}
           fetch-depth: 0
 
       - name: Install XcodeGen
@@ -138,32 +140,53 @@ jobs:
             "$DISPLAYWEAVE_OUTPUT_DIR/android-update.json" \
             "$DISPLAYWEAVE_OUTPUT_DIR/SHA256SUMS.txt"
 
-      - name: Publish update feeds to GitHub Pages
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/displayweave-feeds"
-          cp "$DISPLAYWEAVE_OUTPUT_DIR/appcast.xml" \
-            "$DISPLAYWEAVE_OUTPUT_DIR/android-update.json" \
-            "$RUNNER_TEMP/displayweave-feeds/"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git switch --force-create main origin/main
-          mkdir -p public
-          cp "$RUNNER_TEMP/displayweave-feeds/appcast.xml" public/appcast.xml
-          cp "$RUNNER_TEMP/displayweave-feeds/android-update.json" public/android-update.json
-          git add public/appcast.xml public/android-update.json
-          if ! git diff --cached --quiet -- public/appcast.xml public/android-update.json; then
-            git commit -m "chore(release): publish update feeds for ${DISPLAYWEAVE_RELEASE_TAG} [skip ci]"
-            git push origin main
-          fi
-          gh workflow run pages.yml --ref main
+      - name: Stage update feeds for Pages deployment
+        uses: actions/upload-artifact@v4
+        with:
+          name: displayweave-update-feeds-${{ github.run_id }}
+          path: |
+            ${{ env.DISPLAYWEAVE_OUTPUT_DIR }}/appcast.xml
+            ${{ env.DISPLAYWEAVE_OUTPUT_DIR }}/android-update.json
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Clean signing material
         if: always()
         run: |
           rm -f "$DISPLAYWEAVE_ANDROID_KEYSTORE"
-          rm -rf "$RUNNER_TEMP/displayweave-feeds"
+
+  deploy-update-feeds:
+    needs: build-updates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Overlay signed update feeds
+        uses: actions/download-artifact@v4
+        with:
+          name: displayweave-update-feeds-${{ github.run_id }}
+          path: site-dist
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site-dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -79,7 +79,7 @@ workflow_contract=(
   "apksigner"
   "CODE_SIGNING_ALLOWED=NO"
   "if: always()"
-  "gh workflow run pages.yml"
+  "actions/deploy-pages@v4"
 )
 for marker in "${workflow_contract[@]}"; do
   grep -Fq "$marker" "$workflow" || {

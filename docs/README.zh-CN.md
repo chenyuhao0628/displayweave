@@ -6,6 +6,7 @@
 
 - [开发预览分发](development-preview.zh-CN.md)
 - [`v0.2.0-preview.2` 发布说明](release-notes-v0.2.0-preview.2.zh-CN.md)
+- [`v0.2.0-preview.3` 发布说明](release-notes-v0.2.0-preview.3.zh-CN.md)
 - [发布检查清单](release-checklist.zh-CN.md)
 - [Mac 与 Android 自动更新](automatic-updates.zh-CN.md)
 - [稳定性与真机证据](stability-test-report.zh-CN.md)

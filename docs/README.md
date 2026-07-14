@@ -6,6 +6,7 @@
 
 - [Development preview distribution](development-preview.md)
 - [`v0.2.0-preview.2` release notes](release-notes-v0.2.0-preview.2.md)
+- [`v0.2.0-preview.3` release notes](release-notes-v0.2.0-preview.3.md)
 - [Release checklist](release-checklist.md)
 - [Mac and Android automatic updates](automatic-updates.md)
 - [Stability and physical-device evidence](stability-test-report.md)
