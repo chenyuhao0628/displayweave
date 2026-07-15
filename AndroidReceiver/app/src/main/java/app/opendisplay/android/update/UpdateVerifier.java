@@ -84,6 +84,16 @@ public final class UpdateVerifier {
         }
     }
 
+    @SuppressWarnings("deprecation")
+    public static long packageVersionCode(Context context, File file) {
+        PackageInfo info = context.getPackageManager().getPackageArchiveInfo(
+                file.getAbsolutePath(), 0);
+        require(info != null, "Downloaded file is not an APK");
+        require(UpdateManifest.EXPECTED_PACKAGE_NAME.equals(info.packageName),
+                "Downloaded APK package mismatch");
+        return Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
+    }
+
     private static MessageDigest digest() {
         try {
             return MessageDigest.getInstance("SHA-256");

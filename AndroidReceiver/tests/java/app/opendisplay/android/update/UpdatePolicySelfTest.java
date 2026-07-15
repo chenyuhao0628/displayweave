@@ -31,6 +31,17 @@ public final class UpdatePolicySelfTest {
                 "install does not resume without verified APK");
         expect(!UpdatePolicy.shouldResumePendingInstall(true, true, false),
                 "install waits until unknown-source permission is granted");
+        expect(UpdatePolicy.isSameArtifact(manifest, UpdateManifest.parse(validJson())),
+                "identical download artifact is accepted");
+        UpdateManifest changedVersion = UpdateManifest.parse(validJson()
+                .replace("\"versionCode\":123", "\"versionCode\":124")
+                .replace("0.2.0-preview.3", "0.2.0-preview.4"));
+        expect(!UpdatePolicy.isSameArtifact(changedVersion, manifest),
+                "superseded download artifact is rejected");
+        expect(UpdatePolicy.canInstall(manifest, manifest, 122),
+                "verified newer artifact can install");
+        expect(!UpdatePolicy.canInstall(manifest, manifest, 123),
+                "equal installed version cannot reinstall through updater");
 
         expectThrows(() -> UpdateManifest.parse(validJson().replace(
                 "https://github.com", "http://github.com")),
@@ -62,6 +73,27 @@ public final class UpdatePolicySelfTest {
                 "update provider is not exported");
         expect(androidManifest.contains("android:grantUriPermissions=\"true\""),
                 "update provider grants per-request reads");
+
+        String updateClient = Files.readString(Path.of(
+                "src/main/java/app/opendisplay/android/update/UpdateClient.java"));
+        expect(updateClient.contains("setUseCaches(false)"),
+                "manifest HTTP cache is disabled");
+        expect(updateClient.contains("no-cache, no-store, max-age=0"),
+                "manifest requests force cache revalidation");
+        String coordinator = Files.readString(Path.of(
+                "src/main/java/app/opendisplay/android/update/UpdateCoordinator.java"));
+        expect(coordinator.contains("displayweave_cache_bust"),
+                "manifest URL uses a cache-busting query");
+        expect(coordinator.contains("正在确认更新仍为最新版本"),
+                "install path rechecks the current manifest");
+        expect(coordinator.contains("cleanupCompletedOrInvalidDownload"),
+                "completed or invalid update files are cleaned on resume");
+        String activity = Files.readString(Path.of(
+                "src/main/java/app/opendisplay/android/MainActivity.java"));
+        expect(activity.contains("progressBarStyleHorizontal"),
+                "download UI contains a horizontal progress bar");
+        expect(activity.contains("updateDownloadProgress.setProgress"),
+                "download progress updates the visible bar");
 
         System.out.println("UpdatePolicySelfTest PASS");
     }

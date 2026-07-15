@@ -20,7 +20,7 @@ public final class UpdateClient {
     }
 
     public UpdateManifest fetchManifest(URL url) throws IOException {
-        HttpURLConnection connection = open(url);
+        HttpURLConnection connection = open(url, true);
         try {
             requireSuccess(connection);
             long length = connection.getContentLengthLong();
@@ -52,7 +52,7 @@ public final class UpdateClient {
             throw new IOException("Unable to create update download directory");
         }
 
-        HttpURLConnection connection = open(url);
+        HttpURLConnection connection = open(url, false);
         boolean completed = false;
         try {
             requireSuccess(connection);
@@ -77,7 +77,8 @@ public final class UpdateClient {
         }
     }
 
-    private static HttpURLConnection open(URL initialUrl) throws IOException {
+    private static HttpURLConnection open(URL initialUrl, boolean requireFreshResponse)
+            throws IOException {
         URL url = initialUrl;
         for (int redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
             requireHttps(url);
@@ -85,6 +86,12 @@ public final class UpdateClient {
             connection.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
             connection.setReadTimeout(READ_TIMEOUT_MILLIS);
             connection.setInstanceFollowRedirects(false);
+            if (requireFreshResponse) {
+                connection.setUseCaches(false);
+                connection.setDefaultUseCaches(false);
+                connection.setRequestProperty("Cache-Control", "no-cache, no-store, max-age=0");
+                connection.setRequestProperty("Pragma", "no-cache");
+            }
             connection.setRequestProperty("Accept", "application/json, application/octet-stream");
             connection.connect();
             int status = connection.getResponseCode();

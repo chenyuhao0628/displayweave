@@ -23,6 +23,22 @@ public final class UpdatePolicy {
         return persistedUserIntent && verifiedFileExists && canInstall;
     }
 
+    public static boolean isSameArtifact(UpdateManifest latest, UpdateManifest downloaded) {
+        return latest != null
+                && downloaded != null
+                && latest.versionCode == downloaded.versionCode
+                && latest.versionName.equals(downloaded.versionName)
+                && latest.apkSize == downloaded.apkSize
+                && latest.sha256.equals(downloaded.sha256)
+                && latest.apkUrl.equals(downloaded.apkUrl);
+    }
+
+    public static boolean canInstall(
+            UpdateManifest latest, UpdateManifest downloaded, long installedVersionCode) {
+        return isSameArtifact(latest, downloaded)
+                && latest.versionCode > installedVersionCode;
+    }
+
     public static String normalizeHex(String value) {
         if (value == null) {
             throw new IllegalArgumentException("Missing hexadecimal value");

@@ -26,6 +26,7 @@ import android.widget.CheckBox;
 import android.widget.ImageView;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -56,6 +57,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private ReceiverLifecycleCoordinator receiverLifecycle;
     private SharedPreferences prefs;
     private UpdateCoordinator updateCoordinator;
+    private AlertDialog updateDownloadDialog;
+    private ProgressBar updateDownloadProgress;
+    private TextView updateDownloadProgressText;
     private String updateState = "尚未检查更新";
     private String currentStatus = "等待启动…";
     private boolean streaming;
@@ -505,7 +509,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                         .setMessage("更新包会先验证大小、SHA-256、包名、版本和签名证书，"
                                 + "验证通过后仍需在 Android 系统界面确认安装。")
                         .setPositiveButton("下载并验证", (dialog, which) ->
-                                updateCoordinator.download(manifest))
+                                showUpdateDownloadDialog(manifest))
                         .setNegativeButton("稍后", null)
                         .show();
             }
@@ -513,16 +517,24 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             @Override
             public void onDownloadProgress(int percent) {
                 updateState = "正在下载更新… " + percent + "%";
+                if (updateDownloadProgress != null) {
+                    updateDownloadProgress.setProgress(percent, true);
+                }
+                if (updateDownloadProgressText != null) {
+                    updateDownloadProgressText.setText("已下载 " + percent + "%");
+                }
             }
 
             @Override
             public void onVerifiedUpdateReady(UpdateManifest manifest) {
                 updateState = "更新已验证，等待安装";
+                dismissUpdateDownloadDialog();
                 if (!canShowDialog()) return;
                 new AlertDialog.Builder(MainActivity.this)
                         .setTitle("更新已验证")
                         .setMessage("版本 " + manifest.versionName
-                                + " 已通过安全校验。点击安装后将打开 Android 系统安装界面。")
+                                + " 已通过安全校验。点击安装后会再次确认线上最新版本，"
+                                + "然后打开 Android 系统安装界面。更新完成后安装包会在下次启动时自动清理。")
                         .setPositiveButton("安装", (dialog, which) ->
                                 updateCoordinator.installPending())
                         .setNegativeButton("稍后", null)
@@ -532,6 +544,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             @Override
             public void onUpdateError(String message, boolean manual) {
                 updateState = "更新检查失败：" + message;
+                dismissUpdateDownloadDialog();
                 if (!manual || !canShowDialog()) return;
                 new AlertDialog.Builder(MainActivity.this)
                         .setTitle("无法更新")
@@ -540,6 +553,52 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                         .show();
             }
         });
+    }
+
+    private void showUpdateDownloadDialog(UpdateManifest manifest) {
+        dismissUpdateDownloadDialog();
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(24), dp(12), dp(24), dp(8));
+
+        TextView progressText = text("准备下载…", 14,
+                Color.rgb(82, 94, 112), false);
+        content.addView(progressText, matchWrap());
+
+        ProgressBar progress = new ProgressBar(
+                this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setIndeterminate(false);
+        progress.setMax(100);
+        progress.setProgress(0);
+        LinearLayout.LayoutParams progressParams = matchWrap();
+        progressParams.setMargins(0, dp(12), 0, dp(6));
+        content.addView(progress, progressParams);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("正在下载 " + manifest.versionName)
+                .setView(content)
+                .setNegativeButton("隐藏", null)
+                .create();
+        updateDownloadDialog = dialog;
+        updateDownloadProgress = progress;
+        updateDownloadProgressText = progressText;
+        dialog.setOnDismissListener(ignored -> {
+            if (updateDownloadDialog == dialog) {
+                updateDownloadDialog = null;
+                updateDownloadProgress = null;
+                updateDownloadProgressText = null;
+            }
+        });
+        dialog.show();
+        updateCoordinator.download(manifest);
+    }
+
+    private void dismissUpdateDownloadDialog() {
+        AlertDialog dialog = updateDownloadDialog;
+        updateDownloadDialog = null;
+        updateDownloadProgress = null;
+        updateDownloadProgressText = null;
+        if (dialog != null && dialog.isShowing()) dialog.dismiss();
     }
 
     private boolean canShowDialog() {
