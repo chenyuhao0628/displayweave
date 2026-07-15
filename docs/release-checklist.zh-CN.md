@@ -1,28 +1,28 @@
 [English](release-checklist.md) | [简体中文](release-checklist.zh-CN.md)
 
-# `v0.2.1` 发布检查清单
+# `v0.2.1-p1` 发布检查清单
 
 ## 已发布身份
 
-- Release：https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1
-- 版本：`v0.2.1`
-- 单调递增 Mac build / Android version code：`7`
-- Release Tag 目标提交：`80c923fb24e9c23399128262bf65727886d1c5a0`
-- 成功的 Release run：`29355318964`
-- 成功的 Build job：`87161369291`
-- 成功的 Pages/更新源 job：`87162225134`
-- 成功的发布后 CI run：`29356107557`
+- Release：https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p1
+- 版本：`v0.2.1-p1`
+- 单调递增 Mac build / Android version code：`8`
+- Release Tag 目标提交：`2fb57b4b341c85104a4f1a6e8cf0ecd08dd6754f`
+- 成功的发布前 CI run：`29383103136`
+- 成功的 Release run：`29383334404`
+- 成功的 Build job：`87251419579`
+- 成功的 Pages/更新源 job：`87251982032`
 
 ## 产物与完整性
 
 | 产物 | SHA-256 / 检查 |
 | --- | --- |
-| `DisplayWeave-macOS.zip` | `ee507c6d3b4ddd80c7bdf3142ffe268cc06d5539950cd9298207c30de3a836fe` |
-| `DisplayWeave-macOS.dmg` | `fc2964c6f5a7088269b5b6637db2df2d0fc3dc95abd134d427a998b8fa976fc1` |
-| `DisplayWeave-Android.apk` | `3b0d0e3be13ea195867573746cf1938bc835f654391770b7269c3fbdfbbb494a` |
-| `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `50dd56b234c54d1e57aa64e7941eb2fe88e70640a128da284decb25cb850114e` |
-| `appcast.xml` | `04111c2406e9efab99756604eb8bcc91abbb7a89de51117e26291f4c9a0c0cd9` |
-| `android-update.json` | `b8383d74f91a066fa68734990a7250b4bc6c23d13e487035cb452c70de0f572c` |
+| `DisplayWeave-macOS.zip` | `702e1857335eb3349d301cfd9085718c03e9f6cdb933dfd16bf7b382dfa1dd91` |
+| `DisplayWeave-macOS.dmg` | `993b7e7e8969cf377eb6500fa9681f51a2761ca493bd77c1ff5ada94ebc51b5c` |
+| `DisplayWeave-Android.apk` | `0c77365c49647813a0a9a2aeff217cab550432b028d66c3b19398ba043f65140` |
+| `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `4502da624205b526334c05452389d2b2ba9130582bd7a136b6831db8d029b964` |
+| `appcast.xml` | `1ec636ab38f9cc8ac6e72e6aee795316ad33f679916f507e363d84f1da4e3412` |
+| `android-update.json` | `cf9269e9971bcae3890799ef062b4ae89fe40adeff0231daf9972012374ac005` |
 | `SHA256SUMS.txt` | 已存在并覆盖以上六个文件 |
 
 Android 签名证书 SHA-256：
@@ -38,8 +38,8 @@ Android 签名证书 SHA-256：
 
 ## 构建与自动验证
 
-- [x] 手动触发工作流，输入为 `release_tag=v0.2.1` 与 `build_number=7`。
-- [x] Workflow Head 与 Release Tag Target 均为 `80c923fb24e9c23399128262bf65727886d1c5a0`。
+- [x] 手动触发工作流，输入为 `release_tag=v0.2.1-p1` 与 `build_number=8`。
+- [x] Workflow Head 与 Release Tag Target 均为 `2fb57b4b341c85104a4f1a6e8cf0ecd08dd6754f`。
 - [x] Mac Release 与未签名 iOS 兼容构建完成。
 - [x] Android 签名 Release Build 与六组 Android Self Test 全部成功。
 - [x] `apksigner` 报告 v2 签名、一个 Signer 与固定证书。
@@ -51,17 +51,17 @@ Android 签名证书 SHA-256：
 - [x] 在线 Mac Feed：https://chenyuhao0628.github.io/displayweave/appcast.xml
 - [x] 在线 Android Feed：https://chenyuhao0628.github.io/displayweave/android-update.json
 - [x] Android 在线 Feed 与 Release 资产逐字节一致。仓库持久化的 Sparkle XML 只相差末尾换行；Version、Build、URL、Length 与 EdDSA Enclosure Signature 均与 Release 资产一致。
-- [x] Mac Feed 声明 Short Version `0.2.1`、build `7`、ZIP 大小 `2723141` 与 Release EdDSA 签名。
-- [x] Android Feed 声明 Version Code `7`、APK 大小 `216324`、预期包名、SHA-256、Minimum SDK 与固定证书。
+- [x] Mac Feed 声明 Short Version `0.2.1-p1`、build `8`、ZIP 大小 `2739581` 与 Release EdDSA 签名。
+- [x] Android Feed 声明 Version Code `8`、APK 大小 `219380`、预期包名、SHA-256、Minimum SDK 与固定证书。
 - [x] 仓库 `public/` Feed 包含相同值，后续 Pages 部署不会把更新渠道回退到 Preview 5。
-- [x] 发布后的 Pages 部署曾暴露仓库中旧的 Preview 5 Feed；持久化提交 `0259c1a` 已修正，并重新确认在线 Feed 为 `0.2.1 (7)`。
+- [x] Release run `29383334404` 已覆盖并成功部署签名 Feed；仓库 Feed 持久化为 `0.2.1-p1 (8)`，防止后续部署回退。
 
 ## 兼容与披露
 
 - [x] 未协商 Android-only Capability 时，Legacy OpenDisplay iOS 继续使用 Length-prefix + JSON Telemetry + Annex-B H.264。
 - [x] 首次安装说明披露 Gatekeeper/ad-hoc 签名、Android 未知来源确认与未签名 iOS 边界。
 - [x] 发布说明区分代码/构建证据与待补真机证据，不做无数据的延迟结论。
-- [x] 中英文 Release 链接使用 GitHub 绝对路径，简体中文页面返回 HTTP 200。
+- [x] 中英文 Release 链接使用 GitHub 绝对路径；简体中文源文件发布于 `docs/release-notes-v0.2.1-p1.zh-CN.md`。
 
 ## 待补真机证据
 
