@@ -23,16 +23,26 @@ enum SendQueuePolicySelfTest {
         precondition(!decision.forceKeyframe)
 
         var work = GenerationWorkCounter()
-        work.begin(generation: 1)
-        work.begin(generation: 1)
+        let workA = work.begin(generation: 1)
+        let workB = work.begin(generation: 1)
         precondition(work.count(generation: 1) == 2 && work.peak == 2)
-        work.begin(generation: 2)
+        let workC = work.begin(generation: 2)
         precondition(work.count(generation: 2) == 1)
-        precondition(work.complete(generation: 1))
+        precondition(work.complete(generation: 1, workID: workA))
         precondition(work.count(generation: 2) == 1,
                      "old completion must not decrement current generation")
-        precondition(!work.complete(generation: 3))
-        precondition(work.unmatchedCompletions == 1)
+        precondition(!work.complete(generation: 1, workID: workA),
+                     "duplicate completion must not consume another work item")
+        precondition(work.count(generation: 1) == 1)
+        precondition(work.complete(generation: 1, workID: workB))
+        precondition(work.complete(generation: 2, workID: workC))
+        precondition(!work.complete(generation: 3, workID: workC))
+        precondition(work.unmatchedCompletions == 2)
+        let abandoned = work.begin(generation: 4)
+        work.discard(generation: 4)
+        precondition(work.count(generation: 4) == 0)
+        precondition(!work.complete(generation: 4, workID: abandoned),
+                     "discarded generation must reject late completion")
         print("SendQueuePolicySelfTest PASS")
     }
 }

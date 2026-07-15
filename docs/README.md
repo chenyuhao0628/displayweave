@@ -10,6 +10,7 @@
 - [`v0.2.0-preview.4` release notes](release-notes-v0.2.0-preview.4.md)
 - [`v0.2.0-preview.5` release notes](release-notes-v0.2.0-preview.5.md)
 - [`v0.2.1` release notes](release-notes-v0.2.1.md)
+- [`v0.2.1-p1` release notes](release-notes-v0.2.1-p1.md)
 - [Release checklist](release-checklist.md)
 - [Mac and Android automatic updates](automatic-updates.md)
 - [Stability and physical-device evidence](stability-test-report.md)

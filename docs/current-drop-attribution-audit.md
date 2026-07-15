@@ -8,7 +8,7 @@ Baseline: `79cbf90`; physical validation: **Pending**.
 
 - `REFERENCE_CHAIN_BROKEN` is correctly non-congestion: it is a recovery state, not direct evidence of network pressure.
 - `LATEST_SLOT_REPLACED` and `DECODER_INPUT_UNAVAILABLE` are classified as congestion-relevant, but the ABR labels sustained receiver evidence as `android-decoder-throughput`; it must not be described as proven network congestion.
-- `IMPORTANT_FRAME_PROTECTED` is congestion-relevant because it occurs under occupied latest-slot pressure, although the protected incoming frame itself is intentionally discarded without breaking the retained important frame.
+- `IMPORTANT_FRAME_PROTECTED` is congestion-relevant because it occurs under occupied latest-slot pressure. When the discarded incoming frame is predictive, the server/decoder now enters reference-chain recovery, coalesces a keyframe request, and rejects dependent frames until a fresh keyframe arrives; retaining the older important frame alone does not prove later predictive frames are safe.
 - Stale generation/session/config, malformed input, oversize, Surface loss, reconfigure, and transport failures are correctly excluded from ABR congestion counts.
 - Transport read/write failure records one Drop event; the subsequent disconnect does not add another Drop, so it is not double counted.
 - A latest-slot replacement followed by reference-chain break records two distinct discarded frames: the displaced pending frame and the rejected new dependent frame. This is not same-frame double counting.

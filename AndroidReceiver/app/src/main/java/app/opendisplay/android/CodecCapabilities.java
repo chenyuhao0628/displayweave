@@ -36,24 +36,33 @@ public final class CodecCapabilities {
      * decoding guarantee.
      */
     public static int maxSupportedFps(int width, int height, int displayMaxFps) {
+        return maxSupportedFps(
+                width, height, displayMaxFps, DecoderLowLatencyMode.AUTO);
+    }
+
+    public static int maxSupportedFps(
+            int width, int height, int displayMaxFps,
+            DecoderLowLatencyMode lowLatencyMode) {
         boolean prefersHevc = "hevc".equals(preferredVideoCodec());
         String mimeType = prefersHevc
                 ? MediaFormat.MIMETYPE_VIDEO_HEVC : MediaFormat.MIMETYPE_VIDEO_AVC;
         int displayCap = sanitizeFps(displayMaxFps);
         int preferredCap = selectedDecoderMaxFps(
-                mimeType, width, height, displayCap);
+                mimeType, width, height, displayCap, lowLatencyMode);
         if (!prefersHevc) {
             return preferredCap;
         }
         // HEVC can fall back to H.264 without a new Hello exchange. Advertise
         // a rate that remains valid for the selected candidate on both paths.
         int h264FallbackCap = selectedDecoderMaxFps(
-                MediaFormat.MIMETYPE_VIDEO_AVC, width, height, displayCap);
+                MediaFormat.MIMETYPE_VIDEO_AVC, width, height, displayCap,
+                lowLatencyMode);
         return Math.min(preferredCap, h264FallbackCap);
     }
 
     private static int selectedDecoderMaxFps(
-            String mimeType, int width, int height, int displayCap) {
+            String mimeType, int width, int height, int displayCap,
+            DecoderLowLatencyMode lowLatencyMode) {
         int[] candidates = new int[] {120, 90, 60, 30};
         List<DecoderSelectionPolicy.Candidate> selectionCandidates = new ArrayList<>();
         Map<String, Integer> capsByName = new LinkedHashMap<>();
@@ -98,7 +107,7 @@ public final class CodecCapabilities {
             }
             List<DecoderSelectionPolicy.Attempt> attempts =
                     DecoderSelectionPolicy.attempts(
-                            selectionCandidates, DecoderLowLatencyMode.AUTO);
+                            selectionCandidates, lowLatencyMode);
             if (!attempts.isEmpty()) {
                 Integer selectedCap = capsByName.get(attempts.get(0).decoderName);
                 if (selectedCap != null) {
@@ -108,6 +117,34 @@ public final class CodecCapabilities {
         } catch (RuntimeException ignored) {
         }
         return Math.min(displayCap, 60);
+    }
+
+    static int decoderMaxFps(
+            String mimeType, String decoderName,
+            int width, int height, int requestedFps) {
+        int cap = sanitizeFps(requestedFps);
+        if (decoderName == null || decoderName.length() == 0) {
+            return Math.min(cap, 60);
+        }
+        try {
+            for (MediaCodecInfo info :
+                    new MediaCodecList(MediaCodecList.ALL_CODECS).getCodecInfos()) {
+                if (info.isEncoder() || !info.getName().equals(decoderName)
+                        || !supportsType(info, mimeType)) {
+                    continue;
+                }
+                MediaCodecInfo.VideoCapabilities video = info
+                        .getCapabilitiesForType(mimeType).getVideoCapabilities();
+                for (int fps : new int[] {120, 90, 60, 30}) {
+                    if (fps <= cap && supportsPerformance(video, width, height, fps)) {
+                        return fps;
+                    }
+                }
+                return 30;
+            }
+        } catch (RuntimeException ignored) {
+        }
+        return Math.min(cap, 60);
     }
 
     private static boolean supportsPerformance(

@@ -277,7 +277,8 @@ public final class LengthPrefixedProtocol {
             long sessionEpoch, long configVersion, String codec, String decoderName,
             boolean hardwareAccelerated, boolean softwareOnly, boolean vendor,
             boolean lowLatencySupported, boolean lowLatencyEnabled,
-            boolean configureSuccess, String fallbackReason) {
+            boolean configureSuccess, int selectedDecoderMaxFps,
+            String fallbackReason) {
         return String.format(Locale.US,
                 "{\"type\":\"decoderReady\",\"sessionEpoch\":%d,"
                         + "\"configVersion\":%d,\"codec\":\"%s\","
@@ -285,10 +286,12 @@ public final class LengthPrefixedProtocol {
                         + "\"softwareOnly\":%s,\"vendor\":%s,"
                         + "\"lowLatencySupported\":%s,"
                         + "\"lowLatencyEnabled\":%s,\"configureSuccess\":%s,"
+                        + "\"selectedDecoderMaxFps\":%d,"
                         + "\"fallbackReason\":\"%s\"}",
                 Math.max(0, sessionEpoch), Math.max(0, configVersion), escape(codec),
                 escape(decoderName), hardwareAccelerated, softwareOnly, vendor,
                 lowLatencySupported, lowLatencyEnabled, configureSuccess,
+                sanitizeFps(selectedDecoderMaxFps),
                 escape(fallbackReason));
     }
 

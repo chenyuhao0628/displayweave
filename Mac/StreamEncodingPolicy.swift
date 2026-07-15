@@ -60,7 +60,8 @@ enum StreamEncodingPolicy {
     }
 
     static func bitrate(width: Int, height: Int, fps: Int, codec: StreamCodec,
-                        quality: StreamQuality = .high) -> Int {
+                        quality: StreamQuality = .high,
+                        transport: BitrateTransport = .wifi) -> Int {
         let sanitizedFps = RefreshRatePolicy.sanitize(fps)
         let megapixels = max(1.0, Double(width * height) / 1_000_000.0)
         let mbps: Double
@@ -70,15 +71,16 @@ enum StreamEncodingPolicy {
         case .h264:
             mbps = megapixels * Double(sanitizedFps) * 0.10
         }
-        let roundedMbps = Int((mbps * quality.bitrateMultiplier).rounded())
-        let clampedMbps: Int
-        switch codec {
-        case .hevc:
-            clampedMbps = min(max(roundedMbps, 12), 80)
-        case .h264:
-            clampedMbps = min(max(roundedMbps, 8), 30)
+        let transportMultiplier: Double
+        switch (codec, transport) {
+        case (_, .wifi): transportMultiplier = 1.0
+        case (.hevc, .usb): transportMultiplier = 1.35
+        case (.h264, .usb): transportMultiplier = 1.25
         }
-        return clampedMbps * 1_000_000
+        let requested = Int((mbps * quality.bitrateMultiplier
+            * transportMultiplier * 1_000_000).rounded())
+        let bounds = bitrateBounds(codec: codec, transport: transport)
+        return min(max(requested, bounds.lowerBound), bounds.upperBound)
     }
 
     static func keyframeInterval(fps: Int) -> Int {
@@ -93,6 +95,9 @@ enum StreamEncodingPolicy {
 struct StreamDebugStats {
     var droppedFramesMac: Int
     var queueDepthMac: Int
+    var pendingEncodesMac: Int
+    var totalPendingWorkMac: Int
+    var pendingEncodePeak: Int
     var captureFps: Int
     var requestedFps: Int
     var actualVirtualDisplayRefreshRate: Int
@@ -108,6 +113,9 @@ struct StreamDebugStats {
         "{\"type\":\"ping\",\"t\":\(format(nowMs)),"
             + "\"droppedFramesMac\":\(droppedFramesMac),"
             + "\"queueDepthMac\":\(queueDepthMac),"
+            + "\"pendingEncodesMac\":\(pendingEncodesMac),"
+            + "\"totalPendingWorkMac\":\(totalPendingWorkMac),"
+            + "\"pendingEncodePeak\":\(pendingEncodePeak),"
             + "\"capFps\":\(captureFps),"
             + "\"requestedFps\":\(requestedFps),"
             + "\"actualVirtualDisplayRefreshRate\":\(actualVirtualDisplayRefreshRate),"

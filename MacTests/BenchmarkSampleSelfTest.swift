@@ -67,6 +67,15 @@ let statsJSON = """
   "receivedFps": 58.5,
   "decodedFps": 57.5,
   "renderedFps": 56.5,
+  "receivedFrames": 60,
+  "submittedToMediaCodecFrames": 59,
+  "pendingSlotReplaceCount": 1,
+  "referenceChainBreakCount": 1,
+  "awaitingKeyframeDurationMs": 18,
+  "keyframeRequestCount": 1,
+  "keyframeReceivedCount": 2,
+  "decodedFrames": 58,
+  "renderedFrames": 57,
   "sendToRenderEstimatedMs": 31.25,
   "rttMs": 4.5,
   "clockOffsetMs": -1.25,
@@ -137,6 +146,13 @@ expect(stats.deviceModel == "Pixel 9" && stats.width == 1920, "canonical identit
 expect(stats.frameAgeP99Ms == 35 && stats.androidQueueDepth == 2, "canonical metric fields decode")
 expect(stats.clockRttMs == nil, "canonical nullable clock field remains nil")
 expect(stats.sendToRenderEstimatedMs == 31.25, "canonical send-to-render metric decodes")
+expect(stats.receivedFrames == 60 && stats.submittedToMediaCodecFrames == 59,
+       "receiver pipeline counters decode")
+expect(stats.pendingSlotReplaceCount == 1 && stats.referenceChainBreakCount == 1,
+       "receiver recovery trigger counters decode")
+expect(stats.awaitingKeyframeDurationMs == 18 && stats.keyframeRequestCount == 1
+       && stats.keyframeReceivedCount == 2,
+       "receiver keyframe recovery metrics decode")
 expect(stats.inputP95Ms == nil, "explicit JSON null remains nil")
 expect(stats.maxFrameBytesObserved == 8_100_000, "maximum frame size metric decodes")
 expect(stats.oversizeFrameCount == 2 && stats.invalidFrameLengthCount == 3,
@@ -264,6 +280,12 @@ expect(BenchmarkSample.csvHeader.contains("decisionEpoch"),
        "header records unified decision identity")
 expect(BenchmarkSample.csvHeader.contains("localOldestPendingSendAgeMs"),
        "header records local queue age")
+expect(BenchmarkSample.csvHeader.contains("pendingEncodes"),
+       "header records pending encodes")
+expect(BenchmarkSample.csvHeader.contains("totalPendingWork"),
+       "header records combined pending work")
+expect(BenchmarkSample.csvHeader.contains("pendingEncodePeak"),
+       "header records benchmark-session encode peak")
 expect(BenchmarkSample.csvHeader.last == "decoderRecoveryEvent", "fixed header ends with recovery event")
 var nonFiniteSample = sample
 nonFiniteSample.macCPU = Double.infinity

@@ -12,6 +12,7 @@ struct AdaptiveBitrateMetrics {
     var androidDrops: Int
     var androidCongestionDrops: Int
     var androidQueueDepth: Int
+    var transport: BitrateTransport = .wifi
 }
 
 struct LocalCongestionMetrics {
@@ -202,15 +203,21 @@ final class AdaptiveBitrateController {
 
     private func congestionReason(_ metrics: AdaptiveBitrateMetrics) -> String? {
         if metrics.pendingSends >= 2 { return "pending-sends" }
-        if metrics.macDrops > 0 { return "mac-drops" }
+        // USB capture skips usually mean VideoToolbox is busy, not that the
+        // physical link is congested. Pending sends and receiver pressure are
+        // still authoritative for both transports.
+        if metrics.transport == .wifi && metrics.macDrops > 0 {
+            return "mac-drops"
+        }
         if consecutiveAndroidCongestionWindows >= 2 {
             return "android-decoder-throughput"
         }
         if consecutiveReceiverQueueWindows >= 2 { return "android-queue" }
-        if metrics.encodedFps > 0, metrics.sentFps / metrics.encodedFps < 0.85 {
+        if metrics.transport == .wifi, metrics.encodedFps > 0,
+           metrics.sentFps / metrics.encodedFps < 0.85 {
             return "send-deficit"
         }
-        if let previous = previousMetrics {
+        if metrics.transport == .wifi, let previous = previousMetrics {
             if let age = metrics.frameAgeP95Ms, let oldAge = previous.frameAgeP95Ms,
                age - oldAge > max(5, oldAge * 0.15) {
                 return "frame-age-rising"
@@ -227,7 +234,7 @@ final class AdaptiveBitrateController {
         metrics.encodedFps > 0
             && metrics.sentFps >= 0
             && metrics.pendingSends == 0
-            && metrics.macDrops == 0
+            && (metrics.transport == .usb || metrics.macDrops == 0)
             && metrics.androidCongestionDrops == 0
             && metrics.androidQueueDepth <= 1
             && metrics.sentFps / metrics.encodedFps >= 0.95

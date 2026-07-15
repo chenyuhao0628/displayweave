@@ -47,6 +47,17 @@ struct StreamEncodingPolicySelfTest {
         assertTrue((50_000_000...80_000_000).contains(hevc1600p120),
                    "1600p120 HEVC bitrate should be in the requested initial range")
 
+        let hevcUSB3040p120 = StreamEncodingPolicy.bitrate(
+            width: 3040, height: 1904, fps: 120, codec: .hevc,
+            quality: .high, transport: .usb)
+        assertTrue((105_000_000...120_000_000).contains(hevcUSB3040p120),
+                   "native 3040x1904 USB HEVC should start above the WiFi-oriented cap")
+        let hevcWiFi3040p120 = StreamEncodingPolicy.bitrate(
+            width: 3040, height: 1904, fps: 120, codec: .hevc,
+            quality: .high, transport: .wifi)
+        assertTrue(hevcUSB3040p120 > hevcWiFi3040p120,
+                   "USB automatic bitrate should exceed the equivalent WiFi target")
+
         let h2641080p60 = StreamEncodingPolicy.bitrate(
             width: 1920, height: 1080, fps: 60, codec: .h264, quality: .high)
         assertTrue((12_000_000...20_000_000).contains(h2641080p60),
@@ -95,6 +106,9 @@ struct StreamEncodingPolicySelfTest {
         let pingJson = StreamDebugStats(
             droppedFramesMac: 2,
             queueDepthMac: 3,
+            pendingEncodesMac: 2,
+            totalPendingWorkMac: 5,
+            pendingEncodePeak: 4,
             captureFps: 120,
             requestedFps: 120,
             actualVirtualDisplayRefreshRate: 120,
@@ -112,6 +126,12 @@ struct StreamEncodingPolicySelfTest {
                    "debug stats ping should expose droppedFramesMac")
         assertTrue(pingJson.contains("\"queueDepthMac\":3"),
                    "debug stats ping should expose queueDepthMac")
+        assertTrue(pingJson.contains("\"pendingEncodesMac\":2"),
+                   "debug stats ping should expose pending encodes")
+        assertTrue(pingJson.contains("\"totalPendingWorkMac\":5"),
+                   "debug stats ping should expose combined work")
+        assertTrue(pingJson.contains("\"pendingEncodePeak\":4"),
+                   "debug stats ping should expose encode peak")
         assertTrue(pingJson.contains("\"encodedFps\":119"),
                    "debug stats ping should expose encodedFps")
         assertTrue(pingJson.contains("\"sentFps\":118"),

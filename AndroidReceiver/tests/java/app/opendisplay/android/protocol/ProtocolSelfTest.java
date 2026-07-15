@@ -231,7 +231,7 @@ public final class ProtocolSelfTest {
 
         String ready = LengthPrefixedProtocol.decoderReadyJson(
                 8, 12, "hevc", "c2.vendor.hevc.decoder", true,
-                false, true, true, true, true, "");
+                false, true, true, true, true, 90, "");
         assertContains(ready, "\"type\":\"decoderReady\"");
         assertContains(ready, "\"decoderName\":\"c2.vendor.hevc.decoder\"");
         assertContains(ready, "\"hardwareAccelerated\":true");
@@ -239,6 +239,7 @@ public final class ProtocolSelfTest {
         assertContains(ready, "\"lowLatencySupported\":true");
         assertContains(ready, "\"lowLatencyEnabled\":true");
         assertContains(ready, "\"configureSuccess\":true");
+        assertContains(ready, "\"selectedDecoderMaxFps\":90");
 
         String first = LengthPrefixedProtocol.firstFrameRenderedJson(8, 12, 41);
         assertContains(first, "\"type\":\"firstFrameRendered\"");
@@ -331,15 +332,17 @@ public final class ProtocolSelfTest {
         ReceiverStatsSnapshot snapshot = new ReceiverStatsSnapshot(
                 1234L, "Pixel \"Tablet\"\\Pro", "usb", "hevc",
                 2560, 1600, 120, 120.0, 119.88,
-                118, 117, 116, null,
+                118, 117, 116,
+                120, 119, 2, 1, 24, 1, 2, 118, 117,
+                null,
                 null, null, null, "estimating",
                 8.25, 9L, 6L, 14L, 20L,
-                null, null, 1, 2, 3.5, 7.5,
+                null, null, 1, 2, 3, 5, 4, 3.5, 7.5,
                 2048, 4096, 3072, 6144, 2, 3,
                 8192, 4, 5, 6, 7,
                 2, true, 36.5, 77, false,
                 "c2.vendor.hevc.decoder", true, false, true,
-                true, true, true, "", "auto",
+                true, true, true, 90, "", "auto",
                 "applied:streamConfig:window=120Hz,surface=onlyIfSeamless",
                 "auto", true, true, true, "",
                 dropTracker.snapshotAndResetWindow());
@@ -355,6 +358,18 @@ public final class ProtocolSelfTest {
         assertContains(json, "\"estimatedE2ELatencyMs\":null");
         assertContains(json, "\"sendToRenderEstimatedMs\":null");
         assertContains(json, "\"inputP95Ms\":7.5");
+        assertContains(json, "\"pendingEncodesMac\":3");
+        assertContains(json, "\"totalPendingWorkMac\":5");
+        assertContains(json, "\"pendingEncodePeak\":4");
+        assertContains(json, "\"receivedFrames\":120");
+        assertContains(json, "\"submittedToMediaCodecFrames\":119");
+        assertContains(json, "\"pendingSlotReplaceCount\":2");
+        assertContains(json, "\"referenceChainBreakCount\":1");
+        assertContains(json, "\"awaitingKeyframeDurationMs\":24");
+        assertContains(json, "\"keyframeRequestCount\":1");
+        assertContains(json, "\"keyframeReceivedCount\":2");
+        assertContains(json, "\"decodedFrames\":118");
+        assertContains(json, "\"renderedFrames\":117");
         assertContains(json, "\"currentFrameBytes\":2048");
         assertContains(json, "\"maxFrameBytesObserved\":4096");
         assertContains(json, "\"currentKeyframeBytes\":3072");
@@ -372,6 +387,7 @@ public final class ProtocolSelfTest {
         assertContains(json, "\"batteryLevel\":77");
         assertContains(json, "\"charging\":false");
         assertContains(json, "\"decoderName\":\"c2.vendor.hevc.decoder\"");
+        assertContains(json, "\"selectedDecoderMaxFps\":90");
         assertContains(json, "\"hardwareAccelerated\":true");
         assertContains(json, "\"lowLatencyEnabled\":true");
         assertContains(json, "\"decoderConfigureSuccess\":true");

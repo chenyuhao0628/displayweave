@@ -26,6 +26,12 @@ enum RefreshRatePolicy {
         sanitize(fps)
     }
 
+    static func decoderDowngrade(currentFps: Int, reportedMaxFps: Int) -> Int? {
+        let current = sanitize(currentFps)
+        let reported = sanitize(reportedMaxFps)
+        return reported < current ? reported : nil
+    }
+
     static func fallbackReason(requestedFps: Int, appliedFps: Int,
                                actualFps: Int) -> String? {
         if appliedFps != requestedFps {
