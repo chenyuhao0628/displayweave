@@ -9,12 +9,14 @@ public final class DecoderRuntimeInfo {
     public final boolean lowLatencySupported;
     public final boolean lowLatencyEnabled;
     public final boolean configureSuccess;
+    public final int selectedDecoderMaxFps;
     public final String fallbackReason;
 
     DecoderRuntimeInfo(String codec, String decoderName,
                        boolean hardwareAccelerated, boolean softwareOnly, boolean vendor,
                        boolean lowLatencySupported, boolean lowLatencyEnabled,
-                       boolean configureSuccess, String fallbackReason) {
+                       boolean configureSuccess, int selectedDecoderMaxFps,
+                       String fallbackReason) {
         this.codec = codec;
         this.decoderName = decoderName;
         this.hardwareAccelerated = hardwareAccelerated;
@@ -23,6 +25,7 @@ public final class DecoderRuntimeInfo {
         this.lowLatencySupported = lowLatencySupported;
         this.lowLatencyEnabled = lowLatencyEnabled;
         this.configureSuccess = configureSuccess;
+        this.selectedDecoderMaxFps = Math.max(30, selectedDecoderMaxFps);
         this.fallbackReason = fallbackReason == null ? "" : fallbackReason;
     }
 }

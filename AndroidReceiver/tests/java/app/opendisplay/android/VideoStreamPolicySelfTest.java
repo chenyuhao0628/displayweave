@@ -40,6 +40,8 @@ public final class VideoStreamPolicySelfTest {
         testDecoderLowLatencyMode();
         testDecoderSelectionAndFallbackOrder();
         testDecoderCallbackStateOwnership();
+        testReferenceChainRecovery();
+        testBoundedOrderedQueue();
         testDecoderRuntimeFailureMetrics();
         testWifiLowLatencyLifecycle();
         testSurfaceFrameRateLifecycle();
@@ -52,6 +54,36 @@ public final class VideoStreamPolicySelfTest {
         testWifiTransportReplacesBlockedConnection();
         testWifiTransportIgnoresSendAfterStop();
         System.out.println("VideoStreamPolicySelfTest PASS");
+    }
+
+    private static void testReferenceChainRecovery() {
+        ReferenceChainRecovery recovery = new ReferenceChainRecovery();
+        assertFalse(recovery.shouldReject(false, 100));
+        assertTrue(recovery.breakChain(100));
+        assertFalse(recovery.breakChain(110));
+        assertTrue(recovery.isAwaitingKeyframe());
+        assertTrue(recovery.shouldReject(false, 120));
+        assertEquals(30L, recovery.consumeDurationMs(130));
+        assertFalse(recovery.shouldReject(true, 145));
+        assertEquals(15L, recovery.lastCompletedDurationMs());
+        assertFalse(recovery.isAwaitingKeyframe());
+        assertFalse(recovery.shouldReject(false, 150));
+        assertTrue(recovery.breakChain(160));
+        recovery.reset();
+        assertFalse(recovery.isAwaitingKeyframe());
+    }
+
+    private static void testBoundedOrderedQueue() {
+        BoundedOrderedQueue<Integer> queue = new BoundedOrderedQueue<>(3);
+        assertTrue(queue.offer(1));
+        assertTrue(queue.offer(2));
+        assertTrue(queue.offer(3));
+        assertFalse(queue.offer(4));
+        assertEquals(3, queue.size());
+        assertEquals(1, queue.poll().intValue());
+        assertEquals(2, queue.poll().intValue());
+        assertEquals(3, queue.poll().intValue());
+        assertTrue(queue.isEmpty());
     }
 
     private static void testStreamConfigDefaults() {
@@ -408,9 +440,11 @@ public final class VideoStreamPolicySelfTest {
         DecoderRuntimeInfo failure = new DecoderRuntimeInfo(
                 "hevc", "c2.vendor.hevc.decoder", true, false, true,
                 true, false, false,
+                60,
                 "decoderConfigureFailed:c2.vendor.hevc.decoder:CodecException");
         assertFalse(failure.configureSuccess);
         assertFalse(failure.lowLatencyEnabled);
+        assertEquals(60, failure.selectedDecoderMaxFps);
         assertEquals("decoderConfigureFailed:c2.vendor.hevc.decoder:CodecException",
                 failure.fallbackReason);
     }
@@ -553,7 +587,7 @@ public final class VideoStreamPolicySelfTest {
     }
 
     private static void testAndroidDropReasonClassification() {
-        assertEquals(16, AndroidDropReason.values().length);
+        assertEquals(17, AndroidDropReason.values().length);
         assertTrue(AndroidDropReason.LATEST_SLOT_REPLACED.congestionRelevant);
         assertTrue(AndroidDropReason.DECODER_INPUT_UNAVAILABLE.congestionRelevant);
         assertTrue(AndroidDropReason.FRAME_AGE_EXPIRED.congestionRelevant);
@@ -563,6 +597,7 @@ public final class VideoStreamPolicySelfTest {
         assertFalse(AndroidDropReason.STALE_CONFIG_VERSION.congestionRelevant);
         assertFalse(AndroidDropReason.CODEC_RECONFIGURE_DROP.congestionRelevant);
         assertFalse(AndroidDropReason.REFERENCE_CHAIN_BROKEN.congestionRelevant);
+        assertFalse(AndroidDropReason.AWAITING_KEYFRAME_REJECTED.congestionRelevant);
 
         AndroidDropTracker tracker = new AndroidDropTracker();
         AndroidDropTracker.Context context = new AndroidDropTracker.Context(

@@ -58,6 +58,16 @@ struct RefreshRatePolicySelfTest {
                     "90fps capture interval uses timescale 90")
         assertEqual(120, RefreshRatePolicy.captureIntervalTimescale(fps: 120),
                     "120fps capture interval uses timescale 120")
+        assertEqual(90, RefreshRatePolicy.decoderDowngrade(
+                        currentFps: 120, reportedMaxFps: 90) ?? 0,
+                    "selected decoder can downgrade 120fps to 90fps")
+        assertEqual(60, RefreshRatePolicy.decoderDowngrade(
+                        currentFps: 90, reportedMaxFps: 60) ?? 0,
+                    "selected decoder can downgrade 90fps to 60fps")
+        if RefreshRatePolicy.decoderDowngrade(
+                currentFps: 60, reportedMaxFps: 120) != nil {
+            fatalError("decoder capability must never raise the current fps")
+        }
 
         print("RefreshRatePolicySelfTest PASS")
     }

@@ -13,7 +13,7 @@
 // Wire protocol, phone -> Mac:   [4-byte big-endian length][JSON message]
 //   e.g. {"type":"hello","pixelsWide":2556,"pixelsHigh":1179,"scale":3}
 
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 import VideoToolbox
 import Network
 import CoreMedia
@@ -149,6 +149,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var capFrames = 0
     private var capWindowStart = Date()
     private var requestedCaptureFps = 60
+    private var decoderFpsAdjustmentInFlight = false
     private var actualVirtualDisplayRefreshRate = 60
     private var lastCaptureFpsWarningAt = Date.distantPast
     private var streamCodec: StreamCodec = .h264
@@ -189,6 +190,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var benchmarkRunId: String?
     private var benchmarkSessionId: String?
     private var benchmarkScene: BenchmarkScene?
+    private var benchmarkPendingEncodePeak = 0
     private var benchmarkFinishWorkItem: DispatchWorkItem?
     private var benchmarkOutputDirectory: URL?
 
@@ -408,21 +410,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         actualVirtualDisplayRefreshRate = RefreshRatePolicy.sanitize(virtualDisplayRefreshRate)
         lastCaptureFpsWarningAt = Date.distantPast
 
-        let config = SCStreamConfiguration()
-        config.width = pixelsWide
-        config.height = pixelsHigh
-        config.minimumFrameInterval = CMTime(
-            value: 1,
-            timescale: CMTimeScale(RefreshRatePolicy.captureIntervalTimescale(fps: captureFps)))
-        // 420v matches the encoder's native input — skips a BGRA→YUV conversion
-        // inside VideoToolbox. (`-pixfmt bgra` reverts for A/B testing.)
-        config.pixelFormat = UserDefaults.standard.string(forKey: "pixfmt") == "bgra"
-            ? kCVPixelFormatType_32BGRA
-            : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
-        // One buffer is held permanently (keyframe replay) and one sits in
-        // the encoder for ~13ms — headroom prevents SCK starvation drops.
-        config.queueDepth = 8
-        config.showsCursor = !localCursor
+        let config = makeCaptureConfiguration(
+            width: pixelsWide, height: pixelsHigh, fps: captureFps)
 
         setupEncoder(width: pixelsWide, height: pixelsHigh, fps: captureFps, preferredCodec: codec)
         activeStreamWidth = pixelsWide
@@ -440,6 +429,26 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         Log.info("capture started: \(pixelsWide)x\(pixelsHigh) display \(display.displayID) mode \(mode.rawValue) requestedCaptureFps=\(captureFps) actualVirtualDisplayRefreshRate=\(actualVirtualDisplayRefreshRate) codec=\(streamCodec.rawValue) bitrate=\(streamBitrate) minimumFrameInterval=1/\(RefreshRatePolicy.captureIntervalTimescale(fps: captureFps)) localCursor=\(localCursor)")
         let kind = lastHello?.kind ?? "设备"
         await status("\(mode == .extend ? "正在扩展到" : "正在镜像到") \(kind)（\(pixelsWide)×\(pixelsHigh)）")
+    }
+
+    private func makeCaptureConfiguration(
+        width: Int, height: Int, fps: Int
+    ) -> SCStreamConfiguration {
+        let config = SCStreamConfiguration()
+        config.width = width
+        config.height = height
+        config.minimumFrameInterval = CMTime(
+            value: 1,
+            timescale: CMTimeScale(
+                RefreshRatePolicy.captureIntervalTimescale(fps: fps)))
+        // 420v matches the encoder's native input and avoids an extra conversion.
+        config.pixelFormat = UserDefaults.standard.string(forKey: "pixfmt") == "bgra"
+            ? kCVPixelFormatType_32BGRA
+            : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        // Keep enough SCK headroom for keyframe replay and asynchronous encode.
+        config.queueDepth = 8
+        config.showsCursor = !localCursor
+        return config
     }
 
     @MainActor
@@ -486,6 +495,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             benchmarkRunId = runId
             benchmarkSessionId = UUID().uuidString.lowercased()
             benchmarkScene = scene
+            benchmarkPendingEncodePeak = pendingEncodes
             benchmarkOutputDirectory = root.appendingPathComponent(runId, isDirectory: true)
             let finish = DispatchWorkItem { [weak self] in
                 self?.finishBenchmarkOnQueue(message: "Benchmark completed")
@@ -827,6 +837,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 let stats = StreamDebugStats(
                     droppedFramesMac: self.dropsThisWindow,
                     queueDepthMac: self.pendingSends,
+                    pendingEncodesMac: self.pendingEncodes,
+                    totalPendingWorkMac: self.pendingSends + self.pendingEncodes,
+                    pendingEncodePeak: self.pendingEncodeWork.peak,
                     captureFps: capFps,
                     requestedFps: self.requestedCaptureFps,
                     actualVirtualDisplayRefreshRate: self.actualVirtualDisplayRefreshRate,
@@ -1192,6 +1205,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             Log.info("ignored stale/out-of-order receiver progress type=\(type) epoch=\(sessionEpoch) config=\(configVersion)")
             return
         }
+        if type == "decoderReady",
+           let selectedDecoderMaxFps = int64(object["selectedDecoderMaxFps"]) {
+            applySelectedDecoderFpsCap(Int(selectedDecoderMaxFps))
+        }
         switch protocolHandshake.phase {
         case .awaitingDecoderReady:
             Task { await self.status("正在配置解码器…") }
@@ -1204,6 +1221,59 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             break
         }
         scheduleProtocolTimeout(identity: identity, phase: protocolHandshake.phase)
+    }
+
+    private func applySelectedDecoderFpsCap(_ reportedFps: Int) {
+        guard let decoderCap = RefreshRatePolicy.decoderDowngrade(
+                currentFps: requestedCaptureFps,
+                reportedMaxFps: reportedFps),
+              !decoderFpsAdjustmentInFlight,
+              let activeStream = stream else { return }
+        let updatedConfiguration = makeCaptureConfiguration(
+            width: activeStreamWidth,
+            height: activeStreamHeight,
+            fps: decoderCap)
+        decoderFpsAdjustmentInFlight = true
+        Log.info("selected decoder requires fps downgrade current=\(requestedCaptureFps) selectedDecoderMaxFps=\(decoderCap)")
+        Task { [weak self, weak activeStream] in
+            guard let self else { return }
+            guard let activeStream else {
+                self.queue.async {
+                    self.decoderFpsAdjustmentInFlight = false
+                }
+                return
+            }
+            do {
+                try await activeStream.updateConfiguration(updatedConfiguration)
+                self.queue.async {
+                    guard self.stream === activeStream else {
+                        self.decoderFpsAdjustmentInFlight = false
+                        return
+                    }
+                    self.requestedCaptureFps = decoderCap
+                    if let encoder = self.encoder {
+                        VTCompressionSessionInvalidate(encoder)
+                    }
+                    self.encoder = nil
+                    self.setupEncoder(
+                        width: max(self.activeStreamWidth, 2),
+                        height: max(self.activeStreamHeight, 2),
+                        fps: decoderCap,
+                        preferredCodec: self.streamCodec)
+                    self.sendStreamConfig(
+                        width: self.activeStreamWidth,
+                        height: self.activeStreamHeight)
+                    self.requestKeyframe(.streamReconfigure)
+                    self.decoderRecoveryEvent = "decoder-fps-downgrade"
+                    self.decoderFpsAdjustmentInFlight = false
+                }
+            } catch {
+                self.queue.async {
+                    self.decoderFpsAdjustmentInFlight = false
+                    Log.info("decoder fps downgrade failed: \(error)")
+                }
+            }
+        }
     }
 
     private func scheduleProtocolTimeout(
@@ -1268,12 +1338,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // MARK: - Encoder setup
 
     private func setupEncoder(width: Int, height: Int, fps: Int, preferredCodec: StreamCodec) {
+        if encoderGeneration != 0 {
+            pendingEncodeWork.discard(generation: encoderGeneration)
+        }
         encoderGeneration &+= 1
         let finalFps = RefreshRatePolicy.sanitize(fps)
         streamCodec = preferredCodec
         let automaticBitrate = StreamEncodingPolicy.bitrate(
             width: width, height: height, fps: finalFps, codec: preferredCodec,
-            quality: quality)
+            quality: quality, transport: bitrateTransport)
         streamBitrate = selectedBitrate(automatic: automaticBitrate, codec: preferredCodec)
         encodedFramesWindow = 0
         encodedBytesWindow = 0
@@ -1300,7 +1373,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             streamCodec = .h264
             let fallbackAutomatic = StreamEncodingPolicy.bitrate(
                 width: width, height: height, fps: finalFps, codec: .h264,
-                quality: quality)
+                quality: quality, transport: bitrateTransport)
             streamBitrate = selectedBitrate(automatic: fallbackAutomatic, codec: .h264)
             created = createEncoder(width: width, height: height, codec: .h264, spec: spec)
         }
@@ -1401,7 +1474,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         let capturedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
         let encodedForWireGeneration = wireConnectionGeneration
         let encodedForEncoderGeneration = encoderGeneration
-        pendingEncodeWork.begin(generation: encodedForEncoderGeneration)
+        let encodeWorkID = pendingEncodeWork.begin(
+            generation: encodedForEncoderGeneration)
+        if benchmarkRecorder != nil {
+            benchmarkPendingEncodePeak = max(
+                benchmarkPendingEncodePeak, pendingEncodes)
+        }
         let protocolFrameIdentity = lastHello?.supportsProtocolV2 == true
             ? protocolIdentity.nextFrame()
             : nil
@@ -1433,12 +1511,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                     capturedAtMs: capturedAtMs,
                     encodedForWireGeneration: encodedForWireGeneration,
                     encodedForEncoderGeneration: encodedForEncoderGeneration,
+                    encodeWorkID: encodeWorkID,
                     protocolFrameIdentity: protocolFrameIdentity,
                     encodeStart: encodeStart)
             }
         }
         if status != noErr {
-            pendingEncodeWork.complete(generation: encodedForEncoderGeneration)
+            pendingEncodeWork.complete(
+                generation: encodedForEncoderGeneration,
+                workID: encodeWorkID)
             if forcedKeyframeReason != nil {
                 keyframeRequests.completeInFlightRequest(encodedKeyframe: false)
             }
@@ -1453,11 +1534,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         capturedAtMs: Int64,
         encodedForWireGeneration: UInt64,
         encodedForEncoderGeneration: UInt64,
+        encodeWorkID: GenerationWorkCounter.WorkID,
         protocolFrameIdentity: StreamProtocolFrameIdentity?,
         encodeStart: Date
     ) {
         guard pendingEncodeWork.complete(
-                generation: encodedForEncoderGeneration) else {
+                generation: encodedForEncoderGeneration,
+                workID: encodeWorkID) else {
             Log.info("dropping duplicate/unmatched encode completion")
             return
         }
@@ -1805,7 +1888,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 androidDrops: max(Int(receiver.androidDroppedFrames ?? 0), 0),
                 androidCongestionDrops: max(
                     Int(receiver.androidCongestionDrops ?? 0), 0),
-                androidQueueDepth: max(Int(receiver.androidQueueDepth ?? 0), 0)),
+                androidQueueDepth: max(Int(receiver.androidQueueDepth ?? 0), 0),
+                transport: bitrateTransport),
             mode: settings.bitrateMode)
         guard let decision else { return }
         applyAdaptiveDecision(decision)
@@ -1877,6 +1961,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             decoderRecoveryEvent: decoderRecoveryEvent,
             averageFrameSize: lastAverageFrameSize > 0 ? Double(lastAverageFrameSize) : nil,
             encodeLatencyMs: lastEncodeLatencyMs, pendingSends: Double(pendingSends),
+            pendingEncodes: Double(pendingEncodes),
+            totalPendingWork: Double(pendingSends + pendingEncodes),
+            pendingEncodePeak: Double(benchmarkPendingEncodePeak),
             macQueue: Double(pendingSends), macDrops: Double(lastMacDropsSnapshot),
             macCPU: nil, macMemory: Self.residentMemoryMB())
         do {

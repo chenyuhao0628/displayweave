@@ -16,6 +16,7 @@ public enum AndroidDropReason {
     TRANSPORT_READ_FAILURE("transportReadFailure", false),
     TRANSPORT_WRITE_FAILURE("transportWriteFailure", false),
     REFERENCE_CHAIN_BROKEN("referenceChainBroken", false),
+    AWAITING_KEYFRAME_REJECTED("awaitingKeyframeRejected", false),
     FRAME_AGE_EXPIRED("frameAgeExpired", true);
 
     public final String key;

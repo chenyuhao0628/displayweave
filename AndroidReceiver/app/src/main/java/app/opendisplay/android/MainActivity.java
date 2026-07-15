@@ -1017,7 +1017,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         int refreshRate = bucketRefreshRate(currentRefreshRate());
         int displayMaxFps = bucketRefreshRate(maxSupportedRefreshRate(refreshRate));
         int maxFps = CodecCapabilities.maxSupportedFps(
-                scaledW, scaledH, displayMaxFps);
+                scaledW, scaledH, displayMaxFps,
+                currentDecoderLowLatencyMode());
         String[] supportedCodecs = CodecCapabilities.supportedVideoCodecs();
         String preferredCodec = CodecCapabilities.preferredVideoCodec();
         return new DisplaySpec(scaledW, scaledH, density,

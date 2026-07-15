@@ -27,6 +27,15 @@ struct ReceiverStats: Decodable {
     var receivedFps: Double?
     var decodedFps: Double?
     var renderedFps: Double?
+    var receivedFrames: Double?
+    var submittedToMediaCodecFrames: Double?
+    var pendingSlotReplaceCount: Double?
+    var referenceChainBreakCount: Double?
+    var awaitingKeyframeDurationMs: Double?
+    var keyframeRequestCount: Double?
+    var keyframeReceivedCount: Double?
+    var decodedFrames: Double?
+    var renderedFrames: Double?
     var rttMs: Double?
     var clockOffsetMs: Double?
     var offsetConfidenceMs: Double?
@@ -41,6 +50,9 @@ struct ReceiverStats: Decodable {
     var sendToRenderEstimatedMs: Double?
     var androidQueueDepth: Double?
     var androidDroppedFrames: Double?
+    var pendingEncodesMac: Double?
+    var totalPendingWorkMac: Double?
+    var pendingEncodePeak: Double?
     var androidDropCountsWindow: [String: Double]?
     var androidDropCountsTotal: [String: Double]?
     var androidCongestionDrops: Double?
@@ -71,6 +83,7 @@ struct ReceiverStats: Decodable {
     var lowLatencySupported: Bool?
     var lowLatencyEnabled: Bool?
     var decoderConfigureSuccess: Bool?
+    var selectedDecoderMaxFps: Double?
     var decoderFallbackReason: String?
     var decoderLowLatencyMode: String?
     var wifiLowLatencyMode: String?
@@ -117,6 +130,15 @@ struct BenchmarkSample {
     var receivedFps: Double?
     var decodedFps: Double?
     var renderedFps: Double?
+    var androidReceivedFrames: Double?
+    var submittedToMediaCodecFrames: Double?
+    var pendingSlotReplaceCount: Double?
+    var referenceChainBreakCount: Double?
+    var awaitingKeyframeDurationMs: Double?
+    var androidKeyframeRequestCount: Double?
+    var keyframeReceivedCount: Double?
+    var androidDecodedFrames: Double?
+    var androidRenderedFrames: Double?
     var targetBitrateMbps: Double?
     var actualBitrateMbps: Double?
     var averageFrameSize: Double?
@@ -163,6 +185,9 @@ struct BenchmarkSample {
     var frameAgeP99Ms: Double?
     var estimatedE2ELatencyMs: Double?
     var pendingSends: Double?
+    var pendingEncodes: Double?
+    var totalPendingWork: Double?
+    var pendingEncodePeak: Double?
     var macQueue: Double?
     var androidQueue: Double?
     var macDrops: Double?
@@ -233,7 +258,9 @@ struct BenchmarkSample {
          decoderRecoveryEvent: String? = nil,
          averageFrameSize localAverageFrameSize: Double? = nil,
          encodeLatencyMs: Double?,
-         pendingSends: Double?, macQueue: Double?,
+         pendingSends: Double?, pendingEncodes: Double? = nil,
+         totalPendingWork: Double? = nil, pendingEncodePeak: Double? = nil,
+         macQueue: Double?,
          macDrops: Double?, macCPU: Double?, macMemory: Double?) {
         self.timestamp = timestamp
         self.monotonicElapsed = monotonicElapsed
@@ -256,6 +283,15 @@ struct BenchmarkSample {
         receivedFps = receiver.receivedFps
         decodedFps = receiver.decodedFps
         renderedFps = receiver.renderedFps
+        androidReceivedFrames = receiver.receivedFrames
+        submittedToMediaCodecFrames = receiver.submittedToMediaCodecFrames
+        pendingSlotReplaceCount = receiver.pendingSlotReplaceCount
+        referenceChainBreakCount = receiver.referenceChainBreakCount
+        awaitingKeyframeDurationMs = receiver.awaitingKeyframeDurationMs
+        androidKeyframeRequestCount = receiver.keyframeRequestCount
+        keyframeReceivedCount = receiver.keyframeReceivedCount
+        androidDecodedFrames = receiver.decodedFrames
+        androidRenderedFrames = receiver.renderedFrames
         self.targetBitrateMbps = targetBitrateMbps
         self.actualBitrateMbps = actualBitrateMbps ?? receiver.actualBitrateMbps
         self.previousBitrateMbps = previousBitrateMbps
@@ -323,6 +359,9 @@ struct BenchmarkSample {
         frameAgeP99Ms = receiver.frameAgeP99Ms
         estimatedE2ELatencyMs = receiver.estimatedE2ELatencyMs
         self.pendingSends = pendingSends
+        self.pendingEncodes = pendingEncodes
+        self.totalPendingWork = totalPendingWork
+        self.pendingEncodePeak = pendingEncodePeak
         self.macQueue = macQueue
         androidQueue = receiver.androidQueueDepth
         self.macDrops = macDrops
@@ -352,6 +391,10 @@ struct BenchmarkSample {
         "actualVirtualDisplayRefreshRate", "requestedSurfaceFrameRate",
         "actualAndroidDisplayRefreshRate", "frameRateApplyResult", "captureFps",
         "encodedFps", "sentFps", "receivedFps", "decodedFps", "renderedFps",
+        "androidReceivedFrames", "submittedToMediaCodecFrames",
+        "pendingSlotReplaceCount", "referenceChainBreakCount",
+        "awaitingKeyframeDurationMs", "androidKeyframeRequestCount",
+        "keyframeReceivedCount", "androidDecodedFrames", "androidRenderedFrames",
         "targetBitrateMbps", "actualBitrateMbps", "averageFrameSize",
         "currentFrameBytes", "maxFrameBytesObserved", "currentKeyframeBytes",
         "maxKeyframeBytesObserved", "oversizeFrameCount", "invalidFrameLengthCount",
@@ -367,6 +410,7 @@ struct BenchmarkSample {
         "sendToRenderEstimatedMs", "rttMs", "clockOffsetMs", "offsetConfidenceMs",
         "clockState", "frameAgeAvgMs", "frameAgeLatestMs", "frameAgeP50Ms",
         "frameAgeP95Ms", "frameAgeP99Ms", "estimatedE2ELatencyMs", "pendingSends",
+        "pendingEncodes", "totalPendingWork", "pendingEncodePeak",
         "macQueue", "androidQueue", "macDrops", "androidDrops",
         "androidDropCountsWindow", "androidDropCountsTotal", "androidCongestionDrops",
         "androidDropTotal", "androidLastDropReason", "androidLastDropCountWindow",
@@ -392,6 +436,11 @@ struct BenchmarkSample {
          frameRateApplyResult ?? Self.notAvailable,
          number(captureFps), number(encodedFps),
          number(sentFps), number(receivedFps), number(decodedFps), number(renderedFps),
+         number(androidReceivedFrames), number(submittedToMediaCodecFrames),
+         number(pendingSlotReplaceCount), number(referenceChainBreakCount),
+         number(awaitingKeyframeDurationMs), number(androidKeyframeRequestCount),
+         number(keyframeReceivedCount), number(androidDecodedFrames),
+         number(androidRenderedFrames),
          number(targetBitrateMbps), number(actualBitrateMbps), number(averageFrameSize),
          number(currentFrameBytes), number(maxFrameBytesObserved),
          number(currentKeyframeBytes), number(maxKeyframeBytesObserved),
@@ -414,7 +463,8 @@ struct BenchmarkSample {
          number(clockOffsetMs), number(offsetConfidenceMs), clockState ?? Self.notAvailable,
          number(frameAgeAvgMs), number(frameAgeLatestMs), number(frameAgeP50Ms),
          number(frameAgeP95Ms), number(frameAgeP99Ms), number(estimatedE2ELatencyMs),
-         number(pendingSends), number(macQueue), number(androidQueue), number(macDrops),
+         number(pendingSends), number(pendingEncodes), number(totalPendingWork),
+         number(pendingEncodePeak), number(macQueue), number(androidQueue), number(macDrops),
          number(androidDrops), Self.dropCounts(androidDropCountsWindow),
          Self.dropCounts(androidDropCountsTotal), number(androidCongestionDrops),
          number(androidDropTotal), androidLastDropReason ?? Self.notAvailable,
@@ -465,6 +515,15 @@ struct BenchmarkSample {
             "frameRateApplyResult": frameRateApplyResult,
             "captureFps": captureFps, "encodedFps": encodedFps, "sentFps": sentFps,
             "receivedFps": receivedFps, "decodedFps": decodedFps, "renderedFps": renderedFps,
+            "androidReceivedFrames": androidReceivedFrames,
+            "submittedToMediaCodecFrames": submittedToMediaCodecFrames,
+            "pendingSlotReplaceCount": pendingSlotReplaceCount,
+            "referenceChainBreakCount": referenceChainBreakCount,
+            "awaitingKeyframeDurationMs": awaitingKeyframeDurationMs,
+            "androidKeyframeRequestCount": androidKeyframeRequestCount,
+            "keyframeReceivedCount": keyframeReceivedCount,
+            "androidDecodedFrames": androidDecodedFrames,
+            "androidRenderedFrames": androidRenderedFrames,
             "targetBitrateMbps": targetBitrateMbps, "actualBitrateMbps": actualBitrateMbps,
             "averageFrameSize": averageFrameSize,
             "currentFrameBytes": currentFrameBytes,
@@ -504,6 +563,8 @@ struct BenchmarkSample {
             "frameAgeLatestMs": frameAgeLatestMs, "frameAgeP50Ms": frameAgeP50Ms,
             "frameAgeP95Ms": frameAgeP95Ms, "frameAgeP99Ms": frameAgeP99Ms,
             "estimatedE2ELatencyMs": estimatedE2ELatencyMs, "pendingSends": pendingSends,
+            "pendingEncodes": pendingEncodes, "totalPendingWork": totalPendingWork,
+            "pendingEncodePeak": pendingEncodePeak,
             "macQueue": macQueue, "androidQueue": androidQueue, "macDrops": macDrops,
             "androidDrops": androidDrops,
             "androidDropCountsWindow": androidDropCountsWindow,

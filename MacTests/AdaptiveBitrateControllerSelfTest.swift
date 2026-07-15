@@ -8,11 +8,12 @@ private func metrics(_ time: TimeInterval, pending: Int = 0, encoded: Double = 6
                      sent: Double = 60, rtt: Double = 8, age: Double = 12,
                      macDrops: Int = 0, androidDrops: Int = 0,
                      androidCongestionDrops: Int = 0,
-                     androidQueue: Int = 0) -> AdaptiveBitrateMetrics {
+                     androidQueue: Int = 0,
+                     transport: BitrateTransport = .wifi) -> AdaptiveBitrateMetrics {
     AdaptiveBitrateMetrics(timestamp: time, pendingSends: pending, encodedFps: encoded,
         sentFps: sent, rttMs: rtt, frameAgeP95Ms: age, macDrops: macDrops,
         androidDrops: androidDrops, androidCongestionDrops: androidCongestionDrops,
-        androidQueueDepth: androidQueue)
+        androidQueueDepth: androidQueue, transport: transport)
 }
 
 @main
@@ -49,6 +50,28 @@ struct AdaptiveBitrateControllerSelfTest {
         expect(deficit?.trigger == "send-deficit", "sent/encoded deficit decreases")
         let drop = controller.evaluate(metrics(16, macDrops: 1), mode: .auto)
         expect(drop?.trigger == "mac-drops", "new Mac drops decrease")
+        let usbDrops = AdaptiveBitrateController(
+            initialBitrate: 112_000_000, bounds: 20_000_000...160_000_000)
+        expect(usbDrops.evaluate(
+            metrics(0, macDrops: 40, transport: .usb), mode: .auto) == nil,
+            "USB capture skips do not imply physical-link congestion")
+        expect(usbDrops.evaluate(
+            metrics(5, macDrops: 40, transport: .usb), mode: .auto)?.newBitrate
+                == 119_840_000,
+            "USB can recover upward while encoder-side capture skips continue")
+        let usbPending = usbDrops.evaluate(
+            metrics(7, pending: 2, macDrops: 40, transport: .usb), mode: .auto)
+        expect(usbPending?.trigger == "pending-sends",
+               "real USB send backlog still decreases bitrate")
+        let usbTrends = AdaptiveBitrateController(
+            initialBitrate: 112_000_000, bounds: 20_000_000...160_000_000)
+        _ = usbTrends.evaluate(metrics(0, rtt: 2, age: 10, transport: .usb), mode: .auto)
+        expect(usbTrends.evaluate(
+            metrics(1, rtt: 50, age: 80, transport: .usb), mode: .auto) == nil,
+            "USB RTT and frame-age noise alone do not lower bitrate")
+        expect(usbTrends.evaluate(
+            metrics(2, encoded: 80, sent: 40, transport: .usb), mode: .auto) == nil,
+            "misaligned USB FPS windows alone do not lower bitrate")
         let receiverQueue = AdaptiveBitrateController(
             initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
         expect(receiverQueue.evaluate(metrics(18, androidQueue: 2), mode: .auto) == nil,

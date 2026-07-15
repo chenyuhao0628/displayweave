@@ -19,6 +19,7 @@ import app.opendisplay.android.protocol.SpsParser;
 public final class H264SurfaceDecoder {
     private static final String LOG_TAG = "DisplayWeaveDecoder";
     private static final int MAX_RENDERED_TELEMETRY = 512;
+    private static final int MAX_PENDING_INPUT_FRAMES = 3;
     private final Surface surface;
     private final DecoderLowLatencyMode lowLatencyMode;
     private volatile Listener listener;
@@ -29,8 +30,10 @@ public final class H264SurfaceDecoder {
     private VideoStreamConfig streamConfig = VideoStreamConfig.DEFAULT;
     private final DecoderCallbackState callbackState =
             new DecoderCallbackState(MAX_RENDERED_TELEMETRY);
-    private VideoFramePacket pendingInputFrame;
-    private boolean awaitingKeyframe;
+    private final BoundedOrderedQueue<VideoFramePacket> pendingInputFrames =
+            new BoundedOrderedQueue<>(MAX_PENDING_INPUT_FRAMES);
+    private final ReferenceChainRecovery referenceChainRecovery =
+            new ReferenceChainRecovery();
     private HandlerThread renderedCallbackThread;
     private long lastMissingParameterLogMs;
     private DecoderRuntimeInfo lastRuntimeInfo;
@@ -42,6 +45,10 @@ public final class H264SurfaceDecoder {
         void onDecoderNeedsKeyframe();
         void onDecoderCodecFailure(String codec, String message);
         void onDecoderFrameDropped(AndroidDropReason reason, VideoFrameTelemetry telemetry);
+        void onDecoderFrameSubmitted();
+        void onDecoderPendingQueueOverflow();
+        void onDecoderRecoveryStarted();
+        void onDecoderRecoveryCompleted(long durationMs);
         void onDecoderFrameDecoded();
         void onDecoderFrameRendered(VideoFrameTelemetry telemetry);
     }
@@ -152,8 +159,8 @@ public final class H264SurfaceDecoder {
             activeCodec = codec;
             codec = null;
             callbackState.invalidate();
-            pendingInputFrame = null;
-            awaitingKeyframe = false;
+            pendingInputFrames.clear();
+            referenceChainRecovery.reset();
             lastRuntimeInfo = null;
             callbackThread = renderedCallbackThread;
             renderedCallbackThread = null;
@@ -208,6 +215,9 @@ public final class H264SurfaceDecoder {
                     attempt.lowLatencySupported,
                     attempt.enableLowLatency,
                     true,
+                    CodecCapabilities.decoderMaxFps(
+                            streamConfig.mimeType, attempt.decoderName,
+                            width, height, streamConfig.fps),
                     fallbackReason);
             listener.onDecoderReady(lastRuntimeInfo);
             listener.onDecoderStatus("正在接收 " + configuredWidth + "×" + configuredHeight
@@ -226,6 +236,7 @@ public final class H264SurfaceDecoder {
                 lastAttempt != null && lastAttempt.lowLatencySupported,
                 false,
                 false,
+                30,
                 fallbackReason);
         listener.onDecoderConfigurationFailed(lastRuntimeInfo);
         throw new IOException("no usable decoder for " + streamConfig.mimeType,
@@ -284,8 +295,8 @@ public final class H264SurfaceDecoder {
                     new Handler(callbackThread.getLooper()));
             codec = candidateCodec;
             renderedCallbackThread = candidateCallbackThread;
-            pendingInputFrame = null;
-            awaitingKeyframe = false;
+            pendingInputFrames.clear();
+            referenceChainRecovery.reset();
             candidateCodec.start();
             configuredWidth = width;
             configuredHeight = height;
@@ -295,8 +306,8 @@ public final class H264SurfaceDecoder {
                 codec = null;
                 renderedCallbackThread = null;
                 callbackState.invalidate();
-                pendingInputFrame = null;
-                awaitingKeyframe = false;
+                pendingInputFrames.clear();
+                referenceChainRecovery.reset();
             }
             releaseCandidate(candidateCodec);
             if (candidateCallbackThread != null) {
@@ -419,35 +430,32 @@ public final class H264SurfaceDecoder {
                     AndroidDropReason.CODEC_RECONFIGURE_DROP, frame.telemetry);
             return;
         }
-        if (awaitingKeyframe) {
-            if (!frame.keyframe) {
-                listener.onDecoderFrameDropped(
-                        AndroidDropReason.REFERENCE_CHAIN_BROKEN, frame.telemetry);
-                return;
-            }
-            awaitingKeyframe = false;
+        boolean wasAwaitingKeyframe = referenceChainRecovery.isAwaitingKeyframe();
+        if (referenceChainRecovery.shouldReject(
+                frame.keyframe, System.currentTimeMillis())) {
+            listener.onDecoderFrameDropped(
+                    AndroidDropReason.AWAITING_KEYFRAME_REJECTED, frame.telemetry);
+            return;
+        }
+        if (wasAwaitingKeyframe && frame.keyframe) {
+            listener.onDecoderRecoveryCompleted(
+                    referenceChainRecovery.lastCompletedDurationMs());
         }
         Integer input = callbackState.pollInput();
         if (input == null) {
-            if (pendingInputFrame != null) {
-                if (pendingInputFrame.isImportant() && !frame.isImportant()) {
-                    listener.onDecoderFrameDropped(
-                            AndroidDropReason.IMPORTANT_FRAME_PROTECTED, frame.telemetry);
-                    return;
-                }
-                listener.onDecoderFrameDropped(
-                        AndroidDropReason.LATEST_SLOT_REPLACED,
-                        pendingInputFrame.telemetry);
-                if (!frame.keyframe) {
-                    pendingInputFrame = null;
-                    awaitingKeyframe = true;
-                    listener.onDecoderFrameDropped(
-                            AndroidDropReason.REFERENCE_CHAIN_BROKEN, frame.telemetry);
-                    listener.onDecoderNeedsKeyframe();
-                    return;
-                }
+            if (pendingInputFrames.offer(frame)) {
+                return;
             }
-            pendingInputFrame = frame;
+            listener.onDecoderPendingQueueOverflow();
+            for (VideoFramePacket dropped : pendingInputFrames.clearAndReturn()) {
+                listener.onDecoderFrameDropped(
+                        AndroidDropReason.LATEST_SLOT_REPLACED, dropped.telemetry);
+            }
+            if (frame.keyframe) {
+                pendingInputFrames.offer(frame);
+            } else {
+                breakReferenceChain(frame.telemetry);
+            }
             return;
         }
         submitFrame(codec, input, frame);
@@ -458,7 +466,7 @@ public final class H264SurfaceDecoder {
         if (!isActive(generation, activeCodec)) {
             return;
         }
-        VideoFramePacket frame = pendingInputFrame;
+        VideoFramePacket frame = pendingInputFrames.poll();
         if (frame == null) {
             if (!callbackState.offerInput(index)) {
                 Log.w(LOG_TAG, "duplicate input buffer callback ignored generation="
@@ -467,7 +475,6 @@ public final class H264SurfaceDecoder {
             }
             return;
         }
-        pendingInputFrame = null;
         submitFrame(activeCodec, index, frame);
     }
 
@@ -478,7 +485,7 @@ public final class H264SurfaceDecoder {
                 listener.onDecoderFrameDropped(
                         AndroidDropReason.DECODER_INPUT_UNAVAILABLE, frame.telemetry);
                 returnInputBuffer(activeCodec, input);
-                listener.onDecoderNeedsKeyframe();
+                breakReferenceChain(frame.telemetry);
                 return;
             }
             if (frame.payloadLength > buffer.capacity()) {
@@ -486,7 +493,7 @@ public final class H264SurfaceDecoder {
                 listener.onDecoderFrameDropped(
                         AndroidDropReason.DECODER_INPUT_OVERSIZE, frame.telemetry);
                 returnInputBuffer(activeCodec, input);
-                listener.onDecoderNeedsKeyframe();
+                breakReferenceChain(frame.telemetry);
                 return;
             }
             buffer.clear();
@@ -495,6 +502,7 @@ public final class H264SurfaceDecoder {
             int flags = frame.keyframe ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
             activeCodec.queueInputBuffer(
                     input, 0, frame.payloadLength, framePresentationUs, flags);
+            listener.onDecoderFrameSubmitted();
             callbackState.putTelemetry(framePresentationUs, frame.telemetry);
             presentationUs += 1_000_000L / Math.max(streamConfig.fps, 1);
         } catch (IllegalStateException error) {
@@ -511,6 +519,21 @@ public final class H264SurfaceDecoder {
             activeCodec.queueInputBuffer(input, 0, 0, presentationUs, 0);
         } catch (IllegalStateException ignored) {
         }
+    }
+
+    private void breakReferenceChain(VideoFrameTelemetry telemetry) {
+        if (!referenceChainRecovery.breakChain(System.currentTimeMillis())) {
+            return;
+        }
+        for (VideoFramePacket pending : pendingInputFrames.clearAndReturn()) {
+            listener.onDecoderFrameDropped(
+                    AndroidDropReason.AWAITING_KEYFRAME_REJECTED,
+                    pending.telemetry);
+        }
+        listener.onDecoderRecoveryStarted();
+        listener.onDecoderFrameDropped(
+                AndroidDropReason.REFERENCE_CHAIN_BROKEN, telemetry);
+        listener.onDecoderNeedsKeyframe();
     }
 
     private synchronized void handleOutputBufferAvailable(

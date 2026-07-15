@@ -18,6 +18,7 @@ import app.opendisplay.android.protocol.BinaryFrameHeaderV2;
 
 public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private static final int PORT = 9000;
+    private static final int MAX_PENDING_SERVER_FRAMES = 3;
 
     private final Listener listener;
     private final ExecutorService transportEvents = Executors.newSingleThreadExecutor();
@@ -51,6 +52,13 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private int renderedFrames;
     private int decodedFrames;
     private int receivedFrames;
+    private int submittedToMediaCodecFrames;
+    private int pendingSlotReplaceCount;
+    private int referenceChainBreakCount;
+    private int keyframeRequestCount;
+    private int keyframeReceivedCount;
+    private long awaitingKeyframeDurationMs;
+    private long decoderRecoveryStartedAtMs;
     private int queueDepthAndroid;
     private long latestFrameAgeMsSum;
     private int latestFrameAgeSamples;
@@ -71,16 +79,30 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private int lastMacAverageFrameSize;
     private int lastMacEncodeLatencyMs;
     private int lastMacQueueDepth;
+    private int lastMacPendingEncodes;
+    private int lastMacTotalPendingWork;
+    private int lastMacPendingEncodePeak;
     private int lastMacDroppedFrames;
     private String lastMacTransport = "wifi";
     private VideoStreamConfig currentStreamConfig = VideoStreamConfig.DEFAULT;
-    private VideoFramePacket latestVideoFrame;
-    private long latestVideoFrameGeneration;
-    private boolean awaitingRecoveryKeyframe;
+    private final BoundedOrderedQueue<QueuedVideoFrame> pendingVideoFrames =
+            new BoundedOrderedQueue<>(MAX_PENDING_SERVER_FRAMES);
+    private final ReferenceChainRecovery referenceChainRecovery =
+            new ReferenceChainRecovery();
     private final DecodeWorkerState decodeWorkerState = new DecodeWorkerState();
     private volatile long lastVideoReceivedMs;
     private volatile long lastFrameRenderedMs;
     private volatile long lastDecoderRecoveryMs;
+
+    private static final class QueuedVideoFrame {
+        final long generation;
+        final VideoFramePacket frame;
+
+        QueuedVideoFrame(long generation, VideoFramePacket frame) {
+            this.generation = generation;
+            this.frame = frame;
+        }
+    }
 
     public interface Listener {
         void onStatus(String status);
@@ -387,36 +409,34 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 frame.payloadLength, frame.keyframe);
         synchronized (this) {
             receivedFrames++;
-            if (awaitingRecoveryKeyframe) {
-                if (!frame.keyframe) {
-                    recordDrop(AndroidDropReason.REFERENCE_CHAIN_BROKEN,
-                            generation, telemetry);
-                    return;
-                }
-                awaitingRecoveryKeyframe = false;
+            if (frame.keyframe) {
+                keyframeReceivedCount++;
             }
-            if (latestVideoFrame != null) {
-                if (latestVideoFrame.isImportant() && !frame.isImportant()) {
-                    recordDrop(AndroidDropReason.IMPORTANT_FRAME_PROTECTED,
-                            generation, telemetry);
-                    return;
-                }
-                recordDrop(AndroidDropReason.LATEST_SLOT_REPLACED,
-                        latestVideoFrameGeneration, latestVideoFrame.telemetry);
-                if (!frame.keyframe) {
-                    latestVideoFrame = null;
-                    latestVideoFrameGeneration = 0;
-                    queueDepthAndroid = 0;
-                    awaitingRecoveryKeyframe = true;
-                    recordDrop(AndroidDropReason.REFERENCE_CHAIN_BROKEN,
-                            generation, telemetry);
-                    sendJson(LengthPrefixedProtocol.keyframeRequestJson());
-                    return;
-                }
+            boolean wasAwaitingKeyframe = referenceChainRecovery.isAwaitingKeyframe();
+            if (referenceChainRecovery.shouldReject(
+                    frame.keyframe, System.currentTimeMillis())) {
+                recordDrop(AndroidDropReason.AWAITING_KEYFRAME_REJECTED,
+                        generation, telemetry);
+                return;
             }
-            latestVideoFrame = frame;
-            latestVideoFrameGeneration = generation;
-            queueDepthAndroid = 1;
+            if (wasAwaitingKeyframe && frame.keyframe) {
+                awaitingKeyframeDurationMs +=
+                        referenceChainRecovery.lastCompletedDurationMs();
+            }
+            if (!pendingVideoFrames.offer(new QueuedVideoFrame(generation, frame))) {
+                pendingSlotReplaceCount++;
+                for (QueuedVideoFrame dropped : pendingVideoFrames.clearAndReturn()) {
+                    recordDrop(AndroidDropReason.LATEST_SLOT_REPLACED,
+                            dropped.generation, dropped.frame.telemetry);
+                }
+                queueDepthAndroid = 0;
+                if (!frame.keyframe) {
+                    breakReferenceChain(generation, telemetry);
+                    return;
+                }
+                pendingVideoFrames.offer(new QueuedVideoFrame(generation, frame));
+            }
+            queueDepthAndroid = pendingVideoFrames.size();
             if (decodeWorkerState.markFrameAvailable()) {
                 decoderWorker.execute(this::drainLatestVideoFrames);
             }
@@ -425,23 +445,19 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
     private void drainLatestVideoFrames() {
         while (running) {
-            VideoFramePacket frame;
-            long generation;
+            QueuedVideoFrame queued;
             synchronized (this) {
-                frame = latestVideoFrame;
-                generation = latestVideoFrameGeneration;
-                latestVideoFrame = null;
-                latestVideoFrameGeneration = 0;
-                queueDepthAndroid = 0;
-                if (frame == null) {
+                queued = pendingVideoFrames.poll();
+                queueDepthAndroid = pendingVideoFrames.size();
+                if (queued == null) {
                     decodeWorkerState.markIdle();
                     return;
                 }
             }
-            if (!connectionCoordinator.isCurrent(generation)) {
+            if (!connectionCoordinator.isCurrent(queued.generation)) {
                 continue;
             }
-            queueFrameIfCurrentDecoder(generation, frame);
+            queueFrameIfCurrentDecoder(queued.generation, queued.frame);
         }
         synchronized (this) {
             decodeWorkerState.markIdle();
@@ -482,6 +498,13 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 lastMacQueueDepth = object.has("queueDepthMac")
                         ? object.optInt("queueDepthMac", lastMacQueueDepth)
                         : object.optInt("pending", lastMacQueueDepth);
+                lastMacPendingEncodes = object.optInt(
+                        "pendingEncodesMac", lastMacPendingEncodes);
+                lastMacTotalPendingWork = object.optInt(
+                        "totalPendingWorkMac",
+                        lastMacQueueDepth + lastMacPendingEncodes);
+                lastMacPendingEncodePeak = object.optInt(
+                        "pendingEncodePeak", lastMacPendingEncodePeak);
                 lastMacDroppedFrames = object.has("droppedFramesMac")
                         ? object.optInt("droppedFramesMac", lastMacDroppedFrames)
                         : object.optInt("drops", lastMacDroppedFrames);
@@ -641,11 +664,22 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     }
 
     private synchronized void resetQueuedFrames() {
-        latestVideoFrame = null;
-        latestVideoFrameGeneration = 0;
-        awaitingRecoveryKeyframe = false;
+        pendingVideoFrames.clear();
+        referenceChainRecovery.reset();
+        decoderRecoveryStartedAtMs = 0;
         queueDepthAndroid = 0;
         decodeWorkerState.markQueueReset();
+    }
+
+    private void breakReferenceChain(
+            long generation, VideoFrameTelemetry telemetry) {
+        if (!referenceChainRecovery.breakChain(System.currentTimeMillis())) {
+            return;
+        }
+        referenceChainBreakCount++;
+        recordDrop(AndroidDropReason.REFERENCE_CHAIN_BROKEN,
+                generation, telemetry);
+        requestKeyframe();
     }
 
     private synchronized void replaceDecoder(long generation) {
@@ -885,6 +919,43 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         }
 
         @Override
+        public void onDecoderFrameSubmitted() {
+            executeTransportEvent(() -> {
+                if (isCurrentIdentity()) {
+                    OpenDisplayServer.this.onDecoderFrameSubmitted(generation);
+                }
+            });
+        }
+
+        @Override
+        public void onDecoderPendingQueueOverflow() {
+            executeTransportEvent(() -> {
+                if (isCurrentIdentity()) {
+                    OpenDisplayServer.this.onDecoderPendingQueueOverflow(generation);
+                }
+            });
+        }
+
+        @Override
+        public void onDecoderRecoveryStarted() {
+            executeTransportEvent(() -> {
+                if (isCurrentIdentity()) {
+                    OpenDisplayServer.this.onDecoderRecoveryStarted(generation);
+                }
+            });
+        }
+
+        @Override
+        public void onDecoderRecoveryCompleted(long durationMs) {
+            executeTransportEvent(() -> {
+                if (isCurrentIdentity()) {
+                    OpenDisplayServer.this.onDecoderRecoveryCompleted(
+                            generation, durationMs);
+                }
+            });
+        }
+
+        @Override
         public void onDecoderFrameDecoded() {
             executeTransportEvent(() -> {
                 if (isCurrentIdentity()) {
@@ -936,6 +1007,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     info.lowLatencySupported,
                     info.lowLatencyEnabled,
                     info.configureSuccess,
+                    info.selectedDecoderMaxFps,
                     info.fallbackReason));
         }
         connectionCoordinator.transition(
@@ -947,7 +1019,44 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         if (!connectionCoordinator.isCurrent(generation)) {
             return;
         }
+        requestKeyframe();
+    }
+
+    private synchronized void requestKeyframe() {
+        keyframeRequestCount++;
         sendJson(LengthPrefixedProtocol.keyframeRequestJson());
+    }
+
+    private synchronized void onDecoderFrameSubmitted(long generation) {
+        if (connectionCoordinator.isCurrent(generation)) {
+            submittedToMediaCodecFrames++;
+        }
+    }
+
+    private synchronized void onDecoderPendingQueueOverflow(long generation) {
+        if (connectionCoordinator.isCurrent(generation)) {
+            pendingSlotReplaceCount++;
+        }
+    }
+
+    private synchronized void onDecoderRecoveryStarted(long generation) {
+        if (connectionCoordinator.isCurrent(generation)) {
+            referenceChainBreakCount++;
+            if (decoderRecoveryStartedAtMs == 0) {
+                decoderRecoveryStartedAtMs = System.currentTimeMillis();
+            }
+        }
+    }
+
+    private synchronized void onDecoderRecoveryCompleted(
+            long generation, long durationMs) {
+        if (connectionCoordinator.isCurrent(generation)) {
+            if (decoderRecoveryStartedAtMs > 0) {
+                awaitingKeyframeDurationMs += Math.max(
+                        0, System.currentTimeMillis() - decoderRecoveryStartedAtMs);
+            }
+            decoderRecoveryStartedAtMs = 0;
+        }
     }
 
     private void onDecoderCodecFailure(long generation, String codec, String message) {
@@ -1070,6 +1179,20 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private synchronized void publishStatsIfDue(long now) {
         long elapsed = now - metricsWindowStartMs;
         if (shouldPublishStats(elapsed)) {
+            int receivedFrameCount = receivedFrames;
+            int decodedFrameCount = decodedFrames;
+            int renderedFrameCount = renderedFrames;
+            int submittedFrameCount = submittedToMediaCodecFrames;
+            int slotReplaceCount = pendingSlotReplaceCount;
+            int chainBreakCount = referenceChainBreakCount;
+            int requestedKeyframeCount = keyframeRequestCount;
+            int receivedKeyframeCount = keyframeReceivedCount;
+            long recoveryDurationMs = awaitingKeyframeDurationMs
+                    + referenceChainRecovery.consumeDurationMs(now);
+            if (decoderRecoveryStartedAtMs > 0) {
+                recoveryDurationMs += Math.max(0, now - decoderRecoveryStartedAtMs);
+                decoderRecoveryStartedAtMs = now;
+            }
             int renderedFps = (int) Math.round(renderedFrames * 1000.0 / elapsed);
             int decodedFps = (int) Math.round(decodedFrames * 1000.0 / elapsed);
             int receivedFps = (int) Math.round(receivedFrames * 1000.0 / elapsed);
@@ -1085,6 +1208,12 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             renderedFrames = 0;
             decodedFrames = 0;
             receivedFrames = 0;
+            submittedToMediaCodecFrames = 0;
+            pendingSlotReplaceCount = 0;
+            referenceChainBreakCount = 0;
+            keyframeRequestCount = 0;
+            keyframeReceivedCount = 0;
+            awaitingKeyframeDurationMs = 0;
             metricsWindowStartMs = now;
             float actualAndroidHz = listener.currentDisplayRefreshRate();
             float requestedSurfaceFps = listener.requestedSurfaceFrameRate();
@@ -1135,6 +1264,15 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     receivedFps,
                     decodedFps,
                     renderedFps,
+                    receivedFrameCount,
+                    submittedFrameCount,
+                    slotReplaceCount,
+                    chainBreakCount,
+                    recoveryDurationMs,
+                    requestedKeyframeCount,
+                    receivedKeyframeCount,
+                    decodedFrameCount,
+                    renderedFrameCount,
                     lastRttMs > 0 ? lastRttMs : null,
                     stableClock ? (double) clockEstimator.offsetMs() : null,
                     stableClock ? (double) clockEstimator.confidenceMs() : null,
@@ -1149,6 +1287,9 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     stableClock && decodeLatencyMs > 0 ? (double) decodeLatencyMs : null,
                     queueDepthAndroid,
                     dropped,
+                    lastMacPendingEncodes,
+                    lastMacTotalPendingWork,
+                    lastMacPendingEncodePeak,
                     lastInputP50Ms > 0 ? lastInputP50Ms : null,
                     lastInputP95Ms > 0 ? lastInputP95Ms : null,
                     frameSizes.currentFrameBytes,
@@ -1174,6 +1315,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     runtimeInfo == null ? null : runtimeInfo.lowLatencySupported,
                     runtimeInfo == null ? null : runtimeInfo.lowLatencyEnabled,
                     runtimeInfo == null ? null : runtimeInfo.configureSuccess,
+                    runtimeInfo == null ? null : runtimeInfo.selectedDecoderMaxFps,
                     runtimeInfo == null ? null : runtimeInfo.fallbackReason,
                     decoderLowLatencyMode.key,
                     frameRateApplyResult,
