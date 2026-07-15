@@ -52,6 +52,7 @@ pairs=(
   "docs/release-notes-v0.2.1.md:docs/release-notes-v0.2.1.zh-CN.md"
   "docs/release-notes-v0.2.1-p1.md:docs/release-notes-v0.2.1-p1.zh-CN.md"
   "docs/release-notes-v0.2.1-p2.md:docs/release-notes-v0.2.1-p2.zh-CN.md"
+  "docs/release-notes-v0.2.1-p3.md:docs/release-notes-v0.2.1-p3.zh-CN.md"
   "docs/release-notes-preview-0.1.md:docs/release-notes-preview-0.1.zh-CN.md"
   "docs/roadmap-and-acceptance.md:docs/roadmap-and-acceptance.zh-CN.md"
   "docs/stability-test-report.md:docs/stability-test-report.zh-CN.md"

@@ -14,6 +14,14 @@ enum MacSenderTestPatternContractSelfTest {
         let source = try String(
             contentsOf: root.appendingPathComponent("Mac/MacSender.swift"),
             encoding: .utf8)
+        let patternSource = try String(
+            contentsOf: root.appendingPathComponent("Mac/TestPatternWindow.swift"),
+            encoding: .utf8)
+
+        expect(patternSource.hasPrefix("#if DEBUG\n"),
+               "animated test-pattern implementation is debug-only")
+        expect(patternSource.contains("#else\nimport Foundation\nimport CoreGraphics"),
+               "release builds compile only the no-op test-pattern contract")
 
         expect(source.contains("private let testPatternOwnerID = UUID()"),
                "each sender owns one stable test-pattern identity")

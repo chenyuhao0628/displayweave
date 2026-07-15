@@ -819,8 +819,13 @@ final class SenderController: ObservableObject {
             default: return ""
             }
         }
-        /// Lowest latency first.
-        var preferredTarget: ConnectionTarget? { usbTarget ?? wifiTarget }
+        func preferredTarget(for mode: StreamTransportMode) -> ConnectionTarget? {
+            switch mode {
+            case .auto: return usbTarget ?? wifiTarget
+            case .usb: return usbTarget
+            case .wifi: return wifiTarget
+            }
+        }
     }
 
     var deviceEntries: [DeviceEntry] {
@@ -1017,7 +1022,9 @@ struct ContentView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                if let target = entry.preferredTarget {
+                                if let target = entry.preferredTarget(
+                                    for: controller.settings.transportMode
+                                ) {
                                     Button("连接") {
                                         controller.connect(to: target, userInitiated: true)
                                     }

@@ -74,7 +74,7 @@ struct AndroidAdbForwardSelfTest {
         let store = MemoryForwardStore()
         let manager = AndroidAdbForwardManager(
             client: client,
-            portAllocator: SequencePortAllocator(ports: [19001, 19002]),
+            portAllocator: SequencePortAllocator(ports: [19001, 19002, 19003]),
             recordStore: store)
 
         let first = try await manager.create(serial: "A")
@@ -99,9 +99,22 @@ struct AndroidAdbForwardSelfTest {
         require(calls[1] == ["-s", "B", "forward", "tcp:19002", "tcp:9000"],
                 "second mapping should be scoped to serial B")
 
-        await manager.remove(sessionID: first.sessionID)
+        let replacement = try await manager.create(serial: "A")
         calls = await runner.calls
-        require(calls.last == ["-s", "A", "forward", "--remove", "tcp:19001"],
+        require(calls[2] == ["-s", "A", "forward", "--remove", "tcp:19001"],
+                "replacement must reclaim the previous owned listener first")
+        require(calls[3] == ["-s", "A", "forward", "tcp:19003", "tcp:9000"],
+                "replacement should install exactly one new listener")
+        let mappingsAfterReplacement = await manager.ownedMappings()
+        require(mappingsAfterReplacement == [second, replacement],
+                "same-device replacement must not retain the old mapping")
+        let persistedAfterReplacement = await store.records()
+        require(persistedAfterReplacement == [second, replacement],
+                "same-device replacement must remove the stale ownership record")
+
+        await manager.remove(sessionID: replacement.sessionID)
+        calls = await runner.calls
+        require(calls.last == ["-s", "A", "forward", "--remove", "tcp:19003"],
                 "cleanup should remove only the owned mapping")
         require(!calls.flatMap { $0 }.contains("--remove-all"),
                 "DisplayWeave must never remove another tool's ADB mappings")

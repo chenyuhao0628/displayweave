@@ -1,6 +1,8 @@
+#if DEBUG
 import SwiftUI
 import AppKit
 import MetalKit
+import CoreVideo
 
 /// Debug aid: a full-screen animated window on the virtual display so the
 /// pipeline streams continuously — without it, ScreenCaptureKit emits nothing
@@ -18,6 +20,11 @@ enum TestPattern {
     // cancelled before macOS moves its orphaned window onto the main display.
     private static var windows: [UUID: NSWindow] = [:]
     private static var pendingShows: [UUID: PendingShow] = [:]
+    // AppKit may still own a display-transform animation when a virtual
+    // display disappears. Releasing the window in that transaction has
+    // crashed inside _NSWindowTransformAnimation.dealloc on macOS 26.
+    // Keep hidden debug windows alive for the process lifetime instead.
+    private static var retiredWindows: [NSWindow] = []
 
     static func show(ownerID: UUID, on displayID: CGDirectDisplayID) {
         hide(ownerID: ownerID)
@@ -36,10 +43,12 @@ enum TestPattern {
                 }) {
                     let w = NSWindow(contentRect: screen.frame, styleMask: [.borderless],
                                      backing: .buffered, defer: false)
+                    w.animationBehavior = .none
+                    w.isReleasedWhenClosed = false
                     w.contentView = DisplayLinkPatternView(displayID: displayID)
-                    w.setFrame(screen.frame, display: true)
+                    w.setFrame(screen.frame, display: true, animate: false)
                     guard !Task.isCancelled else {
-                        w.close()
+                        retire(w)
                         return
                     }
                     w.orderFrontRegardless()
@@ -58,7 +67,16 @@ enum TestPattern {
 
     static func hide(ownerID: UUID) {
         pendingShows.removeValue(forKey: ownerID)?.task.cancel()
-        windows.removeValue(forKey: ownerID)?.close()
+        if let window = windows.removeValue(forKey: ownerID) {
+            retire(window)
+        }
+    }
+
+    private static func retire(_ window: NSWindow) {
+        (window.contentView as? DisplayLinkPatternView)?.stop()
+        window.animationBehavior = .none
+        window.orderOut(nil)
+        retiredWindows.append(window)
     }
 
     static func isTracking(ownerID: UUID) -> Bool {
@@ -68,20 +86,55 @@ enum TestPattern {
 
 private final class DisplayLinkPatternView: MTKView, MTKViewDelegate {
     private lazy var commandQueue = device?.makeCommandQueue()
+    private var renderDisplayLink: CVDisplayLink?
 
     init(displayID: CGDirectDisplayID) {
         super.init(frame: .zero, device: MTLCreateSystemDefaultDevice())
         delegate = self
-        preferredFramesPerSecond = 120
-        enableSetNeedsDisplay = false
-        isPaused = false
+        // A fixed 120fps MTKView can fall to a divisor (30fps) on a 90Hz
+        // virtual display. Bind a CoreVideo clock to the virtual display. Its
+        // callback is not delayed by main-thread logging/control traffic.
+        enableSetNeedsDisplay = true
+        isPaused = true
         framebufferOnly = true
         colorPixelFormat = .bgra8Unorm
+        var link: CVDisplayLink?
+        if CVDisplayLinkCreateWithCGDisplay(displayID, &link) == kCVReturnSuccess,
+           let link {
+            CVDisplayLinkSetOutputCallback(link, { _, _, _, _, _, context in
+                guard let context else { return kCVReturnInvalidArgument }
+                let view = Unmanaged<DisplayLinkPatternView>
+                    .fromOpaque(context).takeUnretainedValue()
+                autoreleasepool {
+                    view.draw()
+                }
+                return kCVReturnSuccess
+            }, Unmanaged.passUnretained(self).toOpaque())
+            renderDisplayLink = link
+            CVDisplayLinkStart(link)
+        } else {
+            // Keep MTKView's scheduler as a compatibility fallback if the
+            // display clock cannot be created.
+            preferredFramesPerSecond = 120
+            enableSetNeedsDisplay = false
+            isPaused = false
+        }
     }
 
     @available(*, unavailable)
     required init(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        stop()
+    }
+
+    func stop() {
+        if let renderDisplayLink {
+            CVDisplayLinkStop(renderDisplayLink)
+        }
+        renderDisplayLink = nil
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
@@ -103,3 +156,16 @@ private final class DisplayLinkPatternView: MTKView, MTKViewDelegate {
         commandBuffer.commit()
     }
 }
+#else
+import Foundation
+import CoreGraphics
+
+/// Release builds keep only the call-site contract. The animated Metal view,
+/// display link, and window implementation are not compiled into artifacts.
+@MainActor
+enum TestPattern {
+    static func show(ownerID: UUID, on displayID: CGDirectDisplayID) {}
+    static func hide(ownerID: UUID) {}
+    static func isTracking(ownerID: UUID) -> Bool { false }
+}
+#endif

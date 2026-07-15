@@ -66,11 +66,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // multiple OpenDisplay monitors apart and persist their arrangement.
     private let displaySerial: UInt32
 
-    // Backpressure covers both VideoToolbox work and outstanding sends. A
-    // send-only budget lets the asynchronous encoder accept hundreds of raw
-    // frames while the socket still looks empty, then emit a stale burst.
-    // Drop before encode when the entire pipeline budget is full; this does
-    // not break the encoded reference chain and must not force an IDR.
+    // Bound VideoToolbox work and outstanding sends independently. Combining
+    // both into Gaming's budget of one made a normal 10 ms asynchronous encode
+    // reject every second 120 Hz capture and hard-capped the stream near 60.
     private var pendingSends = 0
     private var pendingEncodeWork = GenerationWorkCounter()
     private var pendingEncodes: Int {
@@ -1455,7 +1453,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         guard connectionReady else { return }
         let queueDecision = SendQueuePolicy.decision(
             pendingSends: pendingSends, pendingEncodes: pendingEncodes,
-            budget: maxPendingSends,
+            sendBudget: maxPendingSends,
+            encodeBudget: SendQueuePolicy.encodeBudget(fps: requestedCaptureFps),
             currentDroppedFrames: dropsThisWindow)
         if queueDecision.shouldDrop {
             if queueDecision.forceKeyframe, let reason = queueDecision.reason {
@@ -1745,10 +1744,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     private func sendStreamConfig(width: Int, height: Int, protocolRetry: Bool = false) {
         let transportName: String
-        if case .androidAdb = transport {
+        switch transport {
+        case .tcp:
+            transportName = "wifi"
+        case .usb, .androidAdb:
             transportName = "usb"
-        } else {
-            transportName = lastHello?.negotiatedTransport ?? "unknown"
         }
         let identity: StreamProtocolFrameIdentity?
         if lastHello?.supportsProtocolV2 == true {

@@ -6,17 +6,21 @@ enum SendQueuePolicySelfTest {
         precondition(SendQueuePolicy.budget(quality: .gaming) == 1)
         precondition(SendQueuePolicy.budget(quality: .balanced) == 2)
         precondition(SendQueuePolicy.budget(quality: .high) == 3)
-        precondition(!SendQueuePolicy.shouldDrop(pendingSends: 0, budget: 1))
-        precondition(SendQueuePolicy.shouldDrop(pendingSends: 1, budget: 1))
-        precondition(SendQueuePolicy.shouldDrop(pendingSends: 3, budget: 3))
-        precondition(SendQueuePolicy.shouldDrop(
-            pendingSends: 0, pendingEncodes: 3, budget: 3))
-        precondition(SendQueuePolicy.shouldDrop(
-            pendingSends: 1, pendingEncodes: 2, budget: 3))
+        precondition(SendQueuePolicy.encodeBudget(fps: 60) == 1)
+        precondition(SendQueuePolicy.encodeBudget(fps: 90) == 2)
+        precondition(SendQueuePolicy.encodeBudget(fps: 120) == 2)
         precondition(!SendQueuePolicy.shouldDrop(
-            pendingSends: 1, pendingEncodes: 1, budget: 3))
+            pendingSends: 0, sendBudget: 1, encodeBudget: 2))
+        precondition(SendQueuePolicy.shouldDrop(
+            pendingSends: 1, sendBudget: 1, encodeBudget: 2))
+        precondition(SendQueuePolicy.shouldDrop(
+            pendingSends: 0, pendingEncodes: 2, sendBudget: 1, encodeBudget: 2))
+        precondition(!SendQueuePolicy.shouldDrop(
+            pendingSends: 0, pendingEncodes: 1, sendBudget: 1, encodeBudget: 2),
+                     "120fps must allow a second frame while one encode is in flight")
         let decision = SendQueuePolicy.decision(
-            pendingSends: 1, pendingEncodes: 1, budget: 2,
+            pendingSends: 0, pendingEncodes: 2,
+            sendBudget: 1, encodeBudget: 2,
             currentDroppedFrames: 4)
         precondition(decision.shouldDrop && decision.droppedFrames == 5)
         precondition(decision.reason == .preEncodeCaptureSkip)

@@ -109,17 +109,9 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
     @Override
     public void stop(byte[] finalPayload) {
         running = false;
-        ConnectionContext active = current();
-        if (finalPayload != null && active != null) {
-            try {
-                synchronized (active.writeLock) {
-                    if (isCurrent(active)) {
-                        LengthPrefixedProtocol.write(active.output, finalPayload);
-                    }
-                }
-            } catch (IOException ignored) {
-            }
-        }
+        // Lifecycle callbacks invoke stop() on Android's main thread. A best-effort
+        // goodbye must never turn that path into blocking network I/O; closing the
+        // socket is already the protocol's authoritative disconnect signal.
         clearAndCloseCurrent();
         ServerSocket activeServer = serverSocket;
         if (activeServer != null) {

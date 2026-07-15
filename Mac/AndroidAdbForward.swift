@@ -126,6 +126,7 @@ actor AndroidAdbForwardManager {
     }
 
     func create(serial: String, remotePort: UInt16 = 9000) async throws -> AndroidAdbForward {
+        try await reclaimOwnedMappings(serial: serial, remotePort: remotePort)
         let localPort = try portAllocator.allocate()
         let mapping = AndroidAdbForward(sessionID: UUID(), serial: serial,
                                         localPort: localPort, remotePort: remotePort)
@@ -193,6 +194,24 @@ actor AndroidAdbForwardManager {
         try await client.run(serial: mapping.serial, arguments: [
             "forward", "--remove", "tcp:\(mapping.localPort)",
         ])
+    }
+
+    /// Serializes replacement inside this actor so disconnect cleanup cannot race
+    /// a reconnect into leaving two DisplayWeave-owned listeners behind.
+    private func reclaimOwnedMappings(serial: String, remotePort: UInt16) async throws {
+        let persisted = await recordStore.records()
+        let duplicates = persisted.filter {
+            $0.serial == serial && $0.remotePort == remotePort
+        }
+        for mapping in duplicates {
+            do {
+                try await removeForward(mapping)
+            } catch {
+                guard isMissingListener(error) else { throw error }
+            }
+            mappings.removeValue(forKey: mapping.sessionID)
+            await recordStore.remove(sessionID: mapping.sessionID)
+        }
     }
 
     private func isMissingListener(_ error: Error) -> Bool {

@@ -69,6 +69,7 @@ run_test StreamEncodingPolicySelfTest \
 run_test StreamSettingsSelfTest \
   "${settings[@]}" MacTests/StreamSettingsSelfTest.swift
 run_test TestPatternLifecycleSelfTest \
+  -DDEBUG \
   Mac/Log.swift Mac/TestPatternWindow.swift \
   MacTests/TestPatternLifecycleSelfTest.swift
 run_test TransportSelectionPolicySelfTest \
