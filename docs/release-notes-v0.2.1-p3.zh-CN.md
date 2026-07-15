@@ -22,3 +22,12 @@ DisplayWeave 0.2.1-p3 改进 macOS 与 Android 的高刷新串流和连接恢复
 - `git diff --check` 通过。
 
 高刷新性能仍取决于设备与网络条件；WiFi 参考链恢复仍可能造成短时帧率下降。
+
+## SHA-256
+
+- Android APK：`99bdedb0743eb34cc7d2cb94aaa4141e8d9542e0fd4a42460ae46fccc4904004`
+- macOS ZIP：`d925d89c4cae6db1723abedf322afd97d414a9c2f985a64516b647a1669b7a01`
+- macOS DMG：`4d375d6cb50d5a99420a564c7f0e6f1b2231e6b67e58a4efd78d12db5b512c1e`
+- iOS 未签名自签输入包：`90c971ff0837a401563a48cabfa594e86aa0ff02b513d24996a109123a5a4949`
+- Sparkle Appcast：`5fb508cb5dd8cfc9f4f3f01db2c799c7f9f441b5fdc1315c281e12604bb2c5a3`
+- Android 更新清单：`ede2c36c2f5b01fba62ae29412373d5ccda4882c6598242bb40f85b1185fbef8`

@@ -22,3 +22,12 @@ DisplayWeave 0.2.1-p3 improves high-refresh streaming and connection recovery on
 - `git diff --check` passes.
 
 High-refresh performance remains hardware- and network-dependent. WiFi reference-chain recovery can still cause short frame-rate dips.
+
+## SHA-256
+
+- Android APK: `99bdedb0743eb34cc7d2cb94aaa4141e8d9542e0fd4a42460ae46fccc4904004`
+- macOS ZIP: `d925d89c4cae6db1723abedf322afd97d414a9c2f985a64516b647a1669b7a01`
+- macOS DMG: `4d375d6cb50d5a99420a564c7f0e6f1b2231e6b67e58a4efd78d12db5b512c1e`
+- iOS unsigned re-signing input: `90c971ff0837a401563a48cabfa594e86aa0ff02b513d24996a109123a5a4949`
+- Sparkle appcast: `5fb508cb5dd8cfc9f4f3f01db2c799c7f9f441b5fdc1315c281e12604bb2c5a3`
+- Android update manifest: `ede2c36c2f5b01fba62ae29412373d5ccda4882c6598242bb40f85b1185fbef8`
