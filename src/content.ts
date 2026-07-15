@@ -1,7 +1,7 @@
 export type Locale = "en" | "zh"
 export type EvidenceState = "verified" | "experimental" | "deferred"
 
-export const releaseTag = "v0.2.1"
+export const releaseTag = "v0.2.1-p1"
 export const releaseBase = `https://github.com/chenyuhao0628/displayweave/releases/download/${releaseTag}`
 
 export type ReleaseAsset = {
@@ -49,9 +49,9 @@ export const copy: Record<Locale, SiteCopy> = {
   en: {
     language: "中文",
     nav: { status: "Status", transport: "Transport", evidence: "Evidence", trust: "Trust", faq: "FAQ", download: "Download Preview" },
-    hero: { titleLines: ["Weave every", "spare screen", "into your"], accent: "Mac workspace.", body: "DisplayWeave turns iPhone, iPad, and Android devices into local extended displays—with Apple USB/WiFi, Android ADB USB, verified Mac/Android update channels, touch input, HEVC, and experimental high refresh.", primary: "Get v0.2.1", secondary: "Read the source", live: "Live transport map" },
+    hero: { titleLines: ["Weave every", "spare screen", "into your"], accent: "Mac workspace.", body: "DisplayWeave turns iPhone, iPad, and Android devices into local extended displays—with Apple USB/WiFi, Android ADB USB, verified Mac/Android update channels, touch input, HEVC, and experimental high refresh.", primary: "Get v0.2.1-p1", secondary: "Read the source", live: "Live transport map" },
     topology: { mac: "Mac sender", source: "Capture · Encode", android: "Android receiver", apple: "Apple receiver", usb: "ADB USB", wifi: "Local WiFi", fallback: "AUTO FALLBACK", active: "ACTIVE" },
-    release: { label: "v0.2.1 release", title: "Install once, then update Mac and Android in place.", intro: "Every package is distributed directly from GitHub. Older builds need this one-time manual migration before later automatic updates.", warning: "Development distribution — no App Store, Google Play, Developer ID notarization, or universal iOS signing.", checksum: "Verify all downloads with SHA256SUMS.txt", assets: enAssets },
+    release: { label: "v0.2.1-p1 release", title: "Install once, then update Mac and Android in place.", intro: "Every package is distributed directly from GitHub. Older builds need this one-time manual migration before later automatic updates.", warning: "Development distribution — no App Store, Google Play, Developer ID notarization, or universal iOS signing.", checksum: "Verify all downloads with SHA256SUMS.txt", assets: enAssets },
     status: { label: "Evidence, not promises", title: "A release status board with the edges left visible.", intro: "Verified means exercised on available physical hardware. Experimental means implemented with hardware-dependent performance. Deferred work is stated plainly.", names: { verified: "Verified", experimental: "Experimental", deferred: "Deferred" }, items: [
       { state: "verified", title: "Android USB and recovery", detail: "HEVC/120 and H.264/60 over wired ADB forward; unplug/replug, ADB restart, authorization revoke/reallow, foreground return, and Auto fallback recovery verified." },
       { state: "verified", title: "Touch and mixed receivers", detail: "Prior Preview 2 evidence covers tap, drag, cursor, two-finger scroll, and one iPhone WiFi receiver running beside one Android receiver; this was not rerun for v0.2." },
@@ -93,9 +93,9 @@ export const copy: Record<Locale, SiteCopy> = {
   zh: {
     language: "English",
     nav: { status: "状态", transport: "传输", evidence: "实测", trust: "边界", faq: "问答", download: "下载" },
-    hero: { titleLines: ["把每一块闲置屏幕，", "编入你的"], accent: "Mac 工作空间。", body: "DisplayWeave 将 iPhone、iPad 和 Android 设备变成本地扩展显示器，支持 Apple USB/WiFi、Android ADB USB、已验证的 Mac/Android 更新渠道、触摸、HEVC 与实验性高刷新。", primary: "获取 v0.2.1", secondary: "查看源代码", live: "实时传输拓扑" },
+    hero: { titleLines: ["把每一块闲置屏幕，", "编入你的"], accent: "Mac 工作空间。", body: "DisplayWeave 将 iPhone、iPad 和 Android 设备变成本地扩展显示器，支持 Apple USB/WiFi、Android ADB USB、已验证的 Mac/Android 更新渠道、触摸、HEVC 与实验性高刷新。", primary: "获取 v0.2.1-p1", secondary: "查看源代码", live: "实时传输拓扑" },
     topology: { mac: "Mac 发送端", source: "采集 · 编码", android: "Android 接收端", apple: "Apple 接收端", usb: "ADB USB", wifi: "本地 WiFi", fallback: "自动回退", active: "已连接" },
-    release: { label: "v0.2.1 发布", title: "首次安装，之后原位更新 Mac 与 Android。", intro: "所有文件均由 GitHub 直接分发。旧版本需要先完成这次手动迁移，后续才能自动更新。", warning: "开发分发版——未通过 App Store、Google Play、Developer ID 公证或通用 iOS 签名分发。", checksum: "使用 SHA256SUMS.txt 验证全部下载", assets: zhAssets },
+    release: { label: "v0.2.1-p1 发布", title: "首次安装，之后原位更新 Mac 与 Android。", intro: "所有文件均由 GitHub 直接分发。旧版本需要先完成这次手动迁移，后续才能自动更新。", warning: "开发分发版——未通过 App Store、Google Play、Developer ID 公证或通用 iOS 签名分发。", checksum: "使用 SHA256SUMS.txt 验证全部下载", assets: zhAssets },
     status: { label: "证据，而不是口号", title: "保留真实边界的版本状态板。", intro: "“已验证”表示在现有真机上完成；“实验性”表示已实现但性能依赖硬件；未完成工作会明确列出。", names: { verified: "已验证", experimental: "实验性", deferred: "待完成" }, items: [
       { state: "verified", title: "Android USB 与恢复", detail: "已验证有线 ADB forward 的 HEVC/120、H.264/60，以及拔插、ADB 重启、取消/恢复授权、回到前台和 Auto 回退恢复。" },
       { state: "verified", title: "触摸与混合接收端", detail: "Preview 2 既有证据覆盖轻点、拖动、光标、双指滚动，以及 iPhone WiFi 与一台 Android 并发；v0.2 未重新执行。" },
