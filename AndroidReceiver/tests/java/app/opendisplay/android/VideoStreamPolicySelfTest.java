@@ -42,6 +42,7 @@ public final class VideoStreamPolicySelfTest {
         testDecoderCallbackStateOwnership();
         testReferenceChainRecovery();
         testBoundedOrderedQueue();
+        testFrameQueueBurstCapacity();
         testDecoderRuntimeFailureMetrics();
         testWifiLowLatencyLifecycle();
         testSurfaceFrameRateLifecycle();
@@ -83,6 +84,20 @@ public final class VideoStreamPolicySelfTest {
         assertEquals(1, queue.poll().intValue());
         assertEquals(2, queue.poll().intValue());
         assertEquals(3, queue.poll().intValue());
+        assertTrue(queue.isEmpty());
+    }
+
+    private static void testFrameQueueBurstCapacity() {
+        assertEquals(12, FrameQueuePolicy.MAX_PENDING_FRAMES);
+        BoundedOrderedQueue<Integer> queue =
+                new BoundedOrderedQueue<>(FrameQueuePolicy.MAX_PENDING_FRAMES);
+        for (int frame = 1; frame <= 12; frame++) {
+            assertTrue(queue.offer(frame));
+        }
+        assertFalse(queue.offer(13));
+        for (int frame = 1; frame <= 12; frame++) {
+            assertEquals(frame, queue.poll().intValue());
+        }
         assertTrue(queue.isEmpty());
     }
 

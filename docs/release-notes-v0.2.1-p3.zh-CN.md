@@ -10,6 +10,7 @@ DisplayWeave 0.2.1-p3 改进 macOS 与 Android 的高刷新串流和连接恢复
 - 在串流配置中正确标记当前使用的 USB 或 WiFi 传输。
 - “连接”按钮会按照当前选择的传输模式使用对应设备目标。
 - 重连前回收 DisplayWeave 自有的过期 ADB Forward，并避免 Android 主线程断开连接时阻塞写入 WiFi。
+- 扩大并统一 Android 服务端/解码器的有界帧队列，以吸收短时调度和传输突发。
 - 动画性能测试图案仅在 Debug 构建中编译；Release 产物只保留空操作接口。
 
 ## 验证

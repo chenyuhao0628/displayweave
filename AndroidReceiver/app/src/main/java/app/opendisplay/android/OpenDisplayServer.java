@@ -18,7 +18,6 @@ import app.opendisplay.android.protocol.BinaryFrameHeaderV2;
 
 public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private static final int PORT = 9000;
-    private static final int MAX_PENDING_SERVER_FRAMES = 3;
 
     private final Listener listener;
     private final ExecutorService transportEvents = Executors.newSingleThreadExecutor();
@@ -86,7 +85,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private String lastMacTransport = "wifi";
     private VideoStreamConfig currentStreamConfig = VideoStreamConfig.DEFAULT;
     private final BoundedOrderedQueue<QueuedVideoFrame> pendingVideoFrames =
-            new BoundedOrderedQueue<>(MAX_PENDING_SERVER_FRAMES);
+            new BoundedOrderedQueue<>(FrameQueuePolicy.MAX_PENDING_FRAMES);
     private final ReferenceChainRecovery referenceChainRecovery =
             new ReferenceChainRecovery();
     private final DecodeWorkerState decodeWorkerState = new DecodeWorkerState();

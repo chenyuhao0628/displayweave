@@ -19,7 +19,6 @@ import app.opendisplay.android.protocol.SpsParser;
 public final class H264SurfaceDecoder {
     private static final String LOG_TAG = "DisplayWeaveDecoder";
     private static final int MAX_RENDERED_TELEMETRY = 512;
-    private static final int MAX_PENDING_INPUT_FRAMES = 3;
     private final Surface surface;
     private final DecoderLowLatencyMode lowLatencyMode;
     private volatile Listener listener;
@@ -31,7 +30,7 @@ public final class H264SurfaceDecoder {
     private final DecoderCallbackState callbackState =
             new DecoderCallbackState(MAX_RENDERED_TELEMETRY);
     private final BoundedOrderedQueue<VideoFramePacket> pendingInputFrames =
-            new BoundedOrderedQueue<>(MAX_PENDING_INPUT_FRAMES);
+            new BoundedOrderedQueue<>(FrameQueuePolicy.MAX_PENDING_FRAMES);
     private final ReferenceChainRecovery referenceChainRecovery =
             new ReferenceChainRecovery();
     private HandlerThread renderedCallbackThread;

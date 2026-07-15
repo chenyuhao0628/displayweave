@@ -10,6 +10,7 @@ DisplayWeave 0.2.1-p3 improves high-refresh streaming and connection recovery on
 - Correctly labels the active USB or WiFi transport in stream configuration.
 - Makes the selected transport mode determine which device target the Connect button uses.
 - Reclaims stale DisplayWeave-owned ADB forwards before reconnecting and prevents Android main-thread disconnect handling from blocking on WiFi output.
+- Expands and centralizes the bounded Android server/decoder frame queues to absorb short scheduler and transport bursts.
 - Compiles the animated performance test pattern only in Debug builds; Release artifacts contain only a no-op contract.
 
 ## Validation
