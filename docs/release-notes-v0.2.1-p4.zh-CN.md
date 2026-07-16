@@ -22,3 +22,12 @@ DisplayWeave 0.2.1-p4 修复 WiFi 与 Android USB 重连失败后接收端可能
 - `git diff --check` 通过。
 
 macOS App 仍采用 Ad-hoc 签名且未公证；Android 使用固定的 DisplayWeave Release 证书签名。
+
+## SHA-256
+
+- Android APK：`221dac7f6ee6e59edbf76a30c4f2a70f279ec82f4d588b5c6e24f9226b0279c4`
+- macOS ZIP：`4e8e7d9bf8a72d447b4d3f9bad45df1739dbfbb7f02f114145d928e1269a9ff8`
+- macOS DMG：`6013fc4c11459925591e1caec82b6702f2acd5c5a3df2ed3c0ead6a071aac8f0`
+- iOS 未签名自签输入包：`10ff8351f8c553f6b06c18eed6c03b8c3fa350c5a916af24aae299901cfa5cf0`
+- Sparkle Appcast：`1b295cb241576eb2eca475c1494ea89e57027f8351e377f5636db6018f7870f8`
+- Android 更新清单：`1803ff3710db76afec2ff88f80151427c888c862d8e22f644bf869beada52f71`

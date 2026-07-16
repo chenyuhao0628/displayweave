@@ -1,8 +1,8 @@
 [English](development-preview.md) | [简体中文](development-preview.zh-CN.md)
 
-# DisplayWeave `v0.2.1-p3` 开发分发
+# DisplayWeave `v0.2.1-p4` 开发分发
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p3)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p4)
 
 | 平台/更新源 | 产物 | SHA-256 或信任边界 |
 | --- | --- | --- |
