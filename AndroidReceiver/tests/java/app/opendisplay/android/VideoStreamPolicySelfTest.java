@@ -37,6 +37,7 @@ public final class VideoStreamPolicySelfTest {
         testCodecFallbackStatus();
         testDecoderStallRecoveryPolicy();
         testDecoderReconfigurationPolicy();
+        testFreshDecoderRequestsKeyframeForDefaultConfig();
         testDecoderLowLatencyMode();
         testDecoderSelectionAndFallbackOrder();
         testDecoderCallbackStateOwnership();
@@ -403,6 +404,33 @@ public final class VideoStreamPolicySelfTest {
                 current, VideoStreamConfig.from("hevc", 60, 3040, 1904, 64_000_000)));
         assertTrue(DecoderReconfigurationPolicy.requiresReplacement(
                 current, VideoStreamConfig.from("hevc", 120, 2280, 1428, 64_000_000)));
+    }
+
+    private static void testFreshDecoderRequestsKeyframeForDefaultConfig() {
+        AtomicInteger keyframeRequests = new AtomicInteger();
+        H264SurfaceDecoder.Listener listener = new H264SurfaceDecoder.Listener() {
+            @Override public void onDecoderStatus(String status) { }
+            @Override public void onDecoderReady(DecoderRuntimeInfo info) { }
+            @Override public void onDecoderConfigurationFailed(DecoderRuntimeInfo info) { }
+            @Override public void onDecoderNeedsKeyframe() { keyframeRequests.incrementAndGet(); }
+            @Override public void onDecoderCodecFailure(String codec, String message) { }
+            @Override public void onDecoderFrameDropped(
+                    AndroidDropReason reason, VideoFrameTelemetry telemetry) { }
+            @Override public void onDecoderFrameSubmitted() { }
+            @Override public void onDecoderPendingQueueOverflow() { }
+            @Override public void onDecoderRecoveryStarted() { }
+            @Override public void onDecoderRecoveryCompleted(long durationMs) { }
+            @Override public void onDecoderFrameDecoded() { }
+            @Override public void onDecoderFrameRendered(VideoFrameTelemetry telemetry) { }
+        };
+        H264SurfaceDecoder freshDecoder = new H264SurfaceDecoder(null, listener);
+
+        // This is the exact reconnect edge case: the decoder starts with the
+        // same H.264/60 defaults, so the old changed-only logic requested no
+        // replacement keyframe after the first one raced past decoder attach.
+        freshDecoder.applyStreamConfig("h264", 60, 1920, 1080);
+
+        assertEquals(1, keyframeRequests.get());
     }
 
     private static void testDecoderLowLatencyMode() {

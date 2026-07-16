@@ -86,8 +86,15 @@ public final class H264SurfaceDecoder {
         }
         if (changed) {
             release();
-            listener.onDecoderNeedsKeyframe();
         }
+        // A newly-created decoder has no parameter sets even when the incoming
+        // configuration is byte-for-byte equivalent to DEFAULT (H.264/60).
+        // During reconnect the Mac's first forced keyframe can race with the
+        // asynchronous decoder replacement and be dropped while no decoder is
+        // attached. Always request a fresh keyframe after applying a stream
+        // configuration so that race cannot leave the protocol permanently
+        // waiting for decoderReady.
+        listener.onDecoderNeedsKeyframe();
         listener.onDecoderStatus("视频配置 " + streamConfig.codec + " / " + streamConfig.fps + "fps");
     }
 

@@ -16,6 +16,19 @@ enum BitrateTransport {
     case wifi, usb
 }
 
+enum EncoderCallbackDisposition: Equatable {
+    case output
+    case dropped
+    case failed
+}
+
+enum EncoderCallbackPolicy {
+    static func disposition(status: Int32, hasSampleBuffer: Bool) -> EncoderCallbackDisposition {
+        guard status == 0 else { return .failed }
+        return hasSampleBuffer ? .output : .dropped
+    }
+}
+
 enum StreamEncodingPolicy {
     static func bitrateBounds(codec: StreamCodec,
                               transport: BitrateTransport) -> ClosedRange<Int> {

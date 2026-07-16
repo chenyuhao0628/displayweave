@@ -21,6 +21,16 @@ func assertTrue(_ value: Bool, _ message: String) {
 @main
 struct StreamEncodingPolicySelfTest {
     static func main() {
+        assertTrue(
+            EncoderCallbackPolicy.disposition(status: 0, hasSampleBuffer: true) == .output,
+            "successful callbacks with a sample buffer produce output")
+        assertTrue(
+            EncoderCallbackPolicy.disposition(status: 0, hasSampleBuffer: false) == .dropped,
+            "a noErr callback without a sample is a dropped frame, not codec failure")
+        assertTrue(
+            EncoderCallbackPolicy.disposition(status: -12902, hasSampleBuffer: false) == .failed,
+            "a nonzero VideoToolbox status is an encoder failure")
+
         assertEqual(.h264,
                     StreamEncodingPolicy.selectedCodec(
                         supportedCodecs: ["h264", "hevc"],

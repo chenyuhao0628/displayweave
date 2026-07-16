@@ -1543,13 +1543,28 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             Log.info("dropping duplicate/unmatched encode completion")
             return
         }
-        guard status == noErr, let buffer else {
+        switch EncoderCallbackPolicy.disposition(
+            status: status,
+            hasSampleBuffer: buffer != nil
+        ) {
+        case .failed:
             if forcedKeyframeReason != nil {
                 keyframeRequests.completeInFlightRequest(encodedKeyframe: false)
             }
             handleEncodeFailure(status: status)
             return
+        case .dropped:
+            if forcedKeyframeReason != nil {
+                keyframeRequests.completeInFlightRequest(encodedKeyframe: false)
+            }
+            dropsThisWindow += 1
+            dropsTotal += 1
+            Log.info("encoder dropped frame without output status=\(status) codec=\(streamCodec.label)")
+            return
+        case .output:
+            break
         }
+        guard let buffer else { return }
         let isKeyframe = Self.isKeyframe(buffer)
         if forcedKeyframeReason != nil {
             keyframeRequests.completeInFlightRequest(encodedKeyframe: isKeyframe)
