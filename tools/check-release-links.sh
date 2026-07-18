@@ -37,6 +37,23 @@ grep -R -Fq "$tag" "${sources[@]}" || {
   exit 1
 }
 
+grep -Fq "export const releaseTag = \"$tag\"" src/content.ts || {
+  echo "site releaseTag does not match current release: $tag" >&2
+  exit 1
+}
+grep -Fq "\"softwareVersion\": \"${tag#v}\"" index.html || {
+  echo "site structured-data version does not match current release: $tag" >&2
+  exit 1
+}
+grep -Fq "\"versionName\": \"${tag#v}\"" public/android-update.json || {
+  echo "checked-in Android feed does not match current release: $tag" >&2
+  exit 1
+}
+grep -Fq "<sparkle:shortVersionString>${tag#v}</sparkle:shortVersionString>" public/appcast.xml || {
+  echo "checked-in Sparkle feed does not match current release: $tag" >&2
+  exit 1
+}
+
 for asset in "${assets[@]}"; do
   grep -R -Fq "$asset" "${sources[@]}" || {
     echo "missing release asset reference: $asset" >&2
