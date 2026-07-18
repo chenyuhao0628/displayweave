@@ -22,3 +22,12 @@ DisplayWeave 0.2.1-p5 加固 Android 对异常 H.264 配置数据的处理，并
 - `git diff --check` 通过。
 
 macOS App 仍采用 Ad-hoc 签名且未公证；Android 使用固定的 DisplayWeave Release 证书签名。本补丁未重新执行 WiFi 与 USB 真机重连验证。
+
+## SHA-256
+
+- Android APK：`283b27a593063047a810c2cf9de255f64e87f0e7eb50e79701488b7bcfb46f22`
+- macOS ZIP：`331faad563cf81c3e9582246d7a1d283a6c388bdd3dc339d28e7454694dc2fc8`
+- macOS DMG：`b6454ff3b62aeb4cb2d2af644424a3c9ae63061ce4ff10df4c3a071c9056d61a`
+- iOS 未签名自签输入包：`2ca4b21359c30ea0d604e2d5a9747dc4aa315610fa86e8b131afe1ef03da26a0`
+- Sparkle Appcast：`3bc5becfd6d2e4c1e5321acc231e9b25cca5404592a40d0371b651f3308a12c9`
+- Android 更新清单：`61da584c4b78ff0e2f2eb8292a60fbc6a732bfa49bbd2f989c0aaee2c4f22d1b`
