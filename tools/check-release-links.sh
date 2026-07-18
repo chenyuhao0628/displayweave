@@ -54,6 +54,20 @@ grep -Fq "<sparkle:shortVersionString>${tag#v}</sparkle:shortVersionString>" pub
   exit 1
 }
 
+mirror_base="https://downloads.urlget.cyou/releases/$tag"
+grep -Fq 'export const releaseBase = `https://downloads.urlget.cyou/releases/${releaseTag}`' src/content.ts || {
+  echo "site download base does not use the Cloudflare mirror: $mirror_base" >&2
+  exit 1
+}
+grep -Fq "<enclosure url=\"$mirror_base/DisplayWeave-macOS.zip\"" public/appcast.xml || {
+  echo "Sparkle enclosure does not use the Cloudflare mirror" >&2
+  exit 1
+}
+grep -Fq '"apkUrl": "https://github.com/chenyuhao0628/displayweave/releases/download/'"$tag"'/DisplayWeave-Android.apk"' public/android-update.json || {
+  echo "Android p5 migration feed no longer uses its trusted GitHub host" >&2
+  exit 1
+}
+
 for asset in "${assets[@]}"; do
   grep -R -Fq "$asset" "${sources[@]}" || {
     echo "missing release asset reference: $asset" >&2
