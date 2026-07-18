@@ -18,6 +18,10 @@ public final class SpsParser {
 
         if (isHighProfile(profileIdc)) {
             int chromaFormatIdc = bits.readUE();
+            if (chromaFormatIdc > 3) {
+                throw new SpsParseException(
+                        "invalid SPS chroma_format_idc: " + chromaFormatIdc);
+            }
             if (chromaFormatIdc == 3) {
                 bits.readBit();
             }
@@ -43,6 +47,10 @@ public final class SpsParser {
             bits.readSE();
             bits.readSE();
             int cycle = bits.readUE();
+            if (cycle > 255) {
+                throw new SpsParseException(
+                        "invalid SPS pic order cycle: " + cycle);
+            }
             for (int i = 0; i < cycle; i++) {
                 bits.readSE();
             }
@@ -69,11 +77,16 @@ public final class SpsParser {
             cropBottom = bits.readUE();
         }
 
-        int width = (picWidthInMbsMinus1 + 1) * 16;
-        int height = (picHeightInMapUnitsMinus1 + 1) * 16 * (frameMbsOnly ? 1 : 2);
-        width -= (cropLeft + cropRight) * 2;
-        height -= (cropTop + cropBottom) * 2;
-        return new Size(width, height);
+        long width = ((long) picWidthInMbsMinus1 + 1) * 16;
+        long height = ((long) picHeightInMapUnitsMinus1 + 1)
+                * 16 * (frameMbsOnly ? 1 : 2);
+        width -= ((long) cropLeft + cropRight) * 2;
+        height -= ((long) cropTop + cropBottom) * 2;
+        if (width <= 0 || height <= 0 || width > 32768 || height > 32768) {
+            throw new SpsParseException(
+                    "invalid SPS dimensions: " + width + "x" + height);
+        }
+        return new Size((int) width, (int) height);
     }
 
     private static boolean isHighProfile(int profileIdc) {
@@ -132,6 +145,12 @@ public final class SpsParser {
         }
     }
 
+    public static final class SpsParseException extends RuntimeException {
+        public SpsParseException(String message) {
+            super(message);
+        }
+    }
+
     private static final class BitReader {
         private final byte[] data;
         private int bitOffset = 0;
@@ -145,9 +164,17 @@ public final class SpsParser {
         }
 
         int readBits(int count) {
+            if (count < 0 || count > 32) {
+                throw new SpsParseException("invalid SPS bit count: " + count);
+            }
             int value = 0;
             for (int i = 0; i < count; i++) {
                 int byteIndex = bitOffset / 8;
+                if (byteIndex >= data.length) {
+                    throw new SpsParseException(
+                            "truncated SPS at bit " + bitOffset
+                                    + " of " + (data.length * 8));
+                }
                 int shift = 7 - (bitOffset % 8);
                 bitOffset++;
                 value = (value << 1) | ((data[byteIndex] >> shift) & 1);
@@ -159,6 +186,11 @@ public final class SpsParser {
             int zeros = 0;
             while (!readBit()) {
                 zeros++;
+                // An unsigned Exp-Golomb value with 31 leading zeroes cannot
+                // be represented by the signed int returned by this parser.
+                if (zeros >= 31) {
+                    throw new SpsParseException("SPS ue(v) exceeds int range");
+                }
             }
             int suffix = zeros == 0 ? 0 : readBits(zeros);
             return (1 << zeros) - 1 + suffix;

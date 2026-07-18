@@ -88,7 +88,20 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var keyframeRequests = KeyframeRequestTracker(initialReason: .streamReconfigure)
     private var needsKeyframe: Bool { keyframeRequests.hasPendingRequest }
     private var connectionReady = false
-    private var stopped = false
+    private let stoppedLock = NSLock()
+    private var stoppedStorage = false
+    private var stopped: Bool {
+        get {
+            stoppedLock.lock()
+            defer { stoppedLock.unlock() }
+            return stoppedStorage
+        }
+        set {
+            stoppedLock.lock()
+            stoppedStorage = newValue
+            stoppedLock.unlock()
+        }
+    }
     // The liveness monitors are self-rescheduling chains guarded only by
     // `stopped`; arm them at most once per instance so a double start() can't
     // stack parallel loops (the failure mode behind #75). Mirrors the
@@ -317,7 +330,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                           userInfo: [NSLocalizedDescriptionKey: "创建虚拟显示器失败"])
         }
         Log.info("virtual display refresh selected: requested=\(requestedRefreshRate) actual=\(vd.actualRefreshRate) deviceMaxFps=\(info.negotiatedMaxFps) fallback=\(vd.refreshRateFallbackReason ?? "none")")
-        virtualDisplay = vd
+        queue.sync { virtualDisplay = vd }
         inputInjector = InputInjector(displayID: vd.displayID)
 
         let display = try await findSCDisplay(id: vd.displayID)
@@ -359,16 +372,25 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         var target = info
         while !stopped {
             Log.info("reconfiguring for \(target.pixelsWide)x\(target.pixelsHigh)")
-            if let stream { try? await stream.stopCapture() }
-            stream = nil
-            if let encoder { VTCompressionSessionInvalidate(encoder) }
-            encoder = nil
             let testPatternOwnerID = self.testPatternOwnerID
             await MainActor.run {
                 TestPattern.hide(ownerID: testPatternOwnerID)
             }
-            virtualDisplay = nil   // removes the old display
-            requestKeyframe(.streamReconfigure)
+            let detached: (stream: SCStream?, display: VirtualDisplay?) = queue.sync {
+                let activeStream = stream
+                stream = nil
+                if let encoder { VTCompressionSessionInvalidate(encoder) }
+                encoder = nil
+                let activeDisplay = virtualDisplay
+                virtualDisplay = nil
+                requestKeyframe(.streamReconfigure)
+                return (activeStream, activeDisplay)
+            }
+            if let activeStream = detached.stream {
+                try? await activeStream.stopCapture()
+            }
+            // Releasing the detached object on MainActor removes the display.
+            withExtendedLifetime(detached.display) {}
             do {
                 try await setupExtend(target)
             } catch {
@@ -404,28 +426,42 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         let filter = SCContentFilter(display: display, excludingWindows: [])
 
         let captureFps = RefreshRatePolicy.sanitize(fps)
-        requestedCaptureFps = captureFps
-        actualVirtualDisplayRefreshRate = RefreshRatePolicy.sanitize(virtualDisplayRefreshRate)
-        lastCaptureFpsWarningAt = Date.distantPast
-
-        let config = makeCaptureConfiguration(
-            width: pixelsWide, height: pixelsHigh, fps: captureFps)
-
-        setupEncoder(width: pixelsWide, height: pixelsHigh, fps: captureFps, preferredCodec: codec)
-        activeStreamWidth = pixelsWide
-        activeStreamHeight = pixelsHigh
-        sendStreamConfig(width: pixelsWide, height: pixelsHigh)
+        let prepared = queue.sync { () -> (SCStreamConfiguration, StreamCodec, Int, Int)? in
+            guard !stopped else { return nil }
+            requestedCaptureFps = captureFps
+            actualVirtualDisplayRefreshRate = RefreshRatePolicy.sanitize(
+                virtualDisplayRefreshRate)
+            lastCaptureFpsWarningAt = Date.distantPast
+            let config = makeCaptureConfiguration(
+                width: pixelsWide, height: pixelsHigh, fps: captureFps)
+            setupEncoder(
+                width: pixelsWide, height: pixelsHigh,
+                fps: captureFps, preferredCodec: codec)
+            activeStreamWidth = pixelsWide
+            activeStreamHeight = pixelsHigh
+            sendStreamConfig(width: pixelsWide, height: pixelsHigh)
+            return (config, streamCodec, streamBitrate, actualVirtualDisplayRefreshRate)
+        }
+        guard let prepared else { throw CancellationError() }
+        let config = prepared.0
 
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
         try await stream.startCapture()
-        self.stream = stream
-        captureDisplayID = display.displayID
-        lastCursorPNGHash = 0      // rotation rebuilds: re-send the sprite
-        lastCursorSent = (-1, -1, false)
+        let kind = queue.sync { () -> String? in
+            guard !stopped else { return nil }
+            self.stream = stream
+            captureDisplayID = display.displayID
+            lastCursorPNGHash = 0      // rotation rebuilds: re-send the sprite
+            lastCursorSent = (-1, -1, false)
+            return lastHello?.kind ?? "设备"
+        }
+        guard let kind else {
+            try? await stream.stopCapture()
+            throw CancellationError()
+        }
         startCursorEcho()
-        Log.info("capture started: \(pixelsWide)x\(pixelsHigh) display \(display.displayID) mode \(mode.rawValue) requestedCaptureFps=\(captureFps) actualVirtualDisplayRefreshRate=\(actualVirtualDisplayRefreshRate) codec=\(streamCodec.rawValue) bitrate=\(streamBitrate) minimumFrameInterval=1/\(RefreshRatePolicy.captureIntervalTimescale(fps: captureFps)) localCursor=\(localCursor)")
-        let kind = lastHello?.kind ?? "设备"
+        Log.info("capture started: \(pixelsWide)x\(pixelsHigh) display \(display.displayID) mode \(mode.rawValue) requestedCaptureFps=\(captureFps) actualVirtualDisplayRefreshRate=\(prepared.3) codec=\(prepared.1.rawValue) bitrate=\(prepared.2) minimumFrameInterval=1/\(RefreshRatePolicy.captureIntervalTimescale(fps: captureFps)) localCursor=\(localCursor)")
         await status("\(mode == .extend ? "正在扩展到" : "正在镜像到") \(kind)（\(pixelsWide)×\(pixelsHigh)）")
     }
 
@@ -456,26 +492,29 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         cursorTimer = nil
         cursorImageTimer?.cancel()
         cursorImageTimer = nil
-        stream?.stopCapture { _ in }
-        stream = nil
-        queue.sync {
+        TestPattern.hide(ownerID: testPatternOwnerID)
+        let detached: (stream: SCStream?, display: VirtualDisplay?) = queue.sync {
+            let activeStream = stream
+            stream = nil
             invalidateConnection()
             cancelPendingReconnect()
             dialGeneration &+= 1
             connectionReady = false
             pendingSends = 0
             pendingSendStartedAt.removeAll()
-        }
-        if let encoder { VTCompressionSessionInvalidate(encoder) }
-        encoder = nil
-        TestPattern.hide(ownerID: testPatternOwnerID)
-        virtualDisplay = nil   // releasing it removes the display
-        queue.async { [weak self] in
-            self?.finishBenchmarkOnQueue(message: "Benchmark stopped with session")
+            if let encoder { VTCompressionSessionInvalidate(encoder) }
+            encoder = nil
+            let activeDisplay = virtualDisplay
+            virtualDisplay = nil
+            finishBenchmarkOnQueue(message: "Benchmark stopped with session")
             // Unblock a start() that is still waiting for the hello.
-            self?.helloContinuation?.resume(throwing: CancellationError())
-            self?.helloContinuation = nil
+            helloContinuation?.resume(throwing: CancellationError())
+            helloContinuation = nil
+            return (activeStream, activeDisplay)
         }
+        detached.stream?.stopCapture { _ in }
+        // Releasing the detached object on MainActor removes the display.
+        withExtendedLifetime(detached.display) {}
     }
 
     @MainActor
@@ -534,9 +573,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         Task { await status("捕获已停止：\(error.localizedDescription)") }
         // E.g. display sleep can tear the virtual display down underneath the
         // stream — rebuild instead of sitting dead until an app restart.
-        guard !stopped, mode == .extend else { return }
-        self.stream = nil
-        scheduleCaptureRecovery()
+        queue.async { [weak self, weak stream] in
+            guard let self, let stream,
+                  !self.stopped, self.mode == .extend,
+                  self.stream === stream else { return }
+            self.stream = nil
+            self.scheduleCaptureRecovery()
+        }
     }
 
     /// Retry until capture is back (a rebuild during display sleep can fail).
@@ -1622,8 +1665,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private static func isKeyframe(_ sample: CMSampleBuffer) -> Bool {
         guard let attachments = CMSampleBufferGetSampleAttachmentsArray(
             sample, createIfNecessary: false) as? [[CFString: Any]],
-              let first = attachments.first else { return false }
-        return first[kCMSampleAttachmentKey_NotSync] == nil
+              let first = attachments.first else { return true }
+        return !(first[kCMSampleAttachmentKey_NotSync] as? Bool ?? false)
     }
 
     private func recordEncodedFrame(bytes: Int, isKeyframe: Bool, latencyMs: Double) {
@@ -1677,7 +1720,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
         var out = Data(capacity: total + 128)
         // On keyframes, prepend codec parameter sets from the format description.
-        if isKeyframe(sample), let fmt = CMSampleBufferGetFormatDescription(sample) {
+        if Self.isKeyframe(sample), let fmt = CMSampleBufferGetFormatDescription(sample) {
             let count = parameterSetCount(from: fmt)
             for i in 0..<count {
                 if let parameterSet = parameterSet(from: fmt, index: i) {
@@ -1736,12 +1779,6 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         }
         guard status == noErr, let pointer else { return nil }
         return Data(bytes: pointer, count: size)
-    }
-
-    private func isKeyframe(_ sample: CMSampleBuffer) -> Bool {
-        guard let arr = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false),
-              let dict = (arr as? [[CFString: Any]])?.first else { return true }
-        return !(dict[kCMSampleAttachmentKey_NotSync] as? Bool ?? false)
     }
 
     // MARK: - Wire framing: [4-byte big-endian length][payload]

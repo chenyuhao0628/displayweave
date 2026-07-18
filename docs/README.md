@@ -14,6 +14,7 @@
 - [`v0.2.1-p2` release notes](release-notes-v0.2.1-p2.md)
 - [`v0.2.1-p3` release notes](release-notes-v0.2.1-p3.md)
 - [`v0.2.1-p4` release notes](release-notes-v0.2.1-p4.md)
+- [`v0.2.1-p5` release notes](release-notes-v0.2.1-p5.md)
 - [Release checklist](release-checklist.md)
 - [Mac and Android automatic updates](automatic-updates.md)
 - [Stability and physical-device evidence](stability-test-report.md)

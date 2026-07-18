@@ -135,9 +135,19 @@ public final class H264SurfaceDecoder {
                 listener.onDecoderNeedsKeyframe();
                 return;
             }
-            SpsParser.Size size = streamConfig.isHevc()
-                    ? new SpsParser.Size(streamConfig.width, streamConfig.height)
-                    : SpsParser.parseDimensions(sps);
+            SpsParser.Size size;
+            try {
+                size = streamConfig.isHevc()
+                        ? new SpsParser.Size(streamConfig.width, streamConfig.height)
+                        : SpsParser.parseDimensions(sps);
+            } catch (SpsParser.SpsParseException error) {
+                Log.w(LOG_TAG, "unable to parse H.264 SPS: " + error.getMessage());
+                listener.onDecoderStatus("无法解析 H.264 SPS");
+                listener.onDecoderFrameDropped(
+                        AndroidDropReason.MALFORMED_ANNEX_B, telemetry);
+                listener.onDecoderNeedsKeyframe();
+                return;
+            }
             if (size == null || size.width <= 0 || size.height <= 0) {
                 listener.onDecoderStatus("无法解析 H.264 SPS");
                 listener.onDecoderNeedsKeyframe();

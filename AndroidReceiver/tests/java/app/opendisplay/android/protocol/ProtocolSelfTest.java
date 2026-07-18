@@ -38,6 +38,7 @@ public final class ProtocolSelfTest {
         testAnnexBSinglePassSummaryUsesPayloadRanges();
         testAnnexBFindsHevcParameterSets();
         testSpsParser();
+        testSpsParserRejectsMalformedInput();
         testMacCursorControlMessage();
         testTouchPointerIndexIsSafe();
         testScrollJson();
@@ -446,6 +447,22 @@ public final class ProtocolSelfTest {
         SpsParser.Size size = SpsParser.parseDimensions(sps);
         assertEquals(1280, size.width);
         assertEquals(720, size.height);
+    }
+
+    private static void testSpsParserRejectsMalformedInput() {
+        assertSpsParseFailure(new byte[] {0x67, 66, 0, 30});
+        assertSpsParseFailure(new byte[] {
+                0x67, 66, 0, 30, 0, 0, 0, 0, (byte) 0x80
+        });
+    }
+
+    private static void assertSpsParseFailure(byte[] sps) {
+        try {
+            SpsParser.parseDimensions(sps);
+            throw new AssertionError("expected controlled SPS parse failure");
+        } catch (SpsParser.SpsParseException expected) {
+            assertTrue(expected.getMessage() != null && !expected.getMessage().isEmpty());
+        }
     }
 
     private static void testMacCursorControlMessage() {

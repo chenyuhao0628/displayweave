@@ -119,6 +119,14 @@ public final class ReceiverConnectionSelfTest {
         workerState.markIdle();
         require(workerState.markFrameAvailable(),
                 "a frame arriving after the worker becomes idle must schedule work");
+        require(workerState.markIdleAndCheckForPendingFrame(true),
+                "worker teardown must atomically reschedule already queued work");
+        require(!workerState.markFrameAvailable(),
+                "the recovery reschedule must still permit only one worker");
+        require(!workerState.markIdleAndCheckForPendingFrame(false),
+                "worker teardown without queued work must stay idle");
+        require(workerState.markFrameAvailable(),
+                "new work must schedule after an empty recovery teardown");
 
         System.out.println("ReceiverConnectionSelfTest PASS");
     }

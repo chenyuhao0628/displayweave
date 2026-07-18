@@ -19,4 +19,9 @@ final class DecodeWorkerState {
     void markIdle() {
         scheduled = false;
     }
+
+    boolean markIdleAndCheckForPendingFrame(boolean hasPendingFrame) {
+        scheduled = false;
+        return hasPendingFrame && markFrameAvailable();
+    }
 }

@@ -46,7 +46,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private volatile long decoderConfigVersion;
     private volatile boolean decoderAwaitingFreshConfig;
     private volatile long streamingGeneration;
-    private Double clockOffsetMs;
+    private volatile Double clockOffsetMs;
     private final ClockOffsetEstimator clockEstimator = new ClockOffsetEstimator(8);
     private int renderedFrames;
     private int decodedFrames;
@@ -336,7 +336,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     }
 
     public void sendTouch(String phase, double x, double y) {
-        Double macTime = clockOffsetMs == null ? null : LengthPrefixedProtocol.nowMs() + clockOffsetMs;
+        Double offset = clockOffsetMs;
+        Double macTime = offset == null ? null : LengthPrefixedProtocol.nowMs() + offset;
         sendJson(LengthPrefixedProtocol.touchJson(phase, x, y, macTime));
     }
 
@@ -443,23 +444,38 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     }
 
     private void drainLatestVideoFrames() {
-        while (running) {
-            QueuedVideoFrame queued;
-            synchronized (this) {
-                queued = pendingVideoFrames.poll();
-                queueDepthAndroid = pendingVideoFrames.size();
-                if (queued == null) {
-                    decodeWorkerState.markIdle();
-                    return;
+        boolean requestRecovery = false;
+        try {
+            while (running) {
+                QueuedVideoFrame queued;
+                synchronized (this) {
+                    queued = pendingVideoFrames.poll();
+                    queueDepthAndroid = pendingVideoFrames.size();
+                    if (queued == null) {
+                        return;
+                    }
                 }
+                if (!connectionCoordinator.isCurrent(queued.generation)) {
+                    continue;
+                }
+                queueFrameIfCurrentDecoder(queued.generation, queued.frame);
             }
-            if (!connectionCoordinator.isCurrent(queued.generation)) {
-                continue;
+        } catch (RuntimeException error) {
+            android.util.Log.e(
+                    "DisplayWeave", "decoder worker dropped a malformed frame", error);
+            requestRecovery = true;
+        } finally {
+            boolean reschedule;
+            synchronized (this) {
+                reschedule = decodeWorkerState.markIdleAndCheckForPendingFrame(
+                        running && !pendingVideoFrames.isEmpty());
             }
-            queueFrameIfCurrentDecoder(queued.generation, queued.frame);
-        }
-        synchronized (this) {
-            decodeWorkerState.markIdle();
+            if (reschedule) {
+                decoderWorker.execute(this::drainLatestVideoFrames);
+            }
+            if (requestRecovery) {
+                requestKeyframe();
+            }
         }
     }
 
@@ -475,9 +491,12 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         if (!connectionCoordinator.isCurrent(generation)) {
             return;
         }
+        String messageType = "unknown";
+        boolean streamConfigCommitted = false;
         try {
             JSONObject object = new JSONObject(json);
             String type = object.optString("type", "");
+            messageType = type;
             if ("ping".equals(type)) {
                 double t = object.optDouble("t", 0);
                 MacPingMetrics macMetrics = MacPingMetrics.parse(
@@ -536,6 +555,30 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     int protocolVersion = object.optInt("protocolVersion", 1);
                     long sessionEpoch = object.optLong("sessionEpoch", 0);
                     long configVersion = object.optLong("configVersion", 0);
+                    DisplaySpec activeDisplaySpec = displaySpec;
+                    if (activeDisplaySpec == null) {
+                        throw new IllegalStateException("streamConfig received without display spec");
+                    }
+                    VideoStreamConfig config = VideoStreamConfig.from(
+                            object.optString("codec", "h264"),
+                            object.optInt("fps", 60),
+                            object.optInt("width", activeDisplaySpec.pixelsWide),
+                            object.optInt("height", activeDisplaySpec.pixelsHigh),
+                            object.optInt("bitrate", 0));
+                    if (config.width <= 0 || config.height <= 0) {
+                        throw new IllegalArgumentException(
+                                "invalid stream dimensions " + config.width + "x" + config.height);
+                    }
+                    boolean requestedV2 = protocolVersion >= 2;
+                    int negotiatedMaxFrameBytes = LengthPrefixedProtocol.LEGACY_MAX_FRAME_BYTES;
+                    if (requestedV2) {
+                        int requestedMaxFrameBytes = object.optInt(
+                                "maxFrameBytes",
+                                LengthPrefixedProtocol.V2_DEFAULT_MAX_FRAME_BYTES);
+                        negotiatedMaxFrameBytes =
+                                LengthPrefixedProtocol.negotiatedV2FrameLimit(
+                                        requestedMaxFrameBytes);
+                    }
                     if (!protocolSession.acceptStreamConfig(
                             generation, protocolVersion, sessionEpoch, configVersion)) {
                         android.util.Log.w("DisplayWeave", "rejected stale/invalid streamConfig"
@@ -544,15 +587,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                                 + " configVersion=" + configVersion);
                         return;
                     }
-                    int negotiatedMaxFrameBytes = LengthPrefixedProtocol.LEGACY_MAX_FRAME_BYTES;
-                    if (protocolSession.isNegotiatedV2()) {
-                        int requestedMaxFrameBytes = object.optInt(
-                                "maxFrameBytes",
-                                LengthPrefixedProtocol.V2_DEFAULT_MAX_FRAME_BYTES);
-                        negotiatedMaxFrameBytes =
-                                LengthPrefixedProtocol.negotiatedV2FrameLimit(
-                                        requestedMaxFrameBytes);
-                    }
+                    streamConfigCommitted = true;
                     transport.setMaxFrameBytes(generation, negotiatedMaxFrameBytes);
                     resetQueuedFrames();
                     if (protocolSession.isNegotiatedV2()) {
@@ -569,12 +604,6 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                             "streamConfigReceived",
                             sessionEpoch,
                             configVersion);
-                    VideoStreamConfig config = VideoStreamConfig.from(
-                            object.optString("codec", "h264"),
-                            object.optInt("fps", 60),
-                            object.optInt("width", displaySpec.pixelsWide),
-                            object.optInt("height", displaySpec.pixelsHigh),
-                            object.optInt("bitrate", 0));
                     VideoStreamConfig previousConfig = currentStreamConfig;
                     currentStreamConfig = config;
                     lastMacTransport = object.optString("transport", lastMacTransport);
@@ -607,7 +636,12 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     configureDecoderForIdentity(
                             generation, sessionEpoch, configVersion, previousConfig, config);
             }
-        } catch (Exception ignored) {
+        } catch (Exception error) {
+            android.util.Log.e(
+                    "DisplayWeave", "failed to handle Mac message type=" + messageType, error);
+            if (streamConfigCommitted && connectionCoordinator.isCurrent(generation)) {
+                requestKeyframe();
+            }
         }
     }
 
