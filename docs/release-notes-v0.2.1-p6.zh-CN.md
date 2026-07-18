@@ -23,3 +23,14 @@ p6 及以后版本即可自动使用 Cloudflare，并在其网络不可用时回
 
 本版本继续提供带引导的 macOS DMG、Sparkle ZIP、已签名 Android APK、未签名
 iOS 自签输入包、已签名更新源和 `SHA256SUMS.txt`。
+
+| 产物 | SHA-256 |
+| --- | --- |
+| `DisplayWeave-macOS.zip` | `d1b5bef839322f34d0cd31067aa78776108a6014233677869fb394b3bc12b44a` |
+| `DisplayWeave-macOS.dmg` | `441651dcb54304f2ec147ebdc35db7808d92812631496b99e17f41394f31c691` |
+| `DisplayWeave-Android.apk` | `123fea1468335f8412b0f8620623c3c9fa681b36ef5e9e3190e3b1ec2c812083` |
+| `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `7430569bb68db065a056f827b0538eca780a65455dbed3ce0d69e3503c0320a8` |
+| `appcast.xml` | `bf1429a9774c2a2661136832902bc4e032a32b0b83108ea3b567ff206dd7df0c` |
+| `android-update.json` | `4fc43c7606b40f786d21872ab3dd1243ecd79308237e75cb3aaff1e84acdb377` |
+
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p6) · [Cloudflare 镜像](https://downloads.urlget.cyou/releases/v0.2.1-p6/SHA256SUMS.txt)

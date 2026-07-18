@@ -11,9 +11,9 @@ DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases an
 - Android artifact: `DisplayWeave-Android.apk`
 
 The current migration release is
-[`v0.2.1-p5`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p5).
-Older builds cannot discover this channel by themselves: install this release
-manually once, then use automatic updates for later versions.
+[`v0.2.1-p6`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p6).
+Android p5 cannot trust the new Cloudflare hostname, so install p6 manually once.
+p6 and later can use the dual-source channel automatically.
 This release includes both the guided DMG and the Sparkle ZIP payload.
 
 The Mac build is ad-hoc signed and not notarized. Sparkle authenticates its ZIP with the embedded EdDSA public key, so subsequent updates can be verified without Apple Developer Program credentials. This does not make the first download Gatekeeper-trusted or equivalent to a notarized release.
@@ -32,8 +32,9 @@ After this migration, Sparkle checks the signed appcast automatically and may in
 
 1. Manually install the first update-capable APK over the current `app.opendisplay.android` app. It must be signed with the existing DisplayWeave certificate; otherwise Android refuses replacement.
 2. The app checks at most once per 24 hours when it resumes. **设置与帮助 → 检查更新** bypasses that throttle.
-3. When an update is found, the app downloads it and verifies its byte count, SHA-256, package name, version code, minimum SDK, and signing certificate.
-4. On the first update, Android may ask to allow this app to install unknown apps. Return to DisplayWeave after granting it. The Android Package Installer always presents the final confirmation; silent installation is not supported.
+3. The p6 client tries `downloads.urlget.cyou` first and falls back to the exact matching GitHub Release only for connection, HTTP availability, or transport failures.
+4. When an update is found, the app downloads it and verifies its byte count, SHA-256, package name, version code, minimum SDK, and signing certificate through one shared verification path. Integrity or identity failures never trigger another mirror.
+5. On the first update, Android may ask to allow this app to install unknown apps. Return to DisplayWeave after granting it. The Android Package Installer always presents the final confirmation; silent installation is not supported.
 
 Declining the permission or installation leaves the receiver usable and does not affect Mac/iPhone connections.
 

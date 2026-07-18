@@ -4,7 +4,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
-tag="v0.2.1-p5"
+tag="v0.2.1-p6"
 assets=(
   "DisplayWeave-Android.apk"
   "DisplayWeave-macOS.zip"
@@ -15,19 +15,19 @@ assets=(
   "SHA256SUMS.txt"
 )
 hashes=(
-  "283b27a593063047a810c2cf9de255f64e87f0e7eb50e79701488b7bcfb46f22"
-  "331faad563cf81c3e9582246d7a1d283a6c388bdd3dc339d28e7454694dc2fc8"
-  "b6454ff3b62aeb4cb2d2af644424a3c9ae63061ce4ff10df4c3a071c9056d61a"
-  "2ca4b21359c30ea0d604e2d5a9747dc4aa315610fa86e8b131afe1ef03da26a0"
-  "3bc5becfd6d2e4c1e5321acc231e9b25cca5404592a40d0371b651f3308a12c9"
-  "61da584c4b78ff0e2f2eb8292a60fbc6a732bfa49bbd2f989c0aaee2c4f22d1b"
+  "123fea1468335f8412b0f8620623c3c9fa681b36ef5e9e3190e3b1ec2c812083"
+  "d1b5bef839322f34d0cd31067aa78776108a6014233677869fb394b3bc12b44a"
+  "441651dcb54304f2ec147ebdc35db7808d92812631496b99e17f41394f31c691"
+  "7430569bb68db065a056f827b0538eca780a65455dbed3ce0d69e3503c0320a8"
+  "bf1429a9774c2a2661136832902bc4e032a32b0b83108ea3b567ff206dd7df0c"
+  "4fc43c7606b40f786d21872ab3dd1243ecd79308237e75cb3aaff1e84acdb377"
 )
 sources=(
   src index.html README.md README.zh-CN.md
   AndroidReceiver/README.md AndroidReceiver/README.zh-CN.md
   docs/development-preview.md docs/development-preview.zh-CN.md
-  docs/release-notes-v0.2.1-p5.md
-  docs/release-notes-v0.2.1-p5.zh-CN.md
+  docs/release-notes-v0.2.1-p6.md
+  docs/release-notes-v0.2.1-p6.zh-CN.md
   docs/release-checklist.md docs/release-checklist.zh-CN.md
   docs/automatic-updates.md docs/automatic-updates.zh-CN.md
 )
@@ -63,8 +63,12 @@ grep -Fq "<enclosure url=\"$mirror_base/DisplayWeave-macOS.zip\"" public/appcast
   echo "Sparkle enclosure does not use the Cloudflare mirror" >&2
   exit 1
 }
-grep -Fq '"apkUrl": "https://github.com/chenyuhao0628/displayweave/releases/download/'"$tag"'/DisplayWeave-Android.apk"' public/android-update.json || {
-  echo "Android p5 migration feed no longer uses its trusted GitHub host" >&2
+grep -Fq '"apkUrl": "'"$mirror_base"'/DisplayWeave-Android.apk"' public/android-update.json || {
+  echo "Android primary APK URL does not use the Cloudflare mirror" >&2
+  exit 1
+}
+grep -Fq '"apkFallbackUrl": "https://github.com/chenyuhao0628/displayweave/releases/download/'"$tag"'/DisplayWeave-Android.apk"' public/android-update.json || {
+  echo "Android fallback APK URL does not use the matching GitHub Release" >&2
   exit 1
 }
 

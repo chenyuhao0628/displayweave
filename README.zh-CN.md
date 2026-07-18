@@ -21,9 +21,9 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 
 下述真机恢复与高刷新观察来自 Preview 2 验证，继续作为既有证据；本版本没有在第二台 Android 上重新执行这些项目。
 
-## 下载 `v0.2.1-p5`
+## 下载 `v0.2.1-p6`
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p5)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p6)
 
 | 平台 | 产物 | 分发边界 |
 | --- | --- | --- |
@@ -53,7 +53,8 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
   验证，但应用仍为 ad-hoc 签名且未公证。
 - **Android：** 先把此 APK 覆盖安装到现有包。之后接收端最多每天自动
   检查一次，也可在“设置与帮助”手动检查。下载会校验大小、SHA-256、
-  包名、版本、最低 SDK 和固定签名证书，再打开 Android 系统安装器。
+  包名、版本、最低 SDK 和固定签名证书，再打开 Android 系统安装器。p6
+  优先从 Cloudflare 下载，只在可用性或传输失败时回退到同一 GitHub Release。
 - **iOS/iPadOS：** 未签名自签输入包与现有 OpenDisplay 接收协议不受
   Mac/Android 更新渠道影响。
 
