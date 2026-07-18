@@ -10,14 +10,16 @@ The Android receiver accepts DisplayWeave video over local WiFi or a Mac-managed
 - WiFi: Mac and Android on the same trusted LAN with Nearby WiFi/Local Network discovery permission where required.
 - USB: a data-capable cable, Developer options, USB debugging, and approval of the Mac's RSA identity.
 
-## Install `v0.2.1-p5`
+## Install `v0.2.1-p6`
 
-Download `DisplayWeave-Android.apk` from [`v0.2.1-p5`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p5). It is an offline v2-signed release APK and does not require Google Play. Install it over the existing `app.opendisplay.android` package once. Verify `SHA256SUMS.txt` and the certificate fingerprint in [the release checklist](../docs/release-checklist.md) before installing.
+Download `DisplayWeave-Android.apk` from [`v0.2.1-p6`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p6). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 manually once because p5 does not trust the new Cloudflare hostname. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/release-checklist.md).
 
 ## Updates after the first install
 
 - The receiver checks the HTTPS update feed at most once per 24 hours when it resumes.
 - **Settings & Help → Check for Updates** bypasses the daily throttle.
+- p6 and later use Cloudflare as the primary APK source and the matching GitHub
+  Release as an availability fallback.
 - Before installation, it verifies exact byte count, SHA-256, package name,
   version code, minimum SDK, and the pinned signing certificate.
 - Android may ask for permission to install unknown apps. The final installation

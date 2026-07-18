@@ -12,10 +12,11 @@ Pages is used only for immutable release files. The deployment must not contain 
 deployment must include every release tag that should remain available; a Pages
 deployment replaces the previous static snapshot.
 
-The Android p5 update feed remains on GitHub during migration because that client
-only trusts GitHub release URLs. A later Android release may use the Cloudflare
-mirror as its primary URL after the client has shipped support for the exact
-`downloads.urlget.cyou` host.
+Android p6 uses the exact `downloads.urlget.cyou` release path as its primary APK
+URL and the matching GitHub Release as its fallback. Fallback is limited to
+connection, HTTP availability, and transport failures. Size, hash, package,
+version, SDK, or certificate failures stop the update instead of changing source.
+Android p5 must be upgraded to p6 manually once because p5 trusts only GitHub.
 
 Never commit Wrangler OAuth credentials or API tokens. Automated deployments
 should use a scoped Cloudflare API token stored as a GitHub Actions secret.

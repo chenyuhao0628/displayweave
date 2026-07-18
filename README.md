@@ -23,9 +23,9 @@ The physical-device recovery and high-refresh observations below were recorded
 during Preview 2 validation and remain prior evidence; they were not rerun on a
 second Android device for this release.
 
-## Download `v0.2.1-p5`
+## Download `v0.2.1-p6`
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p5)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p6)
 
 | Platform | Asset | Distribution boundary |
 | --- | --- | --- |
@@ -57,6 +57,8 @@ The refreshed Mac build uses a DisplayWeave-owned application identity. Settings
   not notarized.
 - **Android:** install this APK over the existing package once. The receiver
   then checks at most daily, with a manual check in **Settings & Help**.
+  p6 downloads from Cloudflare first and falls back to the matching GitHub
+  Release only for availability or transport failures.
   Downloads are verified by size, SHA-256, package, version, minimum SDK, and
   the pinned signing certificate before Android shows its system installer.
 - **iOS/iPadOS:** the unsigned re-signing input and existing OpenDisplay
