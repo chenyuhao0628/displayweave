@@ -13,6 +13,8 @@ public final class UpdateManifest {
             "89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d";
     public static final String EXPECTED_RELEASE_PATH_PREFIX =
             "/chenyuhao0628/displayweave/releases/download/";
+    public static final String EXPECTED_MIRROR_HOST = "downloads.urlget.cyou";
+    public static final String EXPECTED_MIRROR_PATH_PREFIX = "/releases/";
     public static final int MINIMUM_SUPPORTED_SDK = 26;
 
     public final int schemaVersion;
@@ -21,6 +23,7 @@ public final class UpdateManifest {
     public final String versionName;
     public final int minimumSdk;
     public final URI apkUrl;
+    public final URI apkFallbackUrl;
     public final long apkSize;
     public final String sha256;
     public final String signingCertificateSha256;
@@ -34,6 +37,7 @@ public final class UpdateManifest {
         versionName = string(values, "versionName");
         minimumSdk = integer(values, "minimumSdk");
         apkUrl = uri(values, "apkUrl");
+        apkFallbackUrl = optionalUri(values, "apkFallbackUrl");
         apkSize = number(values, "apkSize");
         sha256 = UpdatePolicy.normalizeHex(string(values, "sha256"));
         signingCertificateSha256 = UpdatePolicy.normalizeHex(
@@ -54,20 +58,57 @@ public final class UpdateManifest {
         require(!versionName.isBlank(), "Missing version name");
         require(minimumSdk >= MINIMUM_SUPPORTED_SDK, "Unsupported minimum SDK");
         require(apkSize > 0, "Invalid APK size");
-        validateHttps(apkUrl, "APK URL");
-        require("github.com".equalsIgnoreCase(apkUrl.getHost()), "Unexpected APK host");
-        require(apkUrl.getPath() != null
-                        && apkUrl.getPath().startsWith(EXPECTED_RELEASE_PATH_PREFIX)
-                        && apkUrl.getPath().endsWith("/DisplayWeave-Android.apk"),
-                "Unexpected APK filename");
+        validateApkUrl(apkUrl, "APK URL");
+        if (apkFallbackUrl != null) {
+            validateApkUrl(apkFallbackUrl, "fallback APK URL");
+            require(!apkUrl.equals(apkFallbackUrl), "Duplicate APK mirrors");
+            require(isMirrorUrl(apkUrl) && isGitHubUrl(apkFallbackUrl),
+                    "Unexpected APK mirror order");
+        }
         require(EXPECTED_SIGNING_CERTIFICATE_SHA256.equals(signingCertificateSha256),
                 "Unexpected APK signing certificate");
         validateHttps(releaseNotesUrl, "release notes URL");
     }
 
     private static void validateHttps(URI uri, String label) {
-        require("https".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null,
+        require("https".equalsIgnoreCase(uri.getScheme())
+                        && uri.getHost() != null
+                        && uri.getUserInfo() == null
+                        && uri.getPort() == -1
+                        && uri.getFragment() == null,
                 "Invalid " + label);
+    }
+
+    private static void validateApkUrl(URI uri, String label) {
+        validateHttps(uri, label);
+        String path = uri.getPath();
+        String prefix = isGitHubUrl(uri)
+                ? EXPECTED_RELEASE_PATH_PREFIX : EXPECTED_MIRROR_PATH_PREFIX;
+        require((isGitHubUrl(uri) || isMirrorUrl(uri))
+                        && uri.getQuery() == null
+                        && path != null
+                        && path.equals(uri.getRawPath())
+                        && hasExactReleaseArtifactPath(path, prefix),
+                "Unexpected " + label);
+    }
+
+    private static boolean isGitHubUrl(URI uri) {
+        return "github.com".equalsIgnoreCase(uri.getHost());
+    }
+
+    private static boolean isMirrorUrl(URI uri) {
+        return EXPECTED_MIRROR_HOST.equalsIgnoreCase(uri.getHost());
+    }
+
+    private static boolean hasExactReleaseArtifactPath(String path, String prefix) {
+        if (!path.startsWith(prefix)
+                || !path.endsWith("/DisplayWeave-Android.apk")) return false;
+        String releaseAndFile = path.substring(prefix.length());
+        int separator = releaseAndFile.indexOf('/');
+        return separator > 0
+                && separator == releaseAndFile.lastIndexOf('/')
+                && !releaseAndFile.substring(0, separator).equals(".")
+                && !releaseAndFile.substring(0, separator).equals("..");
     }
 
     private static String string(Map<String, Object> values, String key) {
@@ -100,6 +141,11 @@ public final class UpdateManifest {
         } catch (IllegalArgumentException error) {
             throw new IllegalArgumentException("Invalid URI field: " + key, error);
         }
+    }
+
+    private static URI optionalUri(Map<String, Object> values, String key) {
+        if (!values.containsKey(key)) return null;
+        return uri(values, key);
     }
 
     private static Instant instant(Map<String, Object> values, String key) {

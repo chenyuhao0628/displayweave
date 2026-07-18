@@ -94,9 +94,7 @@ public final class UpdateCoordinator {
                 if (verified.exists() && !verified.delete()) {
                     throw new IllegalStateException("无法替换旧的更新文件");
                 }
-                client.download(manifest.apkUrl.toURL(), temporary, manifest.apkSize,
-                        (downloaded, total) -> post(() -> listener.onDownloadProgress(
-                                (int) Math.min(100L, downloaded * 100L / Math.max(1L, total)))));
+                downloadFromAvailableMirror(manifest, temporary);
                 UpdateVerifier.verifyFile(temporary, manifest);
                 UpdateVerifier.verifyPackage(activity, temporary, manifest);
                 if (!temporary.renameTo(verified)) {
@@ -113,6 +111,27 @@ public final class UpdateCoordinator {
                 synchronized (UpdateCoordinator.this) { downloading = false; }
             }
         });
+    }
+
+    private void downloadFromAvailableMirror(UpdateManifest manifest, File temporary)
+            throws Exception {
+        UpdateClient.Progress progress = (downloaded, total) -> post(() ->
+                listener.onDownloadProgress((int) Math.min(
+                        100L, downloaded * 100L / Math.max(1L, total))));
+        try {
+            client.download(manifest.apkUrl.toURL(), temporary, manifest.apkSize, progress);
+        } catch (UpdateClient.MirrorUnavailableException primaryError) {
+            if (manifest.apkFallbackUrl == null) throw primaryError;
+            post(() -> listener.onCheckState("主下载源不可用，正在切换备用源…"));
+            post(() -> listener.onDownloadProgress(0));
+            try {
+                client.download(
+                        manifest.apkFallbackUrl.toURL(), temporary, manifest.apkSize, progress);
+            } catch (Exception fallbackError) {
+                fallbackError.addSuppressed(primaryError);
+                throw fallbackError;
+            }
+        }
     }
 
     public void installPending() {

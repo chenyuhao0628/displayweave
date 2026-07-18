@@ -19,6 +19,22 @@ public final class UpdateClient {
         void onProgress(long downloadedBytes, long totalBytes);
     }
 
+    public static final class MirrorUnavailableException extends IOException {
+        MirrorUnavailableException(String message, Throwable cause) {
+            super(message, cause);
+        }
+
+        MirrorUnavailableException(String message) {
+            super(message);
+        }
+    }
+
+    private static final class ArtifactRejectedException extends IOException {
+        ArtifactRejectedException(String message) {
+            super(message);
+        }
+    }
+
     public UpdateManifest fetchManifest(URL url) throws IOException {
         HttpURLConnection connection = open(url, true);
         try {
@@ -52,21 +68,43 @@ public final class UpdateClient {
             throw new IOException("Unable to create update download directory");
         }
 
-        HttpURLConnection connection = open(url, false);
+        HttpURLConnection connection;
+        try {
+            connection = open(url, false);
+        } catch (IOException error) {
+            throw unavailable("Unable to connect to update mirror", error);
+        }
         boolean completed = false;
         try {
-            requireSuccess(connection);
+            try {
+                requireSuccess(connection);
+            } catch (IOException error) {
+                throw unavailable(error.getMessage(), error);
+            }
             long contentLength = connection.getContentLengthLong();
             if (contentLength > expectedSize) {
-                throw new IOException("Update download exceeds declared size");
+                throw new ArtifactRejectedException("Update download exceeds declared size");
             }
-            try (InputStream input = connection.getInputStream();
+            InputStream input;
+            try {
+                input = connection.getInputStream();
+            } catch (IOException error) {
+                throw unavailable("Update mirror response failed", error);
+            }
+            try (InputStream response = input;
                  FileOutputStream output = new FileOutputStream(destination)) {
-                copyBounded(input, output, expectedSize, progress, expectedSize);
+                try {
+                    copyBounded(response, output, expectedSize, progress, expectedSize);
+                } catch (ArtifactRejectedException error) {
+                    throw error;
+                } catch (IOException error) {
+                    throw unavailable("Update mirror download failed", error);
+                }
                 output.getFD().sync();
             }
             if (destination.length() != expectedSize) {
-                throw new IOException("Update download size does not match manifest");
+                throw new ArtifactRejectedException(
+                        "Update download size does not match manifest");
             }
             completed = true;
         } finally {
@@ -75,6 +113,13 @@ public final class UpdateClient {
                 destination.deleteOnExit();
             }
         }
+    }
+
+    private static MirrorUnavailableException unavailable(String message, IOException error) {
+        if (error instanceof MirrorUnavailableException) {
+            return (MirrorUnavailableException) error;
+        }
+        return new MirrorUnavailableException(message, error);
     }
 
     private static HttpURLConnection open(URL initialUrl, boolean requireFreshResponse)
@@ -125,7 +170,9 @@ public final class UpdateClient {
         int count;
         while ((count = input.read(buffer)) != -1) {
             copied += count;
-            if (copied > maximum) throw new IOException("Update response exceeds size limit");
+            if (copied > maximum) {
+                throw new ArtifactRejectedException("Update response exceeds size limit");
+            }
             output.write(buffer, 0, count);
             if (progress != null) progress.onProgress(copied, total);
         }

@@ -1,6 +1,7 @@
 package app.opendisplay.android.update;
 
 import java.util.Locale;
+import java.util.Objects;
 
 public final class UpdatePolicy {
     public static final long CHECK_INTERVAL_MILLIS = 24L * 60L * 60L * 1_000L;
@@ -30,7 +31,8 @@ public final class UpdatePolicy {
                 && latest.versionName.equals(downloaded.versionName)
                 && latest.apkSize == downloaded.apkSize
                 && latest.sha256.equals(downloaded.sha256)
-                && latest.apkUrl.equals(downloaded.apkUrl);
+                && latest.apkUrl.equals(downloaded.apkUrl)
+                && Objects.equals(latest.apkFallbackUrl, downloaded.apkFallbackUrl);
     }
 
     public static boolean canInstall(
