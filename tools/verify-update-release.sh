@@ -20,7 +20,12 @@ fail "versionName mismatch" unless feed["versionName"] == ENV.fetch("EXPECTED_VE
 fail "minimumSdk mismatch" unless feed["minimumSdk"] == 26
 url = URI.parse(feed.fetch("apkUrl"))
 fail "APK URL must use HTTPS" unless url.scheme == "https"
+fail "primary APK URL must use the Cloudflare mirror" unless url.host == "downloads.urlget.cyou"
 fail "APK URL filename mismatch" unless url.path.end_with?("/DisplayWeave-Android.apk")
+fallback = URI.parse(feed.fetch("apkFallbackUrl"))
+fail "fallback APK URL must use HTTPS" unless fallback.scheme == "https"
+fail "fallback APK URL must use GitHub" unless fallback.host == "github.com"
+fail "fallback APK URL filename mismatch" unless fallback.path.end_with?("/DisplayWeave-Android.apk")
 fail "APK size mismatch" unless feed["apkSize"] == File.size(apk)
 fail "APK SHA-256 mismatch" unless feed["sha256"] == Digest::SHA256.file(apk).hexdigest
 fail "APK signer fingerprint mismatch" unless feed["signingCertificateSha256"] == ENV.fetch("EXPECTED_CERTIFICATE")
