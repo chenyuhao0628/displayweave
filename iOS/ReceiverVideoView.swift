@@ -56,6 +56,11 @@ struct VideoLayerView: UIViewRepresentable {
         uiView.setNeedsLayout()
     }
 
+    static func dismantleUIView(_ uiView: VideoView, coordinator: ()) {
+        uiView.cancelPress()
+        uiView.receiver = nil
+    }
+
     final class VideoView: UIView {
         weak var receiver: PhoneReceiver?
         var metalRenderer: MetalVideoRenderer?
@@ -157,6 +162,20 @@ struct VideoLayerView: UIViewRepresentable {
             return (min(max(x, 0), 1), min(max(y, 0), 1))
         }
 
+        private var press = TouchPressPolicy()
+        private var holdTimer: DispatchWorkItem?
+
+        private func emit(_ actions: [TouchPressPolicy.Action]) {
+            for action in actions {
+                receiver?.sendTouch(phase: action.phase, x: action.position.x, y: action.position.y)
+            }
+        }
+
+        func cancelPress() {
+            holdTimer?.cancel(); holdTimer = nil
+            emit(press.cancel())
+        }
+
         private var twoFingerActive = false
         private var lastPan = CGPoint.zero
         private var lastNorm: (x: Double, y: Double) = (0.5, 0.5)
@@ -167,9 +186,16 @@ struct VideoLayerView: UIViewRepresentable {
             case .began:
                 twoFingerActive = true
                 lastPan = .zero
+                cancelPress()
+                // Anchor scrolling under the gesture without sending a click.
+                if let n = normalized(recognizer.location(in: self)) {
+                    lastNorm = n
+                    receiver?.sendTouch(phase: "moved", x: n.x, y: n.y)
+                }
             case .changed:
                 let t = recognizer.translation(in: self)
                 let scale = min(bounds.width / video.width, bounds.height / video.height)
+                guard scale > 0 else { return }
                 // Deltas in video pixels, natural-scrolling direction.
                 receiver?.sendScroll(dx: (t.x - lastPan.x) / scale,
                                      dy: (t.y - lastPan.y) / scale)
@@ -180,17 +206,34 @@ struct VideoLayerView: UIViewRepresentable {
         }
 
         private func send(_ phase: String, _ touches: Set<UITouch>, _ event: UIEvent?) {
-            // Ignore single-finger events while a two-finger gesture runs,
-            // and end the click if a second finger joins mid-press.
+            if phase == "cancelled" { cancelPress(); return }
             if twoFingerActive || (event?.allTouches?.count ?? 1) > 1 {
-                if phase != "began" {
-                    receiver?.sendTouch(phase: "cancelled", x: lastNorm.x, y: lastNorm.y)
-                }
+                cancelPress()
                 return
             }
             guard let touch = touches.first,
                   let norm = normalized(touch.location(in: self)) else { return }
             lastNorm = norm
+            let position = CGPoint(x: norm.x, y: norm.y)
+            switch phase {
+            case "began":
+                cancelPress()
+                press.begin(at: position, screenPoint: touch.location(in: self))
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self else { return }
+                    self.emit(self.press.commitHold())
+                }
+                holdTimer = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + TouchPressPolicy.holdDelay, execute: work)
+                return
+            case "ended":
+                holdTimer?.cancel(); holdTimer = nil
+                emit(press.end(at: position))
+                return
+            case "moved":
+                emit(press.move(to: touch.location(in: self)))
+            default: break
+            }
             if phase == "moved", let event {
                 // The panel samples touches at 120Hz but UIKit delivers at
                 // display refresh — forward every coalesced sample so the Mac

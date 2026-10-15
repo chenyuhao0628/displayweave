@@ -38,7 +38,7 @@ struct SettingsView: View {
                 } header: {
                     Text("名称")
                 } footer: {
-                    Text("此名称会显示在 Mac 端的 局域网设备列表里。iOS 不允许 app 读取这台 \(deviceKind) 的真实设备名，所以请在这里设置一次。")
+                    Text("此名称会显示在 Mac 端的局域网设备列表里。iOS 不允许 app 读取这台 \(deviceKind) 的真实设备名，所以请在这里设置一次。")
                 }
 
                 Section {
@@ -80,7 +80,7 @@ struct SettingsView: View {
                         Label("获取 Mac 端 app", systemImage: "arrow.down.circle")
                     }
                 } footer: {
-                    Text("DisplayWeave 需要 Mac 端 app 在同一根线缆或同一局域网 网络中的 Mac 上运行。如果还没有安装，可以从这里下载。")
+                    Text("DisplayWeave 需要 Mac 端 app 在同一根线缆或同一局域网中的 Mac 上运行。如果还没有安装，可以从这里下载。")
                 }
 
                 Section("关于") {

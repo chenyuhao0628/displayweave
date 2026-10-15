@@ -27,6 +27,11 @@ DisplayWeave role UI. These adaptations remain GPL-3.0. The complete upstream
 history has not been merged; the assessment is recorded in
 `docs/mac-to-mac-design.md`.
 
+The 2026-10-16 source upgrade also adapts failure/retry handling from
+`87b000b` / `c27e538`, deferred touch-down semantics from `04590ed`, and bounded
+logging from the design in `19481a6`. Implementations and regression coverage
+are local adaptations under GPL-3.0; see `docs/upstream-integration-2026-10-16.md`.
+
 ## SideScreen
 
 - Project: SideScreen

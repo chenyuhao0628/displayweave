@@ -1,27 +1,9 @@
 import Foundation
 
-/// Appends timestamped lines to /tmp/opensidecar-mac.log (and stdout) so the
-/// stream can be debugged without a debugger attached.
+/// Keep the compatibility log path used by the local run/debug scripts.
 enum Log {
-    private static let path = "/tmp/opensidecar-mac.log"
-    private static let queue = DispatchQueue(label: "log")
-    private static let formatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm:ss.SSS"
-        return f
-    }()
-
-    static func info(_ message: String) {
-        let line = "[\(formatter.string(from: Date()))] \(message)\n"
-        print(line, terminator: "")
-        queue.async {
-            if let handle = FileHandle(forWritingAtPath: path) {
-                handle.seekToEndOfFile()
-                handle.write(line.data(using: .utf8)!)
-                try? handle.close()
-            } else {
-                try? line.write(toFile: path, atomically: true, encoding: .utf8)
-            }
-        }
+    private static let writer = BoundedLogWriter(url: URL(fileURLWithPath: "/tmp/opensidecar-mac.log")) {
+        print($0, terminator: "")
     }
+    static func info(_ message: String) { writer.info(message) }
 }

@@ -24,7 +24,7 @@ struct OnboardingView: View {
                         Text("还需要安装 Mac 端")
                             .font(.title2.bold())
                             .multilineTextAlignment(.center)
-                        Text("DisplayWeave 可以把这台 \(deviceKind) 变成 Mac 的第二块屏幕，但需要在通过同一根 USB 线连接、或处于同一局域网 网络的 Mac 上运行 **DisplayWeave Mac 端 app**。")
+                        Text("DisplayWeave 可以把这台 \(deviceKind) 变成 Mac 的第二块屏幕，但需要在通过同一根 USB 线连接、或处于同一局域网的 Mac 上运行 **DisplayWeave Mac 端 app**。")
                             .font(.body)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -34,7 +34,7 @@ struct OnboardingView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Label("在 Mac 上安装 DisplayWeave Mac 端 app", systemImage: "1.circle.fill")
                         Label("用 USB 连接这台 \(deviceKind)，或加入同一局域网", systemImage: "2.circle.fill")
-                        Label("保持此 app 打开，串流会自动开始", systemImage: "3.circle.fill")
+                        Label("在 Mac 的设备列表中选择本机，并保持此 app 打开", systemImage: "3.circle.fill")
                     }
                     .font(.subheadline)
                     .padding(20)
@@ -50,7 +50,7 @@ struct OnboardingView: View {
                     }
                     .buttonStyle(.borderedProminent)
 
-                    Text("之后也可以在设置里找到这个链接，摇一摇这台 \(deviceKind) 即可打开设置。")
+                    Text("之后也可以在设置里找到这个链接，点按设置按钮或摇动这台 \(deviceKind) 即可打开设置。")
                         .font(.footnote)
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)

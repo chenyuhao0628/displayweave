@@ -10,6 +10,6 @@ swiftc Mac/Receiver/ReceiverWireProtocol.swift Mac/Receiver/ReceiverFrameDecoder
   MacTests/MacReceiverWindowSelfTest.swift -o "$temporary/ReceiverWindowTest"
 "$temporary/ReceiverWindowTest"
 swiftc -import-objc-header Mac/OpenSidecarMac-Bridging-Header.h \
-  Mac/VirtualDisplay.swift Mac/RefreshRatePolicy.swift Mac/Log.swift \
+  Mac/VirtualDisplay.swift Mac/RefreshRatePolicy.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
   MacTests/MacVirtualDisplaySelfTest.swift -o "$temporary/VirtualDisplayTest"
 "$temporary/VirtualDisplayTest"

@@ -36,14 +36,12 @@ struct SessionRow: View {
 
             }
             Spacer()
-            Button {
-                session.sender.forceReconnect()
-            } label: {
-                Image(systemName: "arrow.clockwise")
+            if session.failed {
+                Button("重试") { controller.retry(session) }
+                    .controlSize(.small)
+                    .help("重新启动失败的连接")
+                    .accessibilityLabel("重试连接 \(title)")
             }
-            .controlSize(.small)
-            .help("断开当前连接并重新连接设备")
-            .accessibilityLabel("重新连接 \(title)")
             Button("断开") { controller.disconnect(session) }
                 .controlSize(.small)
         }

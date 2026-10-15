@@ -21,7 +21,10 @@ struct SenderWorkspaceView: View {
             } header: { Text("连接选项") }
 
             Section {
-                if controller.deviceEntries.isEmpty {
+                if controller.replacingSessions {
+                    ProgressView("正在应用设置，等待旧连接释放…")
+                }
+                if controller.deviceEntries.isEmpty && !controller.replacingSessions {
                     VStack(alignment: .leading, spacing: 12) {
                         Label("等待发现设备", systemImage: "antenna.radiowaves.left.and.right")
                             .font(.headline)
@@ -49,6 +52,7 @@ struct SenderWorkspaceView: View {
                             if let target = entry.preferredTarget(for: controller.settings.transportMode) {
                                 Button("连接") { controller.connect(to: target, userInitiated: true) }
                                     .accessibilityLabel("连接 \(entry.name)")
+                                    .disabled(controller.replacingSessions)
                             }
                         }.padding(.vertical, 4)
                     }

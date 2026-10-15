@@ -33,7 +33,8 @@ final class DeviceSession: ObservableObject, Identifiable {
     let target: ConnectionTarget
     let name: String
     let sender: MacSender
-    var startupTask: Task<Void, Never>?
+    var lifetime: SessionLifetime!
+    @Published var failed = false
     var androidForwardManager: AndroidAdbForwardManager?
 
     @Published var status = "正在启动…"

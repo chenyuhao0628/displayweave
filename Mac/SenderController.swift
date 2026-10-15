@@ -42,7 +42,7 @@ final class SenderController: ObservableObject {
     }
     var quality: StreamQuality { settings.quality }
 
-    var running: Bool { !sessions.isEmpty }
+    var running: Bool { sessions.contains { !$0.failed } }
     var androidUsbDevices: [AndroidAdbDevice] {
         AndroidAdbDeviceSelection.usbDevices(from: androidDevices)
     }
@@ -104,6 +104,11 @@ final class SenderController: ObservableObject {
     private var roleGeneration = 0
     private var androidPollTask: Task<Void, Never>?
     private var autoConnectTask: Task<Void, Never>?
+    private var cleanupTasks: [UUID: Task<Void, Never>] = [:]
+    private var replacementTask: Task<Void, Never>?
+    private var replacementTargets: [ConnectionTarget] = []
+    private var replacementGeneration = 0
+    @Published private(set) var replacingSessions = false
 
     init() {
         setRoleEnabled(UserDefaults.standard.string(forKey: "macRole") != "receiver")
@@ -121,7 +126,13 @@ final class SenderController: ObservableObject {
         wifiAutoConnectArmed = false
         if !enabled {
             for serial in Array(androidRecoveryGeneration.keys) { androidRecoveryGeneration[serial, default: 0] += 1 }
-            let cleanups = sessions.map { end($0) }
+            replacementTask?.cancel()
+            replacementTask = nil
+            replacementTargets = []
+            replacingSessions = false
+            replacementGeneration += 1
+            sessions.forEach { end($0) }
+            let cleanups = Array(cleanupTasks.values)
             discovered = []; usbDevices = []; androidDevices = []
             return Task { for cleanup in cleanups { await cleanup.value } }
         }
@@ -281,6 +292,7 @@ final class SenderController: ObservableObject {
     // MARK: - Connection policy
 
     private func autoConnect() {
+        guard !replacingSessions else { return }
         guard roleEnabled, autoConnectEnabled else { return }
         dedupeSessions()
         let permitsUSB = settings.transportMode != .wifi
@@ -386,7 +398,7 @@ final class SenderController: ObservableObject {
     }
 
     func connect(to target: ConnectionTarget, userInitiated: Bool = false) {
-        guard roleEnabled else { return }
+        guard roleEnabled, !replacingSessions else { return }
         if case .wifi(let result) = target, txtID(of: result) == StreamReceiver.installID { return }
         if case .androidAdbDevice(let serial) = target {
             connectAndroidAdb(serial: serial, userInitiated: userInitiated)
@@ -450,15 +462,17 @@ final class SenderController: ObservableObject {
         if case .androidAdb = target {
             session.androidForwardManager = androidForwardManager
         }
-        sender.onStatus = { [weak session] text in
-            session?.status = text
+        sender.onStatus = { [weak self, weak session] text in
+            guard let self, let session, !session.failed, self.sessions.contains(where: { $0 === session }) else { return }
+            session.status = text
             Log.info("status[\(id)]: \(text)")
             if text.hasPrefix("已连接") {
                 self.autoStartBenchmarkIfRequested()
             }
         }
         sender.onHello = { [weak self, weak session] info in
-            guard let self, let session, self.roleEnabled else { return }
+            guard let self, let session, self.roleEnabled, !session.failed,
+                  self.sessions.contains(where: { $0 === session }) else { return }
             guard info.id != StreamReceiver.installID else { self.end(session); return }
             session.deviceID = info.id
             session.deviceKind = info.device
@@ -495,22 +509,26 @@ final class SenderController: ObservableObject {
             existing.sender.stopBenchmark()
             existing.benchmarkStatus = "Benchmark stopped: another session connected"
         }
-        sessions.append(session)
-        session.startupTask = Task {
-            guard roleEnabled, sessions.contains(where: { $0 === session }) else { return }
-            do {
-                try await sender.start()
-            } catch is CancellationError {
-                // stopped by the user while waiting — nothing to report
-            } catch {
-                Log.info("sender failed to start: \(error)")
-                session.status = "失败：\(error.localizedDescription)"
-                if case .androidAdb = session.target {
-                    self.androidAdbStatus = session.status
-                    self.end(session)
+        // Adapted from upstream 87b000b / c27e538: retain the error row, free
+        // a partially built pipeline and retry by creating a fresh sender.
+        let forwardManager = session.androidForwardManager
+        session.lifetime = SessionLifetime(start: { try await sender.start() }, stop: {
+            let cleanup = sender.stop()
+            return Task {
+                await cleanup.value
+                if case .androidAdb(let mapping) = target, let forwardManager {
+                    await forwardManager.remove(sessionID: mapping.sessionID)
                 }
             }
+        }) { [weak self, weak session] error in
+            guard let self, let session, self.sessions.contains(where: { $0 === session }) else { return }
+            Log.info("sender failed to start: \(error)")
+            session.failed = true
+            session.status = "失败：\(error.localizedDescription)"
+            if case .androidAdb = session.target { self.androidAdbStatus = session.status }
         }
+        sessions.append(session)
+        session.lifetime.start()
     }
 
     func startBenchmark(scene: BenchmarkScene, duration: BenchmarkDuration) {
@@ -671,34 +689,54 @@ final class SenderController: ObservableObject {
 
     @discardableResult
     private func end(_ session: DeviceSession) -> Task<Void, Never> {
-        let startup = session.startupTask
-        session.startupTask = nil
-        startup?.cancel()
-        let captureCleanup = session.sender.stop()
+        let captureCleanup = session.lifetime.stop()
         sessions.removeAll { $0 === session }
-        return Task {
+        let token = UUID()
+        let task = Task { [weak self] in
             await captureCleanup.value
-            // A startCapture suspended when stop() ran must finish its own
-            // cancellation path before a receive role may start.
-            await startup?.value
-            if case .androidAdb(let mapping) = session.target,
-               let manager = session.androidForwardManager {
-                await manager.remove(sessionID: mapping.sessionID)
-            }
+            self?.cleanupTasks.removeValue(forKey: token)
         }
+        cleanupTasks[token] = task
+        return task
     }
 
-    /// Mode/quality apply per-pipeline at construction — rebuild every session.
+    private func freshTarget(_ target: ConnectionTarget) -> ConnectionTarget {
+        if case .androidAdb(let mapping) = target { return .androidAdbDevice(serial: mapping.serial) }
+        return target
+    }
+
+    func retry(_ session: DeviceSession) {
+        guard session.failed, !replacingSessions, sessions.contains(where: { $0 === session }) else { return }
+        replace([session], targets: [freshTarget(session.target)])
+    }
+
+    /// Rebuild only after old capture, startup and ADB-forward cleanup finish.
+    /// Rapid edits retain the latest target set and cannot resurrect a receive role.
     func restartAll() {
-        guard running else { return }
-        let targets = sessions.map { session -> ConnectionTarget in
-            if case .androidAdb(let mapping) = session.target {
-                return .androidAdbDevice(serial: mapping.serial)
-            }
-            return session.target
+        let targets = replacementTargets + sessions.map { freshTarget($0.target) }
+        guard !targets.isEmpty, roleEnabled else { return }
+        replace(sessions, targets: targets)
+    }
+
+    private func replace(_ old: [DeviceSession], targets: [ConnectionTarget]) {
+        replacementTask?.cancel()
+        replacementGeneration += 1
+        let token = replacementGeneration, role = roleGeneration
+        var seen = Set<String>()
+        replacementTargets = targets.filter { seen.insert($0.sessionID).inserted }
+        replacingSessions = true
+        old.forEach { end($0) }
+        let cleanup = Array(cleanupTasks.values)
+        replacementTask = Task {
+            for task in cleanup { await task.value }
+            guard !Task.isCancelled, roleEnabled, roleGeneration == role,
+                  replacementGeneration == token else { return }
+            let next = replacementTargets
+            replacementTargets = []
+            replacingSessions = false
+            replacementTask = nil
+            next.forEach { connect(to: $0, userInitiated: true) }
         }
-        sessions.forEach { end($0) }
-        targets.forEach { connect(to: $0) }
     }
 
     // MARK: - Device list (one row per physical device)
