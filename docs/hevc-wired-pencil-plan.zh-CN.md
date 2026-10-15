@@ -47,3 +47,5 @@ iOS hello 声明 inputCaps pencil-v1；支持的 Mac 回复 inputConfig。每次
 本设计在实现前记录。完成各轮后补充实现与验证结果。
 
 - 第一轮：已实现硬件能力门控的 Mac HEVC、有界码流解析、单次限时 H.264 回退。33 个 Swift 套件通过，包含真实 H.264／HEVC 编码样本、回环切换与回退超时；Mac arm64＋x86_64 无签名构建通过。尚无双 Mac 实机性能结论。
+
+- 第二轮：已增加严格的有线链路本地 Mac 候选识别、Bonjour／TCP 接口绑定、候选与接口 UI、默认关闭的自动连接，以及 hello 之前的安装 ID 去重。直连策略测试和 arm64＋x86_64 无签名构建通过；尚未连接另一台 Thunderbolt／以太网 Mac 进行实机验证。

@@ -27,7 +27,7 @@ enum CaptureMode: String {
 /// How the sender reaches the receiver. Reconnects re-dial from scratch, so
 /// a USB device that was replugged (new usbmuxd DeviceID) is found again.
 enum SenderTransport {
-    case tcp(NWEndpoint)                   // WiFi (Bonjour) or -host/-port override
+    case tcp(NWEndpoint, interface: NWInterface? = nil)                   // WiFi (Bonjour) or -host/-port override
     case usb(udid: String?, port: UInt16)  // native usbmuxd dial; nil = first device
     case androidAdb(port: UInt16)          // localhost endpoint created by adb forward
 }
@@ -56,6 +56,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private let queue = DispatchQueue(label: "sender.video")
     private let startCode: [UInt8] = [0, 0, 0, 1]
 
+    var directLinkInterfaceName: String? {
+        if case .tcp(_, let interface) = transport { return interface?.name }
+        return nil
+    }
     private let transport: SenderTransport
     private let endpointName: String
     private let mode: CaptureMode
@@ -662,7 +666,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func connect() {
         guard !stopped else { return }
         switch transport {
-        case .tcp(let endpoint): connectTCP(endpoint)
+        case .tcp(let endpoint, let interface): connectTCP(endpoint, interface: interface)
         case .usb(let udid, let port): connectUSB(udid: udid, port: port)
         case .androidAdb(let port):
             connectTCP(.hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!))
@@ -734,11 +738,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         Task { await self.status("正在连接到 \(self.endpointName)…") }
     }
 
-    private func connectTCP(_ endpoint: NWEndpoint) {
+    private func connectTCP(_ endpoint: NWEndpoint, interface: NWInterface? = nil) {
         let options = NWProtocolTCP.Options()
         options.noDelay = true   // latency matters more than throughput here
         let params = NWParameters(tls: nil, tcp: options)
-        let conn = NWConnection(to: endpoint, using: params)
+        params.requiredInterface = interface
+        let conn = NWConnection(to: DirectCable.endpoint(endpoint, on: interface), using: params)
         let generation = adoptConnection(conn)
         conn.stateUpdateHandler = { [weak self] state in
             guard let self,

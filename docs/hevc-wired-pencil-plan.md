@@ -47,3 +47,5 @@ Commit this design first. Each implementation round adds behavioral regression c
 Design recorded before implementation. Implementation and verification results will be appended as each round completes.
 
 - Round 1: implemented hardware-gated Mac HEVC, bounded bitstream parsing and one-shot timed H.264 fallback. All 33 Swift suites passed, including real H.264/HEVC encoded samples, loopback codec switching and fallback timeout. Unsigned macOS arm64 + x86_64 build passed. No physical two-Mac performance claim.
+
+- Round 2: added strict wired/link-local Mac candidate discovery, interface-pinned Bonjour/TCP, candidate/interface UI, default-off auto-connect and installation-ID deduplication before hello. Direct-link policy tests and unsigned arm64 + x86_64 builds passed. No Thunderbolt/Ethernet peer was connected for physical validation.

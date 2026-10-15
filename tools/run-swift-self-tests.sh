@@ -118,4 +118,7 @@ run_test ReceiverVideoBitstreamSelfTest \
   Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverVideoBitstream.swift MacTests/ReceiverTestSupport.swift \
   MacTests/ReceiverVideoBitstreamSelfTest.swift
 
-echo "Swift standalone self-tests PASS (33 suites)"
+run_test DirectCableSelfTest \
+  Mac/DirectCable.swift MacTests/DirectCableSelfTest.swift
+
+echo "Swift standalone self-tests PASS (34 suites)"
