@@ -83,12 +83,12 @@ run_test UpdateReleasePolicySelfTest \
 
 run_test MacReceiverPolicySelfTest \
   "${settings[@]}" Mac/DeviceCapabilities.swift Mac/MacReceiverPolicy.swift \
-  Mac/Receiver/ReceiverWireProtocol.swift Mac/Receiver/ReceiverFrameDecoder.swift \
+  Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
   MacTests/MacReceiverPolicySelfTest.swift
 
 run_test MacReceiverNetworkSelfTest \
-  Mac/Receiver/ReceiverWireProtocol.swift Mac/Receiver/ReceiverFrameDecoder.swift \
-  Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverNetworkSelfTest.swift
+  Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
+  Shared/ReceiverCursorImage.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverNetworkSelfTest.swift
 
 run_test MacRoleControllerSelfTest \
   Mac/MacRoleController.swift MacTests/MacRoleControllerSelfTest.swift
@@ -105,4 +105,13 @@ run_test BoundedLogWriterSelfTest \
 run_test TouchPressPolicySelfTest \
   iOS/TouchPressPolicy.swift MacTests/TouchPressPolicySelfTest.swift
 
-echo "Swift standalone self-tests PASS (29 suites)"
+run_test InputValidationPolicySelfTest \
+  Mac/InputValidationPolicy.swift MacTests/InputValidationPolicySelfTest.swift
+
+run_test PermissionMonitorSelfTest \
+  Mac/PermissionMonitor.swift MacTests/PermissionMonitorSelfTest.swift
+
+run_test ReceiverCursorImageSelfTest \
+  Shared/ReceiverCursorImage.swift MacTests/ReceiverCursorImageSelfTest.swift
+
+echo "Swift standalone self-tests PASS (32 suites)"

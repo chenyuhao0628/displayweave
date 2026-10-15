@@ -238,7 +238,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         // launch — the permission panel's Grant button triggers the system
         // dialog, so the request always has visible context.
         if !CGPreflightScreenCaptureAccess() {
-            await status("需要屏幕录制权限，请在下方“权限”中授权")
+            await status("需要屏幕录制权限，请打开设置 → 权限与诊断")
             Log.info("Screen Recording permission missing — waiting for grant via the permission panel")
             while !CGPreflightScreenCaptureAccess() {
                 try await Task.sleep(for: .seconds(2))
@@ -290,7 +290,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         try await startCapture(display: display, pixelsWide: captureW, pixelsHigh: captureH,
                            fps: captureFps, virtualDisplayRefreshRate: captureFps,
                            codec: codec)
-        inputInjector = InputInjector(displayID: display.displayID)
+        queue.sync {
+            inputInjector?.cancelPress()
+            if !stopped { inputInjector = InputInjector(displayID: display.displayID) }
+        }
     }
 
     private func waitForAccessibilityIfNeeded(statusText: String) async throws {
@@ -352,10 +355,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         let installed = queue.sync { () -> Bool in
             guard !stopped else { return false }
             virtualDisplay = vd
+            inputInjector?.cancelPress()
+            inputInjector = InputInjector(displayID: vd.displayID)
             return true
         }
         guard installed else { throw CancellationError() }
-        inputInjector = InputInjector(displayID: vd.displayID)
 
         let display = try await findSCDisplay(id: vd.displayID)
         // Quality scaling: capture/encode below native when requested — the
@@ -529,6 +533,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             reconfiguration?.cancel()
             let activeStream = stream
             stream = nil
+            inputInjector?.cancelPress()
+            inputInjector = nil
             invalidateConnection()
             cancelPendingReconnect()
             dialGeneration &+= 1
@@ -680,6 +686,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     }
 
     private func invalidateConnection() {
+        inputInjector?.cancelPress()
         connectionGeneration &+= 1
         let previous = connection
         connection = nil
@@ -1087,7 +1094,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 return
             }
             let len = Int(UInt32(bigEndian: data.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }))
-            guard len > 0, len < 1 << 20 else { return }
+            guard len > 0, len < 1 << 20 else {
+                self.handleConnectionClosure(.endSession)
+                return
+            }
             conn.receive(minimumIncompleteLength: len, maximumLength: len) { [weak self] payload, _, isComplete, error in
                 guard let self,
                       self.isCurrentConnection(conn, generation: generation) else {
@@ -1177,6 +1187,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             }
         case "hello":
             if let info = try? JSONDecoder().decode(PhoneInfo.self, from: payload) {
+                guard info.hasValidGeometry else {
+                    Log.info("rejected invalid receiver geometry")
+                    handleConnectionClosure(.endSession)
+                    return
+                }
                 guard info.id != StreamReceiver.installID else {
                     handleConnectionClosure(.endSession)
                     return

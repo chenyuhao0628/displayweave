@@ -22,6 +22,21 @@ struct PhoneInfo: Decodable {
     let displayMaxFrameRate: Int?
     let maxEncodeWide: Int?
     let maxEncodeHigh: Int?
+    /// Validate peer-controlled geometry before multiplication or capture setup.
+    var hasValidGeometry: Bool {
+        func valid(_ width: Int, _ height: Int, _ scale: Double) -> Bool {
+            (2...16384).contains(width) && (2...16384).contains(height)
+                && width * height <= 67_108_864 && scale.isFinite && scale > 0 && scale <= 4
+        }
+        guard valid(pixelsWide, pixelsHigh, scale) else { return false }
+        if let panel {
+            guard valid(panel.pixelsWide, panel.pixelsHigh, panel.scale) else { return false }
+            if let width = panel.pointsWide, !(2...16384).contains(width) { return false }
+            if let height = panel.pointsHigh, !(2...16384).contains(height) { return false }
+        }
+        return true
+    }
+
     var isMacReceiver: Bool { device?.lowercased() == "mac" }
 
     func sameDisplayConfiguration(as other: PhoneInfo) -> Bool {

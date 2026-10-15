@@ -7,7 +7,6 @@ import Combine
 import Network
 import AVFoundation
 import CoreMedia
-import ImageIO
 
 final class StreamReceiver: ObservableObject {
     @Published private(set) var status = "接收已停止"
@@ -297,18 +296,10 @@ final class StreamReceiver: ObservableObject {
     }
 
     private func handleCursorImage(_ obj: [String: Any]) {
-        guard let b64 = obj["png"] as? String, let png = Data(base64Encoded: b64),
-              let source = CGImageSourceCreateWithData(png as CFData, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let w = props[kCGImagePropertyPixelWidth] as? Int,
-              let h = props[kCGImagePropertyPixelHeight] as? Int,
-              w > 0, h > 0, w <= 512, h <= 512,
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
-              let nw = obj["nw"] as? Double, let nh = obj["nh"] as? Double,
-              nw.isFinite, nh.isFinite, nw > 0, nh > 0, nw <= 1, nh <= 1 else { return }
-        let ax = obj["ax"] as? Double ?? 0, ay = obj["ay"] as? Double ?? 0
-        guard ax.isFinite, ay.isFinite else { return }
-        DispatchQueue.main.async { self.onCursorImage?(image, CGPoint(x: ax, y: ay), CGSize(width: nw, height: nh)) }
+        guard let cursor = ReceiverCursorImage.decode(obj) else { return }
+        DispatchQueue.main.async {
+            self.onCursorImage?(cursor.image, cursor.anchor, cursor.normalizedSize)
+        }
     }
 
     private func handleAnnexB(_ data: Data, on conn: NWConnection) {

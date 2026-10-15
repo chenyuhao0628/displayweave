@@ -54,7 +54,9 @@ final class PhoneReceiver: ObservableObject {
     private var listenerHealthy = false
     private var connection: NWConnection?
     private let queue = DispatchQueue(label: "receiver.video")
-    private var buffer = Data()
+    private var frameDecoder = ReceiverFrameDecoder()
+    private var running = false
+    private var listenerGeneration: UInt64 = 0
     private var formatDesc: CMVideoFormatDescription?
     private var sps: Data?
     private var pps: Data?
@@ -190,13 +192,15 @@ final class PhoneReceiver: ObservableObject {
     }
 
     func setOrientation(portrait: Bool) {
-        let w = portrait ? nativeShort : nativeLong
-        let h = portrait ? nativeLong : nativeShort
-        guard w > 0, w != devicePixelsWide else { return }
-        devicePixelsWide = w
-        devicePixelsHigh = h
-        Log.info("orientation changed -> \(portrait ? "portrait" : "landscape") \(w)x\(h)")
-        if let connection { sendHello(on: connection) }
+        queue.async {
+            let w = portrait ? self.nativeShort : self.nativeLong
+            let h = portrait ? self.nativeLong : self.nativeShort
+            guard w > 0, w != self.devicePixelsWide else { return }
+            self.devicePixelsWide = w
+            self.devicePixelsHigh = h
+            Log.info("orientation changed -> \(w)x\(h)")
+            if let connection = self.connection { self.sendHello(on: connection) }
+        }
     }
 
     init(displayLayer: AVSampleBufferDisplayLayer) {
@@ -205,60 +209,51 @@ final class PhoneReceiver: ObservableObject {
     }
 
     func start(port: UInt16 = 9000) {
-        self.port = port
-        queue.async { self.startListener() }
-        if !monitorsStarted {
-            monitorsStarted = true
-            schedulePing()
-            scheduleWatchdog()
+        queue.async {
+            self.port = port
+            self.running = true
+            self.listenerGeneration &+= 1
+            self.restartListener()
+            if !self.monitorsStarted {
+                self.monitorsStarted = true
+                self.schedulePing()
+                self.scheduleWatchdog()
+            }
         }
     }
 
-    /// Recreate the listener if it isn't healthy — called when the app
-    /// returns to the foreground (iOS may have torn it down while suspended).
     func ensureListening() {
         queue.async {
+            if !self.running { self.listenerGeneration &+= 1 }
+            self.running = true
             guard !self.listenerHealthy else { return }
-            Log.info("listener not healthy — restarting")
             self.restartListener()
         }
     }
 
     func stop() {
         queue.async {
-            self.listener?.cancel()
+            self.running = false
+            self.listenerGeneration &+= 1
+            let oldListener = self.listener
             self.listener = nil
+            oldListener?.cancel()
             self.listenerHealthy = false
+            let old = self.connection
+            self.connection = nil
             self.resetStreamState()
             self.setConnected(false)
             self.setStatus("已在后台断开")
-            guard let conn = self.connection,
-                  let payload = try? JSONSerialization.data(
-                    withJSONObject: ["type": "goodbye"]) else {
-                self.connection?.cancel()
-                self.connection = nil
-                return
-            }
-            var header = UInt32(payload.count).bigEndian
-            var frame = Data(bytes: &header, count: 4)
-            frame.append(payload)
-            conn.send(content: frame, completion: .contentProcessed { [weak self, weak conn] _ in
-                guard let self, let conn else { return }
-                self.queue.async {
-                    guard self.connection === conn else { return }
-                    conn.cancel()
-                    self.connection = nil
-                }
-            })
-            self.queue.asyncAfter(deadline: .now() + 0.25) { [weak self, weak conn] in
-                guard let self, let conn, self.connection === conn else { return }
-                conn.cancel()
-                self.connection = nil
+            if let old {
+                let payload = Data("{\"type\":\"goodbye\"}".utf8)
+                old.send(content: ReceiverFrameDecoder.frame(payload), completion: .contentProcessed { _ in old.cancel() })
+                self.queue.asyncAfter(deadline: .now() + 0.25) { old.cancel() }
             }
         }
     }
 
     private func restartListener() {
+        guard running else { return }
         listener?.cancel()
         listener = nil
         listenerHealthy = false
@@ -266,6 +261,8 @@ final class PhoneReceiver: ObservableObject {
     }
 
     private func startListener() {
+        guard running else { return }
+        let generation = listenerGeneration
         do {
             // noDelay matters most in THIS direction: touch events are tiny
             // packets, and Nagle would hold each one until the previous is
@@ -282,9 +279,10 @@ final class PhoneReceiver: ObservableObject {
         }
         // Advertise on the local network so the Mac can discover us for WiFi
         // mode (USB/usbmux connects straight to the port and ignores this).
-        listener?.service = advertisedService
-        listener?.newConnectionHandler = { [weak self] conn in
-            guard let self else { return }
+        guard let active = listener else { return }
+        active.service = advertisedService
+        active.newConnectionHandler = { [weak self, weak active] conn in
+            guard let self, self.running, self.listener === active else { conn.cancel(); return }
             Log.info("new connection from \(String(describing: conn.endpoint))")
             // usbmux-forwarded (cable) connections arrive from loopback;
             // anything else came over the network.
@@ -295,22 +293,25 @@ final class PhoneReceiver: ObservableObject {
             self.connection?.cancel()
             self.connection = conn
             self.resetStreamState()
-            conn.stateUpdateHandler = { [weak self] state in
+            conn.stateUpdateHandler = { [weak self, weak conn] state in
+                guard let self, let conn, self.running, self.connection === conn else { return }
                 switch state {
                 case .ready:
-                    self?.lastDataReceived = Date()
-                    self?.setConnected(true)
-                    self?.sendHello(on: conn)
+                    self.lastDataReceived = Date()
+                    self.setConnected(true)
+                    self.sendHello(on: conn)
                 case .failed, .cancelled:
-                    self?.setConnected(false)
+                    self.connection = nil
+                    self.resetStreamState()
+                    self.setConnected(false)
                 default: break
                 }
             }
             conn.start(queue: self.queue)
             self.receive(on: conn)
         }
-        listener?.stateUpdateHandler = { [weak self] state in
-            guard let self else { return }
+        active.stateUpdateHandler = { [weak self, weak active] state in
+            guard let self, self.running, self.listener === active else { return }
             switch state {
             case .ready:
                 self.listenerHealthy = true
@@ -319,13 +320,17 @@ final class PhoneReceiver: ObservableObject {
                 Log.info("listener failed: \(error) — restarting in 1s")
                 self.listenerHealthy = false
                 self.setStatus("监听失败，正在重启…")
-                self.queue.asyncAfter(deadline: .now() + 1) { self.restartListener() }
+                self.queue.asyncAfter(deadline: .now() + 1) { [weak self, weak active] in
+                    guard let self, self.running, self.listenerGeneration == generation,
+                          self.listener === active else { return }
+                    self.restartListener()
+                }
             case .cancelled:
                 self.listenerHealthy = false
             default: break
             }
         }
-        listener?.start(queue: queue)
+        active.start(queue: queue)
     }
 
     // MARK: - Liveness (ping + watchdog)
@@ -342,7 +347,8 @@ final class PhoneReceiver: ObservableObject {
 
     /// JSON on the video channel (pong, ping liveness) — payloads starting '{'.
     private func handleVideoChannelJSON(_ data: Data) {
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard data.count <= 256 * 1024,
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = obj["type"] as? String else { return }
         switch type {
         case "pong":
@@ -368,15 +374,12 @@ final class PhoneReceiver: ObservableObject {
             let visible = (obj["v"] as? Int ?? 0) == 1
             let x = obj["x"] as? Double ?? 0
             let y = obj["y"] as? Double ?? 0
+            guard x.isFinite, y.isFinite else { return }
             DispatchQueue.main.async { self.onCursor?(x, y, visible) }
         case "cursorImg":
-            guard let b64 = obj["png"] as? String,
-                  let png = Data(base64Encoded: b64),
-                  let image = UIImage(data: png),
-                  let nw = obj["nw"] as? Double, let nh = obj["nh"] as? Double else { return }
-            let anchor = CGPoint(x: obj["ax"] as? Double ?? 0, y: obj["ay"] as? Double ?? 0)
-            let normSize = CGSize(width: nw, height: nh)
-            DispatchQueue.main.async { self.onCursorImage?(image, anchor, normSize) }
+            guard let cursor = ReceiverCursorImage.decode(obj) else { return }
+            let image = UIImage(cgImage: cursor.image)
+            DispatchQueue.main.async { self.onCursorImage?(image, cursor.anchor, cursor.normalizedSize) }
         default:
             break
         }
@@ -390,6 +393,7 @@ final class PhoneReceiver: ObservableObject {
                 Log.info("watchdog: nothing from the Mac for >5s — dropping connection")
                 conn.cancel()
                 self.connection = nil
+                self.resetStreamState()
                 self.setConnected(false)
             }
             self.scheduleWatchdog()
@@ -397,14 +401,24 @@ final class PhoneReceiver: ObservableObject {
     }
 
     private func resetStreamState() {
-        buffer.removeAll(keepingCapacity: true)
+        frameDecoder = ReceiverFrameDecoder()
         formatDesc = nil
         sps = nil
         pps = nil
         lastFrameAt = nil
         frameIntervals.removeAll()
         decodeFlushes = 0
-        displayLayer.flush()
+        displayLayer.flushAndRemoveImage()
+        framesThisWindow = 0; bytesThisWindow = 0; stallsThisWindow = 0
+        fpsWindowStart = Date()
+        offsetSamples.removeAll(); clockOffsetMs = nil; lastRttMs = 0
+        e2eWindow.removeAll(); e2eRing.removeAll(); encodeWindow.removeAll()
+        DispatchQueue.main.async {
+            self.videoSize = .zero
+            self.fps = 0
+            self.perf = PerfStats()
+            self.onCursor?(0, 0, false)
+        }
         if let session = decompressionSession {
             VTDecompressionSessionInvalidate(session)
             decompressionSession = nil
@@ -455,41 +469,30 @@ final class PhoneReceiver: ObservableObject {
     // MARK: - Socket read + length-prefixed deframing
 
     private func receive(on conn: NWConnection) {
-        conn.receive(minimumIncompleteLength: 1, maximumLength: 1 << 18) {
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 256 * 1024) {
             [weak self] data, _, isComplete, error in
-            guard let self else { return }
+            guard let self, self.running, self.connection === conn else { return }
             if let data, !data.isEmpty {
                 self.lastDataReceived = Date()
                 self.bytesThisWindow += data.count
-                self.buffer.append(data)
-                self.drainFrames()
+                do {
+                    for frame in try self.frameDecoder.append(data) { self.handleAnnexB(frame) }
+                } catch {
+                    self.connection = nil
+                    conn.cancel()
+                    self.resetStreamState()
+                    self.setConnected(false)
+                    self.setStatus("已拒绝无效数据，等待 Mac 重新连接")
+                    return
+                }
             }
-            if let error {
-                Log.info("receive error: \(error)")
-                return
-            }
-            if isComplete {
-                Log.info("peer closed connection")
+            if isComplete || error != nil {
+                self.connection = nil
+                conn.cancel()
+                self.resetStreamState()
                 self.setConnected(false)
-                return
-            }
-            self.receive(on: conn)
+            } else { self.receive(on: conn) }
         }
-    }
-
-    private func drainFrames() {
-        // Cursor-based drain so we only compact the buffer once per batch.
-        var cursor = buffer.startIndex
-        while buffer.distance(from: cursor, to: buffer.endIndex) >= 4 {
-            let len = buffer[cursor..<buffer.index(cursor, offsetBy: 4)]
-                .withUnsafeBytes { Int(UInt32(bigEndian: $0.loadUnaligned(as: UInt32.self))) }
-            guard buffer.distance(from: cursor, to: buffer.endIndex) >= 4 + len else { break }
-            let start = buffer.index(cursor, offsetBy: 4)
-            let end = buffer.index(start, offsetBy: len)
-            handleAnnexB(Data(buffer[start..<end]))
-            cursor = end
-        }
-        buffer.removeSubrange(buffer.startIndex..<cursor)
     }
 
     // MARK: - Annex B -> CMSampleBuffer
@@ -581,6 +584,11 @@ final class PhoneReceiver: ObservableObject {
                 )
                 if status == noErr, let formatDesc {
                     let dims = CMVideoFormatDescriptionGetDimensions(formatDesc)
+                    guard dims.width > 0, dims.height > 0, dims.width <= 8192, dims.height <= 8192,
+                          Int64(dims.width) * Int64(dims.height) <= 33_554_432 else {
+                        self.formatDesc = nil
+                        return
+                    }
                     Log.info("format description built: \(dims.width)x\(dims.height)")
                     DispatchQueue.main.async {
                         self.videoSize = CGSize(width: Int(dims.width), height: Int(dims.height))

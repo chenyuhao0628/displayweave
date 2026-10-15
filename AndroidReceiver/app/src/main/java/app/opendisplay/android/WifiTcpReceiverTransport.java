@@ -7,6 +7,9 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Locale;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -14,10 +17,11 @@ import java.util.concurrent.RejectedExecutionException;
 import app.opendisplay.android.protocol.LengthPrefixedProtocol;
 
 public final class WifiTcpReceiverTransport implements ReceiverTransport {
+    static final int MAX_CONTROL_BYTES = 64 * 1024;
     private final int requestedPort;
     private final ExecutorService acceptor = Executors.newSingleThreadExecutor();
-    private final ExecutorService readers = Executors.newCachedThreadPool();
-    private final ExecutorService writer = Executors.newSingleThreadExecutor();
+    private final ExecutorService readers = boundedExecutor(2, 2);
+    private final ExecutorService writer;
     private volatile boolean running;
     private Listener listener;
     private volatile ServerSocket serverSocket;
@@ -47,7 +51,17 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
     }
 
     public WifiTcpReceiverTransport(int port) {
+        this(port, boundedExecutor(1, 128));
+    }
+
+    WifiTcpReceiverTransport(int port, ExecutorService writer) {
         requestedPort = port;
+        this.writer = writer;
+    }
+
+    static ThreadPoolExecutor boundedExecutor(int threads, int queueCapacity) {
+        return new ThreadPoolExecutor(threads, threads, 0, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(queueCapacity), new ThreadPoolExecutor.AbortPolicy());
     }
 
     @Override
@@ -70,12 +84,16 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
         if (!running || generation <= 0 || payload == null) {
             return;
         }
+        ConnectionContext context = current(generation);
+        if (context == null) {
+            return;
+        }
+        if (payload.length == 0 || payload.length > MAX_CONTROL_BYTES) {
+            disconnectAfterFailure(context, "transportWriteFailure", "控制消息过大，连接已关闭，请重新连接");
+            return;
+        }
         try {
             writer.execute(() -> {
-                ConnectionContext context = current(generation);
-                if (context == null) {
-                    return;
-                }
                 try {
                     synchronized (context.writeLock) {
                         if (!isCurrent(context)) {
@@ -84,12 +102,17 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
                         LengthPrefixedProtocol.write(context.output, payload);
                     }
                 } catch (IOException error) {
-                    disconnectAfterWriteFailure(context,
+                    disconnectAfterFailure(context, "transportWriteFailure",
                             "发送失败：" + error.getMessage());
                 }
             });
         } catch (RejectedExecutionException ignored) {
-            // stop() may race with a final timer/control send.
+            // A blocked peer must not accumulate unlimited input, or lose only an
+            // individual button-up. Closing the session resets the full input state.
+            if (running) {
+                disconnectAfterFailure(context, "transportWriteFailure",
+                        "发送队列已满，连接已关闭，请检查网络后重新连接");
+            }
         }
     }
 
@@ -153,7 +176,16 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
                 closeConnection(previous);
                 listener.onConnected(
                         context.generation, accepted.getInetAddress().getHostAddress());
-                readers.execute(() -> readLoop(context));
+                try {
+                    readers.execute(() -> readLoop(context));
+                } catch (RejectedExecutionException ignored) {
+                    if (running) {
+                        disconnectAfterFailure(context, "transportReadFailure",
+                                "连接切换过于频繁，请稍后重新连接");
+                    } else {
+                        closeConnection(context);
+                    }
+                }
             }
         } catch (IOException error) {
             if (running) {
@@ -255,7 +287,7 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
         closeConnection(active);
     }
 
-    private void disconnectAfterWriteFailure(ConnectionContext context, String message) {
+    private void disconnectAfterFailure(ConnectionContext context, String reason, String message) {
         if (!clearCurrent(context)) {
             closeConnection(context);
             return;
@@ -264,7 +296,7 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
         Listener activeListener = listener;
         if (activeListener != null) {
             activeListener.onTransportDrop(
-                    context.generation, "transportWriteFailure");
+                    context.generation, reason);
             activeListener.onError(context.generation, message);
             activeListener.onDisconnected(context.generation);
         }

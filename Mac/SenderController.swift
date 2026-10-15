@@ -425,7 +425,8 @@ final class SenderController: ObservableObject {
         if let covering {
             guard userInitiated else { return }
             Log.info("user chose \(id) — taking over from \(covering.id)")
-            end(covering)
+            replace([covering], targets: [freshTarget(target)])
+            return
         }
 
         // Connecting a device clears its "don't auto-connect" state.
@@ -578,7 +579,8 @@ final class SenderController: ObservableObject {
                 arrivingUSBInstallID: installIDByAndroidSerial[serial])
             guard decision == .replaceWiFiWithUSB else { return }
             Log.info("Android USB available — upgrading same-install-ID session from \(covering.id)")
-            end(covering)
+            replace([covering], targets: [.androidAdbDevice(serial: serial)])
+            return
         }
         guard let androidForwardManager else {
             androidAdbStatus = "ADB 尚未就绪"
@@ -591,7 +593,7 @@ final class SenderController: ObservableObject {
             defer { androidConnectPending.remove(serial) }
             do {
                 let mapping = try await androidForwardManager.create(serial: serial)
-                guard roleEnabled, roleGeneration == generation else {
+                guard roleEnabled, roleGeneration == generation, !replacingSessions, settings.transportMode != .wifi else {
                     await androidForwardManager.remove(sessionID: mapping.sessionID)
                     return
                 }
@@ -607,7 +609,7 @@ final class SenderController: ObservableObject {
         let installID = session.deviceID ?? installIDByAndroidSerial[serial]
         let manager = session.androidForwardManager
         Log.info("Android USB disconnected — beginning bounded recovery for \(serial)")
-        end(session)
+        let cleanup = end(session)
 
         guard settings.transportMode != .wifi, let manager else { return }
         let startAttempt = androidRecoveryAttempt[serial, default: 0]
@@ -615,6 +617,7 @@ final class SenderController: ObservableObject {
         let generation = androidRecoveryGeneration[serial, default: 0]
 
         Task {
+            await cleanup.value
             for attempt in startAttempt..<TransportSelectionPolicy.recoveryDelays.count {
                 guard roleEnabled, androidRecoveryGeneration[serial] == generation else { return }
                 let delay = TransportSelectionPolicy.recoveryDelays[attempt]

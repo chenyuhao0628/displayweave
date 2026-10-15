@@ -4,8 +4,8 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 temporary="$(mktemp -d "${TMPDIR:-/tmp}/displayweave-window-test.XXXXXX")"
 trap 'rm -rf "$temporary"' EXIT
-swiftc Mac/Receiver/ReceiverWireProtocol.swift Mac/Receiver/ReceiverFrameDecoder.swift \
-  Mac/Receiver/StreamReceiver.swift Mac/Receiver/ReceiverVideoView.swift \
+swiftc Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
+  Shared/ReceiverCursorImage.swift Mac/Receiver/StreamReceiver.swift Mac/Receiver/ReceiverVideoView.swift \
   Mac/Receiver/MacReceiverController.swift MacTests/ReceiverTestSupport.swift \
   MacTests/MacReceiverWindowSelfTest.swift -o "$temporary/ReceiverWindowTest"
 "$temporary/ReceiverWindowTest"
