@@ -4,6 +4,7 @@
 
 ## 当前用户指南
 
+- [HEVC、有线发现与 Pencil 设计和验收](hevc-wired-pencil-plan.zh-CN.md)
 - [2026-10-16 源码升级验收与硬件边界](source-upgrade-audit-2026-10-16.zh-CN.md)与[上游集成取舍](upstream-integration-2026-10-16.zh-CN.md)
 - [UI 规范](ui-guidelines.zh-CN.md)与[源码升级计划](upgrade-plan.zh-CN.md)
 - [开发工作流与当前 Codex 官方依据](development.zh-CN.md)
