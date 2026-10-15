@@ -4,6 +4,8 @@
 
 Android 接收端可以通过本地 WiFi 或由 Mac 管理的 ADB-forward USB 接收 DisplayWeave 视频。它协商 HEVC/H.265 或 H.264，请求兼容 30/60/90/120Hz 的模式，通过 MediaCodec/Surface 渲染，并回传触摸/输入与链路指标。
 
+等待页面跟随系统明暗主题。设置在小屏上可滚动；串流时右上角设置按钮始终可用，即使已隐藏状态浮层。
+
 ## 要求
 
 - Android 8.0+；硬件 HEVC 支持取决于设备。

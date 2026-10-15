@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+
+for (const [file, locale] of [['index.html', 'en'], ['zh.html', 'zh-CN']]) {
+  const html = await readFile(`site-dist/${file}`, 'utf8')
+  assert.ok(html.includes(`<html lang="${locale}">`), `${file}: document language`)
+  const title = html.match(/<title>(.*?)<\/title>/)?.[1] ?? ''
+  assert.ok(title.includes('DisplayWeave'), `${file}: branded title`)
+  if (locale === 'zh-CN') assert.match(title, /[\u4e00-\u9fff]/u, 'Chinese route needs a Chinese title')
+  for (const language of ['en', 'zh-CN', 'x-default']) {
+    assert.equal((html.match(new RegExp(`hreflang="${language}"`, 'g')) ?? []).length, 1,
+      `${file}: one alternate per language`)
+  }
+  assert.equal((html.match(/rel="canonical"/g) ?? []).length, 1, `${file}: single canonical`)
+  const path = locale === 'zh-CN' ? 'zh.html' : ''
+  assert.ok(html.includes(`rel="canonical" href="https://chenyuhao0628.github.io/displayweave/${path}"`))
+  assert.ok(html.includes('<main') && html.includes('<h1'), `${file}: prerendered content`)
+  for (const anchor of ['download', 'status', 'transport', 'evidence', 'trust', 'faq']) {
+    assert.ok(html.includes(`id="${anchor}"`), `${file}: reachable ${anchor} navigation`)
+  }
+  assert.ok(html.includes(locale === 'en' ? 'not in the downloads below' : '尚未包含在下方发布包'),
+    `${file}: source capability is distinct from published downloads`)
+}
+console.log('Bilingual site metadata, navigation and release-scope checks PASS')
