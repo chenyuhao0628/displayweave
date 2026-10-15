@@ -4,6 +4,7 @@
 
 ## Current user guides
 
+- [UI standard](ui-guidelines.md) and [source upgrade plan](upgrade-plan.md)
 - [Development workflow and current Codex guidance](development.md)
 - [Mac-to-Mac LAN (source development build)](mac-to-mac.md) and [design/upstream assessment](mac-to-mac-design.md)
 

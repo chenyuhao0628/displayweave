@@ -4,6 +4,7 @@
 
 ## 当前用户指南
 
+- [UI 规范](ui-guidelines.zh-CN.md)与[源码升级计划](upgrade-plan.zh-CN.md)
 - [开发工作流与当前 Codex 官方依据](development.zh-CN.md)
 - [Mac 与 Mac 局域网互联（源码开发构建）](mac-to-mac.zh-CN.md)与[设计/上游评估](mac-to-mac-design.zh-CN.md)
 
