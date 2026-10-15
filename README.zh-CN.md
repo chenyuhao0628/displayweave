@@ -12,6 +12,8 @@ DisplayWeave 是独立维护、使用 GPL-3.0、坚持本地优先的第二屏�
 首期 H.264 最高 60fps；实体双 Mac 性能矩阵待验证。此功能尚不在下方 `v0.2.1-p6`
 发布包内。参见[使用指南](docs/mac-to-mac.zh-CN.md)及[设计与上游评估](docs/mac-to-mac-design.zh-CN.md)。
 
+当前源码还完成了四端 UI 规范化、上游恢复改进和网络/生命周期加固；实现、32 组 Swift 回归及未完成的真机验收见[源码升级报告](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。
+
 ## 当前能力
 
 - Apple 接收端：通过 `usbmuxd` 使用 USB，或使用本地 WiFi；采用 H.264 链路。

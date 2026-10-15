@@ -4,6 +4,7 @@
 
 ## Current user guides
 
+- [2026-10-16 source upgrade audit and hardware limits](source-upgrade-audit-2026-10-16.md) and [upstream integration decisions](upstream-integration-2026-10-16.md)
 - [UI standard](ui-guidelines.md) and [source upgrade plan](upgrade-plan.md)
 - [Development workflow and current Codex guidance](development.md)
 - [Mac-to-Mac LAN (source development build)](mac-to-mac.md) and [design/upstream assessment](mac-to-mac-design.md)

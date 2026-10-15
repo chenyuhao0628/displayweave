@@ -53,3 +53,11 @@ A broad iteration is complete when its documented scope is implemented, automate
 Use `tools/run-mac-receiver-window-test.sh` only in a usable desktop session. Virtual-display creation/removal requires an independent online display. With the lid closed and no independent display, skip it; do not repeatedly create test displays or restart WindowServer. Check current online-list membership to assess removal; retired display IDs are not reliable liveness probes.
 
 Keep screenshots and full logs outside Git. Record reproducible commands and sanitized results in the relevant audit. Hardware evidence must include model, OS, connection type, resolution, codec, target and rendered FPS, duration and reconnect behavior.
+
+## Current verification coverage
+
+`tools/run-swift-self-tests.sh` runs 32 standalone suites. Android `test` includes six plain-Java groups. `pnpm build` runs TypeScript, client/SSR production builds, bilingual prerendering and generated-site assertions. Run both Apple target builds after adding shared source files.
+
+For the opt-in iOS network smoke test, launch the current app in an iOS Simulator and keep it foregrounded, then run `python3 tools/test-ios-receiver.py --port 9000`. The initial listener wait is bounded to 10 seconds; the test sends invalid lengths and fragmented controls, replaces connections and checks liveness. Use an isolated receiver because it intentionally disconnects its test peers. It does not capture the desktop or prove video performance. Background the app separately and verify that port 9000 closes.
+
+See [the 2026-10-16 audit](source-upgrade-audit-2026-10-16.md) for actual local UI/build evidence and pending hardware work.

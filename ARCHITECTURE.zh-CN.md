@@ -68,3 +68,20 @@ Mac 应用可在发送和接收之间切换。接收角色先停止发送会话�
 有界分帧和 AVSampleBufferDisplayLayer 渲染 H.264。一次只接受一个发送端；旧连接回调
 不能影响替代会话。发送端按接收屏幕逻辑点、缩放和 codec 尺寸/帧率上限配置。
 Mac 使用 Apple legacy 帧，不启用 Android DWV2。详见[设计](docs/mac-to-mac-design.zh-CN.md)。
+
+## 源码职责与有界任务（2026-10-16）
+
+源码应用在同一 Wi-Fi 或以太网局域网支持互斥的 Mac 发送/接收角色；这是 v0.2.1-p6 下载之外的开发功能。镜像捕获现有显示器，扩展创建虚拟显示器。
+
+| 区域 | 职责 |
+| --- | --- |
+| Mac 界面 | `OpenSidecarMacApp`、`MacRoleViews`、`SenderWorkspaceView`、`SenderSettingsView`、`SessionRow`、`UpdateViews`；`SettingsWindow` 只负责承载桌面设置窗口。 |
+| Mac 会话 | `SenderController` 管理发现与替换屏障；每个 `DeviceSession` 拥有发送端和 `SessionLifetime`，启动失败或停止后的资源清理先于替换启动。 |
+| iOS 界面 | `ReceiverScreen`、`ReceiverIdleView`、`ReceiverOnboardingView`、`ReceiverSettingsView`、`ReceiverPerformanceView`、`ReceiverModel`、`ReceiverVideoView`。 |
+| Apple 共用边界 | `Shared/ReceiverFrameDecoder` 验证 legacy 帧长（最大 16 MiB）；`ReceiverCursorImage` 在解码前检查字节/像素几何；`BoundedLogWriter` 限制日志文件和排队任务。 |
+| Android 界面 | `ReceiverUi` 管理公共样式，`ReceiverActivity` 管理连接/生命周期呈现。 |
+| 网站 | 公共 CSS token 与语义 React 区块；服务端渲染和客户端 hydration 使用同一树，生成后检查双语页面。 |
+
+`PhoneReceiver` 在串行队列维护监听/连接，忽略旧回调；进入后台先分离旧 socket，再尽力发送 goodbye。Android 控制写入限制为一个线程、128 个排队任务和 64 KiB 单条负载；读取限制为两个线程、两个排队任务。饱和时断开对应会话，避免输入无限积压。发送端在算术和 CoreGraphics 转换前验证几何与输入。
+
+参见 [UI 规范](docs/ui-guidelines.zh-CN.md)、[开发命令](docs/development.zh-CN.md)与[源码验收和验证边界](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。

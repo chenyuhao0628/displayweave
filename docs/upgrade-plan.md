@@ -12,3 +12,5 @@ Baseline: `83581c5`; active branch `codex/mac-to-mac-lan`; existing PR #11. Publ
 6. Audit: examine lifecycle, network bounds, stale callback isolation, accessibility and release claims. Fix evidenced defects; run complete automated gates; update architecture, roadmap and audit with actual outcomes; commit and synchronize remote.
 
 Completion: the four existing UI surfaces implement the standard, useful upstream items are dispositioned, critical audit defects are resolved, automated regression passes, main/remote integration is verified, and physical tests remain honestly qualified. No public release or unsupported two-device performance claims are included.
+
+Implemented rounds, commit IDs and acceptance limits are recorded in [the source audit](source-upgrade-audit-2026-10-16.md); final remote checks and integration are recorded in PR #11.

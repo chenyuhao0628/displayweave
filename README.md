@@ -14,6 +14,8 @@ The two-Mac physical performance matrix remains unverified. This feature is not
 in the `v0.2.1-p6` downloads below. See the [user guide](docs/mac-to-mac.md) and
 [design/upstream assessment](docs/mac-to-mac-design.md).
 
+Current source also includes the four-surface UI refactor, selected upstream recovery improvements and network/lifecycle hardening. Implementation, 32 Swift regression suites and remaining physical acceptance are recorded in [the source upgrade report](docs/source-upgrade-audit-2026-10-16.md).
+
 ## Current capabilities
 
 - Apple receivers: USB through `usbmuxd` and local WiFi, using the H.264 path.

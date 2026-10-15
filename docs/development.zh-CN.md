@@ -53,3 +53,11 @@ xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecariOS -configuration 
 仅在可用桌面会话中运行 `tools/run-mac-receiver-window-test.sh`。虚拟显示器创建和释放要求独立的在线显示器；合盖且没有独立显示器时跳过，不反复创建测试屏，也不重启 WindowServer。判断释放时使用当前在线列表，不能用已退役 ID 的状态查询作为存活证据。
 
 截图与完整日志不进入 Git，在审计中记录可复现命令及脱敏结果。硬件证据必须包括型号、系统、连接方式、分辨率、codec、目标及实际 FPS、时长与重连行为。
+
+## 当前验证覆盖
+
+`tools/run-swift-self-tests.sh` 执行 32 组独立测试；Android `test` 包含六组纯 Java 自测；`pnpm build` 执行 TypeScript、client/SSR 生产构建、双语预渲染与生成页面断言。添加共用源码后需构建两个 Apple 目标。
+
+可选 iOS 网络冒烟测试：在 iOS 模拟器启动当前应用并保持前台，运行 `python3 tools/test-ios-receiver.py --port 9000`。首次监听最多等待 10 秒，测试无效长度、分片控制消息、连接替换与存活。它会主动断开测试连接，应使用独立接收实例；不捕获桌面，也不证明视频性能。另行把应用切至后台，检查 9000 端口关闭。
+
+实际本地 UI/构建证据及待完成硬件项见 [2026-10-16 验收报告](source-upgrade-audit-2026-10-16.zh-CN.md)。
