@@ -5,6 +5,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
 pairs=(
+  "docs/development.md:docs/development.zh-CN.md"
   "docs/mac-to-mac.md:docs/mac-to-mac.zh-CN.md"
   "docs/mac-to-mac-design.md:docs/mac-to-mac-design.zh-CN.md"
   "README.md:README.zh-CN.md"

@@ -4,6 +4,8 @@
 
 欢迎范围清晰的问题报告、硬件证据、文档修正和小型 Pull Request。
 
+仓库代理规则见 [AGENTS.md](AGENTS.md)，当前命令、Codex 官方依据和完成标准见[开发工作流](docs/development.zh-CN.md)。
+
 ## 修改代码之前
 
 1. 阅读 [ARCHITECTURE.zh-CN.md](ARCHITECTURE.zh-CN.md)、[ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)及 `docs/` 下相关验收文档。

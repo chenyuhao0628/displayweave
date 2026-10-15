@@ -4,6 +4,8 @@
 
 Focused bug reports, hardware evidence, documentation corrections, and small pull requests are welcome.
 
+See [AGENTS.md](AGENTS.md) for repository agent instructions and [the development workflow](docs/development.md) for current commands, official Codex references, and completion gates.
+
 ## Before changing code
 
 1. Read [ARCHITECTURE.md](ARCHITECTURE.md), [ROADMAP.md](ROADMAP.md), and the relevant acceptance document under `docs/`.
