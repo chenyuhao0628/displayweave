@@ -38,7 +38,7 @@ import VideoToolbox
             let peer = try ReceiverTestPeer(port: port)
             let hello = try peer.hello()
             precondition(hello["device"] as? String == "Mac")
-            precondition(hello["supportedCodecs"] as? [String] == ["h264"])
+            precondition((hello["supportedCodecs"] as? [String])?.contains("h264") == true)
             precondition(hello["protocolVersion"] == nil && hello["power"] == nil && hello["cursorPort"] == nil)
             return peer
         }.value
@@ -56,6 +56,18 @@ import VideoToolbox
         }.value
         try await waitFor("real H264 parameter sets accepted") { receiver.videoSize == CGSize(width: 64, height: 64) }
         precondition(receiver.connected)
+        if EncoderHardwareCapabilities.hevc, VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC) {
+            let hevc = try await Task.detached { try receiverTestH264Frame(codec: kCMVideoCodecType_HEVC) }.value
+            let hevcConfig = try JSONSerialization.data(withJSONObject: ["type":"streamConfig", "codec":"hevc", "width":64, "height":64])
+            try first.write(ReceiverFrameDecoder.frame(hevcConfig) + ReceiverFrameDecoder.frame(hevc))
+            try await waitFor("HEVC accepted") { receiver.status.contains("· HEVC") && receiver.videoSize.width == 64 }
+            // Malformed HEVC asks once for H.264; queued HEVC video cannot contaminate the fallback parser.
+            try first.write(ReceiverFrameDecoder.frame(Data([0,0,0,1,0x26,0])))
+            try await waitFor("HEVC fallback requested") { receiver.status.contains("回退 H.264") }
+            try first.write(ReceiverFrameDecoder.frame(hevc))
+            try first.write(stream)
+            try await waitFor("H264 after HEVC failure") { receiver.status.contains("· H.264") && receiver.videoSize.width == 64 }
+        } else { print("SKIP HEVC network video: hardware codec unavailable") }
         try await Task.detached { try first.write(Data([255,255,255,255])); precondition(first.isClosed()) }.value
         try await waitFor("malformed peer disconnected") { !receiver.connected && receiver.videoSize == .zero }
         let next = try await Task.detached { () -> ReceiverTestPeer in
@@ -77,6 +89,23 @@ import VideoToolbox
         await withCheckedContinuation { continuation in receiver.stop { continuation.resume() } }
         try await waitFor("stopped") { receiver.listeningPort == 0 }
         withExtendedLifetime((first, next, fresh)) {}
+        let legacy = StreamReceiver(hardwareHEVCDecode: false)
+        legacy.start(port: 0, advertiseService: false)
+        try await waitFor("legacy listen") { legacy.listeningPort != 0 }
+        let legacyPort = legacy.listeningPort
+        let unsupported = try await Task.detached { () -> ReceiverTestPeer in
+            let peer = try ReceiverTestPeer(port: legacyPort)
+            let hello = try peer.hello()
+            precondition(hello["supportedCodecs"] as? [String] == ["h264"])
+            let cfg = try JSONSerialization.data(withJSONObject: ["type":"streamConfig", "codec":"hevc", "width":64, "height":64])
+            try peer.write(ReceiverFrameDecoder.frame(cfg))
+            let failure = try peer.hello()
+            precondition(failure["type"] as? String == "codecFailure")
+            return peer
+        }.value
+        try await waitFor("fallback timeout closes peer") { !legacy.connected && legacy.status.contains("回退超时") }
+        await withCheckedContinuation { continuation in legacy.stop { continuation.resume() } }
+        withExtendedLifetime(unsupported) {}
         print("Mac receiver loopback: hello, busy rejection, H264, invalid framing, reconnect, stop/restart PASS")
     }
 }

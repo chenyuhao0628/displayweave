@@ -87,8 +87,8 @@ run_test MacReceiverPolicySelfTest \
   MacTests/MacReceiverPolicySelfTest.swift
 
 run_test MacReceiverNetworkSelfTest \
-  Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
-  Shared/ReceiverCursorImage.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverNetworkSelfTest.swift
+  Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
+  Shared/ReceiverCursorImage.swift Mac/Receiver/ReceiverVideoBitstream.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverNetworkSelfTest.swift
 
 run_test MacRoleControllerSelfTest \
   Mac/MacRoleController.swift MacTests/MacRoleControllerSelfTest.swift
@@ -114,4 +114,8 @@ run_test PermissionMonitorSelfTest \
 run_test ReceiverCursorImageSelfTest \
   Shared/ReceiverCursorImage.swift MacTests/ReceiverCursorImageSelfTest.swift
 
-echo "Swift standalone self-tests PASS (32 suites)"
+run_test ReceiverVideoBitstreamSelfTest \
+  Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverVideoBitstream.swift MacTests/ReceiverTestSupport.swift \
+  MacTests/ReceiverVideoBitstreamSelfTest.swift
+
+echo "Swift standalone self-tests PASS (33 suites)"

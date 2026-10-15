@@ -9,6 +9,15 @@ import Foundation
         let plan = MacReceiverPolicy.plan(info: info, settings: settings)
         precondition(plan.pointsWide == 2560 && plan.pointsHigh == 1440 && plan.scale == 2)
         precondition(plan.width == 4096 && plan.height == 2304 && plan.fps == 60 && plan.codec == .h264)
+        let hevc = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":5120,"pixelsHigh":2880,"scale":2,"device":"Mac","supportedCodecs":["h264","hevc"],"videoCaps":[{"codec":"hevc","maxWidth":4096,"maxHeight":2304,"maxFrameRate":60},{"codec":"h264","maxWidth":1920,"maxHeight":1080,"maxFrameRate":30}]}"#.utf8))
+        let efficient = MacReceiverPolicy.plan(info: hevc, settings: settings, hardwareHEVCEncode: true)
+        precondition(efficient.codec == .hevc && efficient.width <= 1920 && efficient.height <= 1080 && efficient.fps == 30)
+        precondition(MacReceiverPolicy.plan(info: hevc, settings: settings, hardwareHEVCEncode: false).codec == .h264)
+        var forced = settings
+        forced.codecMode = .h264
+        precondition(MacReceiverPolicy.plan(info: hevc, settings: forced, hardwareHEVCEncode: true).codec == .h264)
+        forced.codecMode = .auto
+        precondition(MacReceiverPolicy.plan(info: hevc, settings: forced, hardwareHEVCEncode: true).codec == .hevc)
         let oneX = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":1920,"pixelsHigh":1080,"scale":1,"device":"Mac"}"#.utf8))
         let plain = MacReceiverPolicy.plan(info: oneX, settings: settings)
         precondition(plain.scale == 1 && plain.pointsWide == 1920 && plain.width == 1920)

@@ -45,3 +45,5 @@ Commit this design first. Each implementation round adds behavioral regression c
 ## Execution record
 
 Design recorded before implementation. Implementation and verification results will be appended as each round completes.
+
+- Round 1: implemented hardware-gated Mac HEVC, bounded bitstream parsing and one-shot timed H.264 fallback. All 33 Swift suites passed, including real H.264/HEVC encoded samples, loopback codec switching and fallback timeout. Unsigned macOS arm64 + x86_64 build passed. No physical two-Mac performance claim.

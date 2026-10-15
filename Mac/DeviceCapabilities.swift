@@ -42,7 +42,7 @@ struct PhoneInfo: Decodable {
     func sameDisplayConfiguration(as other: PhoneInfo) -> Bool {
         pixelsWide == other.pixelsWide && pixelsHigh == other.pixelsHigh
             && (!isMacReceiver || (scale == other.scale && panel == other.panel
-                && videoCaps == other.videoCaps && displayMaxFrameRate == other.displayMaxFrameRate
+                && supportedCodecs == other.supportedCodecs && videoCaps == other.videoCaps && displayMaxFrameRate == other.displayMaxFrameRate
                 && maxEncodeWide == other.maxEncodeWide && maxEncodeHigh == other.maxEncodeHigh))
     }
 

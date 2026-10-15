@@ -280,7 +280,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                       userInfo: [NSLocalizedDescriptionKey: "未找到可捕获的显示器"])
         }
         // SCDisplay reports points; capture at point resolution for M1.
-        let macPlan = info.isMacReceiver ? MacReceiverPolicy.plan(info: info, settings: settings, sourceWidth: display.width, sourceHeight: display.height) : nil
+        let macPlan = info.isMacReceiver ? MacReceiverPolicy.plan(info: info, settings: settings, sourceWidth: display.width, sourceHeight: display.height, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
         let captureW = macPlan?.width ?? ((Int(Double(display.width) * quality.scale)) & ~1)
         let captureH = macPlan?.height ?? ((Int(Double(display.height) * quality.scale)) & ~1)
         let captureFps = macPlan?.fps ?? RefreshRatePolicy.selected(
@@ -318,7 +318,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         // Phone panel is @3x; the virtual display runs @2x HiDPI, so points
         // = native pixels / 2 (rounded down to even for the encoder).
         guard !stopped else { throw CancellationError() }
-        let macPlan = info.isMacReceiver ? MacReceiverPolicy.plan(info: info, settings: settings) : nil
+        let macPlan = info.isMacReceiver ? MacReceiverPolicy.plan(info: info, settings: settings, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
         let pointsWide = macPlan?.pointsWide ?? ((info.pixelsWide / 2) & ~1)
         let pointsHigh = macPlan?.pointsHigh ?? ((info.pixelsHigh / 2) & ~1)
         // Rough physical size so macOS picks a sane default UI scale.
@@ -1522,11 +1522,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         let codecType: CMVideoCodecType = codec == .hevc
             ? kCMVideoCodecType_HEVC
             : kCMVideoCodecType_H264
+        var specification = spec as? [String: Any] ?? [:]
+        if codec == .hevc, lastHello?.isMacReceiver == true {
+            specification[kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder as String] = true
+        }
         let status = VTCompressionSessionCreate(
             allocator: nil,
             width: Int32(width), height: Int32(height),
             codecType: codecType,
-            encoderSpecification: spec,
+            encoderSpecification: specification as CFDictionary,
             imageBufferAttributes: nil,
             compressedDataAllocator: nil,
             outputCallback: nil,

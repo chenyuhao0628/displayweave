@@ -12,9 +12,10 @@ struct MacStreamPlan: Equatable {
 
 enum MacReceiverPolicy {
     /// Preserve the desktop's logical geometry while fitting the encoded raster.
-    /// Mac reception deliberately uses H.264 even when global mobile preferences use HEVC.
+    /// HEVC remains inside a valid H.264 envelope for same-raster fallback.
     static func plan(info: PhoneInfo, settings: StreamSettings,
-                     sourceWidth: Int? = nil, sourceHeight: Int? = nil) -> MacStreamPlan {
+                     sourceWidth: Int? = nil, sourceHeight: Int? = nil,
+                     hardwareHEVCEncode: Bool = false) -> MacStreamPlan {
         let panel = info.panel
         let scale = (panel?.scale ?? info.scale) >= 1.5 ? 2 : 1
         func dimension(_ value: Int) -> Int { min(16384, max(2, value)) & ~1 }
@@ -27,8 +28,20 @@ enum MacReceiverPolicy {
         let portrait = nativeH > nativeW
         let fallbackW = portrait ? 2304 : 4096
         let fallbackH = portrait ? 4096 : 2304
-        let caps = (info.videoCaps ?? []).filter { $0.codec.lowercased() == "h264" }
-        let offers = caps.isEmpty ? [VideoCapability(codec: "h264")] : caps
+        let h264Caps = (info.videoCaps ?? []).prefix(16).filter { $0.codec.lowercased() == "h264" }
+        let fallback = h264Caps.isEmpty ? [VideoCapability(codec: "h264")] : h264Caps
+        let hevcCaps = (info.videoCaps ?? []).prefix(16).filter { $0.codec.lowercased() == "hevc" }
+        let hevc = hardwareHEVCEncode && settings.codecMode != .h264
+            && info.negotiatedSupportedCodecs.contains("hevc") && !hevcCaps.isEmpty
+        func intersect(_ a: Int?, _ b: Int?) -> Int? {
+            if let a, let b { return min(a, b) }; return a ?? b
+        }
+        let offers = hevc ? hevcCaps.flatMap { cap in fallback.map { safe in
+            VideoCapability(codec: "hevc", maxWidth: intersect(cap.maxWidth, safe.maxWidth),
+                maxHeight: intersect(cap.maxHeight, safe.maxHeight),
+                maxFrameRate: intersect(cap.maxFrameRate, safe.maxFrameRate),
+                maxPixelsPerSecond: intersect(cap.maxPixelsPerSecond, safe.maxPixelsPerSecond))
+        } } : fallback
         // Alternative envelopes are evaluated independently, never combined into
         // an operating point that no advertised capability can actually decode.
         let plans = offers.map { cap -> MacStreamPlan in
@@ -43,7 +56,7 @@ enum MacReceiverPolicy {
                             settings.fpsMode.userSelectedFps ?? 60)
             let fps = limit >= 60 ? 60 : (limit >= 30 ? 30 : limit)
             return MacStreamPlan(pointsWide: pointsWide, pointsHigh: pointsHigh, scale: scale,
-                                 width: width, height: height, fps: fps, codec: .h264)
+                                 width: width, height: height, fps: fps, codec: hevc ? .hevc : .h264)
         }
         return plans.max { $0.width * $0.height * $0.fps < $1.width * $1.height * $1.fps }!
     }
