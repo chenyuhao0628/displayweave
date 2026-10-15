@@ -46,7 +46,7 @@ run_test BinaryFrameHeaderV2SelfTest \
   "${settings[@]}" Mac/BinaryFrameHeaderV2.swift \
   MacTests/BinaryFrameHeaderV2SelfTest.swift
 run_test DeviceCapabilitiesSelfTest \
-  Mac/FrameSizePolicy.swift Mac/DeviceCapabilities.swift \
+  Mac/FrameSizePolicy.swift Mac/DeviceCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift \
   MacTests/DeviceCapabilitiesSelfTest.swift
 run_test KeyframePolicySelfTest \
   "${settings[@]}" Mac/KeyframePolicy.swift MacTests/KeyframePolicySelfTest.swift
@@ -70,7 +70,7 @@ run_test StreamSettingsSelfTest \
   "${settings[@]}" MacTests/StreamSettingsSelfTest.swift
 run_test TestPatternLifecycleSelfTest \
   -DDEBUG \
-  Mac/Log.swift Mac/TestPatternWindow.swift \
+  Shared/BoundedLogWriter.swift Mac/Log.swift Mac/TestPatternWindow.swift \
   MacTests/TestPatternLifecycleSelfTest.swift
 run_test TransportSelectionPolicySelfTest \
   "${settings[@]}" Mac/TransportSelectionPolicy.swift \
@@ -80,4 +80,38 @@ run_test UpdateConfigurationSelfTest \
 run_test UpdateReleasePolicySelfTest \
   -parse-as-library MacTests/UpdateReleasePolicySelfTest.swift
 
-echo "Swift standalone self-tests PASS (22 suites)"
+
+run_test MacReceiverPolicySelfTest \
+  "${settings[@]}" Mac/DeviceCapabilities.swift Mac/MacReceiverPolicy.swift \
+  Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
+  MacTests/MacReceiverPolicySelfTest.swift
+
+run_test MacReceiverNetworkSelfTest \
+  Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
+  Shared/ReceiverCursorImage.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverNetworkSelfTest.swift
+
+run_test MacRoleControllerSelfTest \
+  Mac/MacRoleController.swift MacTests/MacRoleControllerSelfTest.swift
+
+run_test UsbmuxCancellationSelfTest \
+  Shared/BoundedLogWriter.swift Mac/Usbmux.swift Mac/Log.swift MacTests/UsbmuxCancellationSelfTest.swift
+
+run_test SessionLifetimeSelfTest \
+  Mac/SessionLifetime.swift MacTests/SessionLifetimeSelfTest.swift
+
+run_test BoundedLogWriterSelfTest \
+  Shared/BoundedLogWriter.swift MacTests/BoundedLogWriterSelfTest.swift
+
+run_test TouchPressPolicySelfTest \
+  iOS/TouchPressPolicy.swift MacTests/TouchPressPolicySelfTest.swift
+
+run_test InputValidationPolicySelfTest \
+  Mac/InputValidationPolicy.swift MacTests/InputValidationPolicySelfTest.swift
+
+run_test PermissionMonitorSelfTest \
+  Mac/PermissionMonitor.swift MacTests/PermissionMonitorSelfTest.swift
+
+run_test ReceiverCursorImageSelfTest \
+  Shared/ReceiverCursorImage.swift MacTests/ReceiverCursorImageSelfTest.swift
+
+echo "Swift standalone self-tests PASS (32 suites)"

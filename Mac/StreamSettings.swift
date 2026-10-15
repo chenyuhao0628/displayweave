@@ -25,10 +25,10 @@ enum StreamQuality: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .low: return "Low"
-        case .balanced: return "Balanced"
-        case .high: return "High"
-        case .gaming: return "Gaming"
+        case .low: return "省流"
+        case .balanced: return "均衡"
+        case .high: return "清晰"
+        case .gaming: return "流畅"
         }
     }
 
@@ -60,7 +60,7 @@ enum StreamFpsMode: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .auto: return "Auto"
+        case .auto: return "自动"
         case .fps60: return "60"
         case .fps90: return "90"
         case .fps120: return "120"
@@ -84,7 +84,7 @@ enum StreamCodecMode: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .auto: return "Auto"
+        case .auto: return "自动"
         case .hevc: return "HEVC"
         case .h264: return "H.264"
         }
@@ -106,9 +106,9 @@ enum StreamTransportMode: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .auto: return "Auto"
+        case .auto: return "自动"
         case .usb: return "USB"
-        case .wifi: return "WiFi"
+        case .wifi: return "局域网"
         }
     }
 }
@@ -118,9 +118,9 @@ enum BitrateMode: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .auto: return "Auto"
-        case .manual: return "Manual"
-        case .benchmark: return "Benchmark"
+        case .auto: return "自动"
+        case .manual: return "手动"
+        case .benchmark: return "测试"
         }
     }
 }

@@ -4,6 +4,8 @@
 
 The Android receiver accepts DisplayWeave video over local WiFi or a Mac-managed ADB-forward USB connection. It negotiates HEVC/H.265 or H.264, requests 30/60/90/120Hz-compatible modes, renders through MediaCodec/Surface, and returns touch/input plus pipeline metrics.
 
+The waiting screen follows the system light/dark theme. Settings scroll on small displays; the top-right Settings button remains available while streaming even when the status overlay is hidden.
+
 ## Requirements
 
 - Android 8.0+; hardware HEVC support is device-dependent.

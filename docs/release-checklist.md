@@ -2,6 +2,12 @@
 
 # `v0.2.1-p2` release checklist
 
+## Current source gate
+
+This file preserves the historical v0.2.1-p2 release evidence below. Current public downloads are v0.2.1-p6; see its release notes for that version. The 2026-10-16 source upgrade is not a new release. Before integrating source, run the [development gates](development.md): 32 Swift suites, six Android groups/build, both Apple builds, website, bilingual docs and release-link checks; require fresh CI on the PR head. The [source audit](source-upgrade-audit-2026-10-16.md) records local results.
+
+Before a later binary release, additionally complete the physical acceptance matrix, review signing/version/feed identities and verify the newly produced assets. Historical checked boxes below do not approve a future release.
+
 ## Published identity
 
 - Release: https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p2

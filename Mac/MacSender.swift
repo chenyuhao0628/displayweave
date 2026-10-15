@@ -225,7 +225,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // MARK: - Lifecycle
 
     func start() async throws {
-        stopped = false
+        guard !stopped else { throw CancellationError() }
         queue.async { self.connect() }   // dial state lives on `queue`
         if !monitorsStarted {
             monitorsStarted = true
@@ -238,7 +238,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         // launch — the permission panel's Grant button triggers the system
         // dialog, so the request always has visible context.
         if !CGPreflightScreenCaptureAccess() {
-            await status("需要屏幕录制权限，请在下方“权限”中授权")
+            await status("需要屏幕录制权限，请打开设置 → 权限与诊断")
             Log.info("Screen Recording permission missing — waiting for grant via the permission panel")
             while !CGPreflightScreenCaptureAccess() {
                 try await Task.sleep(for: .seconds(2))
@@ -249,33 +249,50 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
         switch mode {
         case .mirror:
-            let content = try await SCShareableContent.current
-            guard let display = content.displays.first else {
-                throw NSError(domain: "MacSender", code: 1,
-                              userInfo: [NSLocalizedDescriptionKey: "未找到可捕获的显示器"])
+            let info = try await waitForHello()
+            try await setupMirror(info)
+            if let latest = queue.sync(execute: { lastHello }), !latest.sameDisplayConfiguration(as: info) {
+                _ = await reconfigure(latest)
             }
-            // SCDisplay reports points; capture at point resolution for M1.
-            let captureW = (Int(Double(display.width) * quality.scale)) & ~1
-            let captureH = (Int(Double(display.height) * quality.scale)) & ~1
-            let captureFps = RefreshRatePolicy.selected(
-                deviceMaxFps: settings.fpsMode.userSelectedFps ?? RefreshRatePolicy.fallbackFps,
-                userSelectedFps: settings.fpsMode.userSelectedFps)
-            let codec = settings.selectedCodec(supportedCodecs: ["h264"], preferredCodec: "h264")
-            try await startCapture(display: display, pixelsWide: captureW, pixelsHigh: captureH,
-                                   fps: captureFps, virtualDisplayRefreshRate: captureFps,
-                                   codec: codec)
-            inputInjector = InputInjector(displayID: display.displayID)
-            try await waitForAccessibilityIfNeeded(statusText: "正在镜像，请授权“辅助功能”以启用触摸输入")
+            if !info.isMacReceiver { try await waitForAccessibilityIfNeeded(statusText: "正在镜像，请授权“辅助功能”以启用触摸输入") }
 
         case .extend:
             await status("正在等待设备连接…")
             let info = try await waitForHello()
             try await setupExtend(info)
+            if let latest = queue.sync(execute: { lastHello }), !latest.sameDisplayConfiguration(as: info) {
+                _ = await reconfigure(latest)
+            }
 
             // Touch back-channel (Milestone 3). Needs Accessibility trust;
             // streaming works without it, so don't interrupt with a prompt —
             // the permission panel's Grant button asks when the user is ready.
-            try await waitForAccessibilityIfNeeded(statusText: "正在扩展，请授权“辅助功能”以启用触摸输入")
+            if !info.isMacReceiver { try await waitForAccessibilityIfNeeded(statusText: "正在扩展，请授权“辅助功能”以启用触摸输入") }
+        }
+    }
+
+    @MainActor
+    private func setupMirror(_ info: PhoneInfo) async throws {
+        guard !stopped else { throw CancellationError() }
+        let content = try await SCShareableContent.current
+        guard let display = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) ?? content.displays.first else {
+            throw NSError(domain: "MacSender", code: 1,
+                      userInfo: [NSLocalizedDescriptionKey: "未找到可捕获的显示器"])
+        }
+        // SCDisplay reports points; capture at point resolution for M1.
+        let macPlan = info.isMacReceiver ? MacReceiverPolicy.plan(info: info, settings: settings, sourceWidth: display.width, sourceHeight: display.height) : nil
+        let captureW = macPlan?.width ?? ((Int(Double(display.width) * quality.scale)) & ~1)
+        let captureH = macPlan?.height ?? ((Int(Double(display.height) * quality.scale)) & ~1)
+        let captureFps = macPlan?.fps ?? RefreshRatePolicy.selected(
+            deviceMaxFps: settings.fpsMode.userSelectedFps ?? RefreshRatePolicy.fallbackFps,
+            userSelectedFps: settings.fpsMode.userSelectedFps)
+        let codec = macPlan?.codec ?? settings.selectedCodec(supportedCodecs: ["h264"], preferredCodec: "h264")
+        try await startCapture(display: display, pixelsWide: captureW, pixelsHigh: captureH,
+                           fps: captureFps, virtualDisplayRefreshRate: captureFps,
+                           codec: codec)
+        queue.sync {
+            inputInjector?.cancelPress()
+            if !stopped { inputInjector = InputInjector(displayID: display.displayID) }
         }
     }
 
@@ -294,15 +311,18 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     /// Build (or rebuild) the virtual display + capture for the announced
     /// phone dimensions. Called at startup and again whenever the phone
     /// rotates (it re-sends hello with swapped dimensions).
+    @MainActor
     private func setupExtend(_ info: PhoneInfo) async throws {
         Log.info("phone hello: \(info.pixelsWide)x\(info.pixelsHigh) @\(info.scale)x device=\(info.negotiatedDeviceModel) refresh=\(info.negotiatedRefreshRate)Hz maxFps=\(info.negotiatedMaxFps) codecs=\(info.negotiatedSupportedCodecs.joined(separator: ",")) preferred=\(info.negotiatedPreferredCodec) sdk=\(info.negotiatedAndroidSdk) transport=\(info.negotiatedTransport)")
 
         // Phone panel is @3x; the virtual display runs @2x HiDPI, so points
         // = native pixels / 2 (rounded down to even for the encoder).
-        let pointsWide = (info.pixelsWide / 2) & ~1
-        let pointsHigh = (info.pixelsHigh / 2) & ~1
+        guard !stopped else { throw CancellationError() }
+        let macPlan = info.isMacReceiver ? MacReceiverPolicy.plan(info: info, settings: settings) : nil
+        let pointsWide = macPlan?.pointsWide ?? ((info.pixelsWide / 2) & ~1)
+        let pointsHigh = macPlan?.pointsHigh ?? ((info.pixelsHigh / 2) & ~1)
         // Rough physical size so macOS picks a sane default UI scale.
-        let mm = info.pixelsWide >= info.pixelsHigh
+        let mm = info.isMacReceiver ? CGSize(width: Double(pointsWide) * 25.4 / 110, height: Double(pointsHigh) * 25.4 / 110) : info.pixelsWide >= info.pixelsHigh
             ? CGSize(width: 147, height: 68)
             : CGSize(width: 68, height: 147)
 
@@ -318,31 +338,39 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         let serial = info.pixelsWide >= info.pixelsHigh
             ? displaySerial
             : displaySerial ^ 0x8000_0000
-        let requestedRefreshRate = settings.selectedFps(deviceMaxFps: info.negotiatedMaxFps)
-        let vd = await MainActor.run {
-            VirtualDisplay(name: displayName,
+        let requestedRefreshRate = macPlan?.fps ?? settings.selectedFps(deviceMaxFps: info.negotiatedMaxFps)
+        let vd = await MainActor.run { () -> VirtualDisplay? in
+            guard !self.stopped else { return nil }
+            return VirtualDisplay(name: displayName,
                            pointsWide: pointsWide, pointsHigh: pointsHigh,
                            sizeInMillimeters: mm, serialNum: serial,
-                           requestedRefreshRate: requestedRefreshRate)
+                           requestedRefreshRate: requestedRefreshRate,
+                           backingScale: macPlan?.scale ?? 2)
         }
         guard let vd else {
             throw NSError(domain: "MacSender", code: 2,
                           userInfo: [NSLocalizedDescriptionKey: "创建虚拟显示器失败"])
         }
         Log.info("virtual display refresh selected: requested=\(requestedRefreshRate) actual=\(vd.actualRefreshRate) deviceMaxFps=\(info.negotiatedMaxFps) fallback=\(vd.refreshRateFallbackReason ?? "none")")
-        queue.sync { virtualDisplay = vd }
-        inputInjector = InputInjector(displayID: vd.displayID)
+        let installed = queue.sync { () -> Bool in
+            guard !stopped else { return false }
+            virtualDisplay = vd
+            inputInjector?.cancelPress()
+            inputInjector = InputInjector(displayID: vd.displayID)
+            return true
+        }
+        guard installed else { throw CancellationError() }
 
         let display = try await findSCDisplay(id: vd.displayID)
         // Quality scaling: capture/encode below native when requested — the
         // display itself stays native so window layout is unaffected.
-        let captureW = (Int(Double(pointsWide * 2) * quality.scale)) & ~1
-        let captureH = (Int(Double(pointsHigh * 2) * quality.scale)) & ~1
-        let codec = settings.selectedCodec(
+        let captureW = macPlan?.width ?? ((Int(Double(pointsWide * 2) * quality.scale)) & ~1)
+        let captureH = macPlan?.height ?? ((Int(Double(pointsHigh * 2) * quality.scale)) & ~1)
+        let codec = macPlan?.codec ?? settings.selectedCodec(
             supportedCodecs: info.negotiatedSupportedCodecs,
             preferredCodec: info.negotiatedPreferredCodec)
         try await startCapture(display: display, pixelsWide: captureW, pixelsHigh: captureH,
-                               fps: vd.actualRefreshRate,
+                               fps: macPlan.map { min($0.fps, vd.actualRefreshRate) } ?? vd.actualRefreshRate,
                                virtualDisplayRefreshRate: vd.actualRefreshRate,
                                codec: codec)
 
@@ -364,9 +392,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     /// Tear down and rebuild when the phone announces new dimensions. Loops
     /// until the built display matches the latest hello, so rotations that
     /// arrive mid-rebuild aren't lost (and rapid flip-flops settle once).
-    private var reconfiguring = false
-    private func reconfigure(_ info: PhoneInfo) async {
-        guard !reconfiguring, !stopped else { return }
+    @MainActor private var reconfiguring = false
+    private var reconfigurationTask: Task<Void, Never>? // owned by queue
+
+    @MainActor
+    private func reconfigure(_ info: PhoneInfo) async -> PhoneInfo? {
+        guard !reconfiguring, !stopped else { return nil }
         reconfiguring = true
         defer { reconfiguring = false }
         var target = info
@@ -392,19 +423,21 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             // Releasing the detached object on MainActor removes the display.
             withExtendedLifetime(detached.display) {}
             do {
-                try await setupExtend(target)
+                if mode == .mirror { try await setupMirror(target) }
+                else { try await setupExtend(target) }
             } catch {
                 Log.info("reconfigure failed: \(error)")
-                await status("旋转失败：\(error.localizedDescription)")
-                return
+                await status("显示配置失败：\(error.localizedDescription)")
+                return nil
             }
-            if let latest = lastHello,
-               latest.pixelsWide != target.pixelsWide || latest.pixelsHigh != target.pixelsHigh {
+            if let latest = queue.sync(execute: { lastHello }),
+               !latest.sameDisplayConfiguration(as: target) {
                 target = latest   // rotated again while we were rebuilding
                 continue
             }
-            return
+            return target
         }
+        return nil
     }
 
     /// The virtual display takes a moment to show up in shareable content.
@@ -425,7 +458,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                               codec: StreamCodec) async throws {
         let filter = SCContentFilter(display: display, excludingWindows: [])
 
-        let captureFps = RefreshRatePolicy.sanitize(fps)
+        let captureFps = lastHello?.isMacReceiver == true ? max(1, min(60, fps)) : RefreshRatePolicy.sanitize(fps)
         let prepared = queue.sync { () -> (SCStreamConfiguration, StreamCodec, Int, Int)? in
             guard !stopped else { return nil }
             requestedCaptureFps = captureFps
@@ -474,7 +507,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         config.minimumFrameInterval = CMTime(
             value: 1,
             timescale: CMTimeScale(
-                RefreshRatePolicy.captureIntervalTimescale(fps: fps)))
+                (lastHello?.isMacReceiver == true ? max(1, min(60, fps)) : RefreshRatePolicy.captureIntervalTimescale(fps: fps))))
         // 420v matches the encoder's native input and avoids an extra conversion.
         config.pixelFormat = UserDefaults.standard.string(forKey: "pixfmt") == "bgra"
             ? kCVPixelFormatType_32BGRA
@@ -486,16 +519,22 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     }
 
     @MainActor
-    func stop() {
+    @discardableResult
+    func stop() -> Task<Void, Never> {
         stopped = true
         cursorTimer?.cancel()
         cursorTimer = nil
         cursorImageTimer?.cancel()
         cursorImageTimer = nil
         TestPattern.hide(ownerID: testPatternOwnerID)
-        let detached: (stream: SCStream?, display: VirtualDisplay?) = queue.sync {
+        let detached: (stream: SCStream?, display: VirtualDisplay?, reconfiguration: Task<Void, Never>?) = queue.sync {
+            let reconfiguration = reconfigurationTask
+            reconfigurationTask = nil
+            reconfiguration?.cancel()
             let activeStream = stream
             stream = nil
+            inputInjector?.cancelPress()
+            inputInjector = nil
             invalidateConnection()
             cancelPendingReconnect()
             dialGeneration &+= 1
@@ -510,11 +549,14 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             // Unblock a start() that is still waiting for the hello.
             helloContinuation?.resume(throwing: CancellationError())
             helloContinuation = nil
-            return (activeStream, activeDisplay)
+            return (activeStream, activeDisplay, reconfiguration)
         }
-        detached.stream?.stopCapture { _ in }
-        // Releasing the detached object on MainActor removes the display.
-        withExtendedLifetime(detached.display) {}
+        return Task { @MainActor in
+            await detached.reconfiguration?.value
+            if let stream = detached.stream { try? await stream.stopCapture() }
+            // Keep the display alive until capture stops, then release it here.
+            withExtendedLifetime(detached.display) {}
+        }
     }
 
     @MainActor
@@ -586,12 +628,26 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func scheduleCaptureRecovery() {
         queue.asyncAfter(deadline: .now() + 3.0) { [weak self] in
             guard let self, !self.stopped, self.stream == nil,
-                  let hello = self.lastHello else { return }
+                  self.lastHello != nil else { return }
             Log.info("capture died — rebuilding pipeline")
-            Task {
-                await self.reconfigure(hello)
-                self.queue.async {
-                    if self.stream == nil { self.scheduleCaptureRecovery() }
+            self.scheduleReconfiguration(recoverCapture: true)
+        }
+    }
+
+    private func scheduleReconfiguration(delay: Duration = .zero, recoverCapture: Bool = false) {
+        guard !stopped, reconfigurationTask == nil else { return }
+        reconfigurationTask = Task { [weak self] in
+            guard let self else { return }
+            do { try await Task.sleep(for: delay) } catch { return }
+            let hello = self.queue.sync { self.lastHello }
+            let applied = if let hello { await self.reconfigure(hello) } else { nil as PhoneInfo? }
+            self.queue.async {
+                self.reconfigurationTask = nil
+                guard !self.stopped else { return }
+                if let applied, let latest = self.lastHello, !applied.sameDisplayConfiguration(as: latest) {
+                    self.scheduleReconfiguration()
+                } else if recoverCapture, self.stream == nil {
+                    self.scheduleCaptureRecovery()
                 }
             }
         }
@@ -630,6 +686,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     }
 
     private func invalidateConnection() {
+        inputInjector?.cancelPress()
         connectionGeneration &+= 1
         let previous = connection
         connection = nil
@@ -1037,7 +1094,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 return
             }
             let len = Int(UInt32(bigEndian: data.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }))
-            guard len > 0, len < 1 << 20 else { return }
+            guard len > 0, len < 1 << 20 else {
+                self.handleConnectionClosure(.endSession)
+                return
+            }
             conn.receive(minimumIncompleteLength: len, maximumLength: len) { [weak self] payload, _, isComplete, error in
                 guard let self,
                       self.isCurrentConnection(conn, generation: generation) else {
@@ -1127,6 +1187,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             }
         case "hello":
             if let info = try? JSONDecoder().decode(PhoneInfo.self, from: payload) {
+                guard info.hasValidGeometry else {
+                    Log.info("rejected invalid receiver geometry")
+                    handleConnectionClosure(.endSession)
+                    return
+                }
+                guard info.id != StreamReceiver.installID else {
+                    handleConnectionClosure(.endSession)
+                    return
+                }
                 let previous = lastHello
                 lastHello = info
                 if info.supportsProtocolV2 {
@@ -1143,18 +1212,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 if let continuation = helloContinuation {
                     helloContinuation = nil
                     continuation.resume(returning: info)
-                } else if mode == .extend, stream != nil, let previous,
-                          previous.pixelsWide != info.pixelsWide
-                          || previous.pixelsHigh != info.pixelsHigh {
+                } else if (mode == .extend || info.isMacReceiver), stream != nil, let previous,
+                          !previous.sameDisplayConfiguration(as: info) {
                     // Phone rotated — rebuild after a short debounce so a
                     // flurry of orientation flips settles into one rebuild.
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(300))
-                        guard let current = self.lastHello,
-                              current.pixelsWide == info.pixelsWide,
-                              current.pixelsHigh == info.pixelsHigh else { return }
-                        await self.reconfigure(info)
-                    }
+                    scheduleReconfiguration(delay: .milliseconds(300))
                 }
             }
         case "streamConfigAck", "decoderReady", "firstFrameRendered":
@@ -1383,7 +1445,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             pendingEncodeWork.discard(generation: encoderGeneration)
         }
         encoderGeneration &+= 1
-        let finalFps = RefreshRatePolicy.sanitize(fps)
+        let finalFps = lastHello?.isMacReceiver == true ? max(1, min(60, fps)) : RefreshRatePolicy.sanitize(fps)
         streamCodec = preferredCodec
         let automaticBitrate = StreamEncodingPolicy.bitrate(
             width: width, height: height, fps: finalFps, codec: preferredCodec,
@@ -1535,7 +1597,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         let encodeStart = Date()
         let duration = CMTime(
             value: 1,
-            timescale: CMTimeScale(StreamEncodingPolicy.frameDurationTimescale(fps: requestedCaptureFps)))
+            timescale: CMTimeScale(lastHello?.isMacReceiver == true ? requestedCaptureFps : StreamEncodingPolicy.frameDurationTimescale(fps: requestedCaptureFps)))
         let status = VTCompressionSessionEncodeFrame(
             encoder,
             imageBuffer: pixelBuffer,
@@ -1798,7 +1860,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         let transportName: String
         switch transport {
         case .tcp:
-            transportName = "wifi"
+            transportName = lastHello?.isMacReceiver == true ? "lan" : "wifi"
         case .usb, .androidAdb:
             transportName = "usb"
         }
@@ -1823,7 +1885,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             bitrate: streamBitrate,
             transport: transportName,
             identity: identity,
-            maxFrameBytes: lastHello?.negotiatedMaxFrameBytes)
+            maxFrameBytes: lastHello?.negotiatedMaxFrameBytes,
+            exactFrameRate: lastHello?.isMacReceiver == true)
         sendJSONFrame(message.json)
         if let identity {
             scheduleProtocolTimeout(identity: identity, phase: .awaitingStreamConfigAck)

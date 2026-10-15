@@ -5,6 +5,7 @@ import java.io.BufferedOutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -54,6 +55,7 @@ public final class VideoStreamPolicySelfTest {
         testWifiTransportAcceptsV2FrameSize();
         testWifiTransportRejectsOversizeWithReason();
         testWifiTransportReplacesBlockedConnection();
+        testWifiTransportDisconnectsOnControlBackpressure();
         testWifiTransportIgnoresSendAfterStop();
         System.out.println("VideoStreamPolicySelfTest PASS");
     }
@@ -1048,6 +1050,80 @@ public final class VideoStreamPolicySelfTest {
         } catch (Exception error) {
             throw new AssertionError("connection generation takeover failed", error);
         } finally {
+            transport.stop();
+        }
+    }
+
+    private static void testWifiTransportDisconnectsOnControlBackpressure() throws Exception {
+        ThreadPoolExecutor writer = WifiTcpReceiverTransport.boundedExecutor(1, 1);
+        CountDownLatch blocked = new CountDownLatch(1);
+        CountDownLatch releaseWriter = new CountDownLatch(1);
+        writer.execute(() -> {
+            blocked.countDown();
+            try { releaseWriter.await(); }
+            catch (InterruptedException error) { Thread.currentThread().interrupt(); }
+        });
+        WifiTcpReceiverTransport transport = new WifiTcpReceiverTransport(0, writer);
+        AtomicInteger listeningPort = new AtomicInteger();
+        AtomicInteger connectionCount = new AtomicInteger();
+        AtomicLong generation = new AtomicLong();
+        AtomicReference<String> failure = new AtomicReference<>();
+        CountDownLatch listening = new CountDownLatch(1);
+        CountDownLatch connected = new CountDownLatch(1);
+        CountDownLatch reconnected = new CountDownLatch(1);
+        CountDownLatch disconnected = new CountDownLatch(1);
+        transport.start(new ReceiverTransport.Listener() {
+            @Override public void onListening(int port) {
+                listeningPort.set(port);
+                listening.countDown();
+            }
+            @Override public void onConnected(long nextGeneration, String peer) {
+                generation.set(nextGeneration);
+                if (connectionCount.incrementAndGet() == 1) connected.countDown();
+                else reconnected.countDown();
+            }
+            @Override public void onPayload(long activeGeneration, byte[] payload) { }
+            @Override public void onDisconnected(long activeGeneration) { disconnected.countDown(); }
+            @Override public void onError(long activeGeneration, String message) { failure.set(message); }
+        });
+        try {
+            assertTrue(blocked.await(2, TimeUnit.SECONDS));
+            assertTrue(listening.await(2, TimeUnit.SECONDS));
+            try (Socket old = new Socket("127.0.0.1", listeningPort.get())) {
+                old.setSoTimeout(2000);
+                assertTrue(connected.await(2, TimeUnit.SECONDS));
+                long oldGeneration = generation.get();
+                transport.send(oldGeneration, "queued".getBytes(StandardCharsets.UTF_8));
+                assertEquals(1, writer.getQueue().size());
+                transport.send(oldGeneration, "overflow".getBytes(StandardCharsets.UTF_8));
+                if (!disconnected.await(2, TimeUnit.SECONDS)) {
+                    throw new AssertionError("Control queue saturation must close the blocked peer");
+                }
+                assertTrue(failure.get() != null);
+                assertEquals(0L, transport.currentGeneration());
+                assertEquals(-1, old.getInputStream().read());
+                try (Socket fresh = new Socket("127.0.0.1", listeningPort.get())) {
+                    fresh.setSoTimeout(2000);
+                    assertTrue(reconnected.await(2, TimeUnit.SECONDS));
+                    // A stale sender must not saturate or close a replacement connection.
+                    transport.send(oldGeneration, "stale".getBytes(StandardCharsets.UTF_8));
+                    assertEquals(generation.get(), transport.currentGeneration());
+                    releaseWriter.countDown();
+                    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+                    while (!writer.getQueue().isEmpty() && System.nanoTime() < deadline) {
+                        Thread.sleep(1);
+                    }
+                    transport.send(generation.get(), "fresh".getBytes(StandardCharsets.UTF_8));
+                    byte[] reply = LengthPrefixedProtocol.read(
+                            new BufferedInputStream(fresh.getInputStream()));
+                    assertEquals("fresh", new String(reply, StandardCharsets.UTF_8));
+                    transport.send(generation.get(), new byte[WifiTcpReceiverTransport.MAX_CONTROL_BYTES + 1]);
+                    assertEquals(-1, fresh.getInputStream().read());
+                    assertEquals(0L, transport.currentGeneration());
+                }
+            }
+        } finally {
+            releaseWriter.countDown();
             transport.stop();
         }
     }

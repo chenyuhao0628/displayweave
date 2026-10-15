@@ -46,6 +46,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private static final String KEY_DECODER_LOW_LATENCY = "decoderLowLatency";
     private static final String KEY_WIFI_LOW_LATENCY = "wifiLowLatency";
 
+    private ReceiverUi ui;
+    private Button streamSettingsButton;
     private FrameLayout root;
     private SurfaceView surfaceView;
     private CursorOverlayView cursorOverlay;
@@ -78,6 +80,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     @SuppressWarnings("deprecation")
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        ui = new ReceiverUi(this);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -312,15 +315,25 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         statusView.setTextColor(Color.WHITE);
         statusView.setTextSize(15);
         statusView.setText(currentStatus);
-        statusView.setPadding(18, 12, 18, 12);
+        statusView.setPadding(dp(16), dp(12), dp(16), dp(12));
+        statusView.setMinHeight(dp(48));
+        statusView.setFocusable(true);
+        statusView.setContentDescription("连接状态，点按打开设置");
         statusView.setBackgroundColor(0x99000000);
         statusView.setOnClickListener(v -> showSettingsDialog());
         FrameLayout.LayoutParams statusParams = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP | Gravity.START);
-        statusParams.setMargins(18, 18, 18, 18);
+        statusParams.setMargins(dp(16), dp(16), dp(88), dp(16));
         root.addView(statusView, statusParams);
+        streamSettingsButton = ui.button("设置");
+        streamSettingsButton.setContentDescription("打开设置与帮助");
+        streamSettingsButton.setOnClickListener(v -> showSettingsDialog());
+        FrameLayout.LayoutParams settingsParams = new FrameLayout.LayoutParams(
+                dp(72), dp(48), Gravity.TOP | Gravity.END);
+        settingsParams.setMargins(dp(12), dp(16), dp(12), 0);
+        root.addView(streamSettingsButton, settingsParams);
         setContentView(root);
         updateStatusOverlayVisibility();
 
@@ -356,44 +369,56 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private View buildIdlePanel() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(0xFFF7F9FC);
+        scroll.setBackgroundColor(ui.background);
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setGravity(Gravity.CENTER_HORIZONTAL);
-        content.setPadding(36, 42, 36, 28);
-        scroll.addView(content, new ScrollView.LayoutParams(
-                ScrollView.LayoutParams.MATCH_PARENT,
-                ScrollView.LayoutParams.WRAP_CONTENT));
+        content.setPadding(dp(24), dp(32), dp(24), dp(24));
+        FrameLayout contentHost = new FrameLayout(this);
+        scroll.addView(contentHost, new ScrollView.LayoutParams(
+                ScrollView.LayoutParams.MATCH_PARENT, ScrollView.LayoutParams.WRAP_CONTENT));
+        FrameLayout.LayoutParams contentParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        contentHost.addView(content, contentParams);
+        contentHost.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            int width = Math.min(right - left, dp(568));
+            if (width > 0 && content.getLayoutParams().width != width) {
+                content.getLayoutParams().width = width;
+                content.requestLayout();
+            }
+        });
 
         ImageView logo = new ImageView(this);
         logo.setImageResource(getResources().getIdentifier("app_logo", "drawable", getPackageName()));
         logo.setAdjustViewBounds(true);
-        content.addView(logo, new LinearLayout.LayoutParams(dp(118), dp(118)));
+        logo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        content.addView(logo, new LinearLayout.LayoutParams(dp(80), dp(80)));
 
-        TextView title = text("DisplayWeave Android", 30, Color.rgb(20, 24, 34), true);
+        TextView title = text("DisplayWeave", 28, ui.primary, true);
         title.setGravity(Gravity.CENTER);
+        title.setPadding(0, dp(16), 0, 0);
         content.addView(title, matchWrap());
 
-        idleStatusView = text(currentStatus, 15, Color.rgb(78, 91, 112), false);
+        idleStatusView = text(currentStatus, 15, ui.secondary, false);
         idleStatusView.setGravity(Gravity.CENTER);
         idleStatusView.setPadding(0, dp(8), 0, dp(24));
         content.addView(idleStatusView, matchWrap());
 
-        content.addView(cardText("1. 在 Mac 上启动 DisplayWeave Mac 端\n"
-                + "2. 保持 Android 与 Mac 在同一 WiFi\n"
-                + "3. 在 Mac 端 WiFi 列表中选择 DisplayWeave Android\n"
-                + "4. 成功后会自动切换到全屏副屏画面"));
+        content.addView(cardText("从 Mac 开始连接\n\n"
+                + "1. 在 Mac 上打开 DisplayWeave，选择发送屏幕。\n\n"
+                + "2. 两端加入同一局域网，或使用已授权 USB 调试的线缆连接。\n\n"
+                + "3. 在 Mac 设备列表中选择本机；连接成功后自动显示桌面。"));
 
-        Button settings = new Button(this);
-        settings.setText("设置与帮助");
+        Button settings = ui.button("设置与帮助");
         settings.setOnClickListener(v -> showSettingsDialog());
         LinearLayout.LayoutParams buttonParams = matchWrap();
         buttonParams.setMargins(0, dp(24), 0, dp(8));
         content.addView(settings, buttonParams);
 
-        TextView footnote = text("提示：串流中可在 Android 最近任务里返回此界面；状态浮层可在设置中关闭。", 13,
-                Color.rgb(117, 128, 145), false);
+        TextView footnote = text("局域网连接未加密，请仅在可信网络使用。串流时可通过右上角设置调整选项；USB 调试授权会信任当前 Mac。", 13,
+                ui.secondary, false);
         footnote.setGravity(Gravity.CENTER);
         footnote.setPadding(0, dp(8), 0, 0);
         content.addView(footnote, matchWrap());
@@ -401,11 +426,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     private TextView cardText(String value) {
-        TextView view = text(value, 16, Color.rgb(37, 45, 58), false);
-        view.setLineSpacing(dp(4), 1.0f);
-        view.setPadding(dp(20), dp(18), dp(20), dp(18));
-        view.setBackgroundColor(Color.WHITE);
-        return view;
+        return ui.card(value);
     }
 
     private void showSettingsDialog() {
@@ -413,9 +434,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(20), dp(10), dp(20), 0);
 
-        content.addView(text("连接状态：" + currentStatus, 15, Color.rgb(36, 45, 60), false), matchWrap());
+        content.addView(text("连接状态：" + currentStatus, 15, ui.primary, false), matchWrap());
         content.addView(text("服务端口：9000\n设备标识：" + InstallId.get(this), 13,
-                Color.rgb(95, 105, 120), false), matchWrap());
+                ui.secondary, false), matchWrap());
 
         CheckBox keepAwake = new CheckBox(this);
         keepAwake.setText("保持屏幕常亮");
@@ -463,7 +484,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
 
         TextView version = text("当前版本：" + installedVersionLabel()
                         + "\n更新状态：" + updateState,
-                13, Color.rgb(95, 105, 120), false);
+                13, ui.secondary, false);
         version.setPadding(0, dp(10), 0, 0);
         content.addView(version, matchWrap());
 
@@ -474,7 +495,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
 
         TextView help = text("如果 Mac 找不到 Android：确认两台设备在同一局域网，VPN/TUN 没有隔离局域网，"
                 + "并允许 Android 的“附近设备/本地网络”权限。点击屏幕后若 Mac 端无反应，请确认 Mac 辅助功能权限已开启。",
-                14, Color.rgb(82, 94, 112), false);
+                14, ui.secondary, false);
         help.setPadding(0, dp(10), 0, 0);
         content.addView(help, matchWrap());
 
@@ -486,9 +507,11 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             content.addView(permission, matchWrap());
         }
 
+        ScrollView settingsScroll = new ScrollView(this);
+        settingsScroll.addView(content);
         new AlertDialog.Builder(this)
                 .setTitle("设置与帮助")
-                .setView(content)
+                .setView(settingsScroll)
                 .setPositiveButton("完成", null)
                 .show();
     }
@@ -562,7 +585,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         content.setPadding(dp(24), dp(12), dp(24), dp(8));
 
         TextView progressText = text("准备下载…", 14,
-                Color.rgb(82, 94, 112), false);
+                ui.secondary, false);
         content.addView(progressText, matchWrap());
 
         ProgressBar progress = new ProgressBar(
@@ -1048,6 +1071,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         }
         boolean show = streaming && (prefs == null || prefs.getBoolean(KEY_SHOW_STATUS, true));
         statusView.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (streamSettingsButton != null) {
+            streamSettingsButton.setVisibility(streaming ? View.VISIBLE : View.GONE);
+        }
     }
 
     private void applyKeepAwakePreference() {
@@ -1148,14 +1174,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     private TextView text(String value, int sp, int color, boolean bold) {
-        TextView view = new TextView(this);
-        view.setText(value);
-        view.setTextSize(sp);
-        view.setTextColor(color);
-        if (bold) {
-            view.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        }
-        return view;
+        return ui.text(value, sp, color, bold);
     }
 
     private LinearLayout.LayoutParams matchWrap() {
@@ -1165,6 +1184,6 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     private int dp(int value) {
-        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+        return ui.dp(value);
     }
 }

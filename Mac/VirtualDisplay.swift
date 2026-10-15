@@ -4,12 +4,14 @@ import CoreGraphics
 /// Wraps the private CGVirtualDisplay API: makes macOS believe a real monitor
 /// is attached. Sized in points at HiDPI (@2x), so a phone with native pixels
 /// W×H gets a virtual display of (W/2)×(H/2) points backed by a W×H framebuffer.
+/// Non-Retina Mac receivers use backingScale=1 and keep points equal to pixels.
 final class VirtualDisplay {
 
     private let display: CGVirtualDisplay
     private let settings: CGVirtualDisplaySettings
     let pointsWide: Int
     let pointsHigh: Int
+    let backingScale: Int
     let requestedRefreshRate: Int
     private(set) var actualRefreshRate: Int
     private(set) var refreshRateFallbackReason: String?
@@ -27,7 +29,8 @@ final class VirtualDisplay {
     /// arrangement on vendor/product/serial, so a stable serial means each
     /// device keeps its position in System Settings across sessions.
     init?(name: String, pointsWide: Int, pointsHigh: Int, sizeInMillimeters: CGSize,
-          serialNum: UInt32 = 0x0001, requestedRefreshRate: Int = 60) {
+          serialNum: UInt32 = 0x0001, requestedRefreshRate: Int = 60, backingScale: Int = 2) {
+        self.backingScale = backingScale == 1 ? 1 : 2
         self.pointsWide = pointsWide
         self.pointsHigh = pointsHigh
         self.requestedRefreshRate = RefreshRatePolicy.sanitize(requestedRefreshRate)
@@ -36,8 +39,8 @@ final class VirtualDisplay {
         let descriptor = CGVirtualDisplayDescriptor()
         descriptor.setDispatchQueue(DispatchQueue.main)
         descriptor.name = name
-        descriptor.maxPixelsWide = UInt32(pointsWide * 2)
-        descriptor.maxPixelsHigh = UInt32(pointsHigh * 2)
+        descriptor.maxPixelsWide = UInt32(pointsWide * self.backingScale)
+        descriptor.maxPixelsHigh = UInt32(pointsHigh * self.backingScale)
         descriptor.sizeInMillimeters = sizeInMillimeters
         descriptor.productID = 0x4F53   // "OS"
         descriptor.vendorID = 0x5043    // "PC"
@@ -49,7 +52,7 @@ final class VirtualDisplay {
         display = CGVirtualDisplay(descriptor: descriptor)
 
         settings = CGVirtualDisplaySettings()
-        settings.hiDPI = 1
+        settings.hiDPI = self.backingScale == 2 ? 1 : 0
 
         var appliedRefreshRate: Int?
         for refreshRate in RefreshRatePolicy.attemptOrder(requestedFps: self.requestedRefreshRate) {
@@ -71,7 +74,7 @@ final class VirtualDisplay {
             requestedFps: self.requestedRefreshRate,
             appliedFps: appliedRefreshRate,
             actualFps: actualRefreshRate)
-        Log.info("virtual display created: id=\(display.displayID) \(pointsWide)x\(pointsHigh)pt @2x requestedRefreshRate=\(self.requestedRefreshRate) actualRefreshRate=\(actualRefreshRate) selectedResolution=\(pointsWide)x\(pointsHigh) scale=2 fallback=\(refreshRateFallbackReason ?? "none")")
+        Log.info("virtual display created: id=\(display.displayID) \(pointsWide)x\(pointsHigh)pt @\(self.backingScale)x requestedRefreshRate=\(self.requestedRefreshRate) actualRefreshRate=\(actualRefreshRate) selectedResolution=\(pointsWide)x\(pointsHigh) scale=\(self.backingScale) fallback=\(refreshRateFallbackReason ?? "none")")
 
         // macOS defaults the new display to its 1x mode AND can restore a
         // stale saved mode for this serial asynchronously, seconds after the
@@ -113,10 +116,12 @@ final class VirtualDisplay {
         let opts = [kCGDisplayShowDuplicateLowResolutionModes: kCFBooleanTrue] as CFDictionary
         guard let modes = CGDisplayCopyAllDisplayModes(display.displayID, opts) as? [CGDisplayMode],
               let hidpi = modes.first(where: {
-                  $0.width == pointsWide && $0.pixelWidth == pointsWide * 2
+                  $0.width == pointsWide && $0.height == pointsHigh
+                    && $0.pixelWidth == pointsWide * self.backingScale
+                    && $0.pixelHeight == pointsHigh * self.backingScale
               }) else {
             if recover {
-                Log.info("@2x mode vanished from display \(display.displayID) — re-applying settings")
+                Log.info("@\(backingScale)x mode vanished from display \(display.displayID) — re-applying settings")
                 _ = display.apply(settings)
             }
             return false
@@ -129,7 +134,7 @@ final class VirtualDisplay {
         CGBeginDisplayConfiguration(&config)
         CGConfigureDisplayWithDisplayMode(config, display.displayID, hidpi, nil)
         let err = CGCompleteDisplayConfiguration(config, .permanently)
-        Log.info("HiDPI mode (re)selected: \(hidpi.width)x\(hidpi.height)@2x (result \(err.rawValue))")
+        Log.info("display mode (re)selected: \(hidpi.width)x\(hidpi.height)@\(backingScale)x (result \(err.rawValue))")
         return err == .success
     }
 

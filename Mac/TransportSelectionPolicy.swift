@@ -140,6 +140,7 @@ enum ConnectionClosurePolicy {
 enum ReceiverControlPolicy {
     static func closureAction(messageType: String,
                               peer: ReceiverPeerKind) -> ConnectionClosureAction? {
+        if peer == .legacyApple, messageType == "closing" || messageType == "sleeping" { return .endSession }
         guard messageType == "goodbye" else { return nil }
         return peer == .legacyApple ? .endSession : .retryWithinGrace
     }

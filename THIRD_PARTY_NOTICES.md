@@ -16,6 +16,22 @@ license text governing the current DisplayWeave work. OpenDisplay is the source
 project; DisplayWeave is independently named and maintained rather than
 presented as an official OpenDisplay distribution.
 
+The Mac-to-Mac LAN implementation selectively adapts upstream commit
+`b9eec1f232fb5ea571c87e8392379a84f47b237f` (receiver originally introduced in
+`23b62b3`). Specifically, `Shared/StreamReceiver.swift`, `Shared/Protocol.swift`
+and the video view in `MacReceiver/MacReceiver.swift` inform
+`Mac/Receiver/StreamReceiver.swift`, `ReceiverWireProtocol.swift` and
+`ReceiverVideoView.swift`. Local changes narrow reception to H.264, add bounded
+framing, exclusive sessions, lifecycle isolation, and integration with the
+DisplayWeave role UI. These adaptations remain GPL-3.0. The complete upstream
+history has not been merged; the assessment is recorded in
+`docs/mac-to-mac-design.md`.
+
+The 2026-10-16 source upgrade also adapts failure/retry handling from
+`87b000b` / `c27e538`, deferred touch-down semantics from `04590ed`, and bounded
+logging from the design in `19481a6`. Implementations and regression coverage
+are local adaptations under GPL-3.0; see `docs/upstream-integration-2026-10-16.md`.
+
 ## SideScreen
 
 - Project: SideScreen

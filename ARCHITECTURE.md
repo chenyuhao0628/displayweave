@@ -60,3 +60,30 @@ Touch coordinates, drag state, cursor movement, and two-finger scroll are encode
 - `CGVirtualDisplay` is a private API and can change across macOS releases.
 
 See [SECURITY.md](SECURITY.md) and [docs/README.md](docs/README.md).
+
+
+## Mac receive role (development build)
+
+The Mac app switches between sending and receiving. Receiving stops sender sessions
+and discovery, then uses an independent TCP listener, bounded deframing and
+AVSampleBufferDisplayLayer H.264 rendering. One sender is accepted at a time; stale
+connection callbacks cannot mutate replacement sessions. The sender respects logical
+points, display scale and codec size/fps limits. Mac uses legacy Apple framing, not
+Android DWV2. See the [design](docs/mac-to-mac-design.md).
+
+## Source ownership and bounded work (2026-10-16)
+
+The source app supports exclusive Mac send/receive roles over the same Wi-Fi or Ethernet LAN. This remains a development feature beyond the v0.2.1-p6 downloads. Mirroring captures an existing display; extending creates a virtual display.
+
+| Area | Ownership |
+| --- | --- |
+| Mac presentation | `OpenSidecarMacApp`, `MacRoleViews`, `SenderWorkspaceView`, `SenderSettingsView`, `SessionRow`, `UpdateViews`; `SettingsWindow` narrowly hosts the desktop settings window. |
+| Mac sessions | `SenderController` owns discovery and replacement barriers; each `DeviceSession` owns a sender and `SessionLifetime`. Startup failure and stop release resources before a replacement starts. |
+| iOS presentation | `ReceiverScreen`, `ReceiverIdleView`, `ReceiverOnboardingView`, `ReceiverSettingsView`, `ReceiverPerformanceView`, `ReceiverModel`, `ReceiverVideoView`. |
+| Shared Apple boundaries | `Shared/ReceiverFrameDecoder` validates legacy lengths (16 MiB maximum); `ReceiverCursorImage` checks bytes and pixel geometry before decoding; `BoundedLogWriter` limits files and queued work. |
+| Android presentation | `ReceiverUi` owns shared styles; `MainActivity` owns connection/lifecycle presentation. |
+| Website | Shared CSS tokens and semantic React sections; server rendering and client hydration share the same tree, with generated bilingual-page checks. |
+
+`PhoneReceiver` owns listener/connection state on its serial queue and ignores stale callbacks. Backgrounding detaches the old socket before a best-effort goodbye. Android control writes have one worker, 128 queued tasks and a 64 KiB payload limit; readers have two workers and two queued tasks. Saturation disconnects the affected session so input cannot accumulate without bound. Sender geometry and input are validated before arithmetic and CoreGraphics conversion.
+
+See the [UI contract](docs/ui-guidelines.md), [development commands](docs/development.md), and [source audit with verification limits](docs/source-upgrade-audit-2026-10-16.md).

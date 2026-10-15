@@ -105,6 +105,12 @@ struct DeviceCapabilitiesSelfTest {
         assertEqual("h264", unsupportedPreference.negotiatedPreferredCodec,
                     "unsupported codec preference falls back to H.264")
 
+        for dimensions in [(0, 1080), (-1, 1080), (Int.max, 2), (16384, 16384)] {
+            let data = Data("{\"pixelsWide\":\(dimensions.0),\"pixelsHigh\":\(dimensions.1),\"scale\":2}".utf8)
+            let invalid = try JSONDecoder().decode(PhoneInfo.self, from: data)
+            precondition(!invalid.hasValidGeometry, "invalid geometry reached capture sizing")
+        }
+        precondition(oldHello.hasValidGeometry && modernHello.hasValidGeometry)
         print("DeviceCapabilitiesSelfTest PASS")
     }
 }

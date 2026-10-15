@@ -27,3 +27,12 @@ Never commit Android keystores/passwords, Apple certificates/private keys, provi
 ## Release verification
 
 Follow [docs/release-checklist.md](docs/release-checklist.md). A valid Preview publication requires source/build checks, APK v2 verification, macOS bundle verification, IPA archive hygiene, and SHA-256 validation.
+
+
+## Mac LAN reception (source development build)
+
+Receive mode advertises on the LAN and listens on TCP 9000. It accepts one
+sender, without pairing authentication or transport encryption. Enable it only
+on a trusted network. Role changes and Stop receiving close the listener and
+session; remote shutdown is not exposed. Frame lengths and video dimensions
+are bounded. See the [user guide](docs/mac-to-mac.md).
