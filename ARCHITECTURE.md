@@ -60,3 +60,13 @@ Touch coordinates, drag state, cursor movement, and two-finger scroll are encode
 - `CGVirtualDisplay` is a private API and can change across macOS releases.
 
 See [SECURITY.md](SECURITY.md) and [docs/README.md](docs/README.md).
+
+
+## Mac receive role (development build)
+
+The Mac app switches between sending and receiving. Receiving stops sender sessions
+and discovery, then uses an independent TCP listener, bounded deframing and
+AVSampleBufferDisplayLayer H.264 rendering. One sender is accepted at a time; stale
+connection callbacks cannot mutate replacement sessions. The sender respects logical
+points, display scale and codec size/fps limits. Mac uses legacy Apple framing, not
+Android DWV2. See the [design](docs/mac-to-mac-design.md).

@@ -153,27 +153,32 @@ enum Usbmux {
 
     static func open(queue: DispatchQueue) async throws -> NWConnection {
         let conn = NWConnection(to: .unix(path: socketPath), using: .tcp)
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            let gate = OneShotResume()
-            conn.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    gate.resume {
-                        cont.resume()
+        try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                let gate = OneShotResume()
+                conn.stateUpdateHandler = { state in
+                    switch state {
+                    case .ready:
+                        gate.resume {
+                            cont.resume()
+                        }
+                    case .failed(let error), .waiting(let error):
+                        // No path updates on a Unix socket — .waiting would hang
+                        // forever, so treat it as failure and let callers retry.
+                        gate.resume {
+                            conn.cancel()
+                            cont.resume(throwing: error)
+                        }
+                    case .cancelled:
+                        gate.resume { cont.resume(throwing: CancellationError()) }
+                    default:
+                        break
                     }
-                case .failed(let error), .waiting(let error):
-                    // No path updates on a Unix socket — .waiting would hang
-                    // forever, so treat it as failure and let callers retry.
-                    gate.resume {
-                        conn.cancel()
-                        cont.resume(throwing: error)
-                    }
-                default:
-                    break
                 }
+                conn.start(queue: queue)
             }
-            conn.start(queue: queue)
-        }
+        } onCancel: { conn.cancel() }
         conn.stateUpdateHandler = nil
         return conn
     }
@@ -208,23 +213,29 @@ enum Usbmux {
     }
 
     private static func send(raw data: Data, on conn: NWConnection) async throws {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            conn.send(content: data, completion: .contentProcessed { error in
-                if let error { cont.resume(throwing: error) } else { cont.resume() }
-            })
-        }
+        try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                conn.send(content: data, completion: .contentProcessed { error in
+                    if let error { cont.resume(throwing: error) } else { cont.resume() }
+                })
+            }
+        } onCancel: { conn.cancel() }
     }
 
     private static func receive(exactly count: Int, on conn: NWConnection) async throws -> Data {
-        try await withCheckedThrowingContinuation { cont in
-            conn.receive(minimumIncompleteLength: count, maximumLength: count) { data, _, _, error in
-                if let data, data.count == count {
-                    cont.resume(returning: data)
-                } else {
-                    cont.resume(throwing: error ?? Failure.protocolError("socket closed"))
+        try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { cont in
+                conn.receive(minimumIncompleteLength: count, maximumLength: count) { data, _, _, error in
+                    if let data, data.count == count {
+                        cont.resume(returning: data)
+                    } else {
+                        cont.resume(throwing: error ?? Failure.protocolError("socket closed"))
+                    }
                 }
             }
-        }
+        } onCancel: { conn.cancel() }
     }
 }
 
@@ -234,26 +245,41 @@ enum Usbmux {
 @MainActor
 final class UsbmuxDeviceWatcher {
     private let queue = DispatchQueue(label: "usbmux.watcher")
+    private var task: Task<Void, Never>?
+    private var nameTasks: [Int: Task<Void, Never>] = [:]
+    private var activeConnection: NWConnection?
+    private var stopped = false
     private var devices: [Int: UsbmuxDevice] = [:]
     private let onChange: ([UsbmuxDevice]) -> Void
 
     init(onChange: @escaping ([UsbmuxDevice]) -> Void) {
         self.onChange = onChange
-        Task { await listenLoop() }
+        task = Task { [weak self] in await self?.listenLoop() }
+    }
+
+    func stop() {
+        stopped = true
+        task?.cancel(); task = nil
+        nameTasks.values.forEach { $0.cancel() }
+        nameTasks.removeAll()
+        activeConnection?.cancel(); activeConnection = nil
     }
 
     private func listenLoop() async {
-        while true {
+        while !Task.isCancelled && !stopped {
             do {
                 let conn = try await Usbmux.open(queue: queue)
-                defer { conn.cancel() }
+                defer { conn.cancel(); activeConnection = nil }
+                guard !stopped, !Task.isCancelled else { return }
+                activeConnection = conn
                 try await Usbmux.send(["MessageType": "Listen"], on: conn)
-                while true {
+                while !Task.isCancelled && !stopped {
                     // First reply is the Result for Listen itself; it has no
                     // Properties so handle() ignores it.
                     handle(try await Usbmux.readMessage(on: conn))
                 }
             } catch {
+                guard !stopped, !Task.isCancelled else { return }
                 Log.info("usbmux watcher: \(error) — retrying in 3s")
                 if !devices.isEmpty {
                     devices = [:]
@@ -265,6 +291,7 @@ final class UsbmuxDeviceWatcher {
     }
 
     private func handle(_ message: [String: Any]) {
+        guard !stopped, !Task.isCancelled else { return }
         guard let deviceID = message["DeviceID"] as? Int else { return }
         switch message["MessageType"] as? String {
         case "Attached":
@@ -275,6 +302,7 @@ final class UsbmuxDeviceWatcher {
             publish()
             resolveName(deviceID: deviceID)
         case "Detached":
+            nameTasks.removeValue(forKey: deviceID)?.cancel()
             if let device = devices.removeValue(forKey: deviceID) {
                 Log.info("usbmux detached: \(device.udid)")
                 publish()
@@ -285,15 +313,18 @@ final class UsbmuxDeviceWatcher {
     }
 
     private func resolveName(deviceID: Int) {
-        Task {
+        nameTasks[deviceID]?.cancel()
+        nameTasks[deviceID] = Task {
+            guard !stopped, !Task.isCancelled else { return }
             guard let name = try? await Usbmux.deviceName(deviceID: deviceID, queue: queue),
-                  devices[deviceID] != nil else { return }
+                  !stopped, !Task.isCancelled, devices[deviceID] != nil else { return }
             devices[deviceID]?.name = name
             publish()
         }
     }
 
     private func publish() {
+        guard !stopped else { return }
         onChange(devices.values.sorted { $0.udid < $1.udid })
     }
 }

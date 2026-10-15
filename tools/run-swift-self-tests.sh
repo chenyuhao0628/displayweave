@@ -46,7 +46,7 @@ run_test BinaryFrameHeaderV2SelfTest \
   "${settings[@]}" Mac/BinaryFrameHeaderV2.swift \
   MacTests/BinaryFrameHeaderV2SelfTest.swift
 run_test DeviceCapabilitiesSelfTest \
-  Mac/FrameSizePolicy.swift Mac/DeviceCapabilities.swift \
+  Mac/FrameSizePolicy.swift Mac/DeviceCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift \
   MacTests/DeviceCapabilitiesSelfTest.swift
 run_test KeyframePolicySelfTest \
   "${settings[@]}" Mac/KeyframePolicy.swift MacTests/KeyframePolicySelfTest.swift
@@ -80,4 +80,20 @@ run_test UpdateConfigurationSelfTest \
 run_test UpdateReleasePolicySelfTest \
   -parse-as-library MacTests/UpdateReleasePolicySelfTest.swift
 
-echo "Swift standalone self-tests PASS (22 suites)"
+
+run_test MacReceiverPolicySelfTest \
+  "${settings[@]}" Mac/DeviceCapabilities.swift Mac/MacReceiverPolicy.swift \
+  Mac/Receiver/ReceiverWireProtocol.swift Mac/Receiver/ReceiverFrameDecoder.swift \
+  MacTests/MacReceiverPolicySelfTest.swift
+
+run_test MacReceiverNetworkSelfTest \
+  Mac/Receiver/ReceiverWireProtocol.swift Mac/Receiver/ReceiverFrameDecoder.swift \
+  Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverNetworkSelfTest.swift
+
+run_test MacRoleControllerSelfTest \
+  Mac/MacRoleController.swift MacTests/MacRoleControllerSelfTest.swift
+
+run_test UsbmuxCancellationSelfTest \
+  Mac/Usbmux.swift Mac/Log.swift MacTests/UsbmuxCancellationSelfTest.swift
+
+echo "Swift standalone self-tests PASS (26 suites)"

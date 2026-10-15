@@ -2,6 +2,7 @@
 set -euo pipefail
 
 MODE="${1:-run}"
+if [[ $# -gt 0 ]]; then shift; fi
 APP_NAME="DisplayWeave"
 PROJECT="OpenSidecar.xcodeproj"
 SCHEME="OpenSidecarMac"
@@ -25,10 +26,10 @@ launch_app() {
   fi
 
   log_step "正在打开 $APP_BUNDLE"
-  /usr/bin/open -n "$APP_BUNDLE"
+  /usr/bin/open -n "$APP_BUNDLE" --args "$@"
   sleep 1
 
-  if pgrep -x "$APP_NAME" >/dev/null; then
+  if app_process exists; then
     log_step "$APP_NAME 已启动"
     return 0
   fi
@@ -38,7 +39,25 @@ launch_app() {
   exit 1
 }
 
-pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+# Match this checkout's executable, so an installed release keeps running.
+app_process() {
+  python3 - "$APP_BINARY" "$1" <<'PYPROCESS'
+import os, signal, subprocess, sys
+binary, action = sys.argv[1:]
+rows = subprocess.check_output(["ps", "-axo", "pid=,comm="], text=True).splitlines()
+pids = [int(row.strip().split(None, 1)[0]) for row in rows
+        if len(row.strip().split(None, 1)) == 2 and row.strip().split(None, 1)[1] == binary]
+if action == "stop":
+    for pid in pids:
+        try: os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError: pass
+else:
+    sys.exit(0 if pids else 1)
+PYPROCESS
+}
+
+app_process stop
+xcodegen generate
 
 log_step "开始构建 $SCHEME ($CONFIGURATION)"
 xcodebuild \
@@ -47,26 +66,26 @@ xcodebuild \
   -configuration "$CONFIGURATION" \
   -derivedDataPath "$DERIVED_DATA" \
   -clonedSourcePackagesDirPath "$DERIVED_DATA/SourcePackages" \
-  build
+  CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= build
 log_step "构建完成"
 
 case "$MODE" in
   run)
-    launch_app
+    launch_app "$@"
     ;;
   --debug|debug)
     lldb -- "$APP_BINARY"
     ;;
   --logs|logs)
-    launch_app
+    launch_app "$@"
     /usr/bin/log stream --info --style compact --predicate "process == \"$APP_NAME\""
     ;;
   --telemetry|telemetry)
-    launch_app
+    launch_app "$@"
     /usr/bin/log stream --info --style compact --predicate "process == \"$APP_NAME\""
     ;;
   --verify|verify)
-    launch_app
+    launch_app "$@"
     ;;
   *)
     echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2

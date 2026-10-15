@@ -32,10 +32,9 @@ struct OpenSidecarMacApp: App {
             get: { controller.presentation == .menuBar },
             set: { _ in }
         )) {
-            ContentView(controller: controller, updater: appDelegate.updater)
+            MacRootView(controller: controller, updater: appDelegate.updater)
         } label: {
-            Image(systemName: controller.running
-                  ? "rectangle.on.rectangle.fill" : "rectangle.on.rectangle")
+            MacConnectionIcon(sender: controller)
         }
         .menuBarExtraStyle(.window)
     }
@@ -60,12 +59,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Hand the updater to the control window, which is built outside the
         // SwiftUI App scene (NSHostingView), so it can offer the same button.
+        _ = MacRoleController.shared
         MainWindow.updater = updater
         let presentation = SenderController.shared.presentation
         NSApp.setActivationPolicy(presentation == .dock ? .regular : .accessory)
         if presentation != .menuBar {
             MainWindow.show()
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        SenderController.shared.setRoleEnabled(false)
+        MacRoleController.shared.receiver.stop()
     }
 
     // Background/Dock modes: opening the app again (Spotlight, Finder, Dock
@@ -93,7 +98,7 @@ enum MainWindow {
                 backing: .buffered, defer: false)
             w.title = "DisplayWeave"
             w.contentView = NSHostingView(
-                rootView: ContentView(controller: SenderController.shared,
+                rootView: MacRootView(controller: SenderController.shared,
                                       updater: updater))
             w.isReleasedWhenClosed = false
             w.center()
@@ -134,6 +139,7 @@ final class DeviceSession: ObservableObject, Identifiable {
     let target: ConnectionTarget
     let name: String
     let sender: MacSender
+    var startupTask: Task<Void, Never>?
     var androidForwardManager: AndroidAdbForwardManager?
 
     @Published var status = "正在启动…"
@@ -151,7 +157,7 @@ final class DeviceSession: ObservableObject, Identifiable {
     var transportLabel: String {
         switch target {
         case .usb, .androidAdb, .androidAdbDevice: return "USB"
-        case .wifi: return "WiFi"
+        case .wifi: return "局域网"
         }
     }
 
@@ -258,21 +264,49 @@ final class SenderController: ObservableObject {
     // appears later was brought near the Mac mid-session, which is a user
     // action to confirm, not auto-grab.
     private var wifiAutoConnectArmed = false
-    private let wifiAutoConnectDeadline = Date().addingTimeInterval(12)
+    private var wifiAutoConnectDeadline = Date().addingTimeInterval(12)
+
+    private(set) var roleEnabled = false
+    private var roleGeneration = 0
+    private var androidPollTask: Task<Void, Never>?
+    private var autoConnectTask: Task<Void, Never>?
 
     init() {
+        setRoleEnabled(UserDefaults.standard.string(forKey: "macRole") != "receiver")
+    }
+
+    @discardableResult
+    func setRoleEnabled(_ enabled: Bool) -> Task<Void, Never>? {
+        guard enabled != roleEnabled else { return nil }
+        roleEnabled = enabled
+        roleGeneration += 1
+        androidPollTask?.cancel(); androidPollTask = nil
+        autoConnectTask?.cancel(); autoConnectTask = nil
+        browser?.cancel(); browser = nil
+        usbWatcher?.stop(); usbWatcher = nil
+        wifiAutoConnectArmed = false
+        if !enabled {
+            for serial in Array(androidRecoveryGeneration.keys) { androidRecoveryGeneration[serial, default: 0] += 1 }
+            let cleanups = sessions.map { end($0) }
+            discovered = []; usbDevices = []; androidDevices = []
+            return Task { for cleanup in cleanups { await cleanup.value } }
+        }
+        let generation = roleGeneration
+        wifiAutoConnectDeadline = Date().addingTimeInterval(12)
         startBrowsing()
         usbWatcher = UsbmuxDeviceWatcher { [weak self] devices in
-            guard let self else { return }
+            guard let self, self.roleEnabled, self.roleGeneration == generation else { return }
             self.usbDevices = devices
             self.autoConnect()
         }
-        Task { @MainActor in
+        autoConnectTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(2))
+            guard let self, !Task.isCancelled, self.roleEnabled, self.roleGeneration == generation else { return }
             self.wifiAutoConnectArmed = true
             self.autoConnect()
         }
-        Task { await pollAndroidAdb() }
+        androidPollTask = Task { [weak self] in await self?.pollAndroidAdb() }
+        return nil
     }
 
     private func pollAndroidAdb() async {
@@ -283,6 +317,8 @@ final class SenderController: ObservableObject {
     }
 
     private func refreshAndroidAdb() async {
+        guard roleEnabled, !Task.isCancelled else { return }
+        let generation = roleGeneration
         let configured = androidAdbPath.isEmpty ? nil : androidAdbPath
         guard let executable = AndroidAdbExecutableResolver.resolve(configuredPath: configured) else {
             androidDevices = []
@@ -302,17 +338,20 @@ final class SenderController: ObservableObject {
             if !hasActiveAndroidSession {
                 await manager.cleanupPersistedMappings()
             }
+            guard roleEnabled, roleGeneration == generation, !Task.isCancelled else { return }
             androidAdbClient = client
             androidForwardManager = manager
         }
         guard let androidAdbClient else { return }
         do {
             let devices = try await androidAdbClient.devices()
+            guard roleEnabled, roleGeneration == generation, !Task.isCancelled else { return }
             androidDevices = devices
             androidAdbStatus = AndroidAdbPresentation.make(
                 executableFound: true, devices: devices).message
             autoConnect()
         } catch {
+            guard roleEnabled, roleGeneration == generation, !Task.isCancelled else { return }
             androidDevices = []
             androidAdbStatus = error.localizedDescription
         }
@@ -321,10 +360,11 @@ final class SenderController: ObservableObject {
     private func startBrowsing() {
         // TXT records carry the receiver's install id (new receivers).
         let browser = NWBrowser(for: .bonjourWithTXTRecord(type: "_opensidecar._tcp", domain: nil), using: .tcp)
+        let generation = roleGeneration
         browser.browseResultsChangedHandler = { [weak self] results, _ in
             DispatchQueue.main.async {
-                guard let self else { return }
-                self.discovered = Array(results)
+                guard let self, self.roleEnabled, self.roleGeneration == generation else { return }
+                self.discovered = results.filter { self.txtID(of: $0) != StreamReceiver.installID }
                 self.autoConnect()
             }
         }
@@ -407,7 +447,7 @@ final class SenderController: ObservableObject {
     // MARK: - Connection policy
 
     private func autoConnect() {
-        guard autoConnectEnabled else { return }
+        guard roleEnabled, autoConnectEnabled else { return }
         dedupeSessions()
         let permitsUSB = settings.transportMode != .wifi
         let permitsWiFi = settings.transportMode != .usb
@@ -512,6 +552,8 @@ final class SenderController: ObservableObject {
     }
 
     func connect(to target: ConnectionTarget, userInitiated: Bool = false) {
+        guard roleEnabled else { return }
+        if case .wifi(let result) = target, txtID(of: result) == StreamReceiver.installID { return }
         if case .androidAdbDevice(let serial) = target {
             connectAndroidAdb(serial: serial, userInitiated: userInitiated)
             return
@@ -582,7 +624,8 @@ final class SenderController: ObservableObject {
             }
         }
         sender.onHello = { [weak self, weak session] info in
-            guard let self, let session else { return }
+            guard let self, let session, self.roleEnabled else { return }
+            guard info.id != StreamReceiver.installID else { self.end(session); return }
             session.deviceID = info.id
             session.deviceKind = info.device
             if case .usb(let udid?) = session.target, let installID = info.id {
@@ -606,7 +649,7 @@ final class SenderController: ObservableObject {
             session?.benchmarkStatus = status
         }
         sender.onDisconnected = { [weak self, weak session] in
-            guard let self, let session else { return }
+            guard let self, let session, self.roleEnabled, self.sessions.contains(where: { $0 === session }) else { return }
             if case .androidAdb(let mapping) = session.target {
                 self.recoverAndroidAdb(session: session, mapping: mapping)
             } else {
@@ -619,7 +662,8 @@ final class SenderController: ObservableObject {
             existing.benchmarkStatus = "Benchmark stopped: another session connected"
         }
         sessions.append(session)
-        Task {
+        session.startupTask = Task {
+            guard roleEnabled, sessions.contains(where: { $0 === session }) else { return }
             do {
                 try await sender.start()
             } catch is CancellationError {
@@ -688,11 +732,17 @@ final class SenderController: ObservableObject {
             androidAdbStatus = "ADB 尚未就绪"
             return
         }
+        guard roleEnabled else { return }
+        let generation = roleGeneration
         androidConnectPending.insert(serial)
         Task {
             defer { androidConnectPending.remove(serial) }
             do {
                 let mapping = try await androidForwardManager.create(serial: serial)
+                guard roleEnabled, roleGeneration == generation else {
+                    await androidForwardManager.remove(sessionID: mapping.sessionID)
+                    return
+                }
                 connect(to: .androidAdb(mapping), userInitiated: userInitiated)
             } catch {
                 androidAdbStatus = "无法创建 USB 端口映射：\(error.localizedDescription)"
@@ -714,15 +764,16 @@ final class SenderController: ObservableObject {
 
         Task {
             for attempt in startAttempt..<TransportSelectionPolicy.recoveryDelays.count {
-                guard androidRecoveryGeneration[serial] == generation else { return }
+                guard roleEnabled, androidRecoveryGeneration[serial] == generation else { return }
                 let delay = TransportSelectionPolicy.recoveryDelays[attempt]
                 androidAdbStatus = "USB 已断开，\(delay.formatted()) 秒后尝试恢复（\(attempt + 1)/5）"
                 try? await Task.sleep(for: .seconds(delay))
-                guard androidRecoveryGeneration[serial] == generation else { return }
+                guard roleEnabled, androidRecoveryGeneration[serial] == generation else { return }
 
                 do {
                     guard let client = androidAdbClient else { throw AndroidAdbFailure.noDevices }
                     let devices = try await client.devices()
+                    guard roleEnabled, androidRecoveryGeneration[serial] == generation else { return }
                     androidDevices = devices
                     let usbDevices = AndroidAdbDeviceSelection.usbDevices(from: devices)
                     guard usbDevices.contains(where: {
@@ -732,6 +783,10 @@ final class SenderController: ObservableObject {
                         continue
                     }
                     let replacement = try await manager.create(serial: serial)
+                    guard roleEnabled, androidRecoveryGeneration[serial] == generation else {
+                        await manager.remove(sessionID: replacement.sessionID)
+                        return
+                    }
                     androidRecoveryAttempt[serial] = attempt + 1
                     androidAdbStatus = "USB 映射已恢复，正在重新连接 Android Receiver…"
                     connect(to: .androidAdb(replacement))
@@ -747,7 +802,7 @@ final class SenderController: ObservableObject {
     }
 
     private func finishAndroidRecovery(serial: String, installID: String?, generation: Int) {
-        guard androidRecoveryGeneration[serial] == generation else { return }
+        guard roleEnabled, androidRecoveryGeneration[serial] == generation else { return }
         androidRecoveryAttempt.removeValue(forKey: serial)
         guard settings.transportMode == .auto else {
             androidAdbStatus = "USB 恢复失败，请检查数据线、USB 调试授权和 Android Receiver"
@@ -780,12 +835,22 @@ final class SenderController: ObservableObject {
         sessions.forEach { disconnect($0) }
     }
 
-    private func end(_ session: DeviceSession) {
-        session.sender.stop()
-        sessions.removeAll { $0.id == session.id }
-        if case .androidAdb(let mapping) = session.target,
-           let androidForwardManager = session.androidForwardManager {
-            Task { await androidForwardManager.remove(sessionID: mapping.sessionID) }
+    @discardableResult
+    private func end(_ session: DeviceSession) -> Task<Void, Never> {
+        let startup = session.startupTask
+        session.startupTask = nil
+        startup?.cancel()
+        let captureCleanup = session.sender.stop()
+        sessions.removeAll { $0 === session }
+        return Task {
+            await captureCleanup.value
+            // A startCapture suspended when stop() ran must finish its own
+            // cancellation path before a receive role may start.
+            await startup?.value
+            if case .androidAdb(let mapping) = session.target,
+               let manager = session.androidForwardManager {
+                await manager.remove(sessionID: mapping.sessionID)
+            }
         }
     }
 
@@ -813,9 +878,9 @@ final class SenderController: ObservableObject {
 
         var transportLabel: String {
             switch (usbTarget != nil, wifiTarget != nil) {
-            case (true, true): return "USB · WiFi"
+            case (true, true): return "USB · 局域网"
             case (true, false): return "USB"
-            case (false, true): return "WiFi"
+            case (false, true): return "局域网"
             default: return ""
             }
         }
@@ -976,7 +1041,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("DisplayWeave")
                         .font(.title3.bold())
-                    Text("把 iPad、iPhone 和 Android 变成额外显示器")
+                    Text("把 Mac、iPad、iPhone 和 Android 变成额外显示器")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -994,7 +1059,7 @@ struct ContentView: View {
             Form {
                 Section("设备") {
                     if controller.deviceEntries.isEmpty {
-                        Text("未发现设备。请用 USB 连接 iPhone 或 iPad，或在同一 WiFi 网络中的设备上打开 DisplayWeave。")
+                        Text("未发现设备。请在同一局域网的另一台 Mac 选择“接收屏幕”，或连接手机/平板接收端。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -1223,7 +1288,7 @@ struct ContentView: View {
                         "本地网络",
                         granted: !controller.discovered.isEmpty,
                         uncertain: controller.discovered.isEmpty,
-                        help: "WiFi 模式需要此权限。如果设备列表为空，请在两端的“隐私与安全性”→“本地网络”中允许 DisplayWeave，并保持设备端 app 打开。",
+                        help: "局域网模式（Wi-Fi/以太网）需要此权限。如果设备列表为空，请在两端的“隐私与安全性”→“本地网络”中允许 DisplayWeave，并保持设备端 app 打开。",
                         anchor: "Privacy_LocalNetwork"
                     )
                 }

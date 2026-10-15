@@ -6,6 +6,14 @@
 
 DisplayWeave is an independently maintained, GPL-3.0, local-first second-display project derived from [OpenDisplay](https://github.com/peetzweg/opendisplay). It turns iPhone, iPad, and Android devices into extended or mirrored displays for a Mac.
 
+## Mac-to-Mac (source development build)
+
+The same app can send or receive a one-way extended/mirrored desktop over Wi-Fi
+or Ethernet. Both Macs require macOS 14+; the initial target is H.264 up to 60fps.
+The two-Mac physical performance matrix remains unverified. This feature is not
+in the `v0.2.1-p6` downloads below. See the [user guide](docs/mac-to-mac.md) and
+[design/upstream assessment](docs/mac-to-mac-design.md).
+
 ## Current capabilities
 
 - Apple receivers: USB through `usbmuxd` and local WiFi, using the H.264 path.

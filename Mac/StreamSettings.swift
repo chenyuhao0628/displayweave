@@ -108,7 +108,7 @@ enum StreamTransportMode: String, CaseIterable {
         switch self {
         case .auto: return "Auto"
         case .usb: return "USB"
-        case .wifi: return "WiFi"
+        case .wifi: return "局域网"
         }
     }
 }

@@ -4,6 +4,8 @@
 
 ## 当前用户指南
 
+- [Mac 与 Mac 局域网互联（源码开发构建）](mac-to-mac.zh-CN.md)与[设计/上游评估](mac-to-mac-design.zh-CN.md)
+
 - [开发预览分发](development-preview.zh-CN.md)
 - [`v0.2.0-preview.2` 发布说明](release-notes-v0.2.0-preview.2.zh-CN.md)
 - [`v0.2.0-preview.3` 发布说明](release-notes-v0.2.0-preview.3.zh-CN.md)

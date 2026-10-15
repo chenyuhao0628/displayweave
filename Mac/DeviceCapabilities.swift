@@ -17,6 +17,20 @@ struct PhoneInfo: Decodable {
     let capabilities: [String]?
     let maxFrameBytes: Int?
 
+    let panel: PanelAnnouncement?
+    let videoCaps: [VideoCapability]?
+    let displayMaxFrameRate: Int?
+    let maxEncodeWide: Int?
+    let maxEncodeHigh: Int?
+    var isMacReceiver: Bool { device?.lowercased() == "mac" }
+
+    func sameDisplayConfiguration(as other: PhoneInfo) -> Bool {
+        pixelsWide == other.pixelsWide && pixelsHigh == other.pixelsHigh
+            && (!isMacReceiver || (scale == other.scale && panel == other.panel
+                && videoCaps == other.videoCaps && displayMaxFrameRate == other.displayMaxFrameRate
+                && maxEncodeWide == other.maxEncodeWide && maxEncodeHigh == other.maxEncodeHigh))
+    }
+
     var kind: String { device ?? "设备" }
     var negotiatedRefreshRate: Int { Self.supportedFpsBucket(refreshRate ?? 60) }
     var negotiatedMaxFps: Int { Self.supportedFpsBucket(maxFps ?? negotiatedRefreshRate) }

@@ -1,0 +1,82 @@
+import Foundation
+import Darwin
+import AVFoundation
+import VideoToolbox
+
+@main struct MacReceiverNetworkSelfTest {
+    @MainActor static func waitFor(_ description: String, _ condition: () -> Bool) async throws {
+        for _ in 0..<100 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        throw ReceiverTestFailure(message: "timeout: \(description)")
+    }
+
+    @MainActor static func main() async throws {
+        // Optional local visual smoke producer. Connects only to loopback and
+        // sends synthetic color bars, never captures the user's desktop.
+        if let index = CommandLine.arguments.firstIndex(of: "--smoke-port"),
+           CommandLine.arguments.count > index + 1, let port = UInt16(CommandLine.arguments[index + 1]) {
+            try await Task.detached {
+                let peer = try ReceiverTestPeer(port: port)
+                _ = try peer.hello()
+                let config = try JSONSerialization.data(withJSONObject: ["type":"streamConfig", "codec":"h264", "width":64, "height":64, "fps":30])
+                try peer.write(ReceiverFrameDecoder.frame(config))
+                let frame = ReceiverFrameDecoder.frame(try receiverTestH264Frame())
+                for _ in 0..<1800 {
+                    try peer.write(frame)
+                    try await Task.sleep(for: .milliseconds(33))
+                }
+            }.value
+            return
+        }
+        let receiver = StreamReceiver()
+        receiver.start(port: 0, advertiseService: false)
+        try await waitFor("listen") { receiver.listeningPort != 0 }
+        let port = receiver.listeningPort
+        let first = try await Task.detached { () -> ReceiverTestPeer in
+            let peer = try ReceiverTestPeer(port: port)
+            let hello = try peer.hello()
+            precondition(hello["device"] as? String == "Mac")
+            precondition(hello["supportedCodecs"] as? [String] == ["h264"])
+            precondition(hello["protocolVersion"] == nil && hello["power"] == nil && hello["cursorPort"] == nil)
+            return peer
+        }.value
+        try await waitFor("connected") { receiver.connected }
+        try await Task.detached {
+            let busy = try ReceiverTestPeer(port: port)
+            precondition(busy.isClosed(), "second sender displaced active sender")
+        }.value
+        let video = try await Task.detached { try receiverTestH264Frame() }.value
+        let config = try JSONSerialization.data(withJSONObject: ["type":"streamConfig", "codec":"h264", "width":64, "height":64, "fps":60])
+        let stream = ReceiverFrameDecoder.frame(config) + ReceiverFrameDecoder.frame(video)
+        try await Task.detached {
+            try first.write(Data(stream.prefix(2)))
+            try first.write(Data(stream.dropFirst(2)))
+        }.value
+        try await waitFor("real H264 parameter sets accepted") { receiver.videoSize == CGSize(width: 64, height: 64) }
+        precondition(receiver.connected)
+        try await Task.detached { try first.write(Data([255,255,255,255])); precondition(first.isClosed()) }.value
+        try await waitFor("malformed peer disconnected") { !receiver.connected && receiver.videoSize == .zero }
+        let next = try await Task.detached { () -> ReceiverTestPeer in
+            let peer = try ReceiverTestPeer(port: port); _ = try peer.hello(); return peer
+        }.value
+        try await waitFor("reconnect") { receiver.connected }
+        receiver.stop()
+        receiver.start(port: 0, advertiseService: false)
+        try await waitFor("fresh listener") { receiver.listeningPort != 0 && !receiver.connected }
+        let freshPort = receiver.listeningPort
+        let fresh = try await Task.detached { () -> ReceiverTestPeer in
+            let peer = try ReceiverTestPeer(port: freshPort); _ = try peer.hello(); return peer
+        }.value
+        try await Task.sleep(for: .milliseconds(600))
+        precondition(receiver.connected && receiver.listeningPort == freshPort, "old shutdown killed new session")
+        receiver.disconnect()
+        try await waitFor("disconnect retains listener") { !receiver.connected }
+        precondition(receiver.listeningPort == freshPort)
+        await withCheckedContinuation { continuation in receiver.stop { continuation.resume() } }
+        try await waitFor("stopped") { receiver.listeningPort == 0 }
+        withExtendedLifetime((first, next, fresh)) {}
+        print("Mac receiver loopback: hello, busy rejection, H264, invalid framing, reconnect, stop/restart PASS")
+    }
+}

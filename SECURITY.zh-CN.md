@@ -27,3 +27,10 @@
 ## 发布验证
 
 按照 [docs/release-checklist.zh-CN.md](docs/release-checklist.zh-CN.md) 执行。有效 Preview 发布必须完成源码/构建检查、APK v2 验证、macOS bundle 验证、IPA 归档卫生和 SHA-256 验证。
+
+
+## Mac 局域网接收（源码开发构建）
+
+接收角色向局域网广播并监听 TCP 9000；一次允许一个发送端，没有配对认证或
+传输加密。只在可信网络开启。切换角色或停止接收会关闭监听和会话；不提供
+远程关机。帧长度与视频尺寸会被限制。详见[使用指南](docs/mac-to-mac.zh-CN.md)。

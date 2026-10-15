@@ -48,7 +48,7 @@ targets:
         CFBundleDisplayName: $(BUNDLE_DISPLAY_NAME)
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        NSLocalNetworkUsageDescription: DisplayWeave 在 WiFi 模式下需要通过本地网络连接你的 iPad、iPhone 或 Android 设备。
+        NSLocalNetworkUsageDescription: DisplayWeave 通过 Wi-Fi 或以太网连接 Mac、iPad、iPhone 或 Android，并在接收模式下广播本机。
         NSBonjourServices: ["_opensidecar._tcp"]
         LSApplicationCategoryType: public.app-category.utilities
         # --- Sparkle auto-update (issue #52) ---

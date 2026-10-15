@@ -155,15 +155,18 @@ struct StreamConfigMessage {
     var transport: String
     var identity: StreamProtocolFrameIdentity? = nil
     var maxFrameBytes: Int? = nil
+    var exactFrameRate = false
 
     var profile: String {
         codec == .hevc ? "main" : "high"
     }
 
     var json: String {
+        let frameRate = exactFrameRate ? max(1, min(60, fps)) : RefreshRatePolicy.sanitize(fps)
         let legacy = "{\"type\":\"streamConfig\","
             + "\"codec\":\"\(codec.rawValue)\","
-            + "\"fps\":\(RefreshRatePolicy.sanitize(fps)),"
+            + "\"fps\":\(frameRate),"
+            + "\"framesPerSecond\":\(frameRate),"
             + "\"width\":\(max(width, 1)),"
             + "\"height\":\(max(height, 1)),"
             + "\"bitrate\":\(max(bitrate, 0)),"

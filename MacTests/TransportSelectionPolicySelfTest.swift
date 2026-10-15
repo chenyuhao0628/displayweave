@@ -173,6 +173,9 @@ struct TransportSelectionPolicySelfTest {
                 messageType: "ping", peer: .android),
               "normal control traffic must keep the session alive")
 
+        precondition(ReceiverControlPolicy.closureAction(messageType: "closing", peer: .legacyApple) == .endSession)
+        precondition(ReceiverControlPolicy.closureAction(messageType: "sleeping", peer: .legacyApple) == .endSession)
+        precondition(ReceiverControlPolicy.closureAction(messageType: "sleeping", peer: .android) == nil)
         print("TransportSelectionPolicySelfTest PASS")
     }
 }

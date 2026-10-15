@@ -60,3 +60,11 @@ Android 接收端在 9000 端口提供 TCP Server，渲染 Surface 返回时会�
 - `CGVirtualDisplay` 是私有 API，可能随 macOS 版本变化。
 
 参见 [SECURITY.zh-CN.md](SECURITY.zh-CN.md) 与 [docs/README.zh-CN.md](docs/README.zh-CN.md)。
+
+
+## Mac 接收角色（开发构建）
+
+Mac 应用可在发送和接收之间切换。接收角色先停止发送会话及发现任务，使用独立 TCP 监听、
+有界分帧和 AVSampleBufferDisplayLayer 渲染 H.264。一次只接受一个发送端；旧连接回调
+不能影响替代会话。发送端按接收屏幕逻辑点、缩放和 codec 尺寸/帧率上限配置。
+Mac 使用 Apple legacy 帧，不启用 Android DWV2。详见[设计](docs/mac-to-mac-design.zh-CN.md)。
