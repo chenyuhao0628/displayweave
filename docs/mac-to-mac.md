@@ -6,6 +6,8 @@ This feature is in the source development build. The published `v0.2.1-p6`
 assets do not include it. Both Macs need this build and macOS 14 or later.
 Either Mac can send or receive; each runs one role at a time.
 
+The main window now focuses on devices and connection mode. Open the gear button or Command-comma for stream quality, application presentation, permissions and diagnostics. The main window is resizable; the menu-bar panel remains bounded.
+
 ## Connect
 
 1. Connect both Macs to the same LAN using Wi-Fi or Ethernet. Routers with
