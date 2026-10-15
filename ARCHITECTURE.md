@@ -81,7 +81,7 @@ The source app supports exclusive Mac send/receive roles over the same Wi-Fi or 
 | Mac sessions | `SenderController` owns discovery and replacement barriers; each `DeviceSession` owns a sender and `SessionLifetime`. Startup failure and stop release resources before a replacement starts. |
 | iOS presentation | `ReceiverScreen`, `ReceiverIdleView`, `ReceiverOnboardingView`, `ReceiverSettingsView`, `ReceiverPerformanceView`, `ReceiverModel`, `ReceiverVideoView`. |
 | Shared Apple boundaries | `Shared/ReceiverFrameDecoder` validates legacy lengths (16 MiB maximum); `ReceiverCursorImage` checks bytes and pixel geometry before decoding; `BoundedLogWriter` limits files and queued work. |
-| Android presentation | `ReceiverUi` owns shared styles; `ReceiverActivity` owns connection/lifecycle presentation. |
+| Android presentation | `ReceiverUi` owns shared styles; `MainActivity` owns connection/lifecycle presentation. |
 | Website | Shared CSS tokens and semantic React sections; server rendering and client hydration share the same tree, with generated bilingual-page checks. |
 
 `PhoneReceiver` owns listener/connection state on its serial queue and ignores stale callbacks. Backgrounding detaches the old socket before a best-effort goodbye. Android control writes have one worker, 128 queued tasks and a 64 KiB payload limit; readers have two workers and two queued tasks. Saturation disconnects the affected session so input cannot accumulate without bound. Sender geometry and input are validated before arithmetic and CoreGraphics conversion.
