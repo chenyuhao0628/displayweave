@@ -1,6 +1,6 @@
 [English](automatic-updates.md) | [简体中文](automatic-updates.zh-CN.md)
 
-# Automatic updates without an Apple developer account
+# Automatic update authenticity and signing
 
 DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases and small update feeds on GitHub Pages:
 
@@ -15,11 +15,11 @@ The current development release is
 Install a current APK manually once; later builds use the in-app channel automatically.
 This release includes both the guided DMG and the Sparkle ZIP payload.
 
-The Mac build is ad-hoc signed and not notarized. Sparkle authenticates its ZIP with the embedded EdDSA public key, so subsequent updates can be verified without Apple Developer Program credentials. This does not make the first download Gatekeeper-trusted or equivalent to a notarized release.
+The published preview.2 Mac build is ad-hoc signed and not notarized. Sparkle authenticates its ZIP with the embedded EdDSA public key, so subsequent updates can be verified without Apple Developer Program credentials. This does not make the first download Gatekeeper-trusted or equivalent to a notarized release.
 
 2026-10-16: this preview is built locally. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site, which is available again. See the [release notes](release-notes-v0.3.0-preview.2.md) for UI changes, OpenDisplay compatibility and build evidence.
 
-See [local releases](local-release.md) for reproducible commands and validation requirements.
+The source workflow now requires a pinned Apple signing identity and an upgrade comparison; see [permission continuity](mac-permissions.md). This does not change existing public downloads. See [local releases](local-release.md) for reproducible commands and validation requirements.
 
 ## One-time user migration
 
@@ -27,7 +27,7 @@ See [local releases](local-release.md) for reproducible commands and validation 
 
 1. Prefer `DisplayWeave-macOS.dmg` when the release provides it: open the DMG and drag DisplayWeave to Applications. Installing from the ZIP is equivalent after `DisplayWeave.app` is placed in `/Applications`; do not keep running the app from the DMG, ZIP, or Downloads folder.
 2. Because the app is not notarized, Control-click the app and choose **Open**. If macOS still blocks it, use **System Settings → Privacy & Security → Open Anyway**, then confirm only if the download came from the official release. Do not enable **Anywhere** globally.
-3. Launch it once and retain the existing Screen Recording, Accessibility, and Local Network permissions. Moving or renaming the app later can cause macOS to ask for permissions again.
+3. Launch it and check Screen Recording, Accessibility, and Local Network permissions. Ad-hoc upgrades and the initial transition to a stable signature may require reauthorization; later builds must retain the same signing identity.
 
 After this migration, Sparkle checks the signed appcast automatically and may install newer builds. Sparkle lives inside `DisplayWeave.app`, not in the DMG or ZIP container, so either installation method receives the same later updates. The app also retains Sparkle's manual **Check for Updates** command. A release with an invalid EdDSA signature is rejected.
 
@@ -43,7 +43,7 @@ Declining the permission or installation leaves the receiver usable and does not
 
 ## Release operation
 
-GitHub Actions requires exactly these repository secrets:
+The Sparkle and Android steps require these repository secrets:
 
 - `SPARKLE_PRIVATE_KEY`
 - `DISPLAYWEAVE_ANDROID_KEYSTORE_BASE64`
@@ -51,13 +51,15 @@ GitHub Actions requires exactly these repository secrets:
 - `DISPLAYWEAVE_ANDROID_KEY_ALIAS`
 - `DISPLAYWEAVE_ANDROID_KEY_PASSWORD`
 
+Mac signing additionally requires the pinned local policy and its existing Keychain identity, plus the previous published app as `DISPLAYWEAVE_MAC_BASELINE_APP`. Hosted runners are not provisioned with these credentials and stop at preflight; use the local release path until a runner is explicitly provisioned. No Mac private key is exported by this change.
+
 For an explicit release, create its tag and draft GitHub Release, then run **Release** with `release_tag` and a `build_number` higher than every public Mac/Android build. Without an explicit tag, release-please may first create a version PR; merge it before rerunning. The tag determines the display version. If `build_number` is omitted, the workflow uses `github.run_number`; confirm that this is still monotonic.
 
 Set `deploy_feeds=false` (the default is `true`) when the release assets are not public yet. The workflow:
 
-1. builds and tests the ad-hoc Mac app, unsigned iOS compatibility target, and signed Android APK;
+1. builds and tests the Mac app with the pinned Apple identity, unsigned iOS compatibility target, and signed Android APK;
 2. generates an appcast with an EdDSA-signed ZIP enclosure and a pinned-certificate Android JSON feed;
-3. verifies versions, hashes, archive structure and Android signing; and
+3. verifies versions, hashes, archive structure, Mac identity continuity and Android signing; and
 4. uploads the seven immutable assets to the draft release while leaving the live feeds unchanged.
 
 Download and independently verify those assets, then publish the GitHub Release. Copy the exact generated `appcast.xml` and `android-update.json` into `public/`, update the release links and checksums, and merge the reviewed publication PR after CI passes. The main-branch Pages deployment then publishes the website and feeds together. Persisting the generated feeds prevents a later site deployment from rolling the update channel back.

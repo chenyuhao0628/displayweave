@@ -31,7 +31,7 @@ pnpm run check:release
 (cd AndroidReceiver && ./gradlew --no-daemon test assembleDebug lintDebug)
 ```
 
-The Run action starts an ad-hoc signed development application. To compile without launching:
+The Run action requires a [configured, pinned Apple signing identity](mac-permissions.md) and verifies the signed development app before launching. It never falls back to ad-hoc signing. To compile without signing or launching:
 
 ```bash
 xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac -configuration Debug -derivedDataPath build-verify-mac CODE_SIGNING_ALLOWED=NO ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO build

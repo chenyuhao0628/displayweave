@@ -14,6 +14,19 @@ APKSIGNER="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}/build
 KEYSTORE_PATH="${DISPLAYWEAVE_ANDROID_KEYSTORE:-$HOME/Library/Application Support/DisplayWeave/Signing/android-preview.jks}"
 KEY_ALIAS="${DISPLAYWEAVE_ANDROID_KEY_ALIAS:-displayweave-preview}"
 KEYCHAIN_SERVICE="app.displayweave.android-preview-signing"
+# Keep the same Apple signing identity across every preview. No certificate
+# auto-selection, key export, or silent ad-hoc fallback is allowed.
+signing_output="$(python3 "$ROOT_DIR/tools/mac_signing.py" xcode-settings)"
+signing_options=()
+while IFS= read -r option; do signing_options+=("$option"); done <<< "$signing_output"
+if [[ -e "$OUT_DIR" ]]; then
+  echo "Release output already exists; choose a new output directory." >&2
+  exit 2
+fi
+if [[ "$UPDATE_RELEASE" == "1" && ! -d "${DISPLAYWEAVE_MAC_BASELINE_APP:-}" ]]; then
+  echo "Set DISPLAYWEAVE_MAC_BASELINE_APP to the previous published Mac app for upgrade identity verification." >&2
+  exit 2
+fi
 STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/displayweave-preview-0.1.XXXXXX")"
 
 if [[ "$UPDATE_RELEASE" == "1" ]]; then
@@ -35,10 +48,9 @@ mkdir -p "$OUT_DIR"
 cd "$ROOT_DIR"
 ./generate.sh
 
-# Preview builds are intentionally ad-hoc. With Hardened Runtime and embedded
-# Sparkle, an ad-hoc app has no Team ID for library validation, so use the
-# preview-only entitlement. Production Developer ID builds must keep using
-# Mac/OpenSidecarMac.entitlements and must be notarized.
+# Apple Development is usable for a local, unnotarized preview. Developer ID
+# production distribution remains a separate notarized workflow. Both use the
+# normal entitlement set; Xcode signs embedded Sparkle with the same identity.
 xcodebuild -quiet \
   -project OpenSidecar.xcodeproj \
   -scheme OpenSidecarMac \
@@ -47,12 +59,20 @@ xcodebuild -quiet \
   -clonedSourcePackagesDirPath "$MAC_DERIVED/SourcePackages" \
   MARKETING_VERSION="$VERSION_NAME" \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-  CODE_SIGN_ENTITLEMENTS=Mac/OpenSidecarMacAdHoc.entitlements \
-  CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+  ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
+  "${signing_options[@]}" \
   build
 
 MAC_APP="$MAC_DERIVED/Build/Products/Release/DisplayWeave.app"
-codesign --verify --deep --strict --verbose=2 "$MAC_APP"
+python3 "$ROOT_DIR/tools/mac_signing.py" verify "$MAC_APP"
+if [[ "$UPDATE_RELEASE" == "1" ]]; then
+  comparison=(python3 "$ROOT_DIR/tools/mac_signing.py" compare "$MAC_APP"
+              --baseline "$DISPLAYWEAVE_MAC_BASELINE_APP")
+  if [[ "${DISPLAYWEAVE_ALLOW_ADHOC_MIGRATION:-0}" == "1" ]]; then
+    comparison+=(--allow-adhoc-migration)
+  fi
+  "${comparison[@]}"
+fi
 ditto -c -k --sequesterRsrc --keepParent \
   "$MAC_APP" "$OUT_DIR/$MAC_ARCHIVE_NAME"
 "$ROOT_DIR/tools/create-guided-dmg.sh" \

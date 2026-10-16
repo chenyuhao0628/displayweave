@@ -35,7 +35,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-codesign --verify --deep --strict --verbose=2 "$APP"
+python3 "$ROOT/tools/mac_signing.py" verify "$APP"
 bundle_id="$(plutil -extract CFBundleIdentifier raw "$APP/Contents/Info.plist")"
 if [[ "$bundle_id" != "app.displayweave.mac" ]]; then
   echo "unexpected bundle identifier: $bundle_id" >&2
@@ -65,8 +65,11 @@ spctl --master-disable；只对你从官方 Release 下载的 DisplayWeave 执�
 4. 运行权限：按应用提示授予“屏幕录制”“辅助功能”和“本地网络”权限。修改屏幕
 录制或辅助功能权限后，请退出并重新启动 DisplayWeave。
 
-5. 验证来源：本预览包采用 ad-hoc 签名且未经过 Apple 公证。请只从 DisplayWeave
+5. 验证来源：本预览包采用固定的 Apple 证书签名，但未经过 Apple 公证。请只从 DisplayWeave
 官方 GitHub Release 下载，并使用 SHA256SUMS.txt 核对文件。
+
+从旧临时签名版本首次升级时，可能需要重新授权一次。后续版本保持同一签名身份；
+macOS 自身的权限政策、用户撤销权限或签名身份迁移仍可能要求再次确认。
 
 DMG 与 ZIP 中包含同一个支持 Sparkle 更新的 DisplayWeave.app；无论采用哪种安装
 方式，放入“应用程序”后都可以接收后续更新。
@@ -88,9 +91,14 @@ official Release.
 requested. Quit and relaunch DisplayWeave after changing Screen Recording or
 Accessibility access.
 
-5. Verify the download: This preview is ad-hoc signed and not Apple-notarized.
+5. Verify the download: This preview uses a pinned Apple signing identity and
+is not Apple-notarized.
 Download it only from the official DisplayWeave GitHub Release and verify it
 against SHA256SUMS.txt.
+
+The first upgrade from an ad-hoc build may require reauthorization. Later
+builds retain the same signing identity; macOS policy, revoked permissions,
+or an explicit signing migration can still require confirmation.
 
 The DMG and ZIP contain the same update-capable DisplayWeave.app. Either
 installation receives later Sparkle updates after the app is placed in

@@ -56,6 +56,12 @@ else:
 PYPROCESS
 }
 
+# Resolve the pinned identity before stopping a running development app.
+# A missing/expired identity must never silently become an ad-hoc build.
+signing_output="$(python3 "$ROOT_DIR/tools/mac_signing.py" xcode-settings --configuration Debug)"
+signing_options=()
+while IFS= read -r option; do signing_options+=("$option"); done <<< "$signing_output"
+
 app_process stop
 xcodegen generate
 
@@ -66,7 +72,8 @@ xcodebuild \
   -configuration "$CONFIGURATION" \
   -derivedDataPath "$DERIVED_DATA" \
   -clonedSourcePackagesDirPath "$DERIVED_DATA/SourcePackages" \
-  CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= build
+  "${signing_options[@]}" build
+python3 "$ROOT_DIR/tools/mac_signing.py" verify "$APP_BUNDLE" --configuration Debug
 log_step "构建完成"
 
 case "$MODE" in

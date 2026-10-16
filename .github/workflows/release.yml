@@ -69,6 +69,14 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Require pinned Mac signing identity
+        run: |
+          # Hosted runners have no maintainer signing identity by default.
+          # Fail before building/uploading instead of releasing an ad-hoc
+          # update that breaks existing privacy grants. Use the documented
+          # local release workflow until a runner is explicitly provisioned.
+          python3 tools/mac_signing.py xcode-settings
+
       - name: Install DMG metadata tools
         run: |
           python3 -m venv "$RUNNER_TEMP/displayweave-dmg-venv"
@@ -89,7 +97,7 @@ jobs:
       - name: Build and test Mac, unsigned iOS, and signed Android
         run: |
           set -euo pipefail
-          # package-preview uses Mac/OpenSidecarMacAdHoc.entitlements and builds
+          # package-preview uses Mac/OpenSidecarMac.entitlements and builds
           # OpenSidecariOS with CODE_SIGNING_ALLOWED=NO as a compatibility gate.
           ./tools/package-preview-0.1.sh
 
