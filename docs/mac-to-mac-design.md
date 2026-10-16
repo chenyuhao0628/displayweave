@@ -2,6 +2,8 @@
 
 # Mac-to-Mac LAN display design
 
+This is the initial H.264/LAN design record. The [follow-up HEVC, direct-link and Pencil plan](hevc-wired-pencil-plan.md) supersedes its codec/direct-cable scope; see the [current feature guide](hevc-wired-pencil.md).
+
 Design date: 2026-10-15. DisplayWeave baseline: `1dbfb48`.
 
 ## Upstream merge assessment

@@ -37,3 +37,7 @@ Scope: macOS control and receive windows, iOS receiver, Android receiver, and bi
 ## Acceptance
 
 Inspect light/dark, minimum size and long text; keyboard/tab navigation on desktop/web; portrait/landscape and increased text on mobile. Check waiting, connecting, connected, failure, role transition and settings. Builds and state-policy tests gate each affected platform; hardware-only states need the physical matrix, not fabricated screenshots. Record inspected versus untested states in the iteration report.
+
+## Source feature states: HEVC, direct link and Pencil
+
+Show the negotiated codec in receiver status. Label an unconnected link-local wired Mac as a candidate; show the pinned interface in the active session. The auto-connect preference starts off. Pencil settings distinguish confirmed pressure/tilt protocol from legacy touch and explain hardware/application requirements; do not present protocol confirmation as physical verification.

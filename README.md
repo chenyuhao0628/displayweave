@@ -9,16 +9,16 @@ DisplayWeave is an independently maintained, GPL-3.0, local-first second-display
 ## Mac-to-Mac (source development build)
 
 The same app can send or receive a one-way extended/mirrored desktop over Wi-Fi
-or Ethernet. Both Macs require macOS 14+; the initial target is H.264 up to 60fps.
+or Ethernet. Both Macs require macOS 14+; source builds negotiate hardware HEVC with H.264 fallback, up to 60fps.
 The two-Mac physical performance matrix remains unverified. This feature is not
 in the `v0.2.1-p6` downloads below. See the [user guide](docs/mac-to-mac.md) and
 [design/upstream assessment](docs/mac-to-mac-design.md).
 
-Current source also includes the four-surface UI refactor, selected upstream recovery improvements and network/lifecycle hardening. Implementation, 32 Swift regression suites and remaining physical acceptance are recorded in [the source upgrade report](docs/source-upgrade-audit-2026-10-16.md).
+Current source also includes the four-surface UI refactor, selected upstream recovery improvements and network/lifecycle hardening. The [source upgrade report](docs/source-upgrade-audit-2026-10-16.md) records that baseline. The next iteration adds [Mac HEVC, pinned direct-link discovery and negotiated Apple Pencil input](docs/hevc-wired-pencil.md), with 37 Swift suites; physical acceptance remains pending.
 
 ## Current capabilities
 
-- Apple receivers: USB through `usbmuxd` and local WiFi, using the H.264 path.
+- iOS/iPadOS receivers: USB through `usbmuxd` and local WiFi, using the H.264 path.
 - Android receiver: local WiFi or per-device dynamic `adb forward` USB, HEVC/H.265 with H.264 fallback, and 30/60/90/120fps negotiation.
 - Transport selector: Auto, USB, or WiFi. Auto prefers wired USB, performs bounded recovery, falls back only to WiFi with the same install ID, and upgrades back to USB when the cable returns.
 - Input: tap, drag, cursor, and two-finger scrolling return to macOS.

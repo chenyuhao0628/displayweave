@@ -13,7 +13,8 @@ macOS virtual display
   -> ScreenCaptureKit
   -> VideoToolbox H.264 / negotiated HEVC
   -> framed TCP session
-     -> Apple receiver (usbmuxd USB or WiFi, H.264)
+     -> iOS/iPadOS receiver (usbmuxd USB or WiFi, H.264)
+     -> Mac receiver (LAN / pinned direct-link interface, HEVC/H.264)
      -> Android receiver (ADB-forward USB or WiFi, HEVC/H.264)
   <- touch, scroll, codec status, metrics, lifecycle messages
 ```
@@ -66,7 +67,7 @@ See [SECURITY.md](SECURITY.md) and [docs/README.md](docs/README.md).
 
 The Mac app switches between sending and receiving. Receiving stops sender sessions
 and discovery, then uses an independent TCP listener, bounded deframing and
-AVSampleBufferDisplayLayer H.264 rendering. One sender is accepted at a time; stale
+AVSampleBufferDisplayLayer H.264 / hardware-gated HEVC rendering. One sender is accepted at a time; stale
 connection callbacks cannot mutate replacement sessions. The sender respects logical
 points, display scale and codec size/fps limits. Mac uses legacy Apple framing, not
 Android DWV2. See the [design](docs/mac-to-mac-design.md).
@@ -87,3 +88,11 @@ The source app supports exclusive Mac send/receive roles over the same Wi-Fi or 
 `PhoneReceiver` owns listener/connection state on its serial queue and ignores stale callbacks. Backgrounding detaches the old socket before a best-effort goodbye. Android control writes have one worker, 128 queued tasks and a 64 KiB payload limit; readers have two workers and two queued tasks. Saturation disconnects the affected session so input cannot accumulate without bound. Sender geometry and input are validated before arithmetic and CoreGraphics conversion.
 
 See the [UI contract](docs/ui-guidelines.md), [development commands](docs/development.md), and [source audit with verification limits](docs/source-upgrade-audit-2026-10-16.md).
+
+## HEVC, direct links and Pencil (source iteration)
+
+Mac HEVC requires both a hardware encoder and an explicitly advertised hardware decoder. `ReceiverVideoBitstream` bounds NAL count and parameter sets; one codecFailure requests a timed H.264 fallback. HEVC raster/fps also satisfy a complete H.264 envelope. Invalid Mac capability envelopes are rejected before capture.
+
+`DirectCable` classifies link-local wired **candidates**; it does not authenticate peers or prove physical topology. A selected candidate pins both Bonjour resolution and TCP to its interface. `DirectCableAutoConnectPolicy` implements default-off opt-in, one attempt per appearance and manual opt-out. Existing sessions are deduplicated by installation ID, including pending hello.
+
+`pencil-v1` uses explicit hello/inputConfig negotiation. `PencilInputForwarder` fixes native/legacy mode for a whole stroke; `PencilSample` validates all numeric fields. `InputInjector` posts tablet point/proximity with deterministic cancellation. iOS `InputSendBudget` admits at most 64 queued/in-flight controls, each framed batch at most 64 KiB, before dispatch; connection epochs reject stale input and completions. An overflow closes that peer so sender cleanup releases held input. See the [protocol and acceptance plan](docs/hevc-wired-pencil-plan.md).

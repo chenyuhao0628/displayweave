@@ -8,7 +8,8 @@
 - 统一 UI 规范及 Mac/iOS/Android/网站重构，可达的接收设置与双语响应式导航。
 - 选择性迁入上游启动恢复、有界日志与双指误点击抑制。
 - Apple 共用帧/游标边界、生命周期隔离、安全输入/几何转换、Android 控制消息背压。
-- 32 组 Swift、六组 Android 自测、各平台构建，以及网站/iOS 模拟器检查。具体证据和缺口见[源码验收报告](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。
+- 经硬件能力确认的 Mac HEVC、绑定接口的直连候选和经协商的 Pencil 压感／倾角／接近事件。
+- 37 组 Swift 与各平台兼容构建。具体结果和实机缺口见[当前功能指南／证据](docs/hevc-wired-pencil.zh-CN.md)与[前批源码验收报告](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。
 
 这些源码变更不包含在公开的 v0.2.1-p6 产物中；发布准备仍需下列真机验收。
 

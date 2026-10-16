@@ -21,7 +21,7 @@ The Mac-to-Mac LAN implementation selectively adapts upstream commit
 `23b62b3`). Specifically, `Shared/StreamReceiver.swift`, `Shared/Protocol.swift`
 and the video view in `MacReceiver/MacReceiver.swift` inform
 `Mac/Receiver/StreamReceiver.swift`, `ReceiverWireProtocol.swift` and
-`ReceiverVideoView.swift`. Local changes narrow reception to H.264, add bounded
+`ReceiverVideoView.swift`. Local changes gate HEVC on hardware support with H.264 fallback, add bounded
 framing, exclusive sessions, lifecycle isolation, and integration with the
 DisplayWeave role UI. These adaptations remain GPL-3.0. The complete upstream
 history has not been merged; the assessment is recorded in
@@ -55,3 +55,12 @@ notice must be retained alongside that code and recorded here.
 The macOS target uses Sparkle as a Swift Package dependency for application
 update support. Sparkle's own license and notices are distributed with the
 embedded framework when included in an application build.
+
+The follow-up HEVC/direct-link/Pencil source iteration selectively adapts
+`91ca272` (HEVC parameter sets and hardware negotiation), `42ad6fb` and the
+helper introduced by `d2dfb3f` (direct-link discovery, excluding remote shutdown),
+and `da9f369` (Pencil tablet pressure/tilt/proximity fields). `1c857a4` is release
+metadata, not the Pencil implementation. Local additions include explicit input
+capability negotiation, conservative fallback envelopes, strict address parsing,
+interface pinning, opt-in auto-connect, bounded controls and lifecycle tests.
+See `docs/hevc-wired-pencil-plan.md`. All adaptations retain GPL-3.0.
