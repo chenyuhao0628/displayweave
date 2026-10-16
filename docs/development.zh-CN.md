@@ -31,7 +31,7 @@ pnpm run check:release
 (cd AndroidReceiver && ./gradlew --no-daemon test assembleDebug lintDebug)
 ```
 
-Run 动作启动 ad-hoc 签名开发应用。只编译而不启动：
+Run 动作要求[配置固定的 Apple 签名身份](mac-permissions.zh-CN.md)，验证已签名开发应用后才启动，绝不回退临时签名。只编译、不签名也不启动：
 
 ```bash
 xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac -configuration Debug -derivedDataPath build-verify-mac CODE_SIGNING_ALLOWED=NO ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO build

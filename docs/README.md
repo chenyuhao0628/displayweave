@@ -9,6 +9,7 @@
 - [`v0.3.0-preview.1` release notes](release-notes-v0.3.0-preview.1.md)
 
 - [Production Apple archive/export and prerequisites](apple-distribution.md)
+- [Mac signing and permission continuity](mac-permissions.md)
 - [Public protocol contract and shared fixtures](protocol.md)
 - [Advanced Pencil input](pencil-advanced.md)
 - [Mac receiver keyboard and mouse](mac-receiver-input.md)

@@ -6,26 +6,29 @@ Use this path when the maintainer authorizes local publication. It preserves the
 
 ## Prepare and build
 
-Verify `git status`, the `displayweave` remote, the highest published build number, Xcode/XcodeGen, the Android SDK and Java, pnpm, and available signing material. Choose a new immutable version/build; never replace an existing public tag or asset. For this preview the version is `0.3.0-preview.2`, build `17`.
+Verify `git status`, the `displayweave` remote, the highest published build number, Xcode/XcodeGen, the Android SDK and Java, pnpm, and available signing material. Choose a new immutable version/build; never replace an existing public tag or asset. The last published version remains `0.3.0-preview.2`, build `17`. The `0.3.0-preview.3` / `18` values below are examples for a subsequent build, not reserved or published versions; recheck GitHub first.
 
 The Android keystore stays outside Git at `~/Library/Application Support/DisplayWeave/Signing/android-preview.jks`; the existing Keychain service is `app.displayweave.android-preview-signing`, account/alias `displayweave-preview`. The packaging script reads its password without printing it. Sparkle uses Keychain account `ed25519`. Run the existing Sparkle `generate_keys -p` only to inspect its public key; it must match `N9dMZV/F1ui58IsEmCv5jFVgDWiWv2yB/01KBlAHFjE=`. Stop on a mismatch instead of generating a replacement.
 
-Run from the repository root:
+First configure an existing Apple identity using the [permission continuity guide](mac-permissions.md), and extract the previous published Mac app as the comparison baseline. Use the migration flag below only for the first transition from ad-hoc signing; omit it thereafter. Run from the repository root:
 
 ```bash
+python3 tools/mac_signing.py xcode-settings
+export DISPLAYWEAVE_MAC_BASELINE_APP=/absolute/path/to/previous-release/DisplayWeave.app
+export DISPLAYWEAVE_ALLOW_ADHOC_MIGRATION=1
 python3 -m venv build/local-release-venv
 build/local-release-venv/bin/python -m pip install -r tools/dmg-requirements.txt
 export PATH="$PWD/build/local-release-venv/bin:$PATH"
-export DISPLAYWEAVE_VERSION_NAME=0.3.0-preview.2
-export DISPLAYWEAVE_BUILD_NUMBER=17
+export DISPLAYWEAVE_VERSION_NAME=0.3.0-preview.3
+export DISPLAYWEAVE_BUILD_NUMBER=18
 export DISPLAYWEAVE_UPDATE_RELEASE=1
-export DISPLAYWEAVE_RELEASE_TAG=v0.3.0-preview.2
-export DISPLAYWEAVE_OUTPUT_DIR="$PWD/build/release-v0.3.0-preview.2"
+export DISPLAYWEAVE_RELEASE_TAG=v0.3.0-preview.3
+export DISPLAYWEAVE_OUTPUT_DIR="$PWD/build/release-v0.3.0-preview.3"
 test ! -e "$DISPLAYWEAVE_OUTPUT_DIR"
 ./tools/package-preview-0.1.sh
 ```
 
-This generates the Xcode project, builds the ad-hoc Mac app and guided DMG/ZIP, builds unsigned device iOS, and runs Android tests plus the signed Release build. Do not run another packaging invocation against the same derived-data directories concurrently. Do not enable shell tracing or export private keys to files.
+This generates the Xcode project, builds the Mac app with the pinned Apple identity and creates the guided DMG/ZIP, builds unsigned device iOS, and runs Android tests plus the signed Release build. Do not run another packaging invocation against the same derived-data directories concurrently. Do not enable shell tracing or export private keys to files.
 
 ## Generate and verify feeds
 
@@ -37,7 +40,7 @@ export DISPLAYWEAVE_ANDROID_FEED_OUTPUT="$DISPLAYWEAVE_OUTPUT_DIR/android-update
 ./tools/generate-android-update-manifest.sh
 ```
 
-Copy only the new Mac ZIP into an empty appcast input directory. Run the bundled `build/preview-0.1-mac-derived/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast` with `--account ed25519`, `--versions 17`, `--download-url-prefix https://github.com/chenyuhao0628/displayweave/releases/download/v0.3.0-preview.2/`, `--link https://github.com/chenyuhao0628/displayweave`, `-o "$DISPLAYWEAVE_OUTPUT_DIR/appcast.xml"` and that directory. The tool signs with the existing Keychain key.
+Copy only the new Mac ZIP into an empty appcast input directory. Run the bundled `build/preview-0.1-mac-derived/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast` with `--account ed25519`, `--versions 18`, `--download-url-prefix https://github.com/chenyuhao0628/displayweave/releases/download/v0.3.0-preview.3/`, `--link https://github.com/chenyuhao0628/displayweave`, `-o "$DISPLAYWEAVE_OUTPUT_DIR/appcast.xml"` and that directory. The tool signs with the existing Keychain key.
 
 Generate `SHA256SUMS.txt` for the four binaries and both feeds, then run `./tools/verify-update-release.sh "$DISPLAYWEAVE_OUTPUT_DIR"`. Independently verify the ZIP Ed25519 signature against the embedded public key, Mac `arm64 x86_64` architectures and bundle/feed identity, and the unsigned iOS arm64 version/identity. The APK must retain certificate SHA-256 `89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d`.
 
@@ -45,7 +48,7 @@ Generate `SHA256SUMS.txt` for the four binaries and both feeds, then run `./tool
 
 Run all [development gates](development.md): 52 Swift suites, Mac Debug universal build, iOS Simulator build, Android `test assembleDebug lintDebug`, website build, bilingual docs, release links and whitespace checks. Keep full logs in ignored `build/` paths. Do not launch virtual-display tests without an independent online display; record physical gaps separately.
 
-Copy the generated feeds exactly into `public/`, update the active release links/hashes and bilingual notes, review and commit. Native source and packaging inputs must match the binaries; rebuild if either changes. Tag the verified commit. Create the corresponding tracked-source archive with `git archive --format=tar.gz --prefix=DisplayWeave-v0.3.0-preview.2/ v0.3.0-preview.2 -o "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-v0.3.0-preview.2-source.tar.gz"`, then add its hash to the checksum manifest and verify all seven entries. Source, GPL-3.0 and build scripts stay available beside the binaries even during GitHub public-access failures.
+Copy the generated feeds exactly into `public/`, update the active release links/hashes and bilingual notes, review and commit. Native source and packaging inputs must match the binaries; rebuild if either changes. Tag the verified commit. Create the corresponding tracked-source archive with `git archive --format=tar.gz --prefix=DisplayWeave-v0.3.0-preview.3/ v0.3.0-preview.3 -o "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-v0.3.0-preview.3-source.tar.gz"`, then add its hash to the checksum manifest and verify all seven entries. Source, GPL-3.0 and build scripts stay available beside the binaries even during GitHub public-access failures.
 
 ## Upload and integration
 

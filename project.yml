@@ -74,12 +74,9 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Mac/OpenSidecarMac.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       configs:
-        # Local dev builds get their own identity: TCC keys permission
-        # grants by bundle ID + code signature, so a Debug build sharing
-        # the release bundle ID knocks out the release app's Screen
-        # Recording/Accessibility grants every time the binary changes.
-        # The distinct display name keeps the two telling apart in the
-        # System Settings permission lists.
+        # Keep development permissions separate from the installed release.
+        # The Run/preview scripts also pin an Apple signing identity and check
+        # designated requirements so successive builds retain their identity.
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: app.displayweave.mac.debug
           BUNDLE_DISPLAY_NAME: DisplayWeave 开发版

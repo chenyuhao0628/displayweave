@@ -1,6 +1,6 @@
 [English](automatic-updates.md) | [简体中文](automatic-updates.zh-CN.md)
 
-# 无 Apple 开发者账号的自动更新
+# 自动更新认证与代码签名
 
 DisplayWeave 把不可变的 Mac/Android 安装包发布到 GitHub Releases，把小型更新源发布到 GitHub Pages：
 
@@ -16,11 +16,11 @@ Android p5 尚不支持新的下载路径，因此需要手动安装一次 p6 �
 以后版本可自动使用双源更新渠道。
 本版本同时包含引导式 DMG 与 Sparkle ZIP 更新包。
 
-Mac 版本采用 ad-hoc 签名且未公证。Sparkle 使用应用内置的 EdDSA 公钥验证 ZIP，因此后续更新不依赖 Apple Developer Program。它不会让首次下载自动获得 Gatekeeper 信任，也不等同于已公证正式发行。
+已发布的 preview.2 Mac 版本采用 ad-hoc 签名且未公证。Sparkle 使用应用内置的 EdDSA 公钥验证 ZIP，因此后续更新不依赖 Apple Developer Program。它不会让首次下载自动获得 Gatekeeper 信任，也不等同于已公证正式发行。
 
 2026-10-16：本预览版在本地构建，下载仅使用 GitHub Releases；Mac 与 Android 更新元数据使用已恢复访问的项目 GitHub Pages。UI 改造、OpenDisplay 兼容与构建证据见[发布说明](release-notes-v0.3.0-preview.2.zh-CN.md)。
 
-本地发行的可复现命令与验收要求见[本地发行](local-release.zh-CN.md)。
+源码流程现已要求固定 Apple 签名身份和升级比较，见[权限延续](mac-permissions.zh-CN.md)，不会改变现有公开下载。本地发行的可复现命令与验收要求见[本地发行](local-release.zh-CN.md)。
 
 ## 用户一次性迁移
 
@@ -28,7 +28,7 @@ Mac 版本采用 ad-hoc 签名且未公证。Sparkle 使用应用内置的 EdDSA
 
 1. Release 提供 `DisplayWeave-macOS.dmg` 时优先使用它：打开 DMG，把 DisplayWeave 拖入“应用程序”。从 ZIP 安装也完全等价，只要最终把 `DisplayWeave.app` 放入 `/Applications`；不要长期从 DMG、ZIP 或“下载”目录中运行。
 2. 因为应用未公证，请按住 Control 点击应用并选择“打开”。如果仍被拦截，进入“系统设置 → 隐私与安全性 → 仍要打开”；仅在确认来自官方 Release 时继续。不需要全局开启“任何来源”。
-3. 启动一次，并保留原有的屏幕录制、辅助功能和本地网络权限。以后移动或重命名应用，macOS 可能重新请求权限。
+3. 启动后检查屏幕录制、辅助功能和本地网络权限。临时签名升级及首次迁移到固定签名时可能需要重新授权；后续构建必须保持相同签名身份。
 
 完成迁移后，Sparkle 会自动检查已签名 appcast 并可安装更高版本。Sparkle 位于 `DisplayWeave.app` 内部，而不属于 DMG 或 ZIP 容器，因此两种安装方式收到的后续更新完全相同；应用仍保留 Sparkle 的手动“检查更新”入口。EdDSA 签名不正确的版本会被拒绝。
 
@@ -44,7 +44,7 @@ Mac 版本采用 ad-hoc 签名且未公证。Sparkle 使用应用内置的 EdDSA
 
 ## 发布操作
 
-GitHub Actions 必须配置且只需要以下 5 个仓库 secret：
+Sparkle 与 Android 步骤要求以下仓库 secret：
 
 - `SPARKLE_PRIVATE_KEY`
 - `DISPLAYWEAVE_ANDROID_KEYSTORE_BASE64`
@@ -52,13 +52,15 @@ GitHub Actions 必须配置且只需要以下 5 个仓库 secret：
 - `DISPLAYWEAVE_ANDROID_KEY_ALIAS`
 - `DISPLAYWEAVE_ANDROID_KEY_PASSWORD`
 
+Mac 签名还需要固定的本地配置、已有钥匙串身份，以及通过 `DISPLAYWEAVE_MAC_BASELINE_APP` 指定上一份已发布应用。托管 runner 尚未配置这些凭据，会在预检处停止；明确配置 runner 前采用本地发行流程。本次修改不会导出 Mac 私钥。
+
 发布指定版本时，先创建 tag 与 GitHub 草稿 Release，再运行 **Release**，指定 `release_tag` 和高于所有已公开 Mac／Android 构建的 `build_number`。未指定 tag 时，release-please 可能先创建版本 PR，合并后再运行。显示版本来自 tag；省略 `build_number` 时使用 `github.run_number`，仍须确认它保持单调递增。
 
 准备新镜像快照时设置 `deploy_feeds=false`（默认为 `true`）。工作流会：
 
-1. 构建并测试 ad-hoc Mac、无签名 iOS 兼容目标和已签名 Android；
+1. 使用固定 Apple 身份构建并测试 Mac、无签名 iOS 兼容目标和已签名 Android；
 2. 生成包含 EdDSA 签名 ZIP 条目的 appcast 与固定证书指纹的 Android JSON；
-3. 校验版本、哈希、归档结构和 Android 签名；
+3. 校验版本、哈希、归档结构、Mac 身份连续性和 Android 签名；
 4. 向草稿 Release 上传七项不可变产物，保持在线更新源不变。
 
 下载并独立验证产物后公开 GitHub Release。将生成的 `appcast.xml`、`android-update.json` 原样复制到 `public/`，更新发布链接和校验值，待审查与 CI 通过后合并发行 PR。main 分支的 Pages 部署随后一起发布网站与更新源。持久化原始更新源可以防止后续网站部署回退更新渠道。

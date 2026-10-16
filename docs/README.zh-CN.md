@@ -9,6 +9,7 @@
 - [`v0.3.0-preview.1` 发布说明](release-notes-v0.3.0-preview.1.zh-CN.md)
 
 - [Apple 正式归档/导出及前提](apple-distribution.zh-CN.md)
+- [Mac 签名与权限延续](mac-permissions.zh-CN.md)
 - [公开协议契约与共享样本](protocol.zh-CN.md)
 - [Pencil 高级输入](pencil-advanced.zh-CN.md)
 - [Mac 接收端键鼠回传](mac-receiver-input.zh-CN.md)

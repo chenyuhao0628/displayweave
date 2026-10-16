@@ -118,6 +118,8 @@ DMG_PLIST="$DMG_APP/Contents/Info.plist"
 codesign --verify --deep --strict --verbose=2 "$DMG_APP"
 
 ZIP_APP="$(dirname "$(dirname "$mac_plist")")"
+python3 "$(dirname "$0")/mac_signing.py" verify "$ZIP_APP"
+python3 "$(dirname "$0")/mac_signing.py" verify "$DMG_APP"
 for key in \
   CFBundleIdentifier \
   CFBundleShortVersionString \
