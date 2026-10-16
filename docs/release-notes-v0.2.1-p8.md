@@ -10,6 +10,8 @@ Includes p7's exclusive Mac roles for one-way extend/mirror, hardware HEVC with 
 
 Adds a reproducible [local publication procedure](local-release.md), preserved historical Cloudflare downloads, a backup site and corresponding source archive. Source is the tracked tree at the release tag, including GPL-3.0, upstream notices and build scripts.
 
+The publication follow-up also fixes Chinese hydration after Cloudflare strips `.html` from the route. The website footer provides its corresponding source snapshot; application packages remain the immutable p8 tag artifacts.
+
 ## Automated verification and hardware boundaries
 
 Local checks cover 37 Swift suites, Mac arm64/x86_64 Debug and Release, iOS Simulator Debug and unsigned arm64 Release, six Android self-test groups with Debug/signed Release, production website build, bilingual docs and release links. Build tools are Xcode 26.6 (17F113), OpenJDK 21.0.10 and pnpm 10.33.0.

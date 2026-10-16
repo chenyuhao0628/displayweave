@@ -10,6 +10,8 @@
 
 新增可复现的[本地发行流程](local-release.zh-CN.md)，在 Cloudflare 保留历史产物并提供备用网站与对应源码包。源码来自发行 tag 的跟踪文件，包含 GPL-3.0、上游声明与构建脚本。
 
+发行后续提交还修复了 Cloudflare 去掉路由 `.html` 后中文页面 hydration 切回英文的问题。网站页脚提供对应源码快照；应用安装包仍是不可变的 p8 tag 产物。
+
 ## 自动验证与真机边界
 
 本地执行 37 组 Swift 自测、Mac arm64/x86_64 Debug 和 Release、iOS Simulator Debug 和无签名 arm64 Release、六组 Android 自测及 Debug/已签名 Release、生产网站构建、双语文档和发行链接检查。构建环境为 Xcode 26.6（17F113）、OpenJDK 21.0.10、pnpm 10.33.0。

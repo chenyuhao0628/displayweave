@@ -53,6 +53,8 @@ Create a draft GitHub Release at the verified tag and upload the eight files exp
 
 Deploy a complete static snapshot to Cloudflare Pages project `displayweave-downloads`, production branch `main`, preserving every historical release path. Include the new eight files under `/releases/v0.2.1-p8/`. Copy the locally built `site-dist/` to `/displayweave/` as a backup site and feed archive. Exclude `functions/`, `_worker.js`, credentials, logs and local build directories; check the current Pages file limits. Use `wrangler pages deploy` with the project, branch and verified source commit.
 
+If a site-only correction follows the release tag, keep the application artifacts unchanged. Archive the site deployment commit with `git archive` as `/displayweave/DisplayWeave-website-source.tar.gz`, provide its hash in `/displayweave/website-SHA256SUMS.txt`, and keep the footer source link valid. Run the site's route/hydration regression checks before deploying.
+
 Download and hash the live files, check the backup site's referenced assets, then publish the GitHub Release. Review the final PR and merge using the maintainer's authorization, documenting local checks and the unavailable hosted checks honestly. Preserve release-tag ancestry with a merge commit and synchronize local/remote main.
 
 GitHub API upload success does not prove anonymous download availability. As observed on 2026-10-16, public GitHub and Pages returned 404 while authenticated management and Cloudflare worked. Both apps still fetch update metadata from their original GitHub Pages URLs. Backup feed copies do not redirect installed clients; use manual installation until those URLs recover. This process does not change embedded feed identities.
