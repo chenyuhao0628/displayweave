@@ -4,6 +4,7 @@
 
 ## 当前用户指南
 
+- [当前功能补全方案与证据](feature-completion.zh-CN.md)
 - [HEVC、直连与 Pencil 使用／当前验收证据](hevc-wired-pencil.zh-CN.md)
 - [HEVC、有线发现与 Pencil 设计和验收](hevc-wired-pencil-plan.zh-CN.md)
 - [2026-10-16 源码升级验收与硬件边界](source-upgrade-audit-2026-10-16.zh-CN.md)与[上游集成取舍](upstream-integration-2026-10-16.zh-CN.md)

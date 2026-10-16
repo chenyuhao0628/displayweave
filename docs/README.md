@@ -4,6 +4,7 @@
 
 ## Current user guides
 
+- [Active feature completion plan and evidence](feature-completion.md)
 - [HEVC, direct-link and Pencil usage / current evidence](hevc-wired-pencil.md)
 - [HEVC, wired discovery and Pencil design / acceptance](hevc-wired-pencil-plan.md)
 - [2026-10-16 source upgrade audit and hardware limits](source-upgrade-audit-2026-10-16.md) and [upstream integration decisions](upstream-integration-2026-10-16.md)
