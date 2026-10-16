@@ -132,6 +132,13 @@ run_test DirectCableSelfTest \
   Mac/DirectCable.swift MacTests/DirectCableSelfTest.swift
 run_test MacLANHandoverSelfTest \
   Mac/MacLANHandoverPolicy.swift MacTests/MacLANHandoverSelfTest.swift
+run_test TransportIdentitySelfTest \
+  Shared/AppleTransportIdentity.swift Shared/AppleTLS.swift MacTests/TransportIdentitySelfTest.swift
+run_test SecurePairingSelfTest \
+  Shared/AppleTransportIdentity.swift Shared/SecurePairingProtocol.swift Shared/SecurePairingState.swift \
+  Shared/AppleSecurityStore.swift MacTests/SecurePairingSelfTest.swift
+run_test SecureTLSNetworkSelfTest \
+  Shared/AppleTransportIdentity.swift Shared/AppleTLS.swift MacTests/SecureTLSNetworkSelfTest.swift
 
 run_test PencilProtocolSelfTest \
   Shared/PencilProtocol.swift MacTests/PencilProtocolSelfTest.swift
@@ -141,4 +148,4 @@ run_test PencilInputInjectorSelfTest \
   Shared/PencilProtocol.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
   Mac/InputValidationPolicy.swift Mac/InputInjector.swift MacTests/PencilInputInjectorSelfTest.swift
 
-echo "Swift standalone self-tests PASS (41 suites)"
+echo "Swift standalone self-tests PASS (44 suites)"

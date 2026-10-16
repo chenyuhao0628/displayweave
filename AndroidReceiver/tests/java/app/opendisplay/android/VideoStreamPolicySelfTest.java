@@ -27,6 +27,7 @@ public final class VideoStreamPolicySelfTest {
         testVideoFramePacketUsesZeroCopyBinaryPayloadView();
         testFrameSizeMetrics();
         FrameBufferPoolSelfTest.run();
+        SecurePairingSelfTest.run();
         testFrameAllocationMetrics();
         testGcMetricDeltaSemantics();
         testAndroidPowerMetricsNormalization();
