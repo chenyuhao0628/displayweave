@@ -14,15 +14,15 @@ The waiting screen follows the system light/dark theme. Settings scroll on small
 
 ## Install `v0.2.1-p8`
 
-2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; use the [Cloudflare download page](https://downloads.urlget.cyou/displayweave/). Mac/Android update checks still depend on the original Pages URLs; install manually until they recover. Mirrored feed copies do not change client URLs.
+2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; downloads are published on the [releases page](https://github.com/chenyuhao0628/displayweave/releases). Mac/Android update checks still depend on the original Pages URLs; install manually until they recover.
 
-Download `DisplayWeave-Android.apk` from [`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once because p5 does not trust the new Cloudflare hostname. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/release-checklist.md).
+Download `DisplayWeave-Android.apk` from [`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/release-checklist.md).
 
 ## Updates after the first install
 
 - The receiver checks the HTTPS update feed at most once per 24 hours when it resumes.
 - **Settings & Help → Check for Updates** bypasses the daily throttle.
-- p6 and later use Cloudflare as the primary APK source and the matching GitHub
+- p6 and later use the matching GitHub Release as the APK source, with
   Release as an availability fallback.
 - Before installation, it verifies exact byte count, SHA-256, package name,
   version code, minimum SDK, and the pinned signing certificate.

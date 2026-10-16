@@ -98,7 +98,7 @@ public final class UpdateClient {
                 } catch (ArtifactRejectedException error) {
                     throw error;
                 } catch (IOException error) {
-                    throw unavailable("Update mirror download failed", error);
+                    throw unavailable("Update download failed", error);
                 }
                 output.getFD().sync();
             }

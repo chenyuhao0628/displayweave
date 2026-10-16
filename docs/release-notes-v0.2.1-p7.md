@@ -25,7 +25,7 @@ Two-Mac physical routing/performance, real Pencil pressure/tilt/hover/palm rejec
 
 The seven assets remain the Mac DMG and Sparkle ZIP, Android APK, unsigned iOS re-signing input, `appcast.xml`, `android-update.json`, and `SHA256SUMS.txt`. Mac packages remain ad-hoc signed and not notarized; the APK retains the pinned project certificate; the iOS IPA requires personal re-signing before installation. Existing application IDs and update public keys are preserved.
 
-Android p6 and later use Cloudflare first with GitHub availability fallback. Android p5 and older require a manual install to trust the mirror. Existing supported Mac/Android installations can use their update channel after publication.
+Android p6 and later download from the matching GitHub Release. Android p5 and older require a manual install once. Existing supported Mac/Android installations can use their update channel after publication.
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p7)
 

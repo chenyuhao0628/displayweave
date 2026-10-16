@@ -14,15 +14,15 @@ Android 接收端可以通过本地 WiFi 或由 Mac 管理的 ADB-forward USB �
 
 ## 安装 `v0.2.1-p8`
 
-2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；请使用 [Cloudflare 下载页](https://downloads.urlget.cyou/displayweave/zh.html)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。镜像中的更新源副本不会自动修改客户端地址。
+2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；下载统一发布在[发行页面](https://github.com/chenyuhao0628/displayweave/releases)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。
 
-从 [`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。由于 p5 尚不信任新的 Cloudflare 域名，p5 需要手动覆盖安装一次 p6 或更新版；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/release-checklist.zh-CN.md)中的证书指纹。
+从 [`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。p5 需要手动覆盖安装一次 p6 或更新版；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/release-checklist.zh-CN.md)中的证书指纹。
 
 ## 首次安装后的更新
 
 - 接收端回到前台时最多每 24 小时检查一次 HTTPS 更新源。
 - “设置与帮助 → 检查更新”不受每日节流限制。
-- p6 及以后版本以 Cloudflare 为 APK 主源，并以相同 GitHub Release 为可用性备用源。
+- p6 及以后版本从对应的 GitHub Release 获取 APK。
 - 安装前会逐项核对字节数、SHA-256、包名、版本号、最低 SDK 与固定签名证书。
 - Android 可能要求授予“安装未知应用”权限；最终安装始终由 Android 系统界面确认，不支持静默安装。
 - 拒绝权限或安装不会停止显示接收功能。

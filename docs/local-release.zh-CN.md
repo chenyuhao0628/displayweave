@@ -29,15 +29,14 @@ export DISPLAYWEAVE_OUTPUT_DIR="$PWD/build/release-p8"
 ## 生成并验证更新源
 
 ```bash
-export DISPLAYWEAVE_RELEASE_BASE_URL=https://downloads.urlget.cyou/releases
-export DISPLAYWEAVE_RELEASE_FALLBACK_BASE_URL=https://github.com/chenyuhao0628/displayweave/releases/download
+export DISPLAYWEAVE_RELEASE_BASE_URL=https://github.com/chenyuhao0628/displayweave/releases/download
 export DISPLAYWEAVE_PUBLISHED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 export DISPLAYWEAVE_ANDROID_APK="$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-Android.apk"
 export DISPLAYWEAVE_ANDROID_FEED_OUTPUT="$DISPLAYWEAVE_OUTPUT_DIR/android-update.json"
 ./tools/generate-android-update-manifest.sh
 ```
 
-将新 Mac ZIP 单独复制到空的 appcast 输入目录。使用构建中的 `build/preview-0.1-mac-derived/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast`，参数为 `--account ed25519`、`--versions 15`、`--download-url-prefix https://downloads.urlget.cyou/releases/v0.2.1-p8/`、`--link https://github.com/chenyuhao0628/displayweave`、`-o "$DISPLAYWEAVE_OUTPUT_DIR/appcast.xml"` 和该目录。工具使用现有 Keychain 密钥签名。
+将新 Mac ZIP 单独复制到空的 appcast 输入目录。使用构建中的 `build/preview-0.1-mac-derived/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast`，参数为 `--account ed25519`、`--versions 15`、`--download-url-prefix https://github.com/chenyuhao0628/displayweave/releases/download/v0.2.1-p8/`、`--link https://github.com/chenyuhao0628/displayweave`、`-o "$DISPLAYWEAVE_OUTPUT_DIR/appcast.xml"` 和该目录。工具使用现有 Keychain 密钥签名。
 
 为四个二进制包与两个更新源生成 `SHA256SUMS.txt`，运行 `./tools/verify-update-release.sh "$DISPLAYWEAVE_OUTPUT_DIR"`。另行验证 ZIP 的 Ed25519 签名与内置公钥、Mac `arm64 x86_64` 架构及 bundle/feed 身份、无签名 iOS arm64 版本和身份。APK 证书 SHA-256 必须保持 `89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d`。
 
@@ -51,10 +50,6 @@ export DISPLAYWEAVE_ANDROID_FEED_OUTPUT="$DISPLAYWEAVE_OUTPUT_DIR/android-update
 
 在验证过的 tag 创建 GitHub 草稿 Release，明确上传八个文件：四个二进制包、两个更新源、源码包和校验和文件。禁止 `--clobber`。核对上传大小／摘要，或通过已认证 API 独立下载验证。
 
-向 Cloudflare Pages 项目 `displayweave-downloads` 的生产分支 `main` 部署完整静态快照，保留所有历史发行路径。新八项文件放在 `/releases/v0.2.1-p8/`；本地 `site-dist/` 复制到 `/displayweave/`，作为备用网站与更新源副本。排除 `functions/`、`_worker.js`、凭据、日志和本地构建目录，检查当前 Pages 文件限制。用 `wrangler pages deploy` 指定项目、分支与已验证源码提交。
+下载并核对在线文件哈希，再公开 GitHub Release。审查最终 PR，按维护者授权合并，如实记录本地检查和不可用的托管检查。使用 merge commit 保留发行 tag 祖先关系，同步本地／远端 main。
 
-若发行 tag 后有网站专用修正，保持应用产物不变。用 `git archive` 将网站部署提交归档为 `/displayweave/DisplayWeave-website-source.tar.gz`，其哈希写入 `/displayweave/website-SHA256SUMS.txt`，并保持页脚源码链接有效。部署前运行网站路由／hydration 回归检查。
-
-下载并核对在线文件哈希，检查备用网站引用的资源，再公开 GitHub Release。审查最终 PR，按维护者授权合并，如实记录本地检查和不可用的托管检查。使用 merge commit 保留发行 tag 祖先关系，同步本地／远端 main。
-
-GitHub API 上传成功不等于匿名下载可用。2026-10-16 的观察是 GitHub 公开访问和 Pages 返回 404，而已认证管理接口和 Cloudflare 正常。两端应用仍从原 GitHub Pages 地址读取更新元数据；备用更新源不会重定向已安装客户端。在原地址恢复前需手动安装，本流程不修改内置更新源身份。
+GitHub API 上传成功不等于匿名下载可用。2026-10-16 的观察是 GitHub 公开访问和 Pages 返回 404，而已认证管理接口仍正常。两端应用仍从原 GitHub Pages 地址读取更新元数据；在原地址恢复前需手动安装，本流程不修改内置更新源身份。

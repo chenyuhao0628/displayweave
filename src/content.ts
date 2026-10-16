@@ -2,7 +2,7 @@ export type Locale = "en" | "zh"
 export type EvidenceState = "verified" | "experimental" | "deferred"
 
 export const releaseTag = "v0.2.1-p8"
-export const releaseBase = `https://downloads.urlget.cyou/releases/${releaseTag}`
+export const releaseBase = `https://github.com/chenyuhao0628/displayweave/releases/download/${releaseTag}`
 
 export type ReleaseAsset = {
   platform: string
@@ -179,7 +179,7 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} release`,
       title: "Download the locally built preview.",
       intro:
-        "Release packages are mirrored as immutable static files through Cloudflare. Android p6 and later use Cloudflare first and fall back to the matching GitHub Release when the mirror is unavailable.",
+        "Release packages are published as GitHub Release assets. Android and macOS verify every download before installing it.",
       warning:
         "GitHub Pages feeds are unavailable as of 2026-10-16; install manually for now. Mac is ad-hoc signed and not notarized; iOS requires re-signing.",
       checksum: "Verify all downloads with SHA256SUMS.txt",
@@ -337,7 +337,7 @@ export const copy: Record<Locale, SiteCopy> = {
         ],
         [
           "Will later Mac and Android releases require reinstalling?",
-          "These channels require the configured GitHub Pages feeds, which are unavailable as of 2026-10-16. Install this version manually from the mirror. Once feeds recover, Mac can use Sparkle and Android can check in Settings & Help; Android still shows its system installer.",
+          "These channels require the configured GitHub Pages feeds, which are unavailable as of 2026-10-16. Install this version manually from the releases page. Once feeds recover, Mac can use Sparkle and Android can check in Settings & Help; Android still shows its system installer.",
         ],
         [
           "Why does macOS warn about the app?",
@@ -396,7 +396,7 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} 发布`,
       title: "下载本地构建的开发预览版。",
       intro:
-        "发布文件通过 Cloudflare 不可变静态镜像分发。Android p6 及以后优先使用 Cloudflare，镜像不可用时回退到同一 GitHub Release。",
+        "发布文件以 GitHub Release 附件形式分发。Android 与 macOS 在安装前会校验每一次下载。",
       warning:
         "截至 2026-10-16，GitHub Pages 更新源不可用，请先手动安装。Mac 为 ad-hoc 签名且未公证；iOS 需自行签名。",
       checksum: "使用 SHA256SUMS.txt 验证全部下载",
@@ -550,7 +550,7 @@ export const copy: Record<Locale, SiteCopy> = {
         ],
         [
           "后续 Mac 和 Android 版本还要重新安装吗？",
-          "这些渠道依赖配置的 GitHub Pages 更新源，截至 2026-10-16 仍不可用。请先从镜像手动安装；更新源恢复后 Mac 可使用 Sparkle，Android 可在“设置与帮助”检查，安装仍需系统确认。",
+          "这些渠道依赖配置的 GitHub Pages 更新源，截至 2026-10-16 仍不可用。请先从发行页面手动安装；更新源恢复后 Mac 可使用 Sparkle，Android 可在“设置与帮助”检查，安装仍需系统确认。",
         ],
         [
           "为什么 macOS 会显示安全警告？",

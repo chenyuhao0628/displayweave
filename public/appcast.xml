@@ -9,7 +9,7 @@
             <sparkle:version>15</sparkle:version>
             <sparkle:shortVersionString>0.2.1-p8</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://downloads.urlget.cyou/releases/v0.2.1-p8/DisplayWeave-macOS.zip" length="3140193" type="application/octet-stream" sparkle:edSignature="3XOylM2pAMvtMSeXefDX8raY1xEh+RsqvBdusmOKdBzsHoVPfKP7vgyRcaBO9ZKYikWV28+EylvyWB8JdcxeDg=="/>
+            <enclosure url="https://github.com/chenyuhao0628/displayweave/releases/download/v0.2.1-p8/DisplayWeave-macOS.zip" length="3140193" type="application/octet-stream" sparkle:edSignature="3XOylM2pAMvtMSeXefDX8raY1xEh+RsqvBdusmOKdBzsHoVPfKP7vgyRcaBO9ZKYikWV28+EylvyWB8JdcxeDg=="/>
         </item>
     </channel>
 </rss>

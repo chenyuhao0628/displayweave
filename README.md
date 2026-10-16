@@ -37,7 +37,7 @@ second Android device for this release.
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)
 
-2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; use the [Cloudflare download page](https://downloads.urlget.cyou/displayweave/). Mac/Android update checks still depend on the original Pages URLs; install manually until they recover. Mirrored feed copies do not change client URLs.
+2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; downloads are published on the [releases page](https://github.com/chenyuhao0628/displayweave/releases). Mac/Android update checks still depend on the original Pages URLs; install manually until they recover.
 
 | Platform | Asset | Distribution boundary |
 | --- | --- | --- |
@@ -70,8 +70,7 @@ The refreshed Mac build uses a DisplayWeave-owned application identity. Settings
   not notarized.
 - **Android:** install this APK over the existing package once. The receiver
   then checks at most daily, with a manual check in **Settings & Help**.
-  p6 and later download from Cloudflare first and fall back to the matching GitHub
-  Release only for availability or transport failures.
+  Downloads come from the matching GitHub Release.
   Downloads are verified by size, SHA-256, package, version, minimum SDK, and
   the pinned signing certificate before Android shows its system installer.
 - **iOS/iPadOS:** the unsigned re-signing input and existing OpenDisplay

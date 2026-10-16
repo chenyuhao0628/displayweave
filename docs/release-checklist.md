@@ -8,7 +8,7 @@ The [p8 release notes](release-notes-v0.2.1-p8.md) record local publication, has
 
 On 2026-10-16 the maintainer authorized local building/upload while hosted Actions was unavailable. Local gates cover 37 Swift suites, six Android groups and Debug/Release builds, universal Mac Debug/Release, iOS Simulator and unsigned device builds, website, bilingual docs and release links. This is local evidence, not successful GitHub CI. Package version/build is 0.2.1-p8/15; Mac ZIP Ed25519, DMG/ZIP consistency, the pinned Android certificate and the unsigned iOS boundary were verified.
 
-Eight files comprise four platform packages, two feeds, corresponding tagged source and checksums. Verify remote sizes/hashes, historical mirror paths and the backup site before publication; persist the exact feeds in `public/`. While public GitHub and Pages return 404, do not claim the original clients' update channels recovered; install manually from Cloudflare.
+Eight files comprise four platform packages, two feeds, corresponding tagged source and checksums. Verify remote sizes/hashes and historical release paths before publication; persist the exact feeds in `public/`. While public GitHub and Pages return 404, do not claim the original clients' update channels recovered; install manually from the releases page.
 
 Mac-to-Mac, HEVC, direct-link discovery and Pencil remain experimental. Two-Mac/Pencil/Intel runtime and endurance acceptance are pending; skip virtual-display interaction without an independent online display. Complete the [physical matrix](hevc-wired-pencil.md) before claiming hardware verification.
 

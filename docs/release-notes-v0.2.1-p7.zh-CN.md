@@ -25,7 +25,7 @@
 
 继续提供七项产物：Mac DMG、Sparkle ZIP、Android APK、未签名 iOS 自签输入包、`appcast.xml`、`android-update.json` 和 `SHA256SUMS.txt`。Mac 仍采用 ad-hoc 签名且未公证；APK 保持固定项目证书；iOS IPA 需个人重新签名才能安装。应用 ID 和更新公钥保持不变。
 
-Android p6 及以后优先使用 Cloudflare，只在可用性失败时回退 GitHub；p5 及更早版本需手动安装一次以信任镜像。发布后，已支持更新渠道的 Mac／Android 安装可通过原渠道升级。
+Android p6 及以后从对应的 GitHub Release 下载；p5 及更早版本需手动安装一次。发布后，已支持更新渠道的 Mac／Android 安装可通过原渠道升级。
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p7)
 

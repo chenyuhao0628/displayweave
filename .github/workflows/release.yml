@@ -12,7 +12,7 @@ on:
         required: false
         type: string
       deploy_feeds:
-        description: "Deploy update feeds immediately (disable while staging the download mirror)"
+        description: "Deploy update feeds immediately (disable while staging the release assets)"
         required: false
         type: boolean
         default: true
@@ -102,8 +102,7 @@ jobs:
 
       - name: Generate signed Mac and verified Android update feeds
         env:
-          DISPLAYWEAVE_RELEASE_BASE_URL: https://downloads.urlget.cyou/releases
-          DISPLAYWEAVE_RELEASE_FALLBACK_BASE_URL: https://github.com/${{ github.repository }}/releases/download
+          DISPLAYWEAVE_RELEASE_BASE_URL: https://github.com/${{ github.repository }}/releases/download
           DISPLAYWEAVE_ANDROID_APK: ${{ github.workspace }}/build/update-release/DisplayWeave-Android.apk
           DISPLAYWEAVE_ANDROID_FEED_OUTPUT: ${{ github.workspace }}/build/update-release/android-update.json
         run: |
@@ -121,7 +120,7 @@ jobs:
           printf '%s' "$SPARKLE_PRIVATE_KEY" | "$GEN_APPCAST" \
             --ed-key-file - \
             --download-url-prefix \
-              "https://downloads.urlget.cyou/releases/${DISPLAYWEAVE_RELEASE_TAG}/" \
+              "https://github.com/chenyuhao0628/displayweave/releases/download/${DISPLAYWEAVE_RELEASE_TAG}/" \
             --link "https://github.com/${GITHUB_REPOSITORY}" \
             --versions "$DISPLAYWEAVE_BUILD_NUMBER" \
             -o "$DISPLAYWEAVE_OUTPUT_DIR/appcast.xml" \

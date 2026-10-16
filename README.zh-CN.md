@@ -33,7 +33,7 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)
 
-2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；请使用 [Cloudflare 下载页](https://downloads.urlget.cyou/displayweave/zh.html)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。镜像中的更新源副本不会自动修改客户端地址。
+2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；下载统一发布在[发行页面](https://github.com/chenyuhao0628/displayweave/releases)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。
 
 | 平台 | 产物 | 分发边界 |
 | --- | --- | --- |
@@ -65,7 +65,7 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 - **Android：** 先把此 APK 覆盖安装到现有包。之后接收端最多每天自动
   检查一次，也可在“设置与帮助”手动检查。下载会校验大小、SHA-256、
   包名、版本、最低 SDK 和固定签名证书，再打开 Android 系统安装器。p6 及以后
-  优先从 Cloudflare 下载，只在可用性或传输失败时回退到同一 GitHub Release。
+  下载统一来自对应的 GitHub Release。
 - **iOS/iPadOS：** 未签名自签输入包与现有 OpenDisplay 接收协议不受
   Mac/Android 更新渠道影响。
 
