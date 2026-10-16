@@ -4,6 +4,7 @@
 
 ## 当前用户指南
 
+- [Apple 接收端 HEVC 与高刷新（源码）](apple-video.zh-CN.md)
 - [每台设备的桌面分辨率（源码）](desktop-resolution.zh-CN.md)
 - [当前功能补全方案与证据](feature-completion.zh-CN.md)
 - [HEVC、直连与 Pencil 使用／当前验收证据](hevc-wired-pencil.zh-CN.md)

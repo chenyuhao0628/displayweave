@@ -59,10 +59,12 @@ struct VideoLayerView: UIViewRepresentable {
     func updateUIView(_ uiView: VideoView, context: Context) {
         // videoSize arrives after the format description — re-fit the layers.
         uiView.setNeedsLayout()
+        uiView.updateDisplayLink()
     }
 
     static func dismantleUIView(_ uiView: VideoView, coordinator: ()) {
         uiView.cancelPress()
+        uiView.stopDisplayLink()
         uiView.receiver?.onInputReset = nil
         uiView.receiver = nil
     }
@@ -70,6 +72,41 @@ struct VideoLayerView: UIViewRepresentable {
     final class VideoView: UIView {
         weak var receiver: PhoneReceiver?
         var metalRenderer: MetalVideoRenderer?
+        private var displayLink: CADisplayLink?
+        private var cursorDirty = false
+        private final class DisplayLinkTarget: NSObject {
+            weak var view: VideoView?
+            @objc func tick(_ link: CADisplayLink) { view?.presentCursor() }
+        }
+        private let displayLinkTarget = DisplayLinkTarget()
+
+        func updateDisplayLink() {
+            guard window != nil, receiver?.connected == true else { stopDisplayLink(); return }
+            if displayLink == nil {
+                displayLinkTarget.view = self
+                let link = CADisplayLink(target: displayLinkTarget, selector: #selector(DisplayLinkTarget.tick(_:)))
+                link.add(to: .main, forMode: .common)
+                displayLink = link
+            }
+            let maximum = min(window?.screen.maximumFramesPerSecond ?? 60, receiver?.requestedFps ?? 60)
+            let fps = Float(max(1, maximum))
+            displayLink?.preferredFrameRateRange = CAFrameRateRange(minimum: min(30, fps), maximum: fps, preferred: fps)
+        }
+
+        func stopDisplayLink() {
+            displayLink?.invalidate()
+            displayLink = nil
+        }
+
+        private func presentCursor() {
+            guard cursorDirty else { return }
+            cursorDirty = false
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            cursorLayer.isHidden = !cursorVisible || cursorLayer.contents == nil
+            updateCursorLayout()
+            CATransaction.commit()
+        }
 
         private let cursorLayer: CALayer = {
             let layer = CALayer()
@@ -127,11 +164,8 @@ struct VideoLayerView: UIViewRepresentable {
         func moveCursor(x: Double, y: Double, visible: Bool) {
             cursorNorm = CGPoint(x: x, y: y)
             cursorVisible = visible
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            cursorLayer.isHidden = !visible || cursorLayer.contents == nil
-            updateCursorLayout()
-            CATransaction.commit()
+            cursorDirty = true
+            if displayLink == nil { presentCursor() }
         }
 
         func setCursorSprite(_ image: UIImage, anchor: CGPoint, normSize: CGSize) {
@@ -214,6 +248,7 @@ struct VideoLayerView: UIViewRepresentable {
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
+            updateDisplayLink()
             if window == nil { cancelPress() }
         }
 

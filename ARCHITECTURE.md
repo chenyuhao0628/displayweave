@@ -96,3 +96,7 @@ Mac HEVC requires both a hardware encoder and an explicitly advertised hardware 
 `DirectCable` classifies link-local wired **candidates**; it does not authenticate peers or prove physical topology. A selected candidate pins both Bonjour resolution and TCP to its interface. `DirectCableAutoConnectPolicy` implements default-off opt-in, one attempt per appearance and manual opt-out. Existing sessions are deduplicated by installation ID, including pending hello.
 
 `pencil-v1` uses explicit hello/inputConfig negotiation. `PencilInputForwarder` fixes native/legacy mode for a whole stroke; `PencilSample` validates all numeric fields. `InputInjector` posts tablet point/proximity with deterministic cancellation. iOS `InputSendBudget` admits at most 64 queued/in-flight controls, each framed batch at most 64 KiB, before dispatch; connection epochs reject stale input and completions. An overflow closes that peer so sender cleanup releases held input. See the [protocol and acceptance plan](docs/hevc-wired-pencil-plan.md).
+
+## Apple video source extension after p8
+
+Both Apple targets share `Shared/ReceiverVideoBitstream`. iOS advertises `appleVideoV1` codec/refresh envelopes; Mac recognizes its existing device identity. The sender uses bounded Apple operating-point negotiation up to 120fps and HEVC with H.264 fallback, while Android keeps its separate V2 negotiation. See [current implementation and evidence](docs/apple-video.md); the release descriptions above describe p8.

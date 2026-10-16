@@ -30,7 +30,7 @@ struct PhoneInfo: Decodable {
                 && width * height <= 67_108_864 && scale.isFinite && scale > 0 && scale <= 4
         }
         guard valid(pixelsWide, pixelsHigh, scale) else { return false }
-        if isMacReceiver {
+        if usesAppleVideoCapabilities {
             if let limit = maxEncodeWide, !(2...16384).contains(limit) { return false }
             if let limit = maxEncodeHigh, !(2...16384).contains(limit) { return false }
             if let fps = displayMaxFrameRate, fps < 1 { return false }
@@ -54,10 +54,13 @@ struct PhoneInfo: Decodable {
     }
 
     var isMacReceiver: Bool { device?.lowercased() == "mac" }
+    var usesAppleVideoCapabilities: Bool {
+        isMacReceiver || (!isAndroidReceiver && (capabilities ?? []).contains("appleVideoV1"))
+    }
 
     func sameDisplayConfiguration(as other: PhoneInfo) -> Bool {
         pixelsWide == other.pixelsWide && pixelsHigh == other.pixelsHigh
-            && (!isMacReceiver || (scale == other.scale && panel == other.panel
+            && (!usesAppleVideoCapabilities || (scale == other.scale && panel == other.panel
                 && supportedCodecs == other.supportedCodecs && videoCaps == other.videoCaps && displayMaxFrameRate == other.displayMaxFrameRate
                 && maxEncodeWide == other.maxEncodeWide && maxEncodeHigh == other.maxEncodeHigh))
     }

@@ -91,7 +91,7 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
         let size = CGSize(width: screen.frame.width, height: screen.frame.height - screen.safeAreaInsets.top)
         receiver.configure(panel: PanelAnnouncement(pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
             scale: scale, pointsWide: Int(size.width), pointsHigh: Int(size.height)), name: name,
-            maxFps: min(60, screen.maximumFramesPerSecond))
+            maxFps: AppleVideoPolicy.frameRate(maximum: screen.maximumFramesPerSecond))
     }
 
     func start() {

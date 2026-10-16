@@ -4,6 +4,7 @@
 
 ## Current user guides
 
+- [Apple receiver HEVC and high refresh (source)](apple-video.md)
 - [Per-device desktop resolution (source)](desktop-resolution.md)
 - [Active feature completion plan and evidence](feature-completion.md)
 - [HEVC, direct-link and Pencil usage / current evidence](hevc-wired-pencil.md)

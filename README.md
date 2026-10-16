@@ -134,7 +134,7 @@ Android release signing uses a keystore stored outside the repository. See [deve
 
 ## Current limits
 
-- iOS/iPadOS 120Hz is not implemented.
+- Published p8 retains iOS H.264 and Mac 60fps. The source adds [Apple HEVC / high-refresh negotiation](docs/apple-video.md); physical 120fps performance remains unverified.
 - Current WiFi TCP video/control traffic is not production-encrypted; use a trusted LAN.
 - Two simultaneous Android devices, the controlled same-condition USB/WiFi benchmark, and 30-minute/2-hour endurance runs remain incomplete.
 - macOS uses private `CGVirtualDisplay` behavior that may change in future macOS versions.

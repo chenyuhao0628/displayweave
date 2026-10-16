@@ -94,3 +94,7 @@ Mac HEVC 同时要求硬件编码器与接收端明确声明的硬件解码能�
 `DirectCable` 仅分类链路本地有线**候选**，不认证设备或证明物理拓扑。选择候选后将 Bonjour 解析和 TCP 固定到同一接口。`DirectCableAutoConnectPolicy` 提供默认关闭的开关、每次出现一次尝试和手动断开抑制。正在等待 hello 的会话也按安装 ID 去重。
 
 `pencil-v1` 通过 hello/inputConfig 显式协商。`PencilInputForwarder` 按整笔画保持原生／兼容协议；`PencilSample` 校验全部数值。`InputInjector` 发送 tablet point／proximity 并确定性取消。iOS `InputSendBudget` 在派发前限制最多 64 项排队／发送中的控制任务，每批不超过 64 KiB，连接代际隔离旧输入和完成回调。溢出关闭当前连接，由发送端释放按下状态。详见[协议与验收设计](docs/hevc-wired-pencil-plan.zh-CN.md)。
+
+## p8 之后的 Apple 视频源码扩展
+
+两个 Apple 目标共用 `Shared/ReceiverVideoBitstream`。iOS 声明 `appleVideoV1` 编码/刷新范围；Mac 继续通过原设备身份识别。发送端在上限内协商最高 120fps、HEVC 和 H.264 回退，Android 保留独立 V2 协商。见[实现与证据](docs/apple-video.zh-CN.md)；上文发布描述对应 p8。

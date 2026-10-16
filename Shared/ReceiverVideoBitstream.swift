@@ -12,6 +12,7 @@ struct ReceiverVideoBitstream {
         let keyframe: Bool
         let format: CMVideoFormatDescription?
         let formatChanged: Bool
+        let metadata: Data?
     }
     let codec: ReceiverVideoCodec
     private var parameters: [UInt8: Data] = [:]
@@ -79,6 +80,8 @@ struct ReceiverVideoBitstream {
             guard result == noErr, format != nil else { throw Failure.invalidFormat }
             changed = true
         }
-        return Packet(slices: slices, keyframe: keyframe, format: format, formatChanged: changed)
+        let prefixLength = (ranges.first?.lowerBound ?? 4) - 4
+        return Packet(slices: slices, keyframe: keyframe, format: format, formatChanged: changed,
+                      metadata: prefixLength > 0 ? data.subdata(in: 0..<prefixLength) : nil)
     }
 }

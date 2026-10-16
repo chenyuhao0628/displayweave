@@ -30,7 +30,7 @@ Feature completion means implemented behavior and passing automated acceptance, 
 ## Progress
 
 - Assessment: repository clean on baseline; twelve work items enumerated with acceptance and dependencies.
-- F03–F12: implementation pending. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
+- Remaining implementation: F03, F05–F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
 
 ## Official API references
 
@@ -43,3 +43,7 @@ Migrated Mac feed including persisted-feed override; Android bounded availabilit
 ### F02 — implemented in source
 
 Per-installation Native/1080p/1440p/4K selection now rebuilds only the affected extension session. Logical geometry is separate from decoder/quality scaling; mirror ignores the desktop override. Added failing-then-passing geometry, persistence, limit and mirror tests. All 38 Swift suites and Mac universal Debug build passed. See [usage and physical acceptance](desktop-resolution.md).
+
+### F04 — implemented in source
+
+Shared bounded H.264/HEVC parser, iOS explicit Apple envelopes, hardware-gated HEVC, one-shot timed H.264 fallback, and Apple refresh negotiation up to 120fps. iOS requests ProMotion cadence only while its video view is connected. 39 Swift suites, updated Mac network/bitstream tests, Mac universal Debug and iOS Simulator builds passed. iPad simulator exercised valid H.264, configuration rejection, unsupported HEVC fallback and no re-upgrade on the same connection; hardware HEVC presentation was unavailable there. See [scope and physical acceptance](apple-video.md).

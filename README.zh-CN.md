@@ -125,7 +125,7 @@ Android Release 签名密钥库保存在仓库外。参见[开发预览分发](d
 
 ## 当前限制
 
-- iOS/iPadOS 120Hz 尚未实现。
+- 已发布 p8 仍为 iOS H.264、Mac 60fps；源码新增 [Apple HEVC / 高刷协商](docs/apple-video.zh-CN.md)，实机 120fps 性能尚未验证。
 - 当前 WiFi TCP 视频/控制流量尚未生产级加密，请仅在可信局域网使用。
 - 双 Android 并发、同条件 USB/WiFi 受控 Benchmark，以及 30 分钟/2 小时耐久测试尚未完成。
 - macOS 使用私有 `CGVirtualDisplay` 行为，未来 macOS 版本可能发生变化。

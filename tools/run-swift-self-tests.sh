@@ -72,6 +72,10 @@ run_test StreamSettingsSelfTest \
 run_test DesktopResolutionSelfTest \
   "${settings[@]}" Mac/DeviceCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift \
   Mac/MacReceiverPolicy.swift MacTests/DesktopResolutionSelfTest.swift
+run_test AppleVideoPolicySelfTest \
+  "${settings[@]}" Mac/DeviceCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift \
+  Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift \
+  Mac/MacReceiverPolicy.swift MacTests/AppleVideoPolicySelfTest.swift
 run_test TestPatternLifecycleSelfTest \
   -DDEBUG \
   Shared/BoundedLogWriter.swift Mac/Log.swift Mac/TestPatternWindow.swift \
@@ -92,7 +96,7 @@ run_test MacReceiverPolicySelfTest \
 
 run_test MacReceiverNetworkSelfTest \
   Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
-  Shared/ReceiverCursorImage.swift Mac/Receiver/ReceiverVideoBitstream.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverNetworkSelfTest.swift
+  Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverNetworkSelfTest.swift
 
 run_test MacRoleControllerSelfTest \
   Mac/MacRoleController.swift MacTests/MacRoleControllerSelfTest.swift
@@ -119,7 +123,7 @@ run_test ReceiverCursorImageSelfTest \
   Shared/ReceiverCursorImage.swift MacTests/ReceiverCursorImageSelfTest.swift
 
 run_test ReceiverVideoBitstreamSelfTest \
-  Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverVideoBitstream.swift MacTests/ReceiverTestSupport.swift \
+  Mac/EncoderHardwareCapabilities.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift MacTests/ReceiverTestSupport.swift \
   MacTests/ReceiverVideoBitstreamSelfTest.swift
 
 run_test DirectCableSelfTest \
@@ -133,4 +137,4 @@ run_test PencilInputInjectorSelfTest \
   Shared/PencilProtocol.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
   Mac/InputValidationPolicy.swift Mac/InputInjector.swift MacTests/PencilInputInjectorSelfTest.swift
 
-echo "Swift standalone self-tests PASS (38 suites)"
+echo "Swift standalone self-tests PASS (39 suites)"

@@ -99,6 +99,7 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
+        CADisableMinimumFrameDurationOnPhone: true
         NSLocalNetworkUsageDescription: DisplayWeave 需要在本地网络中广播此设备，以便你的 Mac 通过 WiFi 连接。
         NSBonjourServices: ["_opensidecar._tcp"]
         UISupportedInterfaceOrientations:

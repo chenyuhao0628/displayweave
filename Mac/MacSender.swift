@@ -286,13 +286,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                       userInfo: [NSLocalizedDescriptionKey: "未找到可捕获的显示器"])
         }
         // SCDisplay reports points; capture at point resolution for M1.
-        let macPlan = info.isMacReceiver ? MacReceiverPolicy.plan(info: info, settings: settings, sourceWidth: display.width, sourceHeight: display.height, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
+        let macPlan = info.usesAppleVideoCapabilities ? MacReceiverPolicy.plan(info: info, settings: settings, sourceWidth: display.width, sourceHeight: display.height, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
         let captureW = macPlan?.width ?? ((Int(Double(display.width) * quality.scale)) & ~1)
         let captureH = macPlan?.height ?? ((Int(Double(display.height) * quality.scale)) & ~1)
-        let captureFps = macPlan?.fps ?? RefreshRatePolicy.selected(
-            deviceMaxFps: settings.fpsMode.userSelectedFps ?? RefreshRatePolicy.fallbackFps,
-            userSelectedFps: settings.fpsMode.userSelectedFps)
-        let codec = macPlan?.codec ?? settings.selectedCodec(supportedCodecs: ["h264"], preferredCodec: "h264")
+        let captureFps = macPlan?.fps ?? settings.selectedFps(deviceMaxFps: info.negotiatedMaxFps)
+        let codec = macPlan?.codec ?? (info.isAndroidReceiver ? settings.selectedCodec(
+            supportedCodecs: info.negotiatedSupportedCodecs, preferredCodec: info.negotiatedPreferredCodec) : .h264)
         try await startCapture(display: display, pixelsWide: captureW, pixelsHigh: captureH,
                            fps: captureFps, virtualDisplayRefreshRate: captureFps,
                            codec: codec)
@@ -322,7 +321,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         Log.info("phone hello: \(info.pixelsWide)x\(info.pixelsHigh) @\(info.scale)x device=\(info.negotiatedDeviceModel) refresh=\(info.negotiatedRefreshRate)Hz maxFps=\(info.negotiatedMaxFps) codecs=\(info.negotiatedSupportedCodecs.joined(separator: ",")) preferred=\(info.negotiatedPreferredCodec) sdk=\(info.negotiatedAndroidSdk) transport=\(info.negotiatedTransport)")
 
         guard !stopped else { throw CancellationError() }
-        let macPlan = info.isMacReceiver ? MacReceiverPolicy.plan(info: info, settings: settings, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
+        let macPlan = info.usesAppleVideoCapabilities ? MacReceiverPolicy.plan(info: info, settings: settings, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
         let mobileDesktop = DesktopResolutionPolicy.geometry(
             settings.desktopResolutions.resolution(for: info.id),
             nativeWidth: info.pixelsWide, nativeHeight: info.pixelsHigh, backingScale: 2)
@@ -376,9 +375,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             maxHeight: info.maxEncodeHigh ?? info.pixelsHigh)
         let captureW = macPlan?.width ?? mobileRaster.width
         let captureH = macPlan?.height ?? mobileRaster.height
-        let codec = macPlan?.codec ?? settings.selectedCodec(
+        let codec = macPlan?.codec ?? (info.isAndroidReceiver ? settings.selectedCodec(
             supportedCodecs: info.negotiatedSupportedCodecs,
-            preferredCodec: info.negotiatedPreferredCodec)
+            preferredCodec: info.negotiatedPreferredCodec) : .h264)
         try await startCapture(display: display, pixelsWide: captureW, pixelsHigh: captureH,
                                fps: macPlan.map { min($0.fps, vd.actualRefreshRate) } ?? vd.actualRefreshRate,
                                virtualDisplayRefreshRate: vd.actualRefreshRate,
@@ -468,7 +467,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                               codec: StreamCodec) async throws {
         let filter = SCContentFilter(display: display, excludingWindows: [])
 
-        let captureFps = lastHello?.isMacReceiver == true ? max(1, min(60, fps)) : RefreshRatePolicy.sanitize(fps)
+        let captureFps = lastHello?.usesAppleVideoCapabilities == true ? max(1, min(120, fps)) : RefreshRatePolicy.sanitize(fps)
         let prepared = queue.sync { () -> (SCStreamConfiguration, StreamCodec, Int, Int)? in
             guard !stopped else { return nil }
             requestedCaptureFps = captureFps
@@ -516,8 +515,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         config.height = height
         config.minimumFrameInterval = CMTime(
             value: 1,
-            timescale: CMTimeScale(
-                (lastHello?.isMacReceiver == true ? max(1, min(60, fps)) : RefreshRatePolicy.captureIntervalTimescale(fps: fps))))
+            timescale: CMTimeScale(max(1, min(120, fps))))
         // 420v matches the encoder's native input and avoids an extra conversion.
         config.pixelFormat = UserDefaults.standard.string(forKey: "pixfmt") == "bgra"
             ? kCVPixelFormatType_32BGRA
@@ -1235,7 +1233,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 if let continuation = helloContinuation {
                     helloContinuation = nil
                     continuation.resume(returning: info)
-                } else if (mode == .extend || info.isMacReceiver), stream != nil, let previous,
+                } else if (mode == .extend || info.usesAppleVideoCapabilities), stream != nil, let previous,
                           !previous.sameDisplayConfiguration(as: info) {
                     // Phone rotated — rebuild after a short debounce so a
                     // flurry of orientation flips settles into one rebuild.
@@ -1477,12 +1475,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     private func setupEncoder(width: Int, height: Int, fps: Int, preferredCodec: StreamCodec) {
         let preferredCodec = macCodecFallback.codec(for: preferredCodec,
-                                                   isMacReceiver: lastHello?.isMacReceiver == true)
+                                                   isMacReceiver: lastHello?.usesAppleVideoCapabilities == true)
         if encoderGeneration != 0 {
             pendingEncodeWork.discard(generation: encoderGeneration)
         }
         encoderGeneration &+= 1
-        let finalFps = lastHello?.isMacReceiver == true ? max(1, min(60, fps)) : RefreshRatePolicy.sanitize(fps)
+        let finalFps = lastHello?.usesAppleVideoCapabilities == true ? max(1, min(120, fps)) : RefreshRatePolicy.sanitize(fps)
         streamCodec = preferredCodec
         let automaticBitrate = StreamEncodingPolicy.bitrate(
             width: width, height: height, fps: finalFps, codec: preferredCodec,
@@ -1929,7 +1927,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             transport: transportName,
             identity: identity,
             maxFrameBytes: lastHello?.negotiatedMaxFrameBytes,
-            exactFrameRate: lastHello?.isMacReceiver == true)
+            exactFrameRate: lastHello?.usesAppleVideoCapabilities == true)
         sendJSONFrame(message.json)
         if let identity {
             scheduleProtocolTimeout(identity: identity, phase: .awaitingStreamConfigAck)

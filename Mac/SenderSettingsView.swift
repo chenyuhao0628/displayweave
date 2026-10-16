@@ -36,7 +36,7 @@ struct SenderSettingsView: View {
         }
         .pickerStyle(.segmented)
         .onChange(of: controller.settings.fpsMode) { _, _ in controller.restartAll() }
-        Text("自动选择接收设备支持的帧率；Mac 接收最高 60 fps。实际帧率取决于设备与网络。")
+        Text("自动在接收屏幕和解码上限内选择，最高请求 120 fps。实际帧率取决于设备、分辨率与网络。")
             .font(.caption)
             .foregroundStyle(.secondary)
     }

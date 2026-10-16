@@ -23,8 +23,11 @@ struct SettingsView: View {
                     LabeledContent("连接",
                                    value: receiver.connected ? "已连接" : "正在等待 Mac")
                     if receiver.videoSize != .zero {
+                        LabeledContent("编码 / 目标", value: "\(receiver.codecLabel) · \(receiver.requestedFps) fps")
                         LabeledContent("画面",
                                        value: "\(Int(receiver.videoSize.width))×\(Int(receiver.videoSize.height)) @ \(receiver.fps) fps")
+                        Text("画面 FPS 为视频提交速率；系统按屏幕、温度与电量决定真实刷新。")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
 

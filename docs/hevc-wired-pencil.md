@@ -68,3 +68,7 @@ Compilation for Intel is not Intel runtime validation. Parsing real encoded samp
 - Thunderbolt Bridge and Ethernet: Wi-Fi enabled concurrently, verify the active interface, candidate appearance, unplug/replug, manual opt-out and no duplicate sessions. Include a normal routed/static-IP network and confirm it remains a normal LAN device.
 - Pencil: supported iPad/Pencil pairs and a tablet-aware drawing app; light/heavy pressure, tilt in four directions, hover enter/exit, palm contact, two-finger scrolling, rotation, drawing while disconnecting/backgrounding and old-sender compatibility. Confirm no held mouse button or proximity state after cancellation.
 - Run 30-minute and 2-hour endurance tests before making performance/release claims. Record failures and device/OS/transport details without committing private identifiers or captures.
+
+## Source update after p8
+
+The source adds iOS HEVC and Apple high-refresh negotiation; see [Apple video and verification](apple-video.md). The p8 download retains the earlier iOS H.264 / Mac 60fps behavior described above.

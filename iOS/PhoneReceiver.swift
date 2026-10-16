@@ -1,4 +1,4 @@
-// PhoneReceiver — Milestone 1: receive H.264 over TCP and display it.
+// PhoneReceiver — negotiated H.264 / hardware HEVC over framed TCP.
 //
 // Pipeline:  TCP socket -> deframe -> Annex B parse -> CMSampleBuffer
 //            -> AVSampleBufferDisplayLayer (decodes + renders)
@@ -64,8 +64,15 @@ final class PhoneReceiver: ObservableObject {
     private var running = false
     private var listenerGeneration: UInt64 = 0
     private var formatDesc: CMVideoFormatDescription?
-    private var sps: Data?
-    private var pps: Data?
+    private let supportsHEVC = VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
+    private var videoCodec: ReceiverVideoCodec = .h264
+    private var bitstream = ReceiverVideoBitstream(codec: .h264)
+    private var configuredVideo: AppleVideoConfiguration?
+    private var videoFallback = AppleVideoFallbackPolicy()
+    private var waitingForKeyframe = true
+    private var displayMaxFps = 60
+    @Published private(set) var requestedFps = 60
+    @Published private(set) var codecLabel = "H.264"
 
     // Liveness: the Mac streams video and pings every 2s; if nothing arrives
     // for 5s the connection is half-open (Mac killed, tunnel died) — drop it
@@ -187,7 +194,8 @@ final class PhoneReceiver: ObservableObject {
         }
     }
 
-    func setNativePanel(long: Int, short: Int, scale: Double) {
+    func setNativePanel(long: Int, short: Int, scale: Double, maxFps: Int = 60) {
+        displayMaxFps = AppleVideoPolicy.frameRate(maximum: maxFps)
         nativeLong = long
         nativeShort = short
         deviceScale = scale
@@ -357,6 +365,8 @@ final class PhoneReceiver: ObservableObject {
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = obj["type"] as? String else { return }
         switch type {
+        case "streamConfig":
+            configureVideo(obj)
         case "inputConfig":
             pencilNegotiated = PencilProtocol.supports(obj["inputCaps"] as? [String])
             let enabled = pencilNegotiated, generation = inputSendBudget.generation
@@ -423,9 +433,15 @@ final class PhoneReceiver: ObservableObject {
             self.onInputReset?()
         }
         frameDecoder = ReceiverFrameDecoder()
-        formatDesc = nil
-        sps = nil
-        pps = nil
+        videoCodec = .h264
+        videoFallback = AppleVideoFallbackPolicy()
+        configuredVideo = nil
+        resetVideoDecoder()
+        DispatchQueue.main.async {
+            guard self.inputSendBudget.generation == generation else { return }
+            self.requestedFps = 60
+            self.codecLabel = "H.264"
+        }
         lastFrameAt = nil
         frameIntervals.removeAll()
         decodeFlushes = 0
@@ -450,7 +466,12 @@ final class PhoneReceiver: ObservableObject {
 
     // MARK: - Control messages (phone -> Mac)
 
+    private var videoLimits: (width: Int, height: Int) {
+        devicePixelsHigh > devicePixelsWide ? (2304, 4096) : (4096, 2304)
+    }
+
     private func sendHello(on conn: NWConnection) {
+        let codecs = supportsHEVC ? ["h264", "hevc"] : ["h264"]
         sendControl([
             "type": "hello",
             "pixelsWide": devicePixelsWide,
@@ -459,6 +480,14 @@ final class PhoneReceiver: ObservableObject {
             "device": UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone",
             "id": Self.installID,
             "inputCaps": [PencilProtocol.capability],
+            "capabilities": [AppleVideoPolicy.capability],
+            "refreshRate": displayMaxFps, "maxFps": displayMaxFps,
+            "displayMaxFrameRate": displayMaxFps,
+            "supportedCodecs": codecs, "preferredCodec": supportsHEVC ? "hevc" : "h264",
+            "maxEncodeWide": videoLimits.width, "maxEncodeHigh": videoLimits.height,
+            "videoCaps": codecs.map { ["codec": $0, "maxWidth": videoLimits.width,
+                "maxHeight": videoLimits.height, "maxFrameRate": displayMaxFps,
+                "maxPixelsPerSecond": AppleVideoPolicy.maxPixelsPerSecond] as [String: Any] },
         ], on: conn)
         Log.info("hello sent")
     }
@@ -587,97 +616,92 @@ final class PhoneReceiver: ObservableObject {
             return
         }
 
-        // Split on 4-byte start codes (our sender only emits 00 00 00 01).
-        // Bytes before the FIRST start code are the telemetry prefix
-        // ({"cap":…,"snd":…} stamped by the Mac).
-        var nalus: [Data] = []
-        var metaPrefix: Data?
-        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
-            let bytes = raw.bindMemory(to: UInt8.self)
-            var naluStart: Int? = nil
-            var firstSC: Int? = nil
-            var i = 0
-            while i + 4 <= bytes.count {
-                if bytes[i] == 0, bytes[i+1] == 0, bytes[i+2] == 0, bytes[i+3] == 1 {
-                    if firstSC == nil { firstSC = i }
-                    if let s = naluStart, s < i { nalus.append(Data(bytes[s..<i])) }
-                    naluStart = i + 4
-                    i += 4
-                } else {
-                    i += 1
-                }
+        guard !videoFallback.awaitingFallback else { return }
+        let packet: ReceiverVideoBitstream.Packet
+        do { packet = try bitstream.parse(data) }
+        catch { failVideo(); return }
+        if packet.formatChanged { waitingForKeyframe = true }
+        guard let format = packet.format else { requestKeyframeIfNeeded(); return }
+        if packet.formatChanged {
+            let dims = CMVideoFormatDescriptionGetDimensions(format)
+            guard dims.width > 0, dims.height > 0, dims.width <= 8192, dims.height <= 8192,
+                  Int64(dims.width) * Int64(dims.height) <= 33_554_432,
+                  configuredVideo == nil || (Int(dims.width) == configuredVideo?.width
+                    && Int(dims.height) == configuredVideo?.height) else {
+                rejectVideo("视频尺寸与配置不符，请重新连接"); return
             }
-            if let s = naluStart, s < bytes.count { nalus.append(Data(bytes[s...])) }
-            if let f = firstSC, f > 0 { metaPrefix = Data(bytes[0..<f]) }
-        }
-
-        var captureMs: Double?
-        var sendMs: Double?
-        if let metaPrefix,
-           let meta = try? JSONSerialization.jsonObject(with: metaPrefix) as? [String: Any] {
-            captureMs = meta["cap"] as? Double
-            sendMs = meta["snd"] as? Double
-        }
-
-        var vclNALUs: [Data] = []
-        for nalu in nalus {
-            guard let first = nalu.first else { continue }
-            switch first & 0x1F {
-            case 7:                                  // SPS (stream may change
-                if sps != nalu {                     //  size on rotation)
-                    sps = nalu
-                    formatDesc = nil
-                }
-            case 8:                                  // PPS
-                if pps != nalu {
-                    pps = nalu
-                    formatDesc = nil
-                }
-            case 6: break                            // SEI — skip
-            default: vclNALUs.append(nalu)           // slice data
+            displayLayer.flush()
+            formatDesc = format
+            let generation = inputSendBudget.generation
+            DispatchQueue.main.async {
+                guard self.inputSendBudget.generation == generation else { return }
+                self.videoSize = CGSize(width: Int(dims.width), height: Int(dims.height))
             }
+            setStatus("正在接收 \(dims.width)×\(dims.height) · \(videoCodec.rawValue.uppercased())")
         }
-        if formatDesc == nil, let sps, let pps {
-            displayLayer.flush()   // drop any frames from the previous format
-            buildFormatDescription(sps: sps, pps: pps)
+        guard !packet.slices.isEmpty else { return }
+        if displayLayer.status == .failed { failVideo(); return }
+        if !useMetalPath, !displayLayer.isReadyForMoreMediaData {
+            displayLayer.flush()
+            waitingForKeyframe = true
         }
-        guard !vclNALUs.isEmpty else { return }
-        // All slices of one wire frame go into ONE sample buffer.
-        enqueueFrame(vclNALUs, captureMs: captureMs, sendMs: sendMs)
+        if waitingForKeyframe, !packet.keyframe { requestKeyframeIfNeeded(); return }
+        waitingForKeyframe = false
+        let metadata = packet.metadata.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        enqueueFrame(packet.slices, captureMs: metadata?["cap"] as? Double,
+                     sendMs: metadata?["snd"] as? Double)
     }
 
-    private func buildFormatDescription(sps: Data, pps: Data) {
-        sps.withUnsafeBytes { spsBuf in
-            pps.withUnsafeBytes { ppsBuf in
-                let ptrs: [UnsafePointer<UInt8>] = [
-                    spsBuf.bindMemory(to: UInt8.self).baseAddress!,
-                    ppsBuf.bindMemory(to: UInt8.self).baseAddress!
-                ]
-                let sizes = [sps.count, pps.count]
-                let status = CMVideoFormatDescriptionCreateFromH264ParameterSets(
-                    allocator: kCFAllocatorDefault,
-                    parameterSetCount: 2,
-                    parameterSetPointers: ptrs,
-                    parameterSetSizes: sizes,
-                    nalUnitHeaderLength: 4,
-                    formatDescriptionOut: &formatDesc
-                )
-                if status == noErr, let formatDesc {
-                    let dims = CMVideoFormatDescriptionGetDimensions(formatDesc)
-                    guard dims.width > 0, dims.height > 0, dims.width <= 8192, dims.height <= 8192,
-                          Int64(dims.width) * Int64(dims.height) <= 33_554_432 else {
-                        self.formatDesc = nil
-                        return
-                    }
-                    Log.info("format description built: \(dims.width)x\(dims.height)")
-                    DispatchQueue.main.async {
-                        self.videoSize = CGSize(width: Int(dims.width), height: Int(dims.height))
-                    }
-                    setStatus("正在接收 \(dims.width)×\(dims.height)")
-                } else {
-                    Log.info("format description FAILED: \(status)")
-                }
-            }
+    private func resetVideoDecoder() {
+        formatDesc = nil
+        bitstream = ReceiverVideoBitstream(codec: videoCodec)
+        waitingForKeyframe = true
+        decodeErrorCount = 0
+        displayLayer.flushAndRemoveImage()
+        if let session = decompressionSession { VTDecompressionSessionInvalidate(session) }
+        decompressionSession = nil
+    }
+
+    private func configureVideo(_ object: [String: Any]) {
+        guard let config = AppleVideoConfiguration(object, maxWidth: videoLimits.width,
+                maxHeight: videoLimits.height, maxFps: displayMaxFps) else {
+            rejectVideo("视频配置超出能力，请降低画质后重连"); return
+        }
+        guard videoFallback.accepts(config.codec) else {
+            rejectVideo("HEVC 回退失败，请选择 H.264 后重连"); return
+        }
+        let changed = configuredVideo?.codec != config.codec
+            || configuredVideo?.width != config.width || configuredVideo?.height != config.height
+        videoCodec = config.codec
+        configuredVideo = config
+        if changed { resetVideoDecoder() }
+        if config.codec == .hevc, !supportsHEVC { failVideo(); return }
+        if config.codec == .h264 { videoFallback.receivedH264() }
+        let generation = inputSendBudget.generation
+        DispatchQueue.main.async {
+            guard self.inputSendBudget.generation == generation else { return }
+            self.requestedFps = config.fps
+            self.codecLabel = config.codec == .hevc ? "HEVC" : "H.264"
+        }
+    }
+
+    private func rejectVideo(_ message: String) {
+        dropInputConnection(generation: inputSendBudget.generation, status: message)
+    }
+
+    private func failVideo() {
+        guard videoCodec == .hevc else {
+            rejectVideo("视频解码失败，请重新连接"); return
+        }
+        guard videoFallback.failHEVC(now: ProcessInfo.processInfo.systemUptime),
+              let conn = connection else { return }
+        resetVideoDecoder()
+        sendControl(["type": "codecFailure", "codec": "hevc", "message": "Apple HEVC decode failed"], on: conn)
+        setStatus("HEVC 不可用，正在回退 H.264")
+        queue.asyncAfter(deadline: .now() + 3) { [weak self, weak conn] in
+            guard let self, let conn, self.connection === conn,
+                  self.videoFallback.expired(now: ProcessInfo.processInfo.systemUptime) else { return }
+            self.rejectVideo("HEVC 回退超时，请在发送端选择 H.264 后重连")
         }
     }
 
@@ -863,8 +887,10 @@ final class PhoneReceiver: ObservableObject {
             allocator: nil, formatDescription: formatDesc, decoderSpecification: nil,
             imageBufferAttributes: attrs as CFDictionary, outputCallback: nil,
             decompressionSessionOut: &session)
-        if status != noErr { Log.info("VTDecompressionSessionCreate failed: \(status)") }
-        decompressionSession = session
+        if status != noErr {
+            Log.info("VTDecompressionSessionCreate failed: \(status)")
+            failVideo()
+        } else { decompressionSession = session }
     }
 
     /// Synchronous hardware decode — the handler runs before this returns,
@@ -873,10 +899,11 @@ final class PhoneReceiver: ObservableObject {
         ensureDecompressionSession()
         guard let session = decompressionSession else { return }
         let t0 = nowMs
+        let generation = inputSendBudget.generation
         let status = VTDecompressionSessionDecodeFrame(
             session, sampleBuffer: sample, flags: [], infoFlagsOut: nil
         ) { [weak self] status, _, imageBuffer, _, _ in
-            guard let self else { return }
+            guard let self, self.inputSendBudget.generation == generation else { return }
             if status == noErr, let imageBuffer {
                 self.decodeWindow.append(self.nowMs - t0)
                 self.onDecodedFrame?(imageBuffer, captureMs)
@@ -899,6 +926,7 @@ final class PhoneReceiver: ObservableObject {
             }
             requestKeyframeIfNeeded()
         }
+        if decodeErrorCount >= 3 { failVideo() }
     }
 
     private var lastKeyframeRequest = Date.distantPast

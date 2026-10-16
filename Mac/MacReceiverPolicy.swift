@@ -75,11 +75,11 @@ enum MacReceiverPolicy {
                 if width >= height { width = max(2, (pixelBudget / height) & ~1) }
                 else { height = max(2, (pixelBudget / width) & ~1) }
             }
-            let budgetFps = cap.maxPixelsPerSecond.map { max(1, $0 / (width * height)) } ?? 60
-            let limit = min(60, max(1, info.displayMaxFrameRate ?? info.maxFps ?? 60),
+            let budgetFps = cap.maxPixelsPerSecond.map { max(1, $0 / (width * height)) } ?? 120
+            let limit = min(120, max(1, info.displayMaxFrameRate ?? info.maxFps ?? 60),
                             max(1, cap.maxFrameRate ?? 60), budgetFps,
-                            settings.fpsMode.userSelectedFps ?? 60)
-            let fps = limit >= 60 ? 60 : (limit >= 30 ? 30 : limit)
+                            settings.fpsMode.userSelectedFps ?? 120)
+            let fps = [120, 90, 60, 30].first(where: { $0 <= limit }) ?? limit
             return MacStreamPlan(pointsWide: pointsWide, pointsHigh: pointsHigh, scale: scale,
                                  width: width, height: height, fps: fps, codec: hevc ? .hevc : .h264)
         }

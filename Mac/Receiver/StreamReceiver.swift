@@ -63,7 +63,7 @@ final class StreamReceiver: ObservableObject {
     func configure(panel: PanelAnnouncement, name: String, maxFps: Int = 60) {
         queue.async {
             self.panel = panel
-            self.maxFps = min(60, max(30, maxFps))
+            self.maxFps = AppleVideoPolicy.frameRate(maximum: maxFps)
             self.serviceName = name.isEmpty ? "DisplayWeave Mac" : name
             if self.advertiseService { self.listener?.service = self.service }
             if let connection = self.connection { self.sendHello(on: connection) }
@@ -209,7 +209,8 @@ final class StreamReceiver: ObservableObject {
     private func sendHello(on conn: NWConnection) {
         let codecs = supportsHEVC ? ["h264", "hevc"] : ["h264"]
         let caps: [[String: Any]] = codecs.map {
-            ["codec": $0, "maxWidth": limits.width, "maxHeight": limits.height, "maxFrameRate": maxFps]
+            ["codec": $0, "maxWidth": limits.width, "maxHeight": limits.height, "maxFrameRate": maxFps,
+             "maxPixelsPerSecond": AppleVideoPolicy.maxPixelsPerSecond]
         }
         send(["type": "hello", "device": "Mac", "id": Self.installID,
               "pixelsWide": panel.pixelsWide, "pixelsHigh": panel.pixelsHigh, "scale": panel.scale,
@@ -286,20 +287,20 @@ final class StreamReceiver: ObservableObject {
             case "ping":
                 send(["type": "pong", "t": obj["t"] ?? 0, "mt": Date().timeIntervalSince1970 * 1000])
             case "streamConfig":
-                guard let codec = ReceiverVideoCodec(rawValue: obj["codec"] as? String ?? "h264") else {
-                    drop(conn, status: "不支持的编码，请使用 H.264"); return
-                }
-                let w = obj["width"] as? Int ?? 0
-                let h = obj["height"] as? Int ?? 0
-                guard w >= 2, h >= 2, w <= limits.width, h <= limits.height, w % 2 == 0, h % 2 == 0 else {
+                guard let config = AppleVideoConfiguration(obj, maxWidth: limits.width,
+                        maxHeight: limits.height, maxFps: maxFps) else {
                     drop(conn, status: "发送配置超出接收能力，请降低画质"); return
                 }
+                let codec = config.codec
+                let size = CGSize(width: config.width, height: config.height)
                 if codec == .hevc, hevcFailureSent {
                     drop(conn, status: "HEVC 回退失败，请选择 H.264 后重连"); return
                 }
-                videoCodec = codec
-                resetVideo()
-                configuredSize = CGSize(width: w, height: h)
+                if videoCodec != codec || configuredSize != size {
+                    videoCodec = codec
+                    resetVideo()
+                }
+                configuredSize = size
                 if codec == .hevc, !supportsHEVC { failVideo(on: conn); return }
                 fallbackDeadline = nil
             case "cursor":

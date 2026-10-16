@@ -109,3 +109,7 @@ above comes from earlier lid-open runs; clamshell/headless operation remains
 unverified. If test displays remain listed after closing the lid mid-test,
 restore a physical display before inspecting the list; do not count that state
 as successful release validation.
+
+## Source update after p8
+
+New source negotiates up to 120fps within screen, codec and pixel-throughput bounds; see [Apple video](apple-video.md). Per-device [desktop resolution](desktop-resolution.md) is independent of encoded quality. The published p8 limits above remain accurate for that download.
