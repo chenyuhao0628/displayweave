@@ -8,12 +8,44 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import javax.net.ssl.SSLException;
 
 public final class UpdateClient {
     private static final int CONNECT_TIMEOUT_MILLIS = 10_000;
     private static final int READ_TIMEOUT_MILLIS = 30_000;
     private static final int MAX_REDIRECTS = 5;
     private static final int MAX_MANIFEST_BYTES = 1024 * 1024;
+    private static final String PRIMARY_FEED =
+            "https://downloads.urlget.cyou/displayweave/android-update.json";
+    private static final String FALLBACK_FEED =
+            "https://chenyuhao0628.github.io/displayweave/android-update.json";
+
+    interface ConnectionOpener {
+        HttpURLConnection open(URL url) throws IOException;
+    }
+    private final ConnectionOpener opener;
+
+    public UpdateClient() {
+        this(url -> (HttpURLConnection) url.openConnection());
+    }
+
+    UpdateClient(ConnectionOpener opener) {
+        this.opener = opener;
+    }
+
+    public UpdateManifest fetchLatestManifest(long nowMillis) throws IOException {
+        String query = "?displayweave_cache_bust=" + nowMillis;
+        try {
+            return fetchManifest(new URL(PRIMARY_FEED + query));
+        } catch (MirrorUnavailableException primaryError) {
+            try {
+                return fetchManifest(new URL(FALLBACK_FEED + query));
+            } catch (IOException fallbackError) {
+                fallbackError.addSuppressed(primaryError);
+                throw fallbackError;
+            }
+        }
+    }
 
     public interface Progress {
         void onProgress(long downloadedBytes, long totalBytes);
@@ -36,12 +68,24 @@ public final class UpdateClient {
     }
 
     public UpdateManifest fetchManifest(URL url) throws IOException {
-        HttpURLConnection connection = open(url, true);
+        HttpURLConnection connection;
         try {
-            requireSuccess(connection);
+            connection = open(url, true);
+        } catch (IOException error) {
+            throw unavailable("Unable to reach update feed", error);
+        }
+        try {
+            int status = connection.getResponseCode();
+            if (status == 404 || status == 410 || status == 408 || status == 429
+                    || (status >= 500 && status <= 599)) {
+                throw new MirrorUnavailableException("Update feed returned HTTP " + status);
+            }
+            if (status < 200 || status >= 300) {
+                throw new ArtifactRejectedException("Update feed rejected: HTTP " + status);
+            }
             long length = connection.getContentLengthLong();
             if (length > MAX_MANIFEST_BYTES) {
-                throw new IOException("Update manifest exceeds size limit");
+                throw new ArtifactRejectedException("Update manifest exceeds size limit");
             }
             try (InputStream input = connection.getInputStream();
                  ByteArrayOutputStream output = new ByteArrayOutputStream()) {
@@ -49,9 +93,11 @@ public final class UpdateClient {
                 try {
                     return UpdateManifest.parse(output.toString(StandardCharsets.UTF_8));
                 } catch (IllegalArgumentException error) {
-                    throw new IOException("Invalid update manifest", error);
+                    throw new ArtifactRejectedException("Invalid update manifest: " + error.getMessage());
                 }
             }
+        } catch (IOException error) {
+            throw unavailable("Unable to read update feed", error);
         } finally {
             connection.disconnect();
         }
@@ -115,19 +161,21 @@ public final class UpdateClient {
         }
     }
 
-    private static MirrorUnavailableException unavailable(String message, IOException error) {
+    private static IOException unavailable(String message, IOException error) {
+        // Certificate and policy failures are not availability failures.
+        if (error instanceof SSLException || error instanceof ArtifactRejectedException) return error;
         if (error instanceof MirrorUnavailableException) {
             return (MirrorUnavailableException) error;
         }
         return new MirrorUnavailableException(message, error);
     }
 
-    private static HttpURLConnection open(URL initialUrl, boolean requireFreshResponse)
+    private HttpURLConnection open(URL initialUrl, boolean requireFreshResponse)
             throws IOException {
         URL url = initialUrl;
         for (int redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
             requireHttps(url);
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            HttpURLConnection connection = opener.open(url);
             connection.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
             connection.setReadTimeout(READ_TIMEOUT_MILLIS);
             connection.setInstanceFollowRedirects(false);
@@ -138,20 +186,31 @@ public final class UpdateClient {
                 connection.setRequestProperty("Pragma", "no-cache");
             }
             connection.setRequestProperty("Accept", "application/json, application/octet-stream");
-            connection.connect();
-            int status = connection.getResponseCode();
-            if (status < 300 || status >= 400) return connection;
-            String location = connection.getHeaderField("Location");
-            connection.disconnect();
-            if (location == null) throw new IOException("Update redirect is missing Location");
-            url = new URL(url, location);
+            boolean returned = false;
+            try {
+                connection.connect();
+                int status = connection.getResponseCode();
+                if (status < 300 || status >= 400) {
+                    returned = true;
+                    return connection;
+                }
+                String location = connection.getHeaderField("Location");
+                if (location == null) throw new ArtifactRejectedException("Update redirect is missing Location");
+                URL redirected = new URL(url, location);
+                if (requireFreshResponse && !initialUrl.getHost().equalsIgnoreCase(redirected.getHost())) {
+                    throw new ArtifactRejectedException("Update feed redirect changes host");
+                }
+                url = redirected;
+            } finally {
+                if (!returned) connection.disconnect();
+            }
         }
-        throw new IOException("Too many update redirects");
+        throw new ArtifactRejectedException("Too many update redirects");
     }
 
     private static void requireHttps(URL url) throws IOException {
         if (!"https".equalsIgnoreCase(url.getProtocol())) {
-            throw new IOException("Update transport must use HTTPS");
+            throw new ArtifactRejectedException("Update transport must use HTTPS");
         }
     }
 

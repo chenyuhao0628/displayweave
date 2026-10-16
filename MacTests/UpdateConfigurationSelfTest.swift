@@ -6,8 +6,14 @@ enum UpdateConfigurationSelfTest {
         let source = try String(contentsOfFile: "project.yml", encoding: .utf8)
 
         expect(source.contains(
-            "SUFeedURL: https://chenyuhao0628.github.io/displayweave/appcast.xml"
-        ), "Sparkle feed must use the published GitHub Pages URL")
+            "SUFeedURL: \(UpdateFeedPolicy.canonical)"
+        ), "Sparkle feed must use the reachable migrated URL")
+        expect(UpdateFeedPolicy.canonical != UpdateFeedPolicy.legacy,
+               "old installations require a migration build")
+        let delegate = try String(contentsOfFile: "Mac/UpdateViews.swift", encoding: .utf8)
+        expect(delegate.contains("func feedURLString(for updater: SPUUpdater) -> String?"),
+               "delegate overrides persisted legacy feed preferences")
+        expect(delegate.contains("UpdateFeedPolicy.canonical"), "delegate selects managed feed")
         expect(source.contains("SUEnableAutomaticChecks: true"),
                "automatic update checks must be enabled")
         expect(source.contains("SUAutomaticallyUpdate: true"),
@@ -20,8 +26,8 @@ enum UpdateConfigurationSelfTest {
         let key = String(source[range.upperBound...].prefix { !$0.isNewline })
         expect(Data(base64Encoded: key)?.count == 32,
                "Sparkle public key must decode to 32 bytes")
-        expect(key != "rYxlIePmwzi2bRo/qIsuY2TqTnQ34li2gQhJpGBiumw=",
-               "obsolete Sparkle public key must be replaced")
+        expect(key == "N9dMZV/F1ui58IsEmCv5jFVgDWiWv2yB/01KBlAHFjE=",
+               "feed migration must preserve the shipped signing identity")
 
         print("UpdateConfigurationSelfTest PASS")
     }

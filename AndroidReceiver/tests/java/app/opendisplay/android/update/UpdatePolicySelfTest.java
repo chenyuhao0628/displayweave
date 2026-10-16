@@ -10,6 +10,7 @@ public final class UpdatePolicySelfTest {
             "89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d";
 
     public static void main(String[] args) throws Exception {
+        UpdateClientSelfTest.run(validJson());
         UpdateManifest manifest = UpdateManifest.parse(validJson());
         expect(manifest.schemaVersion == 1, "schema parsed");
         expect(manifest.versionCode == 123, "version code parsed");
@@ -121,8 +122,8 @@ public final class UpdatePolicySelfTest {
                 "manifest requests force cache revalidation");
         String coordinator = Files.readString(Path.of(
                 "src/main/java/app/opendisplay/android/update/UpdateCoordinator.java"));
-        expect(coordinator.contains("displayweave_cache_bust"),
-                "manifest URL uses a cache-busting query");
+        expect(coordinator.contains("client.fetchLatestManifest"),
+                "check and pre-install validation use migrated feeds");
         expect(coordinator.contains("正在确认更新仍为最新版本"),
                 "install path rechecks the current manifest");
         expect(coordinator.contains("cleanupCompletedOrInvalidDownload"),

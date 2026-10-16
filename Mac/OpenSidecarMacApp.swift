@@ -52,8 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // run; the menu item drives manual "Check for Updates…". Held for the
     // app's lifetime here so every window (menu bar + control window) shares
     // one updater instance.
-    let updater = SPUStandardUpdaterController(
-        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    private let updateFeedDelegate = UpdateFeedDelegate()
+    lazy var updater = SPUStandardUpdaterController(
+        startingUpdater: true, updaterDelegate: updateFeedDelegate, userDriverDelegate: nil)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Stage Manager and the Dock use the running NSApplication icon.

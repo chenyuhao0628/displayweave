@@ -30,8 +30,12 @@
 ## 进度
 
 - 评估：基线工作区干净；十二项已列明验收、依赖与边界。
-- F01–F12：待实现。后续各条记录提交、真实自动证据及剩余外部/实机条件。
+- F02–F12：待实现。后续各条记录提交、真实自动证据及剩余外部/实机条件。
 
 ## 官方 API 参考
 
 - Sparkle：[发布与 feed 迁移](https://sparkle-project.org/documentation/publishing/)、[更新信任](https://sparkle-project.org/documentation/)。2026-10-16 核实；更改更新源不能替代归档签名校验。
+
+### F01 — 源码已实现
+
+Mac 完成更新源迁移并覆盖历史持久化地址；Android 增加有界可用性回退，TLS/元数据异常直接拒绝。签名身份保持不变。测试先在旧配置失败，修正后通过。Mac universal Debug、Android 六组（含新增 UpdateClient 传输测试）及 assembleDebug 通过。在线主源返回 200 且与仓库 p8 字节一致。旧 p8 若 Pages 未恢复仍需手动迁移。

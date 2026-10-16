@@ -76,7 +76,7 @@ run_test TransportSelectionPolicySelfTest \
   "${settings[@]}" Mac/TransportSelectionPolicy.swift \
   MacTests/TransportSelectionPolicySelfTest.swift
 run_test UpdateConfigurationSelfTest \
-  -parse-as-library MacTests/UpdateConfigurationSelfTest.swift
+  Mac/UpdateFeedPolicy.swift MacTests/UpdateConfigurationSelfTest.swift
 run_test UpdateReleasePolicySelfTest \
   -parse-as-library MacTests/UpdateReleasePolicySelfTest.swift
 

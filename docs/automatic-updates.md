@@ -2,10 +2,11 @@
 
 # Automatic updates without an Apple developer account
 
-DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases and small update feeds on GitHub Pages:
+Published p8 embeds the historical GitHub Pages feed URLs. The source branch migrates new Mac/Android builds to these HTTPS feeds, served by the existing Cloudflare mirror:
 
-- Mac feed: `https://chenyuhao0628.github.io/displayweave/appcast.xml`
-- Android feed: `https://chenyuhao0628.github.io/displayweave/android-update.json`
+- Mac source feed: `https://downloads.urlget.cyou/displayweave/appcast.xml`
+- Android source feed: `https://downloads.urlget.cyou/displayweave/android-update.json`
+- Android availability fallback: `https://chenyuhao0628.github.io/displayweave/android-update.json`
 - Mac first-install artifact: `DisplayWeave-macOS.dmg` (guided releases)
 - Mac update artifact: `DisplayWeave-macOS.zip`
 - Android artifact: `DisplayWeave-Android.apk`
@@ -13,14 +14,20 @@ DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases an
 The current development release is
 [`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8).
 Android p5 cannot trust the new Cloudflare hostname, so install p6 or newer manually once.
-p6 and later can use the dual-source channel automatically.
+p6–p8 support dual-source APK downloads, but still require their historical Pages metadata feed.
 This release includes both the guided DMG and the Sparkle ZIP payload.
 
 The Mac build is ad-hoc signed and not notarized. Sparkle authenticates its ZIP with the embedded EdDSA public key, so subsequent updates can be verified without Apple Developer Program credentials. This does not make the first download Gatekeeper-trusted or equivalent to a notarized release.
 
-2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; use the [Cloudflare download page](https://downloads.urlget.cyou/displayweave/). Mac/Android update checks still depend on the original Pages URLs; install manually until they recover. Mirrored feed copies do not change client URLs.
+2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; use the [Cloudflare download page](https://downloads.urlget.cyou/displayweave/). Published p8 update checks still depend on the original Pages URLs. Until those URLs recover, install a future build containing this migration manually once. Mirrored feed copies alone cannot repair old clients. No migration build has been released by this source change.
 
 See [local releases](local-release.md) for reproducible commands and validation requirements.
+
+## Source channel recovery
+
+Mac selects the canonical Cloudflare feed through Sparkle’s updater delegate, overriding a persisted legacy feed URL without changing user check/install preferences. ZIP verification retains the exact p8 Ed25519 public key. Android tries the canonical feed and at most one historical fallback for network errors or HTTP 404/410/408/429/5xx. Invalid/oversized metadata, TLS trust failures, non-HTTPS or cross-host metadata redirects fail closed. Both ordinary checks and the final pre-install recheck use this policy. APK size/hash/package/version/certificate validation remains mandatory.
+
+Operators must deploy the same current feed to both hosts, preserve immutable artifacts and source archives, and verify Cloudflare live bytes before offering an update. Both canonical feeds returned HTTP 200 and matched the tracked p8 feeds on 2026-10-16. This is availability evidence, not evidence that an unreleased build is installed.
 
 ## One-time user migration
 

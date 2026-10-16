@@ -53,9 +53,9 @@ targets:
         NSBonjourServices: ["_opensidecar._tcp"]
         LSApplicationCategoryType: public.app-category.utilities
         # --- Sparkle auto-update (issue #52) ---
-        # The release workflow publishes appcast.xml into public/. Automatic
-        # checks remain off until the first DisplayWeave-signed release exists.
-        SUFeedURL: https://chenyuhao0628.github.io/displayweave/appcast.xml
+        # Cloudflare hosts the same signed artifacts. UpdateFeedDelegate also
+        # overrides stale persisted GitHub Pages preferences on upgrade.
+        SUFeedURL: https://downloads.urlget.cyou/displayweave/appcast.xml
         # Public EdDSA key from Sparkle's `generate_keys`. The matching private
         # key lives only as the `SPARKLE_PRIVATE_KEY` GitHub Actions secret
         # (used to sign the appcast in CI) and is never committed. Sparkle
