@@ -16,7 +16,11 @@ import Foundation
         rejects { _ = try resolve("receiver") }
         rejects { _ = try resolve("receiver", advertised: true, legacy: true) }
         let legacy = try resolve(nil, legacy: true)
-        precondition(!legacy.encrypted && !legacy.permitsHello(id: nil) && legacy.permitsHello(id: "receiver"))
+        precondition(!legacy.encrypted && legacy.permitsHello(id: nil) && legacy.permitsHello(id: "receiver"))
+        precondition(!legacy.permitsHello(id: "") && !legacy.permitsHello(id: "sender"))
+        let identifiedLegacy = try resolve("legacy-id", legacy: true)
+        precondition(!identifiedLegacy.permitsHello(id: nil), "known legacy identity must not disappear")
+        precondition(identifiedLegacy.permitsHello(id: "legacy-id"))
         let invitation = PairingInvitation(receiverID: "receiver", certificateSHA256: receiver.fingerprint,
                                            token: Data(repeating: 1, count: 32))
         let secure = try resolve(nil, invitation: invitation)
@@ -39,6 +43,7 @@ import Foundation
         rejects { _ = try state.startPairing() }
         rejects { try state.revokeAllAndInvalidate() }
         rejects { try state.trustConfirmedReceiver(id: "other", name: "Test", fingerprint: receiver.fingerprint, explicitInvitation: true) }
+        precondition(!legacy.permitsHello(id: nil), "stale anonymous legacy plan survived reset")
         precondition(!legacy.permitsHello(id: "neverSeen"), "stale identity allowed legacy after reset")
         print("Security plans: explicit legacy, pin/ID matching, stripped TXT, revocation and reset PASS")
     }

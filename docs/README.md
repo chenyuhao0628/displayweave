@@ -19,6 +19,8 @@
 - [HEVC, wired discovery and Pencil design / acceptance](hevc-wired-pencil-plan.md)
 - [2026-10-16 source upgrade audit and hardware limits](source-upgrade-audit-2026-10-16.md) and [upstream integration decisions](upstream-integration-2026-10-16.md)
 - [UI standard](ui-guidelines.md) and [source upgrade plan](upgrade-plan.md)
+- [UI audit and acceptance (2026-10-16)](ui-audit-2026-10-16.md)
+- [OpenDisplay connection compatibility](opendisplay-compatibility.md)
 - [Development workflow and current Codex guidance](development.md)
 - [Mac-to-Mac LAN (experimental preview)](mac-to-mac.md) and [design/upstream assessment](mac-to-mac-design.md)
 

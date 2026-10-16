@@ -3,7 +3,11 @@
 import SwiftUI
 import AVFoundation
 
+let deviceKind = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
+let macAppURL = URL(string: "https://github.com/chenyuhao0628/displayweave")!
+
 @MainActor private final class PhoneFixture: ObservableObject {
+    @Published var surface = "security"
     let receiver = PhoneReceiver(displayLayer: AVSampleBufferDisplayLayer())
     private let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     private let port = UInt16(UserDefaults.standard.integer(forKey: "testPort"))
@@ -58,7 +62,9 @@ import AVFoundation
         let command = folder.appendingPathComponent("command.txt")
         if let data = try? Data(contentsOf: command), data.count < 64 {
             try? FileManager.default.removeItem(at: command)
-            if String(decoding: data, as: UTF8.self) == "revoke" {
+            if String(decoding: data, as: UTF8.self).hasPrefix("ui-") {
+                surface = String(String(decoding: data, as: UTF8.self).dropFirst(3))
+            } else if String(decoding: data, as: UTF8.self) == "revoke" {
                 AppleTransportSecurityModel.shared.refresh()
                 for peer in AppleTransportSecurityModel.shared.peers { AppleTransportSecurityModel.shared.revoke(peer.installID) }
             } else if String(decoding: data, as: UTF8.self) == "pencil" {
@@ -99,10 +105,19 @@ import AVFoundation
 
 private struct PhoneFixtureView: View {
     @ObservedObject var fixture: PhoneFixture
+    @State private var showSettings = false
     @Environment(\.scenePhase) private var scenePhase
     private let timer = Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()
     var body: some View {
-            Form { PencilSettingsSection(receiver: fixture.receiver); TransportSecuritySettings() }
+            Group {
+                switch fixture.surface {
+                case "idle": IdleView(receiver: fixture.receiver, showSettings: $showSettings)
+                case "onboarding": OnboardingView(onClose: {})
+                case "settings": SettingsView(receiver: fixture.receiver)
+                default: Form { PencilSettingsSection(receiver: fixture.receiver); TransportSecuritySettings() }
+                }
+            }
+                .sheet(isPresented: $showSettings) { SettingsView(receiver: fixture.receiver) }
                 .onAppear { fixture.start() }
                 .onReceive(timer) { _ in fixture.tick() }
                 .onChange(of: scenePhase) { _, phase in fixture.phase(phase) }

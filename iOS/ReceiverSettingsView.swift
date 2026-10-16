@@ -31,8 +31,6 @@ struct SettingsView: View {
                     }
                 }
 
-                PencilSettingsSection(receiver: receiver)
-
                 TransportSecuritySettings()
 
                 Section {
@@ -47,6 +45,8 @@ struct SettingsView: View {
                 } footer: {
                     Text("此名称会显示在 Mac 端的局域网设备列表里。iOS 不允许 app 读取这台 \(deviceKind) 的真实设备名，所以请在这里设置一次。")
                 }
+
+                PencilSettingsSection(receiver: receiver)
 
                 Section {
                     Toggle("性能浮层", isOn: $showAnalytics)
@@ -100,7 +100,8 @@ struct SettingsView: View {
                     }
                 }
             }
-            .navigationTitle("DisplayWeave")
+            .tint(.blue)
+            .navigationTitle("设置与帮助")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

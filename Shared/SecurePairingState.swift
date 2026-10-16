@@ -53,6 +53,9 @@ final class SecurePairingState: @unchecked Sendable {
     var peers: [SecurePeerRecord] { lock.withLock { records.values.sorted { $0.installID < $1.installID } } }
     var revision: UInt64 { lock.withLock { trustRevision } }
     var pairingOpen: Bool { lock.withLock { openWindow() != nil } }
+    /// Anonymous peers exist in early OpenDisplay; only an explicitly legacy plan may use this.
+    var permitsAnonymousLegacy: Bool { lock.withLock { !invalidated } }
+
     func hasPairingHistory(_ id: String) -> Bool { lock.withLock { invalidated || records[id] != nil } }
     func trustedPeer(_ id: String) -> SecurePeerRecord? {
         lock.withLock { invalidated ? nil : records[id].flatMap { $0.revoked ? nil : $0 } }

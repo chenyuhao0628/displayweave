@@ -25,6 +25,17 @@ import Foundation
         precondition(large.fps == 60)
         let legacy = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":1920,"pixelsHigh":1080,"scale":2,"device":"iPad"}"#.utf8))
         precondition(!legacy.usesAppleVideoCapabilities)
+        // OpenDisplay v1.25.0 / b9eec1f, Shared/StreamReceiver.swift::sendHello.
+        // Extra pv/cursor fields are additive; Apple must not enter Android V2.
+        let upstream = #"{"pixelsWide":1920,"pixelsHigh":1080,"scale":1,"device":"Mac","id":"upstream-peer","pv":3,"displayMaxFrameRate":60,"panel":{"pixelsWide":1920,"pixelsHigh":1080,"scale":1},"videoCaps":[{"codec":"h264","maxWidth":1920,"maxHeight":1080,"maxFrameRate":60}],"cursorPort":9001}"#
+        let upstreamInfo = try JSONDecoder().decode(PhoneInfo.self, from: Data(upstream.utf8))
+        precondition(upstreamInfo.hasValidGeometry && !upstreamInfo.supportsProtocolV2)
+        let upstreamPlan = MacReceiverPolicy.plan(info: upstreamInfo, settings: settings, hardwareHEVCEncode: true)
+        precondition(upstreamPlan.codec == .h264 && upstreamPlan.fps <= 60)
+        let upstreamConfig: [String: Any] = ["type": "streamConfig", "codec": "h264", "width": 1920, "height": 1080, "framesPerSecond": 30]
+        precondition(AppleVideoConfiguration(upstreamConfig, maxWidth: 1920, maxHeight: 1080, maxFps: 60)?.fps == 30)
+        // Early pre-version/pre-install-ID iOS remains H.264; no invented V2 capability.
+        precondition(legacy.id == nil && legacy.hasValidGeometry && !legacy.supportsProtocolV2)
         var fallback = AppleVideoFallbackPolicy()
         precondition(fallback.failHEVC(now: 10))
         precondition(!fallback.failHEVC(now: 11))

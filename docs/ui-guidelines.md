@@ -1,43 +1,68 @@
 [English](ui-guidelines.md) | [简体中文](ui-guidelines.zh-CN.md)
 
-# UI standard
+# DisplayWeave UI design standard
 
-Scope: macOS control and receive windows, iOS receiver, Android receiver, and bilingual website. Effective 2026-10-16; this is the implementation contract for the source branch.
+Revision 2 · 2026-10-16. This is the implementation contract for macOS, iOS and Android application UI. Website branding and download accuracy follow the same vocabulary; this iteration changes native applications and release information. Evidence belongs in the [UI audit](ui-audit-2026-10-16.md), separately from this specification.
 
-## Information and interaction
+## Product and information architecture
 
-- Primary task first: choose send/receive, select a device, connect; on receivers, show readiness and the steps required on the Mac. Keep diagnostics and tuning out of the first connection path.
-- Use consistent terms: Send / Receive (发送 / 接收), Extend / Mirror (扩展 / 镜像), LAN (局域网，Wi-Fi or Ethernet), USB, Connected / Waiting / Failed (已连接 / 等待连接 / 连接失败). Protocol names belong in advanced settings or diagnostics.
-- Every visible state includes text, not only a colored dot. Show actionable errors with retry, permission settings or network guidance. A pending connection is not a connected device.
-- One prominent primary action per context. Secondary actions use native bordered/text controls. Destructive disconnect/stop remains clearly labeled. Never replace a failed state with silent success.
-- Keep local transport security guidance near connection help. Distinguish source-only capability, experimental performance and downloadable releases.
+Help a person turn another device into a display. The first screen must answer: which role is this device using, what is happening, and what should I do next? Use native controls and system typography; keep detailed tuning out of the first connection path.
 
-## Visual tokens
+| Surface | Order and primary action | Secondary content |
+| --- | --- | --- |
+| Mac sender | Role → display mode/transport → devices → first-connection help; Connect on a selected device | Pairing and permission recovery; quality in Settings |
+| Mac receiver | Role → live receive status + pairing → display options → optional input | Connection steps and network recovery |
+| Mac settings | Stream / General / Permissions & diagnostics / Security & pairing | Group settings by outcome, with explanations beneath their control |
+| iOS / Android waiting | Brand → device/status → three steps → Pairing & connection settings | General settings/help; download Mac app in onboarding/help |
+| Streaming receiver | Aspect-correct black-backed video with a persistent accessible Settings button | Optional measured diagnostics; no idle cards over video |
 
-| Role | Standard |
+Mac working window starts at 680 × 720 points and supports 480 × 440. The menu panel is 480 × 640, scrolls its body, and offers Open window. Header and footer remain reachable. Receiver settings and pairing must not be buried below long setup instructions. Mobile content is centered, at most 520 points/dp wide excluding page insets, and scrolls in both orientations. No fixed-height text containers.
+
+## Layout and component tokens
+
+| Token | Rule |
 | --- | --- |
-| Spacing | 4, 8, 12, 16, 24, 32 logical points/dp; sections 24; page inset 20–24 |
-| Typography | System font; title, headline, body, caption semantic styles; monospaced only for measured values and identifiers |
-| Surface | Native system background and grouped secondary surface on Apple; adaptive day/night palette on Android; shared CSS variables on web |
-| Accent | One blue/cyan accent for primary action; green/amber/red reserved for labeled status |
-| Shape | 12–16 radius for content panels; system control shapes; avoid excessive decoration |
-| Target | Native desktop controls; at least 44 points for touch on iOS, 48 dp on Android; web touch actions at least 44 CSS px |
-| Width | Desktop resizable and scrollable; mobile content up to 520 points; website 1240 px maximum |
+| Spacing | 4, 8, 12, 16, 24, 32 logical points/dp; 24 between sections; 20–24 page inset |
+| Typography | System title/title2 for a page; headline for a section/device; body for actions and instructions; caption/footnote for supporting detail |
+| Measurements | Monospaced digits for throughput/FPS; identifiers may use monospaced text and selection |
+| Surfaces | Native adaptive window background/material; quiet secondary cards; Android explicit day/night semantic palette |
+| Accent | One blue accent for primary actions; status additionally has a symbol and readable text |
+| Shape | 16 for content cards; native button/toggle shapes; 12 for compact status surfaces |
+| Targets | Native Mac controls; iOS at least 44 pt and Android at least 48 dp for touch actions |
+| Borders | Subtle separator stroke; no decorative gradients, redundant shadows, or oversized icon tiles |
 
-## Platform contracts
+Reusable components have a single purpose: section heading, content panel, status label, device row, numbered setup step. Apple setup steps are shared between onboarding and waiting surfaces. Android styling belongs in ReceiverUi. Avoid copying full pages or placing network work in view bodies.
 
-**Mac:** app entry, sender controller/session models, permissions, reusable UI and feature views live in separate files. Main window contains roles, devices and connection controls. A dedicated settings window holds stream quality, application presentation and diagnostics. AppKit bridges only window lifecycle/video behavior. Preserve a bounded menu-bar panel and a resizable main window. Keep keyboard access and Command-comma settings.
+## State and interaction contract
 
-**iOS:** scrollable waiting/onboarding views support landscape and Dynamic Type. Settings must have a visible, accessible streaming entry point; shaking remains optional. Video stays black-backed and aspect-correct. Separate model, video host, performance overlay, settings and onboarding from app entry.
+| State | Presentation | Available recovery/action |
+| --- | --- | --- |
+| Discovering / waiting | Antenna icon + waiting text, setup steps | Pairing settings, permission/network help |
+| Device discovered | Name and transport; wired link-local is a candidate | Connect; never claim a live connection |
+| Starting / reconnecting | Session's actual status; pending symbol | Disconnect/cancel; disable duplicate starts during replacement |
+| Streaming | Session text, actual security mode and transport; metrics subordinate | Disconnect; failed sessions offer Retry |
+| Failed | Error text wraps without a two-line cap; warning symbol | Retry and relevant permission/pairing action |
+| Switching role | Progress and cleanup explanation; role controls disabled | Wait for resource ownership transfer |
+| Receiver stopped | Actual stopped status | Start receiving |
 
-**Android:** keep immersive video, with an accessible connection panel while waiting. Put common spacing, colors, text/button styles in a UI helper; support day/night and scroll on small screens. Preserve touch/decoder/lifecycle ownership and explicit update controls.
+One primary action per decision area. Keep Stop/Disconnect labeled and secondary. Never infer connection readiness or encryption from a successful TCP connection. Security preference summaries describe policy, while active sessions display their negotiated mode. Default policy says pairing is required; an enabled legacy preference says unencrypted compatibility is allowed, not that every session is unencrypted. No unconditional plaintext warning on a secure sender.
 
-**Web:** reusable page sections and shared tokens; accessible navigation on mobile as well as desktop, visible keyboard focus, semantic landmarks, reduced motion and bilingual labels. Development features must not change release download claims. Preserve downloadable artifact checks.
+## Copy, accessibility and localization
 
-## Acceptance
+Use Send/Receive (发送屏幕/接收屏幕), Extend/Mirror (扩展/镜像), LAN (局域网; Wi-Fi or Ethernet), USB, Waiting (等待连接), Pairing (配对), Retry (重试), Disconnect (断开). Errors explain the next action. Explain invitation creation on the receiver and import on the Mac; pairing is not the same as granting ADB or Accessibility permission.
 
-Inspect light/dark, minimum size and long text; keyboard/tab navigation on desktop/web; portrait/landscape and increased text on mobile. Check waiting, connecting, connected, failure, role transition and settings. Builds and state-policy tests gate each affected platform; hardware-only states need the physical matrix, not fabricated screenshots. Record inspected versus untested states in the iteration report.
+All statuses have readable text and an icon. Decorative art is hidden from accessibility. Icon-only actions have accessible names. Long device names and failures wrap. Label form fields even if their visual labels are hidden. Keep keyboard focus visible, use native tab traversal and Command-comma for settings. Mobile supports Dynamic Type/font scale and scroll; do not force all-caps or fixed text heights. Secondary text uses semantic contrast, not low-opacity primary text. Honor system appearance; black is reserved for video. Do not make frequent frame-rate changes an accessibility announcement.
 
-## Source feature states: HEVC, direct link and Pencil
+User guides have reciprocal English/Simplified Chinese links. The current native UI is Simplified Chinese; adding a complete English UI is separate work, not implied by bilingual documentation.
 
-Show the negotiated codec in receiver status. Label an unconnected link-local wired Mac as a candidate; show the pinned interface in the active session. The auto-connect preference starts off. Pencil settings distinguish confirmed pressure/tilt protocol from legacy touch and explain hardware/application requirements; do not present protocol confirmation as physical verification.
+## Ownership and compatibility
+
+MacRoleController owns exclusive send/receive transitions. SenderController/DeviceSession own transport and cleanup; views bind to existing state. ReceiverModel/PhoneReceiver and Android MainActivity keep their lifecycle and decoder ownership. Presentation changes preserve preference keys, bundle/package IDs, service names, wire framing, update feeds and signing identities. Generate the Xcode project from project.yml.
+
+HEVC, high refresh, wired candidates and Pencil retain capability and physical-evidence qualifiers. Target FPS and submitted FPS are not measured panel refresh. Settings must distinguish consent from confirmed protocol support. Source functionality becomes a download claim only after the matching release is published.
+
+## Acceptance and evidence
+
+Before release, build both Apple targets and Android; run the project regression and documentation gates. Inspect Mac sender/receiver/settings at minimum and default widths, light/dark, long text, and keyboard navigation where a usable display is available. Inspect mobile waiting/onboarding/settings, portrait/landscape and enlarged text. Exercise streaming and failures with isolated fixtures where possible; label synthetic evidence.
+
+Record separately: implemented changes, automated checks, observed UI, physical-device results, and SKIP/deferred work. No fabricated connection screenshots. Virtual-display tests require an independent online display; otherwise SKIP. A simulator or successful build does not prove two-device performance, VoiceOver/TalkBack quality, or Intel runtime.

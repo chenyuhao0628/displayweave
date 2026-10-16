@@ -90,6 +90,12 @@ final class AppleSenderSecurityPlan {
     func didAuthenticate() { authenticated = true }
 
     func permitsHello(id: String?) -> Bool {
+        // Pre-install-ID OpenDisplay receivers are valid only when the user
+        // explicitly enabled legacy and discovery did not promise an identity.
+        // A pinned/advertised identity must never disappear to bypass trust.
+        if id == nil {
+            return fingerprint == nil && receiverID == nil && pairing.permitsAnonymousLegacy
+        }
         guard let id, SecurePairingProtocol.validID(id), id != pairing.localID else { return false }
         if let receiverID, id != receiverID { return false }
         if let fingerprint { return authenticated && pairing.trustedPeer(id)?.certificateSHA256 == fingerprint }

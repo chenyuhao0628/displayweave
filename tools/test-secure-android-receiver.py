@@ -172,7 +172,10 @@ def main():
                 except OSError:
                     return False
             wait_until(listening, "production listener")
-            tap("设置与帮助")
+            if args.screenshots:
+                args.screenshots.mkdir(parents=True, exist_ok=True)
+                (args.screenshots / "android-idle-light.png").write_bytes(device("exec-out", "screencap", "-p"))
+            tap("配对与连接设置")
             tap("安全与配对")
             tap("生成接收邀请")
             invitation = next(node.get("text") for node in tree().iter("node") if node.get("text", "").startswith("DW1."))
@@ -219,11 +222,23 @@ def main():
             if args.screenshots:
                 device("shell", "cmd", "uimode", "night", "yes")
                 time.sleep(0.5)
-                tap("设置与帮助")
+                tap("配对与连接设置")
                 tap("安全与配对")
                 wait_until(lambda: any(node.get("resource-id") == "android:id/alertTitle" and node.get("text") == "安全与配对"
                                        for node in tree().iter("node")), "dark security settings rendering", 10)
                 (args.screenshots / "android-security-dark.png").write_bytes(device("exec-out", "screencap", "-p"))
+                device("shell", "input", "keyevent", "4")
+                device("shell", "input", "keyevent", "4")
+                tree()  # wait for dialog dismissal/animation before capturing idle UI
+                (args.screenshots / "android-idle-dark.png").write_bytes(device("exec-out", "screencap", "-p"))
+                tap("连接客户端：DisplayWeave 加密")
+                tap("OpenDisplay 兼容（未加密）")
+                tap("启用明文兼容")
+                wait_until(legacy_hello, "main-screen OpenDisplay entry", 10)
+                tap("允许旧版明文接收（不安全）")
+                wait_until(lambda: listening() and not legacy_hello(), "main-screen secure listener restoration", 10)
+                print("Android main-screen OpenDisplay mode and secure restoration PASS", flush=True)
+
             device("shell", "input", "keyevent", "3")
             def stopped():
                 try:
