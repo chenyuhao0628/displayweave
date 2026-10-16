@@ -59,10 +59,10 @@ DisplayWeave 的 Debug-only Short Benchmark 只记录 Sender 与 Receiver 的真
 - pending sends、Mac/Android queue depth 和 drops；
 - input P50/P95、Mac CPU、Mac memory。
 
-Producer 不可用不等于零：CSV 使用 `notAvailable`；JSONL 的可选指标使用 `null`，必填 metadata 使用明确的 fallback 字符串。由于尚无可信的区间采样器，Mac CPU 当前保持不可用。停止的 run 保留已经 flush 的样本；flush 失败会连同输出路径显示，必须视为失败证据。
+Producer 不可用不等于零：CSV 使用 `notAvailable`；JSONL 的可选指标使用 `null`，必填 metadata 使用明确的 fallback 字符串。p8 之后的源码按单调时钟采样区间统计进程用户态与内核态 CPU 时间。`macCPU` 是百分比，100% 表示占满一个核心，可以超过 100%；它覆盖整个应用进程，不只当前会话。首次、重置和无效区间仍记为不可用。停止的 run 保留已经 flush 的样本；flush 失败会连同输出路径显示，必须视为失败证据。
 
 ## 对比方法
 
-使用匹配 run 的 median 和 P95，不挑选单个有利瞬间。当前文件可对比 rendered FPS、Frame Age 分布、RTT、队列快照和 Mac/Android aggregate drops。Target Bitrate 与 Actual Bitrate 必须分列；更高码率是画质变量，不是更低延迟的证据。分类 drop 原因、关键帧事件、1% low 聚合和视觉稳定性尚不是 recorder 字段，应另行计算或人工标注；未观察时必须写不可用。
+使用匹配 run 的 median 和 P95，不挑选单个有利瞬间。当前文件可对比 rendered FPS、Frame Age 分布、RTT、队列快照和 Mac/Android aggregate drops。Target Bitrate 与 Actual Bitrate 必须分列；更高码率是画质变量，不是更低延迟的证据。分类 Android drop 次数/原因，以及关键帧请求、接收、合并次数、大小和队列快照已经是 recorder 字段。Android 分配/GC 字段也已记录，详见[缓冲所有权和指标约定](android-binary-frame-header-v2.zh-CN.md)。1% low 聚合和视觉稳定性仍需另行计算或人工标注；未观察时必须写不可用。
 
 现有设备上的 3 分钟 USB/WiFi A/B 矩阵仍待真实执行。Recorder 已存在不代表 Benchmark 已完成。

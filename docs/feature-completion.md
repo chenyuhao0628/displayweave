@@ -30,7 +30,7 @@ Feature completion means implemented behavior and passing automated acceptance, 
 ## Progress
 
 - Assessment: repository clean on baseline; twelve work items enumerated with acceptance and dependencies.
-- Remaining implementation: F03, F05–F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
+- Remaining implementation: F03, F05–F07, F09–F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
 
 ## Official API references
 
@@ -47,3 +47,7 @@ Per-installation Native/1080p/1440p/4K selection now rebuilds only the affected 
 ### F04 — implemented in source
 
 Shared bounded H.264/HEVC parser, iOS explicit Apple envelopes, hardware-gated HEVC, one-shot timed H.264 fallback, and Apple refresh negotiation up to 120fps. iOS requests ProMotion cadence only while its video view is connected. 39 Swift suites, updated Mac network/bitstream tests, Mac universal Debug and iOS Simulator builds passed. iPad simulator exercised valid H.264, configuration rejection, unsupported HEVC fallback and no re-upgrade on the same connection; hardware HEVC presentation was unavailable there. See [scope and physical acceptance](apple-video.md).
+
+### F08 — implemented in source
+
+Mac benchmarks now sample process CPU over monotonic intervals (100% = one core; reset/invalid intervals unavailable). Android transport, executor tasks, server queues and asynchronous decoder input now hold explicit pooled leases with bounded storage/waits and cancellation/rejection cleanup. Metrics distinguish actual array allocation from idle-pool reuse; historical p8 counters are not directly comparable. Tests cover malformed/truncated frames, stale/replacement connection ownership, saturation, shutdown, exceptions, concurrent holders and binary/legacy bucket tails. 1,000 synthetic frames used one allocation / 999 reuses. All 40 Swift suites, Mac universal Debug, Android six groups and Debug assembly passed. Physical allocation/GC/latency A/B remains pending; see [the allocation contract](android-binary-frame-header-v2.md) and [benchmark units](benchmark-guide.md).

@@ -22,6 +22,7 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
     private final ExecutorService acceptor = Executors.newSingleThreadExecutor();
     private final ExecutorService readers = boundedExecutor(2, 2);
     private final ExecutorService writer;
+    private final FrameBufferPool framePool;
     private volatile boolean running;
     private Listener listener;
     private volatile ServerSocket serverSocket;
@@ -55,8 +56,13 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
     }
 
     WifiTcpReceiverTransport(int port, ExecutorService writer) {
+        this(port, writer, new FrameBufferPool());
+    }
+
+    WifiTcpReceiverTransport(int port, ExecutorService writer, FrameBufferPool framePool) {
         requestedPort = port;
         this.writer = writer;
+        this.framePool = framePool;
     }
 
     static ThreadPoolExecutor boundedExecutor(int threads, int queueCapacity) {
@@ -136,6 +142,7 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
         // goodbye must never turn that path into blocking network I/O; closing the
         // socket is already the protocol's authoritative disconnect signal.
         clearAndCloseCurrent();
+        framePool.close();
         ServerSocket activeServer = serverSocket;
         if (activeServer != null) {
             try {
@@ -202,13 +209,13 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
     private void readLoop(ConnectionContext context) {
         try {
             while (running && isCurrent(context) && !context.socket.isClosed()) {
-                byte[] payload = LengthPrefixedProtocol.read(
-                        context.input,
-                        context.maxFrameBytes);
-                context.lastPayloadAtMs = System.currentTimeMillis();
-                applyNegotiatedFrameLimit(context, payload);
-                if (isCurrent(context)) {
-                    listener.onPayload(context.generation, payload);
+                try (FrameBufferPool.Lease frame = LengthPrefixedProtocol.readPooled(
+                        context.input, context.maxFrameBytes, framePool)) {
+                    context.lastPayloadAtMs = System.currentTimeMillis();
+                    applyNegotiatedFrameLimit(context, frame.bytes(), frame.length);
+                    if (isCurrent(context)) {
+                        listener.onFrame(context.generation, frame);
+                    }
                 }
             }
         } catch (LengthPrefixedProtocol.FrameLengthException error) {
@@ -224,7 +231,7 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
                                 + error.failure.name().toLowerCase(Locale.US)
                                 + "），已关闭当前连接并等待有限恢复");
             }
-        } catch (IOException error) {
+        } catch (IOException | RuntimeException error) {
             if (running && isCurrent(context)) {
                 listener.onTransportDrop(
                         context.generation, "transportReadFailure");
@@ -246,8 +253,8 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
     }
 
     private static void applyNegotiatedFrameLimit(
-            ConnectionContext context, byte[] payload) {
-        int negotiatedLimit = LengthPrefixedProtocol.streamConfigFrameLimit(payload);
+            ConnectionContext context, byte[] payload, int length) {
+        int negotiatedLimit = LengthPrefixedProtocol.streamConfigFrameLimit(payload, length);
         if (negotiatedLimit > 0) {
             context.maxFrameBytes = negotiatedLimit;
         }

@@ -210,6 +210,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var benchmarkPendingEncodePeak = 0
     private var benchmarkFinishWorkItem: DispatchWorkItem?
     private var benchmarkOutputDirectory: URL?
+    private var benchmarkCPU = ProcessCPUSampler()
 
     // ScreenCaptureKit emits frames only when content changes. After a
     // reconnect on a static screen there is nothing to hang the forced
@@ -578,6 +579,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             finishBenchmarkOnQueue(message: nil)
             benchmarkRecorder = recorder
             benchmarkStartedAt = benchmarkClock.now
+            benchmarkCPU.reset()
+            _ = benchmarkCPU.sample()
             benchmarkPhasePolicy = BenchmarkPhasePolicy(runSeconds: TimeInterval(duration.rawValue))
             benchmarkRunId = runId
             benchmarkSessionId = UUID().uuidString.lowercased()
@@ -2121,7 +2124,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             totalPendingWork: Double(pendingSends + pendingEncodes),
             pendingEncodePeak: Double(benchmarkPendingEncodePeak),
             macQueue: Double(pendingSends), macDrops: Double(lastMacDropsSnapshot),
-            macCPU: nil, macMemory: Self.residentMemoryMB())
+            macCPU: benchmarkCPU.sample(), macMemory: Self.residentMemoryMB())
         do {
             try recorder.append(sample)
             lastAdaptiveDecision = nil

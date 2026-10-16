@@ -52,7 +52,11 @@ Flags are `KEYFRAME = 0x01`, `CODEC_CONFIG = 0x02`, `HEVC = 0x04`, and `H264 = 0
 - Legacy classification uses one `NalSummary`; decoder configuration reuses it and copies only VPS/SPS/PPS when MediaCodec actually needs codec-specific data.
 - Error-only NAL descriptions scan ranges without allocating a list and one `byte[]` per NAL.
 
-The transport still allocates its bounded outer payload array. A reusable transport pool is intentionally not claimed: `bufferPoolMiss` makes that remaining work visible instead of disguising it. Per-window `allocatedFrameBytes`, zero-copy `bufferReuseCount`, `bufferPoolMiss`, and Android runtime `gcCount`/`gcTimeMs` are published in receiver stats and Benchmark CSV/JSONL.
+The original PR 9/p8 transport allocated its bounded outer payload array. Source builds after p8 now use a transport-wide pool: at most 32 MiB / 32 buffers, power-of-two buckets starting at 1 KiB, frame lengths at most 16 MiB (subject to the lower negotiated limit). A saturated pool waits at most 250 ms before closing the affected connection for recovery. Idle buckets can be evicted; active storage is never reused.
+
+Transport callbacks borrow a lease; executor tasks, pending video and asynchronous decoder input each retain a separately closeable reference. Queue replacement, stale generation, parse failure, executor rejection/shutdown, decoder reconfiguration and disconnect release their owned references. After copying into the MediaCodec input buffer, the decoder returns its reference. Closing a pool discards idle buffers immediately and in-flight buffers on their final return. The valid wire length is separate from bucket capacity, including legacy JSON/Annex-B frames.
+
+Per-window `allocatedFrameBytes` now counts newly allocated bucket bytes, `bufferReuseCount` counts actual idle-pool reuse, and `bufferPoolMiss` counts new arrays. They include accepted transport control frames as well as video, and retain their existing wire/Benchmark field names. **Do not compare these counts directly with p8**, where reuse meant a zero-copy payload view and every frame counted as a miss. Android runtime `gcCount`/`gcTimeMs` semantics are unchanged.
 
 ## Tests
 
@@ -63,7 +67,7 @@ The transport still allocates its bounded outer payload array. A reusable transp
 - NAL tests prove one summary reports parameter sets/keyframes through source ranges;
 - metrics tests cover allocation/reuse/pool-miss fields and stable Benchmark columns/JSON.
 
-## Build result
+## Original PR 9 build result
 
 - Focused Android Protocol and VideoStream policy self-tests: passed.
 - Focused Swift Binary Header, Device Capability, and Benchmark self-tests: passed.
@@ -81,7 +85,7 @@ No same-condition physical A/B has been collected. This PR proves fewer software
 
 - Flags are trusted only after local capability negotiation and are still bounded/validated; a corrupt Annex-B payload can be rejected by the decoder path.
 - The 52-byte inner header slightly reduces usable encoded payload under the existing negotiated outer frame limit.
-- The transport payload allocation remains; a future pool needs explicit ownership/release semantics across latest-frame replacement and decoder handoff.
+- Pool saturation intentionally closes the affected connection rather than falling back to unbounded allocations; physical burst/memory behavior still needs acceptance.
 - Runtime GC keys are platform-provided; unavailable keys report zero rather than inventing data.
 
 ## Pending physical validation
@@ -96,3 +100,7 @@ No physical receiver was attached during implementation.
 ## Next step
 
 Run the final requirement-by-requirement compatibility/recovery audit and the available short physical matrix without claiming deferred endurance or multi-device coverage.
+
+## Source pooling verification (2026-10-16)
+
+Plain-Java tests cover retained async ownership, pool saturation, double close, partial-read failures, invalid lengths before allocation, binary/legacy bucket tails, task cancellation/rejection/exception, concurrent leases, real TCP replacement and late returns after shutdown. A synthetic sequence of 1,000 equal 1,000-byte frames allocated one 1,024-byte bucket: 1 miss and 999 pool reuses. This measures the software allocation path only; it is not a physical GC, latency or FPS result. Android six self-test groups and Debug assembly passed.

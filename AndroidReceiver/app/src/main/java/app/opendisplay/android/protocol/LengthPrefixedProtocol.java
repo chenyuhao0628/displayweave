@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import app.opendisplay.android.FrameBufferPool;
 
 public final class LengthPrefixedProtocol {
     private static final Pattern STREAM_CONFIG_TYPE = Pattern.compile(
@@ -76,6 +77,22 @@ public final class LengthPrefixedProtocol {
     }
 
     public static byte[] read(InputStream in, int maximumBytes) throws IOException {
+        return readExact(in, readLength(in, maximumBytes));
+    }
+
+    public static FrameBufferPool.Lease readPooled(InputStream in, int maximumBytes,
+                                                  FrameBufferPool pool) throws IOException {
+        int length = readLength(in, maximumBytes);
+        FrameBufferPool.Lease lease = pool.acquire(length);
+        try {
+            readInto(in, lease.bytes(), length);
+            return lease;
+        } catch (IOException | RuntimeException error) {
+            lease.close(); throw error;
+        }
+    }
+
+    private static int readLength(InputStream in, int maximumBytes) throws IOException {
         int length = readInt32(in);
         int boundedMaximum = boundedFrameLimit(maximumBytes);
         if (length <= 0) {
@@ -90,7 +107,7 @@ public final class LengthPrefixedProtocol {
             throw new FrameLengthException(
                     FrameLengthFailure.OVERSIZE, length, boundedMaximum);
         }
-        return readExact(in, length);
+        return length;
     }
 
     private static int readInt32(InputStream in) throws IOException {
@@ -116,10 +133,14 @@ public final class LengthPrefixedProtocol {
     }
 
     public static int streamConfigFrameLimit(byte[] payload) {
-        if (!isPureJsonControl(payload)) {
+        return streamConfigFrameLimit(payload, payload.length);
+    }
+
+    public static int streamConfigFrameLimit(byte[] payload, int length) {
+        if (!isPureJsonControl(payload, length)) {
             return -1;
         }
-        String json = new String(payload, StandardCharsets.UTF_8);
+        String json = new String(payload, 0, length, StandardCharsets.UTF_8);
         if (!STREAM_CONFIG_TYPE.matcher(json).find()) {
             return -1;
         }
@@ -146,23 +167,32 @@ public final class LengthPrefixedProtocol {
 
     public static byte[] readExact(InputStream in, int length) throws IOException {
         byte[] data = new byte[length];
+        readInto(in, data, length);
+        return data;
+    }
+
+    private static void readInto(InputStream in, byte[] data, int length) throws IOException {
         int offset = 0;
         while (offset < length) {
             int n = in.read(data, offset, length - offset);
             if (n < 0) {
                 throw new EOFException("stream ended after " + offset + " of " + length + " bytes");
             }
+            if (n == 0) throw new IOException("frame read made no progress");
             offset += n;
         }
-        return data;
     }
 
     public static boolean isPureJsonControl(byte[] payload) {
-        if (payload.length == 0 || payload.length >= 32_768 || payload[0] != '{') {
+        return isPureJsonControl(payload, payload.length);
+    }
+
+    public static boolean isPureJsonControl(byte[] payload, int length) {
+        if (length <= 0 || length > payload.length || length >= 32_768 || payload[0] != '{') {
             return false;
         }
-        for (byte b : payload) {
-            if (b == 0) {
+        for (int i = 0; i < length; i++) {
+            if (payload[i] == 0) {
                 return false;
             }
         }

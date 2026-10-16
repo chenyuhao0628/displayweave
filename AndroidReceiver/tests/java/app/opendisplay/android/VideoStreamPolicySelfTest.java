@@ -26,6 +26,7 @@ public final class VideoStreamPolicySelfTest {
         testFrameClassifier();
         testVideoFramePacketUsesZeroCopyBinaryPayloadView();
         testFrameSizeMetrics();
+        FrameBufferPoolSelfTest.run();
         testFrameAllocationMetrics();
         testGcMetricDeltaSemantics();
         testAndroidPowerMetricsNormalization();
@@ -161,8 +162,10 @@ public final class VideoStreamPolicySelfTest {
 
     private static void testFrameAllocationMetrics() {
         FrameAllocationMetrics metrics = new FrameAllocationMetrics();
-        metrics.recordTransportFrame(1_024, true);
-        metrics.recordTransportFrame(2_048, true);
+        metrics.recordTransportFrame(1_024, false);
+        metrics.recordTransportFrame(2_048, false);
+        metrics.recordTransportFrame(0, true);
+        metrics.recordTransportFrame(0, true);
         FrameAllocationMetrics.Snapshot first = metrics.snapshotAndResetWindow();
         assertEquals(3_072L, first.allocatedFrameBytes);
         assertEquals(2L, first.bufferReuseCount);

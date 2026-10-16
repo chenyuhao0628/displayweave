@@ -64,8 +64,12 @@ public final class AnnexB {
     }
 
     public static String telemetryPrefix(byte[] payload) {
-        int start = firstStartCode(payload);
-        if (start <= 0) {
+        return telemetryPrefix(payload, payload.length);
+    }
+
+    public static String telemetryPrefix(byte[] payload, int length) {
+        int start = firstStartCode(payload, 0, length);
+        if (start <= 0 || start > 16 * 1024) {
             return null;
         }
         return new String(payload, 0, start, StandardCharsets.UTF_8);

@@ -91,11 +91,18 @@ public final class BinaryFrameHeaderV2 {
     }
 
     public static Parsed parse(byte[] frame) throws ParseException {
-        if (!looksLikeBinary(frame)) {
+        return parse(frame, frame == null ? 0 : frame.length);
+    }
+
+    public static Parsed parse(byte[] frame, int length) throws ParseException {
+        if (frame == null || length < 0 || length > frame.length) {
+            throw new ParseException(Failure.INVALID_PAYLOAD_LENGTH, "buffer bounds");
+        }
+        if (length < 4 || !looksLikeBinary(frame)) {
             throw new ParseException(Failure.NOT_BINARY, "magic");
         }
-        if (frame.length < HEADER_BYTES) {
-            throw new ParseException(Failure.TRUNCATED_HEADER, "bytes=" + frame.length);
+        if (length < HEADER_BYTES) {
+            throw new ParseException(Failure.TRUNCATED_HEADER, "bytes=" + length);
         }
         int version = Byte.toUnsignedInt(frame[4]);
         int flags = Byte.toUnsignedInt(frame[5]);
@@ -118,10 +125,10 @@ public final class BinaryFrameHeaderV2 {
                 || captureTimestampMs < 0 || sendTimestampMs < 0) {
             throw new ParseException(Failure.INVALID_IDENTITY, "non-positive identity");
         }
-        if (payloadLength <= 0 || headerLength + (long) payloadLength != frame.length) {
+        if (payloadLength <= 0 || headerLength + (long) payloadLength != length) {
             throw new ParseException(
                     Failure.INVALID_PAYLOAD_LENGTH,
-                    "payloadLength=" + payloadLength + " frameBytes=" + frame.length);
+                    "payloadLength=" + payloadLength + " frameBytes=" + length);
         }
         if (payloadLength > MAX_PAYLOAD_BYTES) {
             throw new ParseException(Failure.OVERSIZE_PAYLOAD, "bytes=" + payloadLength);

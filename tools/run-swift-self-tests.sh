@@ -40,6 +40,8 @@ run_test BenchmarkIntegrationPolicySelfTest \
   MacTests/BenchmarkIntegrationPolicySelfTest.swift
 run_test BenchmarkSampleSelfTest \
   Mac/BenchmarkSample.swift MacTests/BenchmarkSampleSelfTest.swift
+run_test ProcessCPUSamplerSelfTest \
+  Mac/ProcessCPUSampler.swift MacTests/ProcessCPUSamplerSelfTest.swift
 run_test BenchmarkRecorderSelfTest \
   Mac/BenchmarkSample.swift Mac/BenchmarkRecorder.swift \
   MacTests/BenchmarkRecorderSelfTest.swift
@@ -137,4 +139,4 @@ run_test PencilInputInjectorSelfTest \
   Shared/PencilProtocol.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
   Mac/InputValidationPolicy.swift Mac/InputInjector.swift MacTests/PencilInputInjectorSelfTest.swift
 
-echo "Swift standalone self-tests PASS (39 suites)"
+echo "Swift standalone self-tests PASS (40 suites)"

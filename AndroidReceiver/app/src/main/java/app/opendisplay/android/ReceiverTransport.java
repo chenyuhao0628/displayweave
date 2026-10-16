@@ -5,6 +5,10 @@ public interface ReceiverTransport {
         void onListening(int port);
         void onConnected(long generation, String peer);
         void onPayload(long generation, byte[] payload);
+        /** Borrowed for this callback only. Async consumers must retain their own lease. */
+        default void onFrame(long generation, FrameBufferPool.Lease frame) {
+            onPayload(generation, java.util.Arrays.copyOf(frame.bytes(), frame.length));
+        }
         default void onFrameLengthRejected(long generation, String reason,
                                            int frameBytes, int maximumBytes) {}
         default void onTransportDrop(long generation, String reason) {}

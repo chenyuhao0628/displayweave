@@ -4,7 +4,7 @@ import android.os.Debug;
 
 import java.util.Map;
 
-/** Debug counters for transport allocation and zero-copy frame handoff. */
+/** Window counters for actual transport array allocation and pool reuse. */
 public final class FrameAllocationMetrics {
     public static final class Snapshot {
         public final long allocatedFrameBytes;
@@ -35,12 +35,10 @@ public final class FrameAllocationMetrics {
         lastGcTimeMs = baseline[1];
     }
 
-    public synchronized void recordTransportFrame(int allocatedBytes, boolean zeroCopyView) {
+    public synchronized void recordTransportFrame(int allocatedBytes, boolean poolReused) {
         allocatedFrameBytes += Math.max(0, allocatedBytes);
-        bufferPoolMiss++;
-        if (zeroCopyView) {
-            bufferReuseCount++;
-        }
+        if (poolReused) bufferReuseCount++;
+        else bufferPoolMiss++;
     }
 
     public synchronized Snapshot snapshotAndResetWindow() {
