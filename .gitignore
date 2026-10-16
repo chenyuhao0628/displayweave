@@ -58,3 +58,7 @@ AndroidReceiver/dist/
 .gradle/
 AndroidReceiver/local.properties
 .worktrees/
+
+# Python tool caches
+__pycache__/
+*.pyc

@@ -4,6 +4,7 @@
 
 ## Current user guides
 
+- [Production Apple archive/export and prerequisites](apple-distribution.md)
 - [Public protocol contract and shared fixtures](protocol.md)
 - [Advanced Pencil input (source)](pencil-advanced.md)
 - [Mac receiver keyboard and mouse (source)](mac-receiver-input.md)

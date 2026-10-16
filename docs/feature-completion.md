@@ -30,7 +30,7 @@ Feature completion means implemented behavior and passing automated acceptance, 
 ## Progress
 
 - Assessment: repository clean on baseline; twelve work items enumerated with acceptance and dependencies.
-- Remaining implementation: F10–F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
+- Remaining implementation: F11–F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
 
 ## Official API references
 
@@ -89,3 +89,7 @@ All 51 Swift suites, Mac universal Debug and iOS Simulator builds passed. The pr
 Published a paired [protocol contract](protocol.md), revision 1, covering unchanged namespaces/framing, TLS admission, capability gates, Apple/Android video paths, readiness/epochs, resource limits and desktop/Pencil input. The document revision is not a wire-version migration. Swift and Java now consume the same public synthetic framing/DWV2/legacy fixtures with production codecs, every Swift split boundary, Java one-byte reads/EOF, coalescing and malformed versions/flags/lengths/identity. Apple-specific input fixtures use Swift parsers; Java checks their opaque framing. Existing shared security vectors remain in use.
 
 All 52 Swift suites, Android six test groups plus Debug assembly/Lint, and actual Apple↔Java TLS in both directions passed. The bilingual checker now includes the previously unlisted security/handover/input guides and the new specification: 77 pairs passed. No runtime wire format or installed/published application changed in this round.
+
+### F10 — tooling complete; production identities blocked
+
+Added a local manual-signing archive/export workflow, actual exported-bundle validation, strict identity/profile checks, Mac notarization/stapling/Gatekeeper and original Sparkle signing. Output is immutable and remains INCOMPLETE on failure. No upload or installed-app change. Twelve offline tests passed, including negative trust and failed-notary/stapler ordering. Both local preflights are blocked: zero Developer ID Application / Apple Distribution identities. Real production export/notarization remains externally blocked. See [workflow and evidence](apple-distribution.md).

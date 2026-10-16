@@ -4,6 +4,7 @@
 
 ## 当前用户指南
 
+- [Apple 正式归档/导出及前提](apple-distribution.zh-CN.md)
 - [公开协议契约与共享样本](protocol.zh-CN.md)
 - [Pencil 高级输入（源码）](pencil-advanced.zh-CN.md)
 - [Mac 接收端键鼠回传（源码）](mac-receiver-input.zh-CN.md)

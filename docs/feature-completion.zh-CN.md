@@ -30,7 +30,7 @@
 ## 进度
 
 - 评估：基线工作区干净；十二项已列明验收、依赖与边界。
-- 剩余待实现：F10–F12。后续各条记录提交、真实自动证据及剩余外部/实机条件。
+- 剩余待实现：F11–F12。后续各条记录提交、真实自动证据及剩余外部/实机条件。
 
 ## 官方 API 参考
 
@@ -91,3 +91,7 @@ Mac 键鼠回传要求双方显式启用、加密认证和发送端辅助功能�
 新增修订版 1 的双语[协议契约](protocol.zh-CN.md)，覆盖保留的命名空间/分帧、TLS 准入、能力门禁、Apple/Android 视频路径、就绪/epoch、资源上限和桌面/Pencil 输入。文档修订不代表线上版本迁移。Swift/Java 使用同一公开合成分帧/DWV2/旧版样本和生产编解码器，覆盖 Swift 每个分割边界、Java 单字节读取/EOF、粘包及非法版本/标志/长度/身份。Apple 专属输入样本使用 Swift 解析器，Java 检查其不透明分帧；保留既有共享安全样本。
 
 52 组 Swift 自检、Android 六组测试及 Debug 构建/Lint、双向真实 Apple↔Java TLS 均通过。双语检查新增此前未列入的安全/切换/输入指南和新规范，共 77 对通过。本轮未改变运行时线上格式或已安装/已发布应用。
+
+### F10 — 工具完成；正式身份仍阻塞
+
+新增本地手动签名 archive/export、实际导出物校验、严格身份/profile 检查、Mac 公证/staple/Gatekeeper 及原 Sparkle 签名流程。输出不可变，失败保留 INCOMPLETE；不上传、不改变已安装应用。12 项离线测试通过，包括身份拒绝和公证/stapler 失败阻断。两项本地预检均阻塞：Developer ID Application / Apple Distribution 身份为零。真实正式导出与公证等待外部条件，见[流程与证据](apple-distribution.zh-CN.md)。
