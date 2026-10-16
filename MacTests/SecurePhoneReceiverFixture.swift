@@ -31,10 +31,20 @@ import AVFoundation
             if String(decoding: data, as: UTF8.self) == "revoke" {
                 AppleTransportSecurityModel.shared.refresh()
                 for peer in AppleTransportSecurityModel.shared.peers { AppleTransportSecurityModel.shared.revoke(peer.installID) }
+            } else if String(decoding: data, as: UTF8.self) == "pencil" {
+                let generation = receiver.inputGeneration
+                receiver.selectPencilTool(.eraser)
+                let sample = PencilSample(phase: .down, x: 0.5, y: 0.5, pressure: 0.5,
+                    azimuth: 0, altitude: .pi / 2, roll: .pi / 2, tool: .eraser)!
+                receiver.sendPencil(sample, generation: generation)
+                receiver.sendPencil(sample.cancelled, generation: generation)
+                receiver.sendPencilAction(.undo, generation: generation)
+                receiver.sendTouch(phase: "moved", x: 0.123, y: 0.456, generation: generation)
             }
         }
         let state: [String: Any] = ["connected": receiver.connected, "encrypted": receiver.encrypted,
-                                   "width": receiver.videoSize.width, "height": receiver.videoSize.height]
+                                   "width": receiver.videoSize.width, "height": receiver.videoSize.height,
+                                   "pencil2": receiver.pencilExtendedAvailable, "shortcuts": receiver.pencilShortcutsAvailable]
         if let data = try? JSONSerialization.data(withJSONObject: state) {
             try? data.write(to: folder.appendingPathComponent("state.json"), options: .atomic)
         }
@@ -62,7 +72,7 @@ private struct PhoneFixtureView: View {
     @Environment(\.scenePhase) private var scenePhase
     private let timer = Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()
     var body: some View {
-            Form { TransportSecuritySettings() }
+            Form { PencilSettingsSection(receiver: fixture.receiver); TransportSecuritySettings() }
                 .onAppear { fixture.start() }
                 .onReceive(timer) { _ in fixture.tick() }
                 .onChange(of: scenePhase) { _, phase in fixture.phase(phase) }

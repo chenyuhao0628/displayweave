@@ -160,6 +160,7 @@ private final class SecureReceiverPeer {
             let hello = try client.hello()
             precondition(hello["id"] as? String == invitation.receiverID)
             precondition(hello["device"] as? String == "iPhone")
+            precondition((hello["inputCaps"] as? [String])?.contains(PencilProtocol.extendedCapability) == true)
             return client
         }.value
         defer { client.connection.cancel() }
@@ -168,6 +169,38 @@ private final class SecureReceiverPeer {
         let config = try JSONSerialization.data(withJSONObject: ["type": "streamConfig", "codec": "h264", "width": 64, "height": 64, "fps": 30])
         client.connection.send(content: ReceiverFrameDecoder.frame(config) + ReceiverFrameDecoder.frame(frame), completion: .contentProcessed { _ in })
         try await wait("iOS synthetic video", seconds: 15) { state()["width"] as? Int == 64 }
+        let actionGrant = UUID().uuidString
+        func pencilConfiguration(extended: Bool) throws {
+            var object: [String: Any] = ["type": "inputConfig", "inputCaps": extended
+                ? [PencilProtocol.capability, PencilProtocol.extendedCapability] : [PencilProtocol.capability]]
+            if extended { object["pencilActionSession"] = actionGrant; object["pencilActionStatus"] = "ready" }
+            let data = try JSONSerialization.data(withJSONObject: object)
+            client.connection.send(content: ReceiverFrameDecoder.frame(data), completion: .contentProcessed { _ in })
+        }
+        for extended in [true, false] {
+            try pencilConfiguration(extended: extended)
+            try await wait("Pencil capabilities", seconds: 15) {
+                state()["pencil2"] as? Bool == extended && state()["shortcuts"] as? Bool == extended
+            }
+            try Data("pencil".utf8).write(to: folder.appendingPathComponent("command.txt"), options: .atomic)
+            let controls = try await Task.detached { () -> [[String: Any]] in
+                var controls: [[String: Any]] = []
+                for _ in 0..<30 {
+                    let object = try client.hello()
+                    if object["type"] as? String == "touch" { return controls }
+                    if ["pencil", "pencil2", "pencilAction"].contains(object["type"] as? String ?? "") { controls.append(object) }
+                }
+                throw ReceiverTestFailure(message: "Pencil fixture marker missing")
+            }.value
+            precondition(controls.count == (extended ? 3 : 2))
+            precondition(controls[0]["type"] as? String == (extended ? "pencil2" : "pencil"))
+            precondition(PencilSample(message: controls[0])?.tool == (extended ? .eraser : .pen))
+            precondition(controls[1]["phase"] as? String == "cancel")
+            if extended {
+                precondition(controls[2]["inputSession"] as? String == actionGrant && controls[2]["action"] as? String == "undo")
+            }
+        }
+        print("iOS Pencil: real TLS V2 rotation/eraser/cancel/shortcut, V1 downgrade and denied shortcut isolation PASS")
         let stranger = NWConnection(host: "127.0.0.1", port: .init(rawValue: port)!, using: .tcp)
         stranger.start(queue: .global())
         defer { stranger.cancel() }

@@ -156,14 +156,14 @@ run_test MacSecureReceiverSelfTest \
   "${security[@]}" \
   Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
   Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift \
-  Shared/DesktopInputProtocol.swift Shared/InputSendBudget.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacSecureReceiverSelfTest.swift
+  Shared/DesktopInputProtocol.swift Shared/InputSendBudget.swift Mac/Receiver/StreamReceiver.swift Shared/PencilProtocol.swift Shared/PencilActions.swift MacTests/ReceiverTestSupport.swift MacTests/MacSecureReceiverSelfTest.swift
 
 run_test PencilProtocolSelfTest \
   Shared/PencilProtocol.swift MacTests/PencilProtocolSelfTest.swift
 run_test InputSendBudgetSelfTest \
   Shared/InputSendBudget.swift MacTests/InputSendBudgetSelfTest.swift
 run_test PencilInputInjectorSelfTest \
-  Shared/PencilProtocol.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
+  Shared/PencilProtocol.swift Shared/PencilActions.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
   Mac/InputValidationPolicy.swift Mac/InputInjector.swift MacTests/PencilInputInjectorSelfTest.swift
 
 run_test DesktopInputProtocolSelfTest \
@@ -171,4 +171,8 @@ run_test DesktopInputProtocolSelfTest \
 run_test DesktopInputSenderSelfTest \
   Shared/DesktopInputProtocol.swift Mac/DesktopInputInjector.swift Mac/DesktopInputSender.swift MacTests/DesktopInputSenderSelfTest.swift
 
-echo "Swift standalone self-tests PASS (50 suites)"
+run_test PencilAdvancedSelfTest \
+  Shared/PencilProtocol.swift Shared/PencilActions.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
+  Mac/InputValidationPolicy.swift Mac/InputInjector.swift Mac/PencilActionSender.swift MacTests/PencilAdvancedSelfTest.swift
+
+echo "Swift standalone self-tests PASS (51 suites)"

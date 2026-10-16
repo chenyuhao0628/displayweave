@@ -51,9 +51,18 @@ final class PhoneReceiver: ObservableObject {
     @Published var videoSize = CGSize.zero   // for touch coordinate mapping
     @Published var perf = PerfStats()
     @Published private(set) var pencilAvailable = false
+    @Published private(set) var pencilExtendedAvailable = false
+    @Published private(set) var pencilShortcutsAvailable = false
+    @Published private(set) var selectedPencilTool = PencilTool.pen
+    private var pencilActionGrant: String? // main-thread projection
+    var onPencilToolChange: (() -> Void)?
+    @Published private(set) var pencilActionStatus = "等待高级 Pencil 协商"
     var onInputReset: (() -> Void)?
     private let inputSendBudget = InputSendBudget()
     private var pencilNegotiated = false
+    private var pencilExtendedNegotiated = false
+    private var pencilActionSession: String?
+    private var pencilActionSequence: UInt64 = 0
     private var pencilForwarder = PencilInputForwarder()
     var inputGeneration: UInt64 { inputSendBudget.generation }
 
@@ -418,10 +427,26 @@ final class PhoneReceiver: ObservableObject {
             configureVideo(obj)
         case "inputConfig":
             pencilNegotiated = PencilProtocol.supports(obj["inputCaps"] as? [String])
+            pencilExtendedNegotiated = pencilNegotiated && peerID != nil && (obj["inputCaps"] as? [String])?.contains(PencilProtocol.extendedCapability) == true
+            let candidate = obj["pencilActionSession"] as? String
+            let session = pencilExtendedNegotiated && candidate.flatMap(UUID.init(uuidString:)) != nil ? candidate : nil
+            if session != pencilActionSession { pencilActionSequence = 0 }
+            pencilActionSession = session
             let enabled = pencilNegotiated, generation = inputSendBudget.generation
+            let extended = pencilExtendedNegotiated
+            let labels = ["consentRequired": "请在 Mac 权限设置中允许 Pencil 快捷键", "accessibilityRequired": "请在 Mac 授予辅助功能权限",
+                          "targetPending": "等待 Mac 准备显示器", "secureRequired": "快捷键需要加密配对"]
+            let actionStatus = session != nil ? "快捷键已授权" : labels[obj["pencilActionStatus"] as? String ?? ""] ?? "发送端未启用高级快捷键"
             DispatchQueue.main.async {
                 guard self.inputSendBudget.generation == generation else { return }
                 self.pencilAvailable = enabled
+                self.pencilExtendedAvailable = extended
+                if !extended && self.selectedPencilTool != .pen {
+                    self.onPencilToolChange?(); self.selectedPencilTool = .pen
+                }
+                self.pencilShortcutsAvailable = session != nil
+                self.pencilActionGrant = session
+                self.pencilActionStatus = actionStatus
             }
         case "pong":
             guard let t1 = obj["t"] as? Double, let mt = obj["mt"] as? Double else { return }
@@ -475,10 +500,15 @@ final class PhoneReceiver: ObservableObject {
     private func resetStreamState() {
         let generation = inputSendBudget.reset(accepting: connection != nil)
         pencilNegotiated = false
+        pencilExtendedNegotiated = false
+        pencilActionSession = nil; pencilActionSequence = 0
         pencilForwarder = PencilInputForwarder()
         DispatchQueue.main.async {
             guard self.inputSendBudget.generation == generation else { return }
             self.pencilAvailable = false
+            self.pencilExtendedAvailable = false; self.pencilShortcutsAvailable = false
+            self.pencilActionGrant = nil; self.selectedPencilTool = .pen
+            self.pencilActionStatus = "等待高级 Pencil 协商"
             self.onInputReset?()
         }
         frameDecoder = ReceiverFrameDecoder()
@@ -528,7 +558,7 @@ final class PhoneReceiver: ObservableObject {
             "scale": deviceScale,
             "device": UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone",
             "id": Self.installID,
-            "inputCaps": [PencilProtocol.capability],
+            "inputCaps": peerID != nil ? [PencilProtocol.capability, PencilProtocol.extendedCapability] : [PencilProtocol.capability],
             "capabilities": [AppleVideoPolicy.capability],
             "refreshRate": displayMaxFps, "maxFps": displayMaxFps,
             "displayMaxFrameRate": displayMaxFps,
@@ -560,8 +590,25 @@ final class PhoneReceiver: ObservableObject {
 
     func sendPencil(_ sample: PencilSample, generation: UInt64) {
         enqueueControl(expectedGeneration: generation) {
-            self.pencilForwarder.messages(for: sample, enabled: self.pencilNegotiated)
+            self.pencilForwarder.messages(for: sample, enabled: self.pencilNegotiated, extended: self.pencilExtendedNegotiated)
         }
+    }
+
+    func sendPencilAction(_ action: PencilRemoteAction, generation: UInt64) {
+        guard let expected = pencilActionGrant else { return }
+        enqueueControl(expectedGeneration: generation) {
+            guard self.pencilExtendedNegotiated, let session = self.pencilActionSession,
+                  session == expected,
+                  self.pencilActionSequence < 9_007_199_254_740_991 else { return [] }
+            self.pencilActionSequence += 1
+            return [["type": "pencilAction", "action": action.rawValue, "inputSession": session, "sequence": self.pencilActionSequence]]
+        }
+    }
+
+    func selectPencilTool(_ tool: PencilTool) {
+        guard pencilExtendedAvailable, tool != selectedPencilTool else { return }
+        onPencilToolChange?()
+        selectedPencilTool = tool
     }
 
     func endPencilProximity(x: Double, y: Double, generation: UInt64) {

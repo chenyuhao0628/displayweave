@@ -31,11 +31,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Apple Pencil") {
-                    LabeledContent("输入模式", value: receiver.pencilAvailable ? "压感与倾角" : "兼容触控")
-                    Text("支持的 iPad 可传递压感、倾角和悬停；Mac 需授予辅助功能权限，绘图软件需支持数位笔输入。旧版 Mac 使用普通触控，当前笔画结束后再应用新能力。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                PencilSettingsSection(receiver: receiver)
 
                 TransportSecuritySettings()
 
@@ -114,6 +110,7 @@ struct SettingsView: View {
         }
     }
 }
+
 
 /// The device-name editor, deliberately kept out of any high-frequency
 /// @ObservedObject so streaming updates can't rebuild it and steal focus.

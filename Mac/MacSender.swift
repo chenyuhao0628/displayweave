@@ -135,6 +135,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         guard let data = try? JSONSerialization.data(withJSONObject: object) else { return }
         self?.sendJSONFrame(String(decoding: data, as: UTF8.self))
     }
+    private var pencilExtendedNegotiated = false
+    private lazy var pencilActions = PencilActionSender(targetReady: { [weak self] in self?.inputInjector != nil },
+        onChange: { [weak self] in self?.sendPencilConfiguration() },
+        perform: { [weak self] action in
+            guard let shortcut = PencilShortcut.configured(action) else { return }
+            self?.inputInjector?.handleShortcut(shortcut)
+        })
     private var protocolIdentity = StreamProtocolIdentity()
     private var protocolHandshake = ReceiverProtocolHandshake()
     private var protocolFailureBudget = ReceiverProtocolFailureBudget(maxReconnects: 1)
@@ -315,6 +322,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             if !stopped {
                 inputInjector = InputInjector(displayID: display.displayID)
                 desktopInput.configure(displayID: display.displayID)
+                pencilActions.begin(encrypted: encrypted, supported: pencilExtendedNegotiated)
             }
         }
     }
@@ -382,6 +390,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             inputInjector?.cancelPress()
             inputInjector = InputInjector(displayID: vd.displayID)
             desktopInput.configure(displayID: vd.displayID)
+            pencilActions.begin(encrypted: encrypted, supported: pencilExtendedNegotiated)
             return true
         }
         guard installed else { throw CancellationError() }
@@ -702,6 +711,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     /// Bookkeeping shared by both transports once a connection is live.
     private func adoptConnection(_ conn: NWConnection) -> UInt64 {
         desktopInput.reset()
+        pencilActions.reset(); pencilExtendedNegotiated = false
         pencilNegotiated = false
         macCodecFallback.beginConnection()
         inputInjector?.cancelPress()
@@ -721,6 +731,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     private func invalidateConnection() {
         desktopInput.reset()
+        pencilActions.reset(); pencilExtendedNegotiated = false
         pencilNegotiated = false
         inputInjector?.cancelPress()
         connectionGeneration &+= 1
@@ -948,6 +959,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func scheduleReconnect(failureObservedAt: Date = Date()) {
         guard !stopped else { return }
         desktopInput.reset()
+        pencilActions.reset(); pencilExtendedNegotiated = false
         inputInjector?.cancelPress()
         pencilNegotiated = false
         if everConnected {
@@ -1099,6 +1111,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         queue.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             guard let self, !self.stopped else { return }
             if self.connectionReady { self.desktopInput.refresh() }
+            if self.connectionReady && self.pencilExtendedNegotiated { self.pencilActions.refresh() }
+            if !AXIsProcessTrusted() { self.inputInjector?.cancelPress() }
             if self.connectionReady, Date().timeIntervalSince(self.lastReceived) > 5 {
                 Log.info("watchdog: nothing from the phone for >5s — reconnecting")
                 Task { await self.status("连接无响应，正在重新连接…") }
@@ -1266,6 +1280,17 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         }
     }
 
+    private func sendPencilConfiguration() {
+        guard connectionReady, pencilNegotiated else { return }
+        var object: [String: Any] = ["type": "inputConfig", "inputCaps": pencilExtendedNegotiated
+            ? [PencilProtocol.capability, PencilProtocol.extendedCapability] : [PencilProtocol.capability],
+            "pencilActionStatus": pencilActions.status]
+        if let session = pencilActions.session { object["pencilActionSession"] = session }
+        if let data = try? JSONSerialization.data(withJSONObject: object) {
+            sendJSONFrame(String(decoding: data, as: UTF8.self))
+        }
+    }
+
     private func handleControl(_ payload: Data) {
         lastReceived = Date()
         if ReconnectPeerReadinessPolicy.clearsDisconnectGrace(for: .peerMessage) {
@@ -1335,9 +1360,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 let supportsPencil = !info.isMacReceiver && PencilProtocol.supports(info.inputCaps)
                 if pencilNegotiated && !supportsPencil { inputInjector?.cancelPress() }
                 pencilNegotiated = supportsPencil
-                if supportsPencil {
-                    sendJSONFrame("{\"type\":\"inputConfig\",\"inputCaps\":[\"pencil-v1\"]}")
-                }
+                let extended = supportsPencil && encrypted && info.inputCaps?.contains(PencilProtocol.extendedCapability) == true
+                if pencilExtendedNegotiated && !extended { inputInjector?.cancelPress() }
+                pencilExtendedNegotiated = extended
+                pencilActions.begin(encrypted: encrypted, supported: pencilExtendedNegotiated)
                 if info.supportsProtocolV2 {
                     Task { await self.status("正在协商视频配置…") }
                     if previous?.supportsProtocolV2 != true,
@@ -1368,8 +1394,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         case "desktopInput":
             guard lastHello?.isMacReceiver == true else { return }
             desktopInput.handle(payload)
-        case "pencil":
+        case "pencilAction":
+            guard pencilExtendedNegotiated else { return }
+            pencilActions.handle(payload)
+        case "pencil", "pencil2":
             guard pencilNegotiated else { return }
+            guard type != "pencil2" || pencilExtendedNegotiated else { return }
             guard let sample = PencilSample(message: obj) else { inputInjector?.cancelPress(); return }
             inputInjector?.handlePencil(sample)
         case "proximity":

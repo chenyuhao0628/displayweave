@@ -30,7 +30,7 @@ Feature completion means implemented behavior and passing automated acceptance, 
 ## Progress
 
 - Assessment: repository clean on baseline; twelve work items enumerated with acceptance and dependencies.
-- Remaining implementation: F07, F09–F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
+- Remaining implementation: F09–F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
 
 ## Official API references
 
@@ -77,3 +77,9 @@ Combined evidence: 48 Swift suites; real Apple↔Java TLS in both directions; An
 Authenticated Mac keyboard/mouse forwarding now requires both local opt-ins and sender Accessibility. A fresh grant identifies each connection/target; bounded receiver tickets, strict wire validation and a 16-key/three-button injector prevent stale or accumulated input. Local AppKit monitoring is scoped to the focused receive view; focus loss, disable, close, role change, disconnect and permission/consent changes cancel held state. Control–Option–Escape disables forwarding. Existing mobile touch/Pencil remain separate; Mac cannot bypass this grant through legacy touch/scroll.
 
 50 Swift suites, the updated production TLS receiver network suite (including saturation and replacement), Mac universal Debug and iOS Simulator builds passed. Captured event tests never post into the user's desktop. Window routing/shortcuts and two-Mac application/layout acceptance remain physical checks. See [usage and evidence](mac-receiver-input.md). No download or installed application was replaced.
+
+### F07 — implemented in source
+
+Authenticated `pencil-v2` adds normalized roll, eraser proximity and explicit per-stroke compatibility. UIKit double-tap/squeeze actions map to tool selection or named undo/redo/custom slots; discrete ended-only squeezes and duplicate timestamps are handled. The Mac owns shortcut mappings and default-off consent. Fresh grants, strict sequences, five actions per second, target/permission checks and balanced synchronous key events bound the new action path. Settings/background gestures are suppressed; tool changes cancel strokes and permission loss clears owned pen state.
+
+All 51 Swift suites, Mac universal Debug and iOS Simulator builds passed. The production iOS receiver passed mutual-TLS V2 roll/tool/cancel and shortcut transmission, V1 downgrade with shortcut suppression, live revocation and background closure. Its Pencil settings section was inspected in light/dark disconnected states in an isolated simulator. Actual Pencil hardware callbacks, roll reference behavior and drawing-app support remain physical checks; no physical claims or installed-app changes. See [usage and evidence](pencil-advanced.md).

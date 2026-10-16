@@ -21,7 +21,7 @@ struct SenderSettingsView: View {
                 .tabItem { Label("串流", systemImage: "slider.horizontal.3") }.tag("stream")
             Form { connectionControls; generalControls }
                 .tabItem { Label("通用", systemImage: "gearshape") }.tag("general")
-            Form { permissionControls; Section("诊断") { diagnosticControls } }
+            Form { permissionControls; PencilShortcutSettings(); Section("诊断") { diagnosticControls } }
                 .tabItem { Label("权限与诊断", systemImage: "checkmark.shield") }.tag("permissions")
             Form { TransportSecuritySettings(permitsSending: true) }
                 .tabItem { Label("安全与配对", systemImage: "lock.shield") }.tag("security")

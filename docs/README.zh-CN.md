@@ -4,6 +4,7 @@
 
 ## 当前用户指南
 
+- [Pencil 高级输入（源码）](pencil-advanced.zh-CN.md)
 - [Mac 接收端键鼠回传（源码）](mac-receiver-input.zh-CN.md)
 - [安全连接与配对（源码）](secure-transport.zh-CN.md)与[设计/待完成集成](secure-transport-design.zh-CN.md)
 - [Mac 有线／Wi-Fi 自动切换（源码）](mac-lan-handover.zh-CN.md)

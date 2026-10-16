@@ -74,3 +74,5 @@ Compilation for Intel is not Intel runtime validation. Parsing real encoded samp
 The source adds iOS HEVC and Apple high-refresh negotiation; see [Apple video and verification](apple-video.md). The p8 download retains the earlier iOS H.264 / Mac 60fps behavior described above.
 
 The source also adds opt-in [Mac wired / Wi-Fi handover](mac-lan-handover.md); p8 still uses the manual cable-switching behavior above.
+
+Current source adds [advanced Pencil rotation, eraser tools and configurable gestures/shortcuts](pencil-advanced.md) over authenticated connections. The published p8 behavior described above remains unchanged.

@@ -4,6 +4,7 @@
 
 ## Current user guides
 
+- [Advanced Pencil input (source)](pencil-advanced.md)
 - [Mac receiver keyboard and mouse (source)](mac-receiver-input.md)
 - [Secure connections and pairing (source)](secure-transport.md) and [design / remaining integration](secure-transport-design.md)
 - [Mac wired / Wi-Fi handover (source)](mac-lan-handover.md)

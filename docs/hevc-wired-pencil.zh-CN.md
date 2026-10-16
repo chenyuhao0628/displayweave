@@ -74,3 +74,5 @@ Intel 编译通过不等于 Intel 运行验证；真实编码样本解析不等�
 源码新增 iOS HEVC 和 Apple 高刷协商，见 [Apple 视频与验证](apple-video.zh-CN.md)。p8 下载仍保留上文 iOS H.264 / Mac 60fps 行为。
 
 源码还新增默认关闭的 [Mac 有线／Wi-Fi 自动切换](mac-lan-handover.zh-CN.md)；p8 仍按上文所述手动切换线缆连接。
+
+当前源码新增通过认证连接使用的 [Pencil 旋转、橡皮工具与可配置手势/快捷键](pencil-advanced.zh-CN.md)。上文所述已发布 p8 行为不变。

@@ -21,7 +21,7 @@ def main():
         folder = pathlib.Path(temporary)
         sources = sorted(str(path) for path in (ROOT / "Shared").glob("*.swift"))
         sources += [str(ROOT / path) for path in ["iOS/PhoneReceiver.swift", "iOS/ReceiverSceneLifecyclePolicy.swift",
-                                                 "iOS/Log.swift", "MacTests/SecurePhoneReceiverFixture.swift"]]
+                                                 "iOS/Log.swift", "iOS/PencilSettings.swift", "MacTests/SecurePhoneReceiverFixture.swift"]]
         bundle_id = "app.displayweave.secure-phone-self-test"
         spec = folder / "project.json"
         spec.write_text(json.dumps({"name": "PhoneTest", "targets": {"PhoneTest": {
@@ -39,7 +39,7 @@ def main():
         client_sources = [*helpers["SOURCES"][:-1], "Shared/AppleTLS.swift", "Shared/AppleSecureAdmission.swift",
             "Shared/AppleTransportSecurity.swift", "Shared/ReceiverFrameDecoder.swift", "Shared/ReceiverCursorImage.swift",
             "Shared/ReceiverVideoBitstream.swift", "Shared/AppleVideoPolicy.swift", "Mac/EncoderHardwareCapabilities.swift",
-            "Shared/DesktopInputProtocol.swift", "Shared/InputSendBudget.swift",
+            "Shared/DesktopInputProtocol.swift", "Shared/InputSendBudget.swift", "Shared/PencilProtocol.swift", "Shared/PencilActions.swift",
             "Mac/Receiver/ReceiverWireProtocol.swift", "Mac/Receiver/StreamReceiver.swift", "MacTests/ReceiverTestSupport.swift",
             "MacTests/MacSecureReceiverSelfTest.swift"]
         run(["xcrun", "swiftc", *client_sources, "-o", str(client)])
