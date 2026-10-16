@@ -32,6 +32,15 @@ The 2026-10-16 source upgrade also adapts failure/retry handling from
 logging from the design in `19481a6`. Implementations and regression coverage
 are local adaptations under GPL-3.0; see `docs/upstream-integration-2026-10-16.md`.
 
+The follow-up HEVC/direct-link/Pencil source iteration selectively adapts
+`91ca272` (HEVC parameter sets and hardware negotiation), `42ad6fb` and the
+helper introduced by `d2dfb3f` (direct-link discovery, excluding remote shutdown),
+and `da9f369` (Pencil tablet pressure/tilt/proximity fields). `1c857a4` is release
+metadata, not the Pencil implementation. Local additions include explicit input
+capability negotiation, conservative fallback envelopes, strict address parsing,
+interface pinning, opt-in auto-connect, bounded controls and lifecycle tests.
+See `docs/hevc-wired-pencil-plan.md`. All adaptations retain GPL-3.0.
+
 ## SideScreen
 
 - Project: SideScreen
@@ -55,12 +64,3 @@ notice must be retained alongside that code and recorded here.
 The macOS target uses Sparkle as a Swift Package dependency for application
 update support. Sparkle's own license and notices are distributed with the
 embedded framework when included in an application build.
-
-The follow-up HEVC/direct-link/Pencil source iteration selectively adapts
-`91ca272` (HEVC parameter sets and hardware negotiation), `42ad6fb` and the
-helper introduced by `d2dfb3f` (direct-link discovery, excluding remote shutdown),
-and `da9f369` (Pencil tablet pressure/tilt/proximity fields). `1c857a4` is release
-metadata, not the Pencil implementation. Local additions include explicit input
-capability negotiation, conservative fallback envelopes, strict address parsing,
-interface pinning, opt-in auto-connect, bounded controls and lifecycle tests.
-See `docs/hevc-wired-pencil-plan.md`. All adaptations retain GPL-3.0.
