@@ -121,4 +121,12 @@ run_test ReceiverVideoBitstreamSelfTest \
 run_test DirectCableSelfTest \
   Mac/DirectCable.swift MacTests/DirectCableSelfTest.swift
 
-echo "Swift standalone self-tests PASS (34 suites)"
+run_test PencilProtocolSelfTest \
+  Shared/PencilProtocol.swift MacTests/PencilProtocolSelfTest.swift
+run_test InputSendBudgetSelfTest \
+  Shared/InputSendBudget.swift MacTests/InputSendBudgetSelfTest.swift
+run_test PencilInputInjectorSelfTest \
+  Shared/PencilProtocol.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
+  Mac/InputValidationPolicy.swift Mac/InputInjector.swift MacTests/PencilInputInjectorSelfTest.swift
+
+echo "Swift standalone self-tests PASS (37 suites)"

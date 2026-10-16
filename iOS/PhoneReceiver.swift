@@ -49,6 +49,12 @@ final class PhoneReceiver: ObservableObject {
     @Published var connected = false
     @Published var videoSize = CGSize.zero   // for touch coordinate mapping
     @Published var perf = PerfStats()
+    @Published private(set) var pencilAvailable = false
+    var onInputReset: (() -> Void)?
+    private let inputSendBudget = InputSendBudget()
+    private var pencilNegotiated = false
+    private var pencilForwarder = PencilInputForwarder()
+    var inputGeneration: UInt64 { inputSendBudget.generation }
 
     private var listener: NWListener?
     private var listenerHealthy = false
@@ -351,6 +357,13 @@ final class PhoneReceiver: ObservableObject {
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = obj["type"] as? String else { return }
         switch type {
+        case "inputConfig":
+            pencilNegotiated = PencilProtocol.supports(obj["inputCaps"] as? [String])
+            let enabled = pencilNegotiated, generation = inputSendBudget.generation
+            DispatchQueue.main.async {
+                guard self.inputSendBudget.generation == generation else { return }
+                self.pencilAvailable = enabled
+            }
         case "pong":
             guard let t1 = obj["t"] as? Double, let mt = obj["mt"] as? Double else { return }
             let t2 = nowMs
@@ -401,6 +414,14 @@ final class PhoneReceiver: ObservableObject {
     }
 
     private func resetStreamState() {
+        let generation = inputSendBudget.reset(accepting: connection != nil)
+        pencilNegotiated = false
+        pencilForwarder = PencilInputForwarder()
+        DispatchQueue.main.async {
+            guard self.inputSendBudget.generation == generation else { return }
+            self.pencilAvailable = false
+            self.onInputReset?()
+        }
         frameDecoder = ReceiverFrameDecoder()
         formatDesc = nil
         sps = nil
@@ -437,6 +458,7 @@ final class PhoneReceiver: ObservableObject {
             "scale": deviceScale,
             "device": UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone",
             "id": Self.installID,
+            "inputCaps": [PencilProtocol.capability],
         ], on: conn)
         Log.info("hello sent")
     }
@@ -444,26 +466,80 @@ final class PhoneReceiver: ObservableObject {
     /// Touch events: x/y normalized [0,1] in video space, origin top-left.
     /// Stamped in *Mac* clock time (our clock + sync offset) so the Mac can
     /// measure touch→injection latency without doing its own clock sync.
-    func sendTouch(phase: String, x: Double, y: Double) {
-        var msg: [String: Any] = ["type": "touch", "phase": phase, "x": x, "y": y]
-        if let offset = clockOffsetMs { msg["t"] = nowMs + offset }
-        sendControl(msg)
+    func sendTouch(phase: String, x: Double, y: Double, generation: UInt64? = nil) {
+        guard x.isFinite, y.isFinite else { return }
+        enqueueControl(expectedGeneration: generation) {
+            var msg: [String: Any] = ["type": "touch", "phase": phase, "x": x, "y": y]
+            if let offset = self.clockOffsetMs { msg["t"] = self.nowMs + offset }
+            return [msg]
+        }
     }
 
-    /// Two-finger scroll: dx/dy in video pixels (natural-scrolling sign).
-    func sendScroll(dx: Double, dy: Double) {
-        sendControl(["type": "scroll", "dx": dx, "dy": dy])
+    func sendScroll(dx: Double, dy: Double, generation: UInt64? = nil) {
+        guard dx.isFinite, dy.isFinite else { return }
+        enqueueControl(expectedGeneration: generation) { [["type": "scroll", "dx": dx, "dy": dy]] }
+    }
+
+    func sendPencil(_ sample: PencilSample, generation: UInt64) {
+        enqueueControl(expectedGeneration: generation) {
+            self.pencilForwarder.messages(for: sample, enabled: self.pencilNegotiated)
+        }
+    }
+
+    func endPencilProximity(x: Double, y: Double, generation: UInt64) {
+        guard x.isFinite, y.isFinite else { return }
+        enqueueControl(expectedGeneration: generation) {
+            self.pencilNegotiated ? [["type": "proximity", "entering": false, "x": x, "y": y]] : []
+        }
     }
 
     private func sendControl(_ message: [String: Any], on conn: NWConnection? = nil) {
-        guard let conn = conn ?? connection,
-              let payload = try? JSONSerialization.data(withJSONObject: message) else { return }
-        var header = UInt32(payload.count).bigEndian
-        var frame = Data(bytes: &header, count: 4)
-        frame.append(payload)
-        conn.send(content: frame, completion: .contentProcessed { error in
-            if let error { Log.info("control send error: \(error)") }
-        })
+        enqueueControl(on: conn) { [message] }
+    }
+
+    private func dropInputConnection(generation: UInt64, status: String) {
+        guard inputSendBudget.generation == generation, let conn = connection else { return }
+        connection = nil
+        conn.cancel()
+        resetStreamState()
+        setConnected(false)
+        setStatus(status)
+    }
+
+    /// Reserve before dispatch: a slow video queue cannot accumulate unlimited input closures.
+    private func enqueueControl(expectedGeneration: UInt64? = nil, on selected: NWConnection? = nil,
+                                messages: @escaping () -> [[String: Any]]) {
+        switch inputSendBudget.reserve(expectedGeneration: expectedGeneration) {
+        case .unavailable: return
+        case .overflow(let generation):
+            queue.async { self.dropInputConnection(generation: generation, status: "输入发送拥堵，请在 Mac 重新连接") }
+        case .accepted(let ticket):
+            queue.async {
+                guard self.inputSendBudget.generation == ticket.generation,
+                      let conn = self.connection, selected == nil || selected === conn else {
+                    self.inputSendBudget.complete(ticket); return
+                }
+                var framed = Data()
+                for message in messages() {
+                    guard let payload = try? JSONSerialization.data(withJSONObject: message),
+                          payload.count <= 64 * 1024, framed.count + payload.count + 4 <= 64 * 1024 else {
+                        self.dropInputConnection(generation: ticket.generation, status: "输入数据无效，请重新连接")
+                        return
+                    }
+                    framed.append(ReceiverFrameDecoder.frame(payload))
+                }
+                guard !framed.isEmpty else { self.inputSendBudget.complete(ticket); return }
+                conn.send(content: framed, completion: .contentProcessed { [weak self, weak conn] error in
+                    guard let self, let conn else { return }
+                    self.queue.async {
+                        guard self.connection === conn, self.inputSendBudget.complete(ticket) else { return }
+                        if error != nil {
+                            self.dropInputConnection(generation: ticket.generation, status: "输入连接已结束，等待 Mac 重新连接")
+                        }
+                    }
+                })
+            }
+        }
     }
 
     // MARK: - Socket read + length-prefixed deframing
@@ -476,7 +552,10 @@ final class PhoneReceiver: ObservableObject {
                 self.lastDataReceived = Date()
                 self.bytesThisWindow += data.count
                 do {
-                    for frame in try self.frameDecoder.append(data) { self.handleAnnexB(frame) }
+                    for frame in try self.frameDecoder.append(data) {
+                        guard self.connection === conn else { return }
+                        self.handleAnnexB(frame)
+                    }
                 } catch {
                     self.connection = nil
                     conn.cancel()
@@ -486,6 +565,7 @@ final class PhoneReceiver: ObservableObject {
                     return
                 }
             }
+            guard self.connection === conn else { return }
             if isComplete || error != nil {
                 self.connection = nil
                 conn.cancel()

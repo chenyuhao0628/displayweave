@@ -15,6 +15,7 @@ struct PhoneInfo: Decodable {
     let transport: String?
     let protocolVersion: Int?
     let capabilities: [String]?
+    let inputCaps: [String]?
     let maxFrameBytes: Int?
 
     let panel: PanelAnnouncement?

@@ -38,7 +38,12 @@ struct VideoLayerView: UIViewRepresentable {
         let pan = UIPanGestureRecognizer(target: view, action: #selector(VideoView.didTwoFingerPan(_:)))
         pan.minimumNumberOfTouches = 2
         pan.maximumNumberOfTouches = 2
+        pan.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
         view.addGestureRecognizer(pan)
+        let hover = UIHoverGestureRecognizer(target: view, action: #selector(VideoView.didPencilHover(_:)))
+        hover.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+        view.addGestureRecognizer(hover)
+        receiver.onInputReset = { [weak view] in view?.resetInput() }
 
         // Local cursor echo: position updates ride the ~2ms control path
         // instead of the ~30ms video path, so the pointer feels native.
@@ -58,6 +63,7 @@ struct VideoLayerView: UIViewRepresentable {
 
     static func dismantleUIView(_ uiView: VideoView, coordinator: ()) {
         uiView.cancelPress()
+        uiView.receiver?.onInputReset = nil
         uiView.receiver = nil
     }
 
@@ -164,16 +170,107 @@ struct VideoLayerView: UIViewRepresentable {
 
         private var press = TouchPressPolicy()
         private var holdTimer: DispatchWorkItem?
+        private var touchGeneration: UInt64?
+        private var pencilTouch: UITouch?
+        private var pencilGeneration: UInt64?
+        private var lastPencil: PencilSample?
+        private var hoverGeneration: UInt64?
+        private var pencilHoverActive = false
+        private var panGeneration: UInt64?
 
         private func emit(_ actions: [TouchPressPolicy.Action]) {
             for action in actions {
-                receiver?.sendTouch(phase: action.phase, x: action.position.x, y: action.position.y)
+                receiver?.sendTouch(phase: action.phase, x: action.position.x, y: action.position.y, generation: touchGeneration)
             }
         }
 
-        func cancelPress() {
+        private func cancelFingerPress() {
             holdTimer?.cancel(); holdTimer = nil
             emit(press.cancel())
+            touchGeneration = nil
+        }
+
+        func cancelPress() {
+            cancelFingerPress()
+            if let generation = pencilGeneration, let last = lastPencil,
+               let cancel = PencilSample(phase: .cancel, x: last.x, y: last.y, pressure: 0,
+                                         azimuth: last.azimuth, altitude: last.altitude) {
+                receiver?.sendPencil(cancel, generation: generation)
+            }
+            if let generation = hoverGeneration ?? pencilGeneration {
+                receiver?.endPencilProximity(x: lastPencil?.x ?? 0.5, y: lastPencil?.y ?? 0.5, generation: generation)
+            }
+            resetInput()
+        }
+
+        /// A new connection owns a new gesture epoch; old touches cannot cross it.
+        func resetInput() {
+            holdTimer?.cancel(); holdTimer = nil
+            _ = press.cancel()
+            touchGeneration = nil; pencilTouch = nil; pencilGeneration = nil
+            lastPencil = nil; hoverGeneration = nil; pencilHoverActive = false
+            panGeneration = nil; twoFingerActive = false
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window == nil { cancelPress() }
+        }
+
+        private func sendPencil(_ phase: String, touch: UITouch, event: UIEvent?) {
+            if phase == "began" {
+                cancelFingerPress()
+                twoFingerActive = false
+                panGeneration = nil
+                pencilTouch = touch
+                pencilGeneration = receiver?.inputGeneration
+            }
+            guard pencilTouch === touch, let generation = pencilGeneration else { return }
+            let penPhase: PencilSample.Phase
+            switch phase {
+            case "began": penPhase = .down
+            case "moved": penPhase = .move
+            case "ended": penPhase = .up
+            default: penPhase = .cancel
+            }
+            let samples = phase == "moved" ? Array((event?.coalescedTouches(for: touch) ?? [touch]).suffix(32)) : [touch]
+            for sample in samples {
+                let norm = normalized(sample.location(in: self))
+                // Keep the last valid point for cancellation during a layout change.
+                guard let x = norm?.x ?? lastPencil?.x, let y = norm?.y ?? lastPencil?.y else { continue }
+                let pressure = sample.maximumPossibleForce > 0 ? sample.force / sample.maximumPossibleForce : 0
+                let ending = penPhase == .up || penPhase == .cancel
+                guard let packet = PencilSample(phase: penPhase, x: x, y: y,
+                    pressure: ending ? 0 : Double(min(1, max(0, pressure))),
+                    azimuth: ending ? (lastPencil?.azimuth ?? 0) : Double(sample.azimuthAngle(in: self)),
+                    altitude: ending ? (lastPencil?.altitude ?? .pi / 2) : Double(sample.altitudeAngle)) else { continue }
+                lastPencil = packet
+                receiver?.sendPencil(packet, generation: generation)
+            }
+            if phase == "ended" || phase == "cancelled" {
+                pencilTouch = nil; pencilGeneration = nil
+            }
+        }
+
+        @objc func didPencilHover(_ recognizer: UIHoverGestureRecognizer) {
+            switch recognizer.state {
+            case .began, .changed:
+                guard pencilTouch == nil, let norm = normalized(recognizer.location(in: self)) else { return }
+                cancelFingerPress()
+                pencilHoverActive = true
+                if hoverGeneration == nil { hoverGeneration = receiver?.inputGeneration }
+                guard let generation = hoverGeneration,
+                      let sample = PencilSample(phase: .hover, x: norm.x, y: norm.y, pressure: 0,
+                        azimuth: Double(recognizer.azimuthAngle(in: self)), altitude: Double(recognizer.altitudeAngle)) else { return }
+                lastPencil = sample
+                receiver?.sendPencil(sample, generation: generation)
+            case .ended, .cancelled, .failed:
+                if pencilTouch == nil, let generation = hoverGeneration {
+                    receiver?.endPencilProximity(x: lastPencil?.x ?? 0.5, y: lastPencil?.y ?? 0.5, generation: generation)
+                }
+                hoverGeneration = nil; pencilHoverActive = false
+            default: break
+            }
         }
 
         private var twoFingerActive = false
@@ -181,43 +278,54 @@ struct VideoLayerView: UIViewRepresentable {
         private var lastNorm: (x: Double, y: Double) = (0.5, 0.5)
 
         @objc func didTwoFingerPan(_ recognizer: UIPanGestureRecognizer) {
-            guard let video = receiver?.videoSize, video != .zero else { return }
+            guard pencilTouch == nil, !pencilHoverActive,
+                  let video = receiver?.videoSize, video != .zero else { return }
             switch recognizer.state {
             case .began:
                 twoFingerActive = true
                 lastPan = .zero
-                cancelPress()
+                cancelFingerPress()
+                panGeneration = receiver?.inputGeneration
                 // Anchor scrolling under the gesture without sending a click.
                 if let n = normalized(recognizer.location(in: self)) {
                     lastNorm = n
-                    receiver?.sendTouch(phase: "moved", x: n.x, y: n.y)
+                    receiver?.sendTouch(phase: "moved", x: n.x, y: n.y, generation: panGeneration)
                 }
             case .changed:
+                guard let panGeneration else { return }
                 let t = recognizer.translation(in: self)
                 let scale = min(bounds.width / video.width, bounds.height / video.height)
                 guard scale > 0 else { return }
                 // Deltas in video pixels, natural-scrolling direction.
                 receiver?.sendScroll(dx: (t.x - lastPan.x) / scale,
-                                     dy: (t.y - lastPan.y) / scale)
+                                     dy: (t.y - lastPan.y) / scale, generation: panGeneration)
                 lastPan = t
             default:
                 twoFingerActive = false
+                panGeneration = nil
             }
         }
 
         private func send(_ phase: String, _ touches: Set<UITouch>, _ event: UIEvent?) {
-            if phase == "cancelled" { cancelPress(); return }
-            if twoFingerActive || (event?.allTouches?.count ?? 1) > 1 {
-                cancelPress()
+            if let pencil = touches.first(where: { $0.type == .pencil }) {
+                sendPencil(phase, touch: pencil, event: event)
                 return
             }
-            guard let touch = touches.first,
+            guard pencilTouch == nil, !pencilHoverActive else { return }
+            if phase == "cancelled" { cancelFingerPress(); return }
+            let fingers = event?.allTouches?.filter { $0.type == .direct && $0.phase != .ended && $0.phase != .cancelled }.count ?? 1
+            if twoFingerActive || fingers > 1 {
+                cancelFingerPress()
+                return
+            }
+            guard let touch = touches.first(where: { $0.type == .direct }),
                   let norm = normalized(touch.location(in: self)) else { return }
             lastNorm = norm
             let position = CGPoint(x: norm.x, y: norm.y)
             switch phase {
             case "began":
-                cancelPress()
+                cancelFingerPress()
+                touchGeneration = receiver?.inputGeneration
                 press.begin(at: position, screenPoint: touch.location(in: self))
                 let work = DispatchWorkItem { [weak self] in
                     guard let self else { return }
@@ -229,8 +337,10 @@ struct VideoLayerView: UIViewRepresentable {
             case "ended":
                 holdTimer?.cancel(); holdTimer = nil
                 emit(press.end(at: position))
+                touchGeneration = nil
                 return
             case "moved":
+                guard touchGeneration != nil else { return }
                 emit(press.move(to: touch.location(in: self)))
             default: break
             }
@@ -240,19 +350,19 @@ struct VideoLayerView: UIViewRepresentable {
                 // gets the full-rate drag, then UIKit's predicted touch so the
                 // cursor leads toward where the finger will be (~1 frame of
                 // perceived latency back; corrected by the next real sample).
-                for t in event.coalescedTouches(for: touch) ?? [touch] {
+                for t in (event.coalescedTouches(for: touch) ?? [touch]).suffix(32) {
                     if let n = normalized(t.location(in: self)) {
                         lastNorm = n
-                        receiver?.sendTouch(phase: "moved", x: n.x, y: n.y)
+                        receiver?.sendTouch(phase: "moved", x: n.x, y: n.y, generation: touchGeneration)
                     }
                 }
                 if let predicted = event.predictedTouches(for: touch)?.last,
                    let n = normalized(predicted.location(in: self)) {
-                    receiver?.sendTouch(phase: "moved", x: n.x, y: n.y)
+                    receiver?.sendTouch(phase: "moved", x: n.x, y: n.y, generation: touchGeneration)
                 }
                 return
             }
-            receiver?.sendTouch(phase: phase, x: norm.x, y: norm.y)
+            receiver?.sendTouch(phase: phase, x: norm.x, y: norm.y, generation: touchGeneration)
         }
 
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { send("began", touches, event) }

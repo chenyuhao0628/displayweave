@@ -129,6 +129,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // VideoToolbox callbacks can arrive after a disconnect or reconnect. Tie
     // every encode to the ready connection that accepted it so an old frame
     // can never be written to a newer peer.
+    private var pencilNegotiated = false
     private var wireConnectionGeneration: UInt64 = 0
     private var encoderGeneration: UInt64 = 0
     // Owns every NWConnection callback. `dialGeneration` only protects an
@@ -675,6 +676,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     /// Bookkeeping shared by both transports once a connection is live.
     private func adoptConnection(_ conn: NWConnection) -> UInt64 {
+        pencilNegotiated = false
+        inputInjector?.cancelPress()
         connectionGeneration &+= 1
         connection = conn
         return connectionGeneration
@@ -690,6 +693,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     }
 
     private func invalidateConnection() {
+        pencilNegotiated = false
         inputInjector?.cancelPress()
         connectionGeneration &+= 1
         let previous = connection
@@ -831,6 +835,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     private func scheduleReconnect(failureObservedAt: Date = Date()) {
         guard !stopped else { return }
+        inputInjector?.cancelPress()
+        pencilNegotiated = false
         if everConnected {
             let now = Date()
             let since = DisconnectGracePolicy.startedAt(
@@ -1203,6 +1209,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 }
                 let previous = lastHello
                 lastHello = info
+                let supportsPencil = PencilProtocol.supports(info.inputCaps)
+                if pencilNegotiated && !supportsPencil { inputInjector?.cancelPress() }
+                pencilNegotiated = supportsPencil
+                if supportsPencil {
+                    sendJSONFrame("{\"type\":\"inputConfig\",\"inputCaps\":[\"pencil-v1\"]}")
+                }
                 if info.supportsProtocolV2 {
                     Task { await self.status("正在协商视频配置…") }
                     if previous?.supportsProtocolV2 != true,
@@ -1230,6 +1242,18 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             let state = obj["state"] as? String ?? "unknown"
             let reason = obj["reason"] as? String ?? ""
             Log.info("receiver connection state=\(state) reason=\(reason)")
+        case "pencil":
+            guard pencilNegotiated else { return }
+            guard let sample = PencilSample(message: obj) else { inputInjector?.cancelPress(); return }
+            inputInjector?.handlePencil(sample)
+        case "proximity":
+            guard pencilNegotiated else { return }
+            guard let entering = obj["entering"] as? Bool,
+                  let x = obj["x"] as? Double, let y = obj["y"] as? Double,
+                  x.isFinite, y.isFinite, (0...1).contains(x), (0...1).contains(y) else {
+                inputInjector?.cancelPress(); return
+            }
+            inputInjector?.handleProximity(entering: entering, x: x, y: y)
         case "touch":
             if let phase = obj["phase"] as? String,
                let x = obj["x"] as? Double,
@@ -1289,8 +1313,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     private func finishSessionAfterReceiverExit() {
         connectionReady = false
-        connection?.cancel()
-        connection = nil
+        invalidateConnection()
         Task { @MainActor in self.onDisconnected?() }
     }
 
