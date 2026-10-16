@@ -19,13 +19,17 @@ struct SenderSettingsView: View {
         TabView(selection: $selectedTab) {
             Form { Section("画质与带宽") { streamControls } }
                 .tabItem { Label("串流", systemImage: "slider.horizontal.3") }.tag("stream")
-            Form { connectionControls; generalControls }
+            Form {
+                Section("设备连接") { connectionControls }
+                Section("应用与桌面") { generalControls }
+            }
                 .tabItem { Label("通用", systemImage: "gearshape") }.tag("general")
             Form { permissionControls; PencilShortcutSettings(); Section("诊断") { diagnosticControls } }
                 .tabItem { Label("权限与诊断", systemImage: "checkmark.shield") }.tag("permissions")
             Form { TransportSecuritySettings(permitsSending: true) }
                 .tabItem { Label("安全与配对", systemImage: "lock.shield") }.tag("security")
         }
+        .tint(.blue)
         .formStyle(.grouped)
         .padding(12)
         .frame(minWidth: 540, minHeight: 520)
@@ -123,13 +127,19 @@ struct SenderSettingsView: View {
         Text("自动模式优先 USB；Android USB 不可用时尝试同一设备的局域网连接。")
             .font(.caption)
             .foregroundStyle(.secondary)
+    }
+    VStack(alignment: .leading, spacing: 8) {
         Toggle("自动连接直连 Mac", isOn: $controller.autoConnectDirectMac)
         Text("仅在自动或局域网模式下生效。识别 Thunderbolt Bridge／链路本地以太网候选；手动断开后停止自动连接。普通 USB-C 线不一定能建立网络。")
             .font(.caption)
             .foregroundStyle(.secondary)
+    }
+    VStack(alignment: .leading, spacing: 8) {
         Toggle("Mac 有线／无线自动切换", isOn: $controller.autoSwitchMacLAN)
         Text("仅在自动模式下生效。已连接的同一台 Mac 出现稳定有线候选时切换；连接失效后有限重试其他接口。切换会短暂中断画面，手动断开或取消会停止恢复。")
             .font(.caption).foregroundStyle(.secondary)
+    }
+    VStack(alignment: .leading, spacing: 8) {
         Text(controller.androidAdbStatus)
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -249,6 +259,7 @@ struct SenderSettingsView: View {
                 .foregroundStyle(uncertain ? .orange : granted ? .green : .red)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
+                Text(uncertain ? "待检查" : granted ? "已允许" : "未允许").font(.caption).foregroundStyle(.secondary)
                 if uncertain || !granted {
                     Text(help)
                         .font(.caption)

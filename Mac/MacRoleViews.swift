@@ -69,73 +69,14 @@ struct MacRootView: View {
                 Text(roles.role == .sender ? "发送屏幕" : "接收屏幕")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                if compact { Button("打开窗口") { MainWindow.show() } }
                 if let updater { CheckForUpdatesView(updater: updater) }
                 Button("退出") { NSApp.terminate(nil) }
             }.controlSize(.small).padding(.horizontal, 20).padding(.vertical, 12)
         }
         .frame(width: compact ? 480 : nil, height: compact ? 640 : nil)
         .frame(minWidth: 480, minHeight: 440)
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-}
-
-private struct MacReceiverPanel: View {
-    @ObservedObject var controller: MacReceiverController
-    @ObservedObject private var receiver: StreamReceiver
-
-    init(controller: MacReceiverController) {
-        self.controller = controller
-        _receiver = ObservedObject(wrappedValue: controller.receiver)
-    }
-
-    var body: some View {
-        Form {
-            Section {
-                Label(receiver.status, systemImage: receiver.connected ? "checkmark.circle.fill" : "antenna.radiowaves.left.and.right")
-                    .font(.headline)
-                if receiver.connected {
-                    Text("送入显示层：\(receiver.fps) fps · \(receiver.codecLabel) · \(receiver.encrypted ? "已加密" : "未加密兼容")")
-                        .font(.caption.monospaced()).foregroundStyle(.secondary)
-                }
-                HStack {
-                    Button(controller.enabled ? "停止接收" : "开始接收") {
-                        if controller.enabled { controller.stop() } else { controller.start() }
-                    }.buttonStyle(.borderedProminent)
-                    if receiver.connected {
-                        Button("显示画面") { controller.showVideo() }
-                        Button("断开连接") { receiver.disconnect() }
-                    }
-                }
-            } header: { Text("接收状态") }
-            Section("显示选项") {
-                TextField("设备名称", text: $controller.name)
-                Picker("接收显示器", selection: $controller.selectedDisplayID) {
-                    ForEach(controller.screens, id: \.self) { screen in
-                        Text(screen.localizedName).tag(MacReceiverController.id(screen))
-                    }
-                }
-                Toggle("全屏显示接收画面", isOn: $controller.fullscreen)
-            }
-            Section("连接帮助") {
-                Label("两台 Mac 加入同一 Wi-Fi 或以太网。", systemImage: "1.circle")
-                Label("在另一台 Mac 选择发送屏幕，再选择本机。", systemImage: "2.circle")
-                Label("在发送端选择扩展或镜像。需要在本机操作时，启用下方键鼠回传。", systemImage: "3.circle")
-                Text("关闭接收画面窗口会断开当前连接。接收不需要屏幕录制或辅助功能权限。找不到设备时，请检查两端本地网络权限、防火墙与路由器隔离设置。")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("键盘与鼠标") {
-                Toggle("从此 Mac 操作发送端", isOn: Binding(get: { receiver.inputForwarding }, set: { receiver.setInputForwarding($0) }))
-                Text(receiver.inputForwarding ? receiver.inputStatus : "键鼠回传已关闭")
-                    .font(.caption).foregroundStyle(.secondary)
-                Text("双方需开启并使用加密配对；发送端需辅助功能权限。仅聚焦接收画面时回传；⌃⌥Esc 立即停止。键盘布局和输入法沿用发送端。")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section {
-                Text("默认加密并验证配对。在“设置 → 安全与配对”生成本机邀请，复制到发送端后再连接。每次仅接收一个发送端。")
-                    .font(.caption).foregroundStyle(.secondary)
-                Button("安全与配对设置…") { SettingsWindow.show(tab: "security") }
-            }
-        }.formStyle(.grouped)
+        .tint(.blue)
     }
 }
 

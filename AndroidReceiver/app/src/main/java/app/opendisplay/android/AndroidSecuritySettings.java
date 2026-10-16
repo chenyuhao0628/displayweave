@@ -58,6 +58,22 @@ final class AndroidSecuritySettings {
                 .setMessage("请解锁设备后重新载入安全状态；密钥丢失或证书过期时，显式重置身份并重新配对。\n\n"
                         + detail).setPositiveButton("知道了", null).show();
     }
+    void showConnectionModes() {
+        String[] modes = {"DisplayWeave 加密配对", "OpenDisplay 兼容（未加密）"};
+        confirmation = new AlertDialog.Builder(activity).setTitle("连接客户端")
+                .setSingleChoiceItems(modes, legacyEnabled(activity) ? 1 : 0, (dialog, which) -> {
+                    dialog.dismiss();
+                    if ((which == 1) == legacyEnabled(activity)) return;
+                    if (which == 0) { changeLegacy(false); return; }
+                    confirmLegacy();
+                }).setNegativeButton("取消", null).show();
+    }
+    private void confirmLegacy() {
+        confirmation = new AlertDialog.Builder(activity).setTitle("使用 OpenDisplay 兼容连接？")
+                .setMessage("无需配对邀请，画面和输入未加密。请使用可信网络；更改模式会断开当前连接。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("启用明文兼容", (dialog, which) -> changeLegacy(true)).show();
+    }
     void show() {
         if (settings != null) settings.dismiss();
         LinearLayout content = column();
@@ -104,6 +120,7 @@ final class AndroidSecuritySettings {
                 .setPositiveButton("完成", null).show();
     }
     private void changeLegacy(boolean enabled) {
+        cancelInvitation();
         stop.run();
         activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(LEGACY, enabled).apply();
         start.run(); show();

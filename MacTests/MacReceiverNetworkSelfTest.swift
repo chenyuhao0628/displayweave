@@ -51,8 +51,9 @@ import VideoToolbox
             precondition(busy.isClosed(), "second sender displaced active sender")
         }.value
         let video = try await Task.detached { try receiverTestH264Frame() }.value
-        let config = try JSONSerialization.data(withJSONObject: ["type":"streamConfig", "codec":"h264", "width":64, "height":64, "fps":120])
-        let stream = ReceiverFrameDecoder.frame(config) + ReceiverFrameDecoder.frame(video)
+        let config = try JSONSerialization.data(withJSONObject: ["type":"streamConfig", "codec":"h264", "width":64, "height":64, "framesPerSecond":120])
+        let welcome = try JSONSerialization.data(withJSONObject: ["type":"welcome", "pv":3, "minSupportedPeer":1])
+        let stream = ReceiverFrameDecoder.frame(welcome) + ReceiverFrameDecoder.frame(config) + ReceiverFrameDecoder.frame(video)
         try await Task.detached {
             try first.write(Data(stream.prefix(2)))
             try first.write(Data(stream.dropFirst(2)))

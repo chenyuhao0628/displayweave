@@ -54,6 +54,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private CursorOverlayView cursorOverlay;
     private TextView statusView;
     private TextView idleStatusView;
+    private Button connectionModeButton;
     private View idlePanel;
     private OpenDisplayServer server;
     private SurfaceHolder activeSurface;
@@ -119,7 +120,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                     }
                 });
         securitySettings = new AndroidSecuritySettings(this, receiverLifecycle::stopForSettings,
-                receiverLifecycle::reevaluate,
+                () -> { receiverLifecycle.reevaluate(); refreshConnectionModeUi(); },
                 () -> { if (server != null) server.cancelPendingAdmissions(); },
                 id -> { if (server != null) server.revokePeer(id); });
         buildUi();
@@ -412,23 +413,35 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         idleStatusView.setPadding(0, dp(8), 0, dp(24));
         content.addView(idleStatusView, matchWrap());
 
-        content.addView(cardText("从 Mac 开始连接\n\n"
-                + "1. 在 Mac 上打开 DisplayWeave，选择发送屏幕。\n\n"
-                + "2. 两端加入同一局域网，或使用已授权 USB 调试的线缆连接。\n\n"
-                + "3. 首次连接先在“安全与配对”生成邀请，导入 Mac 后从设备列表连接。"));
+        LinearLayout guide = ui.panel();
+        ui.step(guide, 1, "准备连接", "在 Mac 打开 DisplayWeave 或 OpenDisplay，加入同一局域网，或连接已授权 USB 调试的设备。");
+        ui.step(guide, 2, "选择连接客户端", "DisplayWeave 使用加密配对邀请；OpenDisplay 选择下方兼容入口，无需邀请。");
+        ui.step(guide, 3, "选择这台设备", "在 Mac 的设备列表中连接本机，选择扩展或镜像，并保持接收端打开。");
+        content.addView(guide, matchWrap());
 
-        Button settings = ui.button("设置与帮助");
+        connectionModeButton = ui.button("");
+        connectionModeButton.setOnClickListener(v -> securitySettings.showConnectionModes());
+        LinearLayout.LayoutParams modeParams = matchWrap();
+        modeParams.setMargins(0, dp(16), 0, dp(8));
+        content.addView(connectionModeButton, modeParams);
+        refreshConnectionModeUi();
+
+        Button settings = ui.primaryButton("配对与连接设置");
         settings.setOnClickListener(v -> showSettingsDialog());
-        LinearLayout.LayoutParams buttonParams = matchWrap();
-        buttonParams.setMargins(0, dp(24), 0, dp(8));
-        content.addView(settings, buttonParams);
+        content.addView(settings, matchWrap());
 
-        TextView footnote = text("默认使用配对加密连接。旧版明文兼容须在安全设置中显式开启。串流时可通过右上角设置调整选项；USB 调试授权会信任当前 Mac。", 13,
+        TextView footnote = text("兼容模式未加密，请使用可信网络。串流时右上角始终提供设置入口；USB 调试授权会信任当前 Mac。", 13,
                 ui.secondary, false);
-        footnote.setGravity(Gravity.CENTER);
-        footnote.setPadding(0, dp(8), 0, 0);
+        footnote.setPadding(0, dp(16), 0, 0);
         content.addView(footnote, matchWrap());
         return scroll;
+    }
+
+    private void refreshConnectionModeUi() {
+        if (connectionModeButton != null) {
+            connectionModeButton.setText(AndroidSecuritySettings.legacyEnabled(this)
+                    ? "连接客户端：OpenDisplay 兼容 · 未加密" : "连接客户端：DisplayWeave 加密");
+        }
     }
 
     private TextView cardText(String value) {
@@ -440,6 +453,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(20), dp(10), dp(20), 0);
 
+        content.addView(ui.heading("连接与配对"), matchWrap());
         content.addView(text("连接状态：" + currentStatus, 15, ui.primary, false), matchWrap());
         content.addView(text("服务端口：9000\n设备标识：" + InstallId.get(this), 13,
                 ui.secondary, false), matchWrap());
@@ -448,6 +462,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         security.setOnClickListener(v -> securitySettings.show());
         content.addView(security, matchWrap());
 
+        content.addView(ui.heading("显示与操作"), matchWrap());
         CheckBox keepAwake = new CheckBox(this);
         keepAwake.setText("保持屏幕常亮");
         keepAwake.setChecked(prefs.getBoolean(KEY_KEEP_AWAKE, true));
@@ -475,30 +490,31 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         });
         content.addView(showMetrics, matchWrap());
 
-        Button quality = new Button(this);
-        quality.setText("画质/分辨率：" + currentDisplayProfile().label);
+        content.addView(ui.heading("画质与延迟"), matchWrap());
+        Button quality = ui.button("画质/分辨率：" + currentDisplayProfile().label);
         quality.setOnClickListener(v -> showDisplayProfileDialog());
         content.addView(quality, matchWrap());
 
-        Button decoderLowLatency = new Button(this);
+        Button decoderLowLatency = ui.button("");
         decoderLowLatency.setText("解码器低延迟："
                 + currentDecoderLowLatencyMode().label);
         decoderLowLatency.setOnClickListener(v -> showDecoderLowLatencyDialog());
         content.addView(decoderLowLatency, matchWrap());
 
-        Button wifiLowLatency = new Button(this);
+        Button wifiLowLatency = ui.button("");
         wifiLowLatency.setText("WiFi 低延迟："
                 + currentWifiLowLatencyMode().label);
         wifiLowLatency.setOnClickListener(v -> showWifiLowLatencyDialog());
         content.addView(wifiLowLatency, matchWrap());
 
+        content.addView(ui.heading("更新与帮助"), matchWrap());
         TextView version = text("当前版本：" + installedVersionLabel()
                         + "\n更新状态：" + updateState,
                 13, ui.secondary, false);
         version.setPadding(0, dp(10), 0, 0);
         content.addView(version, matchWrap());
 
-        Button checkUpdate = new Button(this);
+        Button checkUpdate = ui.button("");
         checkUpdate.setText("检查更新");
         checkUpdate.setOnClickListener(v -> updateCoordinator.check(true));
         content.addView(checkUpdate, matchWrap());
@@ -510,7 +526,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         content.addView(help, matchWrap());
 
         if (!hasNearbyWifiPermission() && Build.VERSION.SDK_INT >= 33) {
-            Button permission = new Button(this);
+            Button permission = ui.button("");
             permission.setText("授予附近设备权限");
             permission.setOnClickListener(v -> requestPermissions(
                     new String[] {Manifest.permission.NEARBY_WIFI_DEVICES}, REQUEST_NEARBY_WIFI));
@@ -733,8 +749,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         }
         new AlertDialog.Builder(this)
                 .setTitle("欢迎使用 DisplayWeave")
-                .setMessage("这个 Android 端需要和 Mac 端配合使用。请先在 Mac 上启动 DisplayWeave，"
-                        + "再让两台设备加入同一局域网。在“安全与配对”生成邀请，导入 Mac 后选择这台 Android 设备。")
+                .setMessage("这个 Android 端需要和 Mac 端配合使用。请先在 Mac 上启动 DisplayWeave 或 OpenDisplay，"
+                        + "再让两台设备加入同一局域网。DisplayWeave 使用配对邀请；OpenDisplay 在主界面选择兼容模式，然后从 Mac 连接这台设备。")
                 .setPositiveButton("知道了", (dialog, which) ->
                         prefs.edit().putBoolean(KEY_ONBOARDING_DISMISSED, true).apply())
                 .show();

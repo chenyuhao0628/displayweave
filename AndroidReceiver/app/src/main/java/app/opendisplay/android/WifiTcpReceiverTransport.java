@@ -4,6 +4,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.BindException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Locale;
@@ -23,6 +24,8 @@ import app.opendisplay.android.protocol.LengthPrefixedProtocol;
 
 public final class WifiTcpReceiverTransport implements ReceiverTransport {
     static final int MAX_CONTROL_BYTES = 64 * 1024;
+    private static final int BIND_ATTEMPTS = 6;
+    private static final int BIND_RETRY_MS = 50;
     private final int requestedPort;
     private final ExecutorService acceptor = Executors.newSingleThreadExecutor();
     private final ExecutorService readers = boundedExecutor(2, 2);
@@ -202,31 +205,50 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
     }
 
     private void acceptLoop() {
-        try (ServerSocket server = new ServerSocket()) {
-            server.setReuseAddress(true);
-            server.bind(new InetSocketAddress(requestedPort));
-            synchronized (this) {
-                if (!running) return;
-                serverSocket = server;
-                listener.onListening(server.getLocalPort());
-            }
-            while (running) {
-                Socket accepted = server.accept();
-                try {
-                    configureAcceptedSocket(accepted);
-                    if (security == null) {
-                        adopt(accepted, accepted, new BufferedInputStream(accepted.getInputStream()),
-                                new BufferedOutputStream(accepted.getOutputStream()), null);
-                    } else {
-                        beginAdmission(accepted);
-                    }
-                } catch (IOException | RuntimeException error) {
-                    closeSocket(accepted);
+        for (int attempt = 0; running && attempt < BIND_ATTEMPTS; attempt++) {
+            boolean bound = false;
+            try (ServerSocket server = new ServerSocket()) {
+                server.setReuseAddress(true);
+                synchronized (this) {
+                    if (!running) return;
+                    // Give stop() ownership even before bind completes.
+                    serverSocket = server;
                 }
-            }
-        } catch (IOException error) {
-            synchronized (this) {
-                if (running) listener.onListenerError("监听失败，请检查端口占用后重新打开接收：" + error.getMessage());
+                server.bind(new InetSocketAddress(requestedPort));
+                bound = true;
+                synchronized (this) {
+                    if (!running) return;
+                    listener.onListening(server.getLocalPort());
+                }
+                while (running) {
+                    Socket accepted = server.accept();
+                    try {
+                        configureAcceptedSocket(accepted);
+                        if (security == null) {
+                            adopt(accepted, accepted, new BufferedInputStream(accepted.getInputStream()),
+                                    new BufferedOutputStream(accepted.getOutputStream()), null);
+                        } else {
+                            beginAdmission(accepted);
+                        }
+                    } catch (IOException | RuntimeException error) {
+                        closeSocket(accepted);
+                    }
+                }
+                return;
+            } catch (IOException error) {
+                if (!running) return;
+                // Android can retain the old port briefly while a closed
+                // accept() unwinds during a security-mode switch. Retry only
+                // initial bind conflicts, off the UI thread, for at most 250 ms.
+                if (!bound && error instanceof BindException && attempt + 1 < BIND_ATTEMPTS) {
+                    try { Thread.sleep(BIND_RETRY_MS); }
+                    catch (InterruptedException stopped) { Thread.currentThread().interrupt(); return; }
+                    continue;
+                }
+                synchronized (this) {
+                    if (running) listener.onListenerError("监听失败，请检查端口占用后重新打开接收：" + error.getMessage());
+                }
+                return;
             }
         }
     }

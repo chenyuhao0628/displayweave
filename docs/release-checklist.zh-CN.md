@@ -2,9 +2,9 @@
 
 # 发布检查清单
 
-## 当前发行：v0.3.0-preview.1（16）
+## 当前发行：v0.3.0-preview.2（17）
 
-[发布说明](release-notes-v0.3.0-preview.1.zh-CN.md)记录逐项功能、升级配对、哈希和签名边界。原生源码 `53d2dfa` 已通过完整本地回归；Mac universal、Android 原证书签名 APK 与无签名 iOS 重签输入包已完成 Release 构建。本机先覆盖更新，且包内/保存更新源均指向 GitHub Pages。
+[发布说明](release-notes-v0.3.0-preview.2.zh-CN.md)记录UI 与兼容改动、哈希和签名边界。原生源码 `4f6e096` 已通过完整本地回归；Mac universal、Android 原证书签名 APK 与无签名 iOS 重签输入包已完成 Release 构建。本机已安装应用保持不变，开发检查使用隔离 app。
 
 52 组 Swift、六组 Android、真实平台 TLS/Keychain/Keystore、iOS/Android 隔离运行、Apple 构建、Android Lint、网站、双语、12 项打包测试及 36 项品牌导出检查通过。DMG/ZIP 一致性、原 Sparkle 签名、Android 证书/版本及 iOS 无签名边界均已核验。
 

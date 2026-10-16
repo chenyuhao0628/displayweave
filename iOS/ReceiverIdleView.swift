@@ -3,42 +3,51 @@ import SwiftUI
 struct IdleView: View {
     @ObservedObject var receiver: PhoneReceiver
     @Binding var showSettings: Bool
+    @AppStorage("deviceName") private var deviceName = UIDevice.current.name
+    @ObservedObject private var security = AppleTransportSecurityModel.shared
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                HStack(spacing: 16) {
+                HStack(spacing: 12) {
                     Image("AppLogo").resizable().scaledToFit()
-                        .frame(width: 64, height: 64).accessibilityHidden(true)
+                        .frame(width: 48, height: 48).accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("DisplayWeave").font(.title.bold())
-                        Text("将这台 \(deviceKind) 用作显示器").foregroundStyle(.secondary)
+                        Text("DisplayWeave").font(.title2.bold())
+                        Text("让屏幕连接起来").font(.subheadline).foregroundStyle(.secondary)
                     }
                 }
-                Label(receiver.status, systemImage: receiver.connected ? "checkmark.circle.fill" : "antenna.radiowaves.left.and.right")
-                    .font(.headline).foregroundStyle(.tint)
-                    .accessibilityAddTraits(.updatesFrequently)
+                VStack(alignment: .leading, spacing: 12) {
+                    Label(receiver.status, systemImage: receiver.connected ? "checkmark.circle" : "antenna.radiowaves.left.and.right")
+                        .font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
+                    Text("在 Mac 上选择“\(deviceName.isEmpty ? "DisplayWeave" : deviceName)”。")
+                        .foregroundStyle(.secondary)
+                    Label(security.legacyReceiver ? "OpenDisplay 兼容 · 未加密" : "DisplayWeave · 加密配对",
+                          systemImage: security.legacyReceiver ? "lock.open" : "lock.shield")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).padding(20)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
                 VStack(alignment: .leading, spacing: 16) {
                     Text("从 Mac 开始连接").font(.headline)
-                    Label("在 Mac 上打开 DisplayWeave，选择发送屏幕。", systemImage: "1.circle")
-                    Label("连接 USB，或让两端加入同一局域网。", systemImage: "2.circle")
-                    Label("打开本机设置生成配对邀请，复制到 Mac 的“安全与配对”。", systemImage: "3.circle")
-                    Label("在 Mac 的设备列表中选择本机，并保持此 app 打开。", systemImage: "4.circle")
+                    ConnectionSetupGuide(legacy: security.legacyReceiver)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
-                Button { showSettings = true } label: {
-                    Label("设置与帮助", systemImage: "gearshape")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }.buttonStyle(.borderedProminent)
-                Text("默认使用加密配对。旧版本需在设置中显式启用未加密兼容。串流时可点右上角设置，也可摇动设备打开设置。")
+                VStack(alignment: .leading, spacing: 12) {
+                    Picker("连接客户端", selection: Binding(get: { security.legacyReceiver }, set: security.setLegacyReceiver)) {
+                        Text("DisplayWeave 加密").tag(false)
+                        Text("OpenDisplay 兼容").tag(true)
+                    }.pickerStyle(.menu)
+                    Text(security.legacyReceiver ? "兼容连接无需邀请，未加密；请使用可信网络。更改模式会断开当前连接。" : "使用 OpenDisplay 时，选择兼容连接即可。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Button { showSettings = true } label: {
+                        Label("配对与连接设置", systemImage: "slider.horizontal.3")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }.buttonStyle(.borderedProminent)
+                }
+                Text("连接时保持 app 打开。串流画面的右上角始终提供设置入口。")
                     .font(.footnote).foregroundStyle(.secondary)
             }
-            .frame(maxWidth: 520)
-            .padding(24)
-            .frame(maxWidth: .infinity)
-        }
-        .background(Color(.systemBackground))
+            .frame(maxWidth: 520).padding(24).frame(maxWidth: .infinity)
+        }.background(Color(.systemBackground)).tint(.blue)
     }
 }

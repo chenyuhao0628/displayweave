@@ -3,6 +3,8 @@ package app.opendisplay.android;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.net.Socket;
+import java.net.ServerSocket;
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -18,6 +20,7 @@ import app.opendisplay.android.protocol.BinaryFrameHeaderV2;
 
 public final class VideoStreamPolicySelfTest {
     public static void main(String[] args) throws Exception {
+        testListenerPortReplacement();
         testStreamConfigDefaults();
         testCodecMapping();
         testProtocolV2FrameIdentity();
@@ -61,6 +64,63 @@ public final class VideoStreamPolicySelfTest {
         testWifiTransportDisconnectsOnControlBackpressure();
         testWifiTransportIgnoresSendAfterStop();
         System.out.println("VideoStreamPolicySelfTest PASS");
+    }
+
+    private static final class ListeningProbe implements ReceiverTransport.Listener {
+        final CountDownLatch ready = new CountDownLatch(1);
+        final CountDownLatch failed = new CountDownLatch(1);
+        volatile String error;
+        public void onListening(int port) { ready.countDown(); }
+        public void onListenerError(String message) { error = message; failed.countDown(); }
+        public void onConnected(long generation, String peer) { }
+        public void onPayload(long generation, byte[] payload) { }
+        public void onDisconnected(long generation) { }
+        public void onError(long generation, String message) { }
+    }
+
+    private static void testListenerPortReplacement() throws Exception {
+        // Android may retain the old bound port briefly after close() while its
+        // accept thread unwinds. Hold a real port to reproduce that boundary.
+        for (int scenario = 0; scenario < 3; scenario++) {
+            try (ServerSocket previous = new ServerSocket()) {
+                previous.setReuseAddress(true);
+                previous.bind(new InetSocketAddress(0));
+                int port = previous.getLocalPort();
+                WifiTcpReceiverTransport replacement = WifiTcpReceiverTransport.legacy(port);
+                ListeningProbe probe = new ListeningProbe();
+                try {
+                    replacement.start(probe);
+                    if (scenario == 1) {
+                        assertTrue(probe.failed.await(2, TimeUnit.SECONDS));
+                        assertTrue(probe.error.contains("检查端口占用"));
+                        assertEquals(1L, probe.ready.getCount());
+                    } else {
+                        Thread.sleep(100);
+                        if (scenario == 2) replacement.stop();
+                        previous.close();
+                        if (scenario == 0) {
+                            if (!probe.ready.await(2, TimeUnit.SECONDS)) {
+                                throw new AssertionError("replacement did not recover after port release: " + probe.error);
+                            }
+                            assertEquals(null, probe.error);
+                            try (Socket client = new Socket("127.0.0.1", port)) {
+                                assertTrue(client.isConnected());
+                            }
+                        } else {
+                            assertFalse(probe.ready.await(400, TimeUnit.MILLISECONDS));
+                            assertEquals(null, probe.error);
+                            try (ServerSocket check = new ServerSocket()) {
+                                check.setReuseAddress(true);
+                                check.bind(new InetSocketAddress(port));
+                            }
+                        }
+                    }
+                } finally {
+                    replacement.stop();
+                }
+            }
+        }
+        System.out.println("Listener replacement: transient conflict recovery, bounded conflict error and stop cancellation PASS");
     }
 
     private static void testReferenceChainRecovery() {

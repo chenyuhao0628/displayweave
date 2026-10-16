@@ -21,7 +21,8 @@ def main():
         folder = pathlib.Path(temporary)
         sources = sorted(str(path) for path in (ROOT / "Shared").glob("*.swift"))
         sources += [str(ROOT / path) for path in ["iOS/PhoneReceiver.swift", "iOS/ReceiverSceneLifecyclePolicy.swift",
-                                                 "iOS/Log.swift", "iOS/PencilSettings.swift", "iOS/ReceiverVideoView.swift", "iOS/TouchPressPolicy.swift", "iOS/MetalVideoRenderer.swift", "MacTests/SecurePhoneReceiverFixture.swift"]]
+                                                 "iOS/Log.swift", "iOS/ReceiverIdleView.swift", "iOS/ReceiverOnboardingView.swift", "iOS/ReceiverSettingsView.swift", "iOS/PencilSettings.swift", "iOS/ReceiverVideoView.swift", "iOS/TouchPressPolicy.swift", "iOS/MetalVideoRenderer.swift", "MacTests/SecurePhoneReceiverFixture.swift"]]
+        sources.append(str(ROOT / "iOS/Assets.xcassets"))
         bundle_id = "app.displayweave.secure-phone-self-test"
         spec = folder / "project.json"
         spec.write_text(json.dumps({"name": "PhoneTest", "targets": {"PhoneTest": {
@@ -72,6 +73,18 @@ def main():
                     run(["xcrun", "simctl", "ui", simulator, "appearance", appearance])
                     time.sleep(0.5)
                     run(["xcrun", "simctl", "io", simulator, "screenshot", str(args.screenshots / (appearance + ".png"))])
+                for surface in ("idle", "onboarding", "settings"):
+                    (documents / "command.txt").write_text("ui-" + surface)
+                    time.sleep(0.5)
+                    for appearance in ("light", "dark"):
+                        run(["xcrun", "simctl", "ui", simulator, "appearance", appearance])
+                        time.sleep(0.5)
+                        run(["xcrun", "simctl", "io", simulator, "screenshot", str(args.screenshots / (surface + "-" + appearance + ".png"))])
+                (documents / "command.txt").write_text("ui-idle")
+                run(["xcrun", "simctl", "ui", simulator, "content_size", "accessibility-extra-extra-extra-large"])
+                time.sleep(0.5)
+                run(["xcrun", "simctl", "io", simulator, "screenshot", str(args.screenshots / "idle-accessibility.png")])
+                print("iOS production waiting/onboarding/settings light-dark and large-text captures complete", flush=True)
             run(["xcrun", "simctl", "launch", simulator, "com.apple.Preferences"])
             deadline = time.monotonic() + 10
             while True:

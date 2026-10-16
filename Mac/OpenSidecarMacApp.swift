@@ -100,7 +100,7 @@ enum MainWindow {
     static func show() {
         if window == nil {
             let w = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 620, height: 640),
+                contentRect: NSRect(x: 0, y: 0, width: 680, height: 720),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered, defer: false)
             w.title = "DisplayWeave"

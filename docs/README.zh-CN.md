@@ -4,6 +4,8 @@
 
 ## 当前用户指南
 
+- [`v0.3.0-preview.2` UI 与 OpenDisplay 兼容发行说明](release-notes-v0.3.0-preview.2.zh-CN.md)
+
 - [`v0.3.0-preview.1` 发布说明](release-notes-v0.3.0-preview.1.zh-CN.md)
 
 - [Apple 正式归档/导出及前提](apple-distribution.zh-CN.md)
@@ -19,6 +21,8 @@
 - [HEVC、有线发现与 Pencil 设计和验收](hevc-wired-pencil-plan.zh-CN.md)
 - [2026-10-16 源码升级验收与硬件边界](source-upgrade-audit-2026-10-16.zh-CN.md)与[上游集成取舍](upstream-integration-2026-10-16.zh-CN.md)
 - [UI 规范](ui-guidelines.zh-CN.md)与[源码升级计划](upgrade-plan.zh-CN.md)
+- [UI 审核与验收（2026-10-16）](ui-audit-2026-10-16.zh-CN.md)
+- [OpenDisplay 连接兼容](opendisplay-compatibility.zh-CN.md)
 - [开发工作流与当前 Codex 官方依据](development.zh-CN.md)
 - [Mac 与 Mac 局域网互联（实验预览）](mac-to-mac.zh-CN.md)与[设计/上游评估](mac-to-mac-design.zh-CN.md)
 
