@@ -2,7 +2,7 @@
 
 # Apple receiver HEVC and high refresh
 
-Source after p8: iOS/iPadOS now offers H.264 and hardware-gated HEVC, and Apple receivers can negotiate up to 120 fps. Published p8 still has the previous iOS H.264 path and Mac 60 fps ceiling. These source changes have not been released or installed over the user's Mac app.
+Included in v0.3.0-preview.1: iOS/iPadOS offers H.264 and hardware-gated HEVC, and Apple receivers can negotiate up to 120fps within their capabilities. Physical high-refresh performance remains unverified; see [release evidence](release-notes-v0.3.0-preview.1.md).
 
 The Mac sender's **Frame rate → Auto / 60 / 90 / 120** is a request. The chosen rate is bounded by the receiver screen, each codec envelope, user preference and pixel throughput (at most 4096×2304×60 pixels/second). The HEVC operating point also fits H.264 fallback. Large rasters may therefore negotiate 60 or 30 fps; lowering encoded quality can make a higher target feasible. Decoder throughput is an advertised conservative budget, not a measured performance result.
 

@@ -2,9 +2,9 @@
 
 # DisplayWeave 路线图
 
-更新于 2026-10-16。[功能台账](docs/feature-completion.zh-CN.md)记录源码完成状态；当前已发布和已安装基线仍为 v0.2.1-p8（15），源码完成不会自动更新下载产物。
+更新于 2026-10-16。[功能台账](docs/feature-completion.zh-CN.md)记录逐项实现；本轮产物为 v0.3.0-preview.1（16），本机已更新。下载内容及验证边界见[发布说明](docs/release-notes-v0.3.0-preview.1.zh-CN.md)。
 
-## p8 之后已实现，等待发行
+## v0.3.0-preview.1 内容
 
 - 按设备 Native/1080p/1440p/4K 扩展桌面分辨率。
 - Apple/Android 默认双向 TLS、邀请配对、撤销和显式旧版兼容。

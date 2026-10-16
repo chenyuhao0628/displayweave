@@ -1,10 +1,10 @@
 [English](development-preview.md) | [简体中文](development-preview.zh-CN.md)
 
-# DisplayWeave `v0.2.1-p8` Development Distribution
+# DisplayWeave `v0.3.0-preview.1` Development Distribution
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; downloads are published on the [releases page](https://github.com/chenyuhao0628/displayweave/releases). Mac/Android update checks still depend on the original Pages URLs; install manually until they recover.
+2026-10-16: this preview is built locally. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site, which is available again. See the [release notes](release-notes-v0.3.0-preview.1.md) for build evidence and the required pairing migration.
 
 | Platform/feed | Asset | SHA-256 or trust boundary |
 | --- | --- | --- |
@@ -14,7 +14,7 @@
 | iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `8e423d4c6baf60d3b92c990f1d465473c223bce539baf3456abf59799f079bd1`; unsigned re-signing input |
 | Mac update feed | `appcast.xml` | [Configured Sparkle feed](https://chenyuhao0628.github.io/displayweave/appcast.xml) |
 | Android update feed | `android-update.json` | [Configured metadata feed](https://chenyuhao0628.github.io/displayweave/android-update.json) |
-| Source | `DisplayWeave-v0.2.1-p8-source.tar.gz` | Tracked source at the release tag; hash in the checksum manifest |
+| Source | `DisplayWeave-v0.3.0-preview.1-source.tar.gz` | Tracked source at the release tag; hash in the checksum manifest |
 | Checksums | `SHA256SUMS.txt` | Hashes all seven release files above |
 
 Android signing certificate SHA-256:

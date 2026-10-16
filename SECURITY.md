@@ -12,7 +12,7 @@ Do not post an exploitable vulnerability in a public issue. Use GitHub's private
 
 ## Current trust boundaries
 
-- Published p8 uses plaintext local TCP and requires a trusted LAN. Post-p8 Apple and Android source defaults to mutually authenticated, certificate-pinned TLS with explicit invitation pairing. See [source usage and boundaries](docs/secure-transport.md).
+- v0.3.0-preview.1 defaults to certificate-pinned mutual TLS and explicit invitation pairing on Apple and Android. Legacy compatibility is an explicit unencrypted choice for trusted networks. See [pairing](docs/secure-transport.md).
 - Android USB requires ADB RSA authorization. This grants the Mac broad debugging trust, including shell/install capabilities outside DisplayWeave. Revoke USB debugging authorizations when no longer needed.
 - The macOS Preview is ad-hoc signed and not notarized. Verify `SHA256SUMS.txt` and obtain packages only from the project Release.
 - The Android Preview APK is signed with an offline project keystore. Verify the SHA-256 certificate fingerprint documented in the release checklist before first install or update.
@@ -29,9 +29,9 @@ Never commit Android keystores/passwords, Apple certificates/private keys, provi
 Follow [docs/release-checklist.md](docs/release-checklist.md). A valid Preview publication requires source/build checks, APK v2 verification, macOS bundle verification, IPA archive hygiene, and SHA-256 validation.
 
 
-## Mac LAN reception (source development build)
+## Mac LAN reception
 
-Receive mode advertises on the LAN and listens on TCP 9000. Post-p8 Apple source
+Receive mode advertises on the LAN and listens on TCP 9000. The current Apple release
 requires authenticated TLS by default; explicit legacy compatibility is
 unencrypted and should be enabled only on a trusted network. It accepts one
 sender. Role changes, revocation and Stop receiving close owned connections;

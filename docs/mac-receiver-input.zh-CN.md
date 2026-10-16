@@ -2,7 +2,7 @@
 
 # Mac 接收端键盘与鼠标
 
-F05 已在源码实现，2026-10-16。已发布 p8 不包含此功能。实施和证据记录于[功能台账](feature-completion.zh-CN.md)。
+v0.3.0-preview.1 已包含。实施和证据记录于[功能台账](feature-completion.zh-CN.md)。
 
 ## 许可与范围
 

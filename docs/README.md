@@ -4,14 +4,16 @@
 
 ## Current user guides
 
+- [`v0.3.0-preview.1` release notes](release-notes-v0.3.0-preview.1.md)
+
 - [Production Apple archive/export and prerequisites](apple-distribution.md)
 - [Public protocol contract and shared fixtures](protocol.md)
-- [Advanced Pencil input (source)](pencil-advanced.md)
-- [Mac receiver keyboard and mouse (source)](mac-receiver-input.md)
-- [Secure connections and pairing (source)](secure-transport.md) and [design / integration](secure-transport-design.md)
-- [Mac wired / Wi-Fi handover (source)](mac-lan-handover.md)
-- [Apple receiver HEVC and high refresh (source)](apple-video.md)
-- [Per-device desktop resolution (source)](desktop-resolution.md)
+- [Advanced Pencil input](pencil-advanced.md)
+- [Mac receiver keyboard and mouse](mac-receiver-input.md)
+- [Secure connections and pairing](secure-transport.md) and [design / integration](secure-transport-design.md)
+- [Mac wired / Wi-Fi handover](mac-lan-handover.md)
+- [Apple receiver HEVC and high refresh](apple-video.md)
+- [Per-device desktop resolution](desktop-resolution.md)
 - [Active feature completion plan and evidence](feature-completion.md)
 - [HEVC, direct-link and Pencil usage / current evidence](hevc-wired-pencil.md)
 - [HEVC, wired discovery and Pencil design / acceptance](hevc-wired-pencil-plan.md)

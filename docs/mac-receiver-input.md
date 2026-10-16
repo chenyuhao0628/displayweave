@@ -2,7 +2,7 @@
 
 # Mac receiver keyboard and mouse
 
-F05 implemented in source, 2026-10-16. Not in published p8. Implementation and evidence are tracked in [the feature ledger](feature-completion.md).
+Included in v0.3.0-preview.1. Implementation and evidence are tracked in [the feature ledger](feature-completion.md).
 
 ## Consent and scope
 

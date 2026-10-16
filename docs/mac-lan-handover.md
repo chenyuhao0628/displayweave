@@ -2,7 +2,7 @@
 
 # Mac wired / Wi-Fi handover
 
-Implemented in source after p8; not included in the currently published p8 download. Two-Mac physical acceptance remains pending.
+Included in v0.3.0-preview.1, off by default. Two-Mac physical acceptance remains pending.
 
 ## Use
 
@@ -10,7 +10,7 @@ In Settings → General, enable **Mac 有线／无线自动切换** and choose *
 
 Connect to a Mac receiver normally. Once its hello confirms the same installation ID advertised by Bonjour, a direct-link candidate present for at least two seconds can replace the LAN connection. The old capture, virtual display, startup and transport cleanup complete before the new connection opens. The new Bonjour endpoint and TCP path use the selected interface; its name appears in the session row. Switching interrupts the picture and can rebuild the extended desktop.
 
-After an unexpected connection failure exhausts the sender's existing 10-second grace, Auto can recover over another interface advertising that same Mac installation ID. A failed direct interface is excluded for that recovery sequence, even if discovery later relabels it as ordinary LAN; Wi-Fi is preferred over ordinary routed Ethernet fallback. No candidate with a different or missing ID is used. Installation IDs are routing evidence, not cryptographic authentication; the current inherited transport still requires a trusted LAN.
+After an unexpected connection failure exhausts the sender's existing 10-second grace, Auto can recover over another interface advertising that same Mac installation ID. A failed direct interface is excluded for that recovery sequence, even if discovery later relabels it as ordinary LAN; Wi-Fi is preferred over ordinary routed Ethernet fallback. No candidate with a different or missing ID is used. Installation IDs are routing evidence, not cryptographic authentication; the new connection must independently pass TLS pairing authentication. Explicit legacy mode requires a trusted LAN.
 
 ## Bounds and controls
 

@@ -1,7 +1,7 @@
 export type Locale = "en" | "zh"
 export type EvidenceState = "verified" | "experimental" | "deferred"
 
-export const releaseTag = "v0.2.1-p8"
+export const releaseTag = "v0.3.0-preview.1"
 export const releaseBase = `https://github.com/chenyuhao0628/displayweave/releases/download/${releaseTag}`
 
 export type ReleaseAsset = {
@@ -181,7 +181,7 @@ export const copy: Record<Locale, SiteCopy> = {
       intro:
         "Release packages are published as GitHub Release assets. Android and macOS verify every download before installing it.",
       warning:
-        "GitHub Pages feeds are unavailable as of 2026-10-16; install manually for now. Mac is ad-hoc signed and not notarized; iOS requires re-signing.",
+        "Update both ends and pair using a receiving invitation. Mac is ad-hoc signed and not notarized; iOS requires re-signing.",
       checksum: "Verify all downloads with SHA256SUMS.txt",
       source: "Download matching source (GPL-3.0)",
       assets: enAssets,
@@ -207,7 +207,7 @@ export const copy: Record<Locale, SiteCopy> = {
           state: "verified",
           title: "Touch and mixed receivers",
           detail:
-            "Prior Preview 2 evidence covers tap, drag, cursor, two-finger scroll, and one iPhone WiFi receiver running beside one Android receiver; this was not rerun for v0.2.",
+            "Prior Preview 2 evidence covers tap, drag, cursor, two-finger scroll, and one iPhone WiFi receiver running beside one Android receiver; this physical matrix was not rerun for this preview.",
         },
         {
           state: "verified",
@@ -225,7 +225,7 @@ export const copy: Record<Locale, SiteCopy> = {
           state: "experimental",
           title: "Android high refresh",
           detail:
-            "30/60/90/120fps negotiation with HEVC and H.264 fallback. OnePlus WiFi HEVC/120 measured about 109–111 rendered FPS; stable 120 FPS is not guaranteed.",
+            "30/60/90/120fps negotiation with HEVC and H.264 fallback. A prior OnePlus WiFi HEVC/120 run measured about 109–111 rendered FPS; stable 120 FPS is not guaranteed.",
         },
         {
           state: "experimental",
@@ -312,8 +312,8 @@ export const copy: Record<Locale, SiteCopy> = {
       body: "DisplayWeave does not require an account or project-operated cloud relay. That does not make every transport production-secure yet.",
       points: [
         {
-          title: "Trusted LAN only",
-          body: "Current WiFi video and control TCP is not production-encrypted. Use a network you trust.",
+          title: "Encrypted pairing",
+          body: "Apple and Android default to certificate-pinned mutual TLS. Update both ends and import a receiving invitation. Explicit legacy compatibility is unencrypted and requires a trusted network.",
         },
         {
           title: "ADB trust is broad",
@@ -337,7 +337,7 @@ export const copy: Record<Locale, SiteCopy> = {
         ],
         [
           "Will later Mac and Android releases require reinstalling?",
-          "These channels require the configured GitHub Pages feeds, which are unavailable as of 2026-10-16. Install this version manually from the releases page. Once feeds recover, Mac can use Sparkle and Android can check in Settings & Help; Android still shows its system installer.",
+          "Mac uses signed Sparkle updates; Android can check in Settings & Help and requires system installation confirmation. Metadata is hosted on GitHub Pages and packages on GitHub Releases. Older apps without this update channel need one manual installation.",
         ],
         [
           "Why does macOS warn about the app?",
@@ -398,7 +398,7 @@ export const copy: Record<Locale, SiteCopy> = {
       intro:
         "发布文件以 GitHub Release 附件形式分发。Android 与 macOS 在安装前会校验每一次下载。",
       warning:
-        "截至 2026-10-16，GitHub Pages 更新源不可用，请先手动安装。Mac 为 ad-hoc 签名且未公证；iOS 需自行签名。",
+        "请升级两端并通过接收邀请配对。Mac 为 ad-hoc 签名且未公证；iOS 需自行签名。",
       checksum: "使用 SHA256SUMS.txt 验证全部下载",
       source: "下载对应源码（GPL-3.0）",
       assets: zhAssets,
@@ -420,7 +420,7 @@ export const copy: Record<Locale, SiteCopy> = {
           state: "verified",
           title: "触摸与混合接收端",
           detail:
-            "Preview 2 既有证据覆盖轻点、拖动、光标、双指滚动，以及 iPhone WiFi 与一台 Android 并发；v0.2 未重新执行。",
+            "Preview 2 既有证据覆盖轻点、拖动、光标、双指滚动，以及 iPhone WiFi 与一台 Android 并发；本预览版未重新执行该实机矩阵。",
         },
         {
           state: "verified",
@@ -438,7 +438,7 @@ export const copy: Record<Locale, SiteCopy> = {
           state: "experimental",
           title: "Android 高刷新",
           detail:
-            "支持 30/60/90/120fps 协商、HEVC 与 H.264 回退；OnePlus WiFi HEVC/120 实测约 109–111 渲染 FPS，不保证稳定满 120 FPS。",
+            "支持 30/60/90/120fps 协商、HEVC 与 H.264 回退；既有 OnePlus WiFi HEVC/120 测试实测约 109–111 渲染 FPS，不保证稳定满 120 FPS。",
         },
         {
           state: "experimental",
@@ -525,8 +525,8 @@ export const copy: Record<Locale, SiteCopy> = {
       body: "DisplayWeave 不要求账号或项目运营的云端中继，但这不代表所有传输都已达到生产安全级别。",
       points: [
         {
-          title: "仅限可信局域网",
-          body: "当前 WiFi 视频与控制 TCP 尚未生产级加密，请只在可信网络使用。",
+          title: "加密配对",
+          body: "Apple 与 Android 默认使用固定证书指纹的双向 TLS。请升级两端并导入接收邀请；显式旧版兼容不加密，仅限可信网络。",
         },
         {
           title: "ADB 信任范围较广",
@@ -550,7 +550,7 @@ export const copy: Record<Locale, SiteCopy> = {
         ],
         [
           "后续 Mac 和 Android 版本还要重新安装吗？",
-          "这些渠道依赖配置的 GitHub Pages 更新源，截至 2026-10-16 仍不可用。请先从发行页面手动安装；更新源恢复后 Mac 可使用 Sparkle，Android 可在“设置与帮助”检查，安装仍需系统确认。",
+          "Mac 使用签名验证的 Sparkle 更新；Android 可在“设置与帮助”检查，并需系统安装确认。元数据在 GitHub Pages，安装包在 GitHub Releases。尚无此更新渠道的旧版本需手动安装一次。",
         ],
         [
           "为什么 macOS 会显示安全警告？",

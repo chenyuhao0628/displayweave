@@ -2,7 +2,7 @@
 
 # Development and acceptance
 
-The [roadmap](../ROADMAP.md) and [feature ledger](feature-completion.md) distinguish implemented source, published p8 and remaining external requirements. Encrypted pairing, Apple high-refresh negotiation, Mac input/handover, advanced Pencil and protocol fixtures are implemented in source. Production identities and approved final artwork remain blocked; they are not coding omissions.
+The [roadmap](../ROADMAP.md) and [feature ledger](feature-completion.md) record implementation and verification for v0.3.0-preview.1 (16). Encrypted pairing, Apple high refresh, Mac input/handover, advanced Pencil and protocol fixtures are included. Production identities and approved final artwork remain external requirements; physical performance has its own acceptance gate.
 
 ## Automated source gate
 

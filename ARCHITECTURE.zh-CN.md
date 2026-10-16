@@ -53,7 +53,7 @@ Android 接收端在 9000 端口提供 TCP Server，渲染 Surface 返回时会�
 
 ## 安全边界
 
-- 已发布 p8 需在可信局域网使用明文 TCP。p8 之后的 Apple 源码新增固定指纹双向 TLS、邀请配对与显式旧版兼容；Android 接收端同样默认启用加密配对。详见[安全指南](docs/secure-transport.zh-CN.md)。
+- v0.3.0-preview.1 的 Apple 与 Android 默认使用固定证书指纹的双向 TLS 和显式邀请配对；旧版兼容需主动启用且仅限可信网络。详见[配对指南](docs/secure-transport.zh-CN.md)。
 - ADB RSA 授权会把 Mac 作为广泛调试主机信任，不只限 DisplayWeave。
 - macOS Preview 使用 ad-hoc 签名且未公证。
 - Android APK 使用保存在 Git 之外的项目离线密钥库。
@@ -72,7 +72,7 @@ Mac 使用 Apple legacy 帧，不启用 Android DWV2。详见[设计](docs/mac-t
 
 ## 源码职责与有界任务（2026-10-16）
 
-源码应用在同一 Wi-Fi 或以太网局域网支持互斥的 Mac 发送/接收角色；v0.2.1-p7 将其作为实验功能打包，实机验收仍待完成。镜像捕获现有显示器，扩展创建虚拟显示器。
+源码应用在同一 Wi-Fi 或以太网局域网支持互斥的 Mac 发送/接收角色；v0.3.0-preview.1 将其作为实验功能打包，实机验收仍待完成。镜像捕获现有显示器，扩展创建虚拟显示器。
 
 | 区域 | 职责 |
 | --- | --- |
@@ -95,9 +95,9 @@ Mac HEVC 同时要求硬件编码器与接收端明确声明的硬件解码能�
 
 `pencil-v1` 通过 hello/inputConfig 显式协商。`PencilInputForwarder` 按整笔画保持原生／兼容协议；`PencilSample` 校验全部数值。`InputInjector` 发送 tablet point／proximity 并确定性取消。iOS `InputSendBudget` 在派发前限制最多 64 项排队／发送中的控制任务，每批不超过 64 KiB，连接代际隔离旧输入和完成回调。溢出关闭当前连接，由发送端释放按下状态。详见[协议与验收设计](docs/hevc-wired-pencil-plan.zh-CN.md)。
 
-## p8 之后的 Apple 视频源码扩展
+## Apple 视频协商
 
-两个 Apple 目标共用 `Shared/ReceiverVideoBitstream`。iOS 声明 `appleVideoV1` 编码/刷新范围；Mac 继续通过原设备身份识别。发送端在上限内协商最高 120fps、HEVC 和 H.264 回退，Android 保留独立 V2 协商。见[实现与证据](docs/apple-video.zh-CN.md)；上文发布描述对应 p8。
+两个 Apple 目标共用 `Shared/ReceiverVideoBitstream`。iOS 声明 `appleVideoV1` 编码/刷新范围；Mac 继续通过原设备身份识别。发送端在上限内协商最高 120fps、HEVC 和 H.264 回退，Android 保留独立 V2 协商。见[实现与证据](docs/apple-video.zh-CN.md)。
 
 ## 已完成源码扩展
 

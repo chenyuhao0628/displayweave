@@ -2,7 +2,7 @@
 
 # Per-device desktop resolution
 
-Source feature after p8; no new download is implied. In **Send → Extend**, connect a receiver and use **Desktop pixels** in its connection row: Native, 1920×1080, 2560×1440 or 3840×2160. Portrait receivers swap width/height automatically. The selection is retained by receiver installation identity across LAN/USB and restarts. Old receivers without an identity use Native. Resetting/reinstalling a receiver may create a new identity.
+Included in v0.3.0-preview.1. In **Send → Extend**, connect a receiver and use **Desktop pixels** in its connection row: Native, 1920×1080, 2560×1440 or 3840×2160. Portrait receivers swap width/height automatically. The selection is retained by receiver installation identity across LAN/USB and restarts. Old receivers without an identity use Native. Resetting/reinstalling a receiver may create a new identity.
 
 Changing the selection stops and rebuilds only that device's session after capture and transport cleanup. Other active devices keep streaming. The picker is disabled during replacement. Mirror captures the physical source display and does not offer a virtual-desktop selector.
 

@@ -2,7 +2,7 @@
 
 # DisplayWeave protocol contract
 
-Specification revision **1**, 2026-10-16. Describes the current source branch after F01–F08, not the published p8 downloads. Revision 1 identifies this document and its fixture set; it does **not** change any on-wire version, identifier or framing. Normative behavior is implemented in the linked parsers and covered by the tests below. Hardware performance is not a protocol guarantee.
+Specification revision **1**, 2026-10-16. Describes the v0.3.0-preview.1 implementation after F01–F08. Revision 1 identifies this document and its fixture set; it does **not** change any on-wire version, identifier or framing. Normative behavior is implemented in the linked parsers and covered by the tests below. Hardware performance is not a protocol guarantee.
 
 ## Namespaces and compatibility
 

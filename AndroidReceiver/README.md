@@ -6,7 +6,7 @@ The Android receiver accepts DisplayWeave video over local WiFi or a Mac-managed
 
 The waiting screen follows the system light/dark theme. Settings scroll on small displays; the top-right Settings button remains available while streaming even when the status overlay is hidden.
 
-Post-p8 source adds [encrypted pairing](../docs/secure-transport.md) and the [GitHub-only update policy](../docs/automatic-updates.md). These changes are not yet in the published p8 APK. For a source build, first generate an invitation under **Settings & Help → Security and pairing**, import it on the Mac, then select the device. Both LAN and ADB-forwarded USB use the same authenticated stream.
+v0.3.0-preview.1 includes [encrypted pairing](../docs/secure-transport.md) and [GitHub-only updates](../docs/automatic-updates.md). First generate an invitation under **Settings & Help → Security and pairing**, import it on the Mac, then select the device. LAN and ADB-forwarded USB use the same authenticated stream.
 
 ## Requirements
 
@@ -14,11 +14,11 @@ Post-p8 source adds [encrypted pairing](../docs/secure-transport.md) and the [Gi
 - WiFi: Mac and Android on the same trusted LAN with Nearby WiFi/Local Network discovery permission where required.
 - USB: a data-capable cable, Developer options, USB debugging, and approval of the Mac's RSA identity.
 
-## Install `v0.2.1-p8`
+## Install `v0.3.0-preview.1`
 
-2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; downloads are published on the [releases page](https://github.com/chenyuhao0628/displayweave/releases). Mac/Android update checks still depend on the original Pages URLs; install manually until they recover.
+2026-10-16: this preview is built locally. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site, which is available again. See the [release notes](../docs/release-notes-v0.3.0-preview.1.md) for build evidence and the required pairing migration.
 
-Download `DisplayWeave-Android.apk` from [`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/release-checklist.md).
+Download `DisplayWeave-Android.apk` from [`v0.3.0-preview.1`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/release-checklist.md).
 
 ## Updates after the first install
 
@@ -96,4 +96,4 @@ Two simultaneous Android devices, controlled USB/WiFi benchmark, and 30-minute/2
 
 ## Security
 
-Published p8 still uses plaintext TCP and needs a trusted LAN. Post-p8 source defaults to pinned mutual TLS and invitation pairing; insecure legacy mode requires an explicit local choice. Private transport keys remain in Android Keystore and are separate from APK signing. ADB authorization trusts the Mac as a debugging host beyond this application. See [the pairing guide](../docs/secure-transport.md) and [SECURITY.md](../SECURITY.md).
+This version defaults to pinned mutual TLS and invitation pairing; insecure legacy mode requires an explicit local choice. Private transport keys remain in Android Keystore and are separate from APK signing. ADB authorization trusts the Mac as a debugging host beyond this application. See [the pairing guide](../docs/secure-transport.md) and [SECURITY.md](../SECURITY.md).

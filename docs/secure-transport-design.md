@@ -2,7 +2,7 @@
 
 # Secure transport and pairing design
 
-F03 implementation design, 2026-10-16. Apple sender/receiver and Android receiver integration is implemented in source. Published p8 is unchanged. Completion and exercised evidence are tracked in [the active ledger](feature-completion.md); see [source usage](secure-transport.md).
+F03 implementation design, 2026-10-16. Apple sender/receiver and Android receiver integration is implemented in source. Included in v0.3.0-preview.1. Completion and exercised evidence are tracked in [the active ledger](feature-completion.md); see [usage](secure-transport.md).
 
 ## Decision
 

@@ -1,10 +1,10 @@
 [English](development-preview.md) | [简体中文](development-preview.zh-CN.md)
 
-# DisplayWeave `v0.2.1-p8` 开发分发
+# DisplayWeave `v0.3.0-preview.1` 开发分发
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；下载统一发布在[发行页面](https://github.com/chenyuhao0628/displayweave/releases)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。
+2026-10-16：本预览版在本地构建，下载仅使用 GitHub Releases；Mac 与 Android 更新元数据使用已恢复访问的项目 GitHub Pages。构建证据及必需的配对迁移见[发布说明](release-notes-v0.3.0-preview.1.zh-CN.md)。
 
 | 平台/更新源 | 产物 | SHA-256 或信任边界 |
 | --- | --- | --- |
@@ -14,7 +14,7 @@
 | iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `8e423d4c6baf60d3b92c990f1d465473c223bce539baf3456abf59799f079bd1`；未签名自签输入包 |
 | Mac 更新源 | `appcast.xml` | [配置的 Sparkle 更新源](https://chenyuhao0628.github.io/displayweave/appcast.xml) |
 | Android 更新源 | `android-update.json` | [配置的元数据更新源](https://chenyuhao0628.github.io/displayweave/android-update.json) |
-| 源码 | `DisplayWeave-v0.2.1-p8-source.tar.gz` | 发行 tag 的跟踪源码；哈希见校验和文件 |
+| 源码 | `DisplayWeave-v0.3.0-preview.1-source.tar.gz` | 发行 tag 的跟踪源码；哈希见校验和文件 |
 | 校验和 | `SHA256SUMS.txt` | 覆盖以上七个 Release 文件 |
 
 Android 签名证书 SHA-256：

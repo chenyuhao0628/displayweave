@@ -2,7 +2,7 @@
 
 # 开发与验收
 
-[路线图](../ROADMAP.zh-CN.md)与[功能台账](feature-completion.zh-CN.md)区分已实现源码、已发布 p8 和外部前提。加密配对、Apple 高刷协商、Mac 输入/切换、高级 Pencil 与协议样例已在源码实现。正式分发身份和批准的最终品牌素材仍阻塞，不是尚未编写代码。
+[路线图](../ROADMAP.zh-CN.md)与[功能台账](feature-completion.zh-CN.md)记录 v0.3.0-preview.1（16）实现及验证。加密配对、Apple 高刷、Mac 输入/切换、高级 Pencil 与协议样例均已包含。正式分发身份和批准的最终品牌素材仍是外部前提；实机性能单独验收。
 
 ## 源码自动关卡
 

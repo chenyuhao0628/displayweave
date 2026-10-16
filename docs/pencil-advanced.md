@@ -2,7 +2,7 @@
 
 # Advanced Pencil input
 
-F07 source implementation, 2026-10-16. Source work; not in published p8.
+Included in v0.3.0-preview.1. Actual Pencil hardware and drawing-application acceptance remain pending.
 
 ## Behavior and boundaries
 

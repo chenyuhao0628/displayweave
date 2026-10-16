@@ -2,7 +2,7 @@
 
 # Secure connections and pairing
 
-Source work after p8. Apple and Android receiver integration is implemented on the feature branch; combined verification is recorded in the execution ledger. Published and installed **v0.2.1-p8** still uses its previous plaintext transport. This guide does not describe a new download.
+Included in v0.3.0-preview.1 on Apple and Android. Update sender and receiver, then follow the invitation workflow below. Older applications require an explicit insecure legacy choice; see [release notes](release-notes-v0.3.0-preview.1.md).
 
 ## Connect for the first time
 

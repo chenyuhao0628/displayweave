@@ -2,9 +2,9 @@
 
 # DisplayWeave roadmap
 
-Updated 2026-10-16. The [feature ledger](docs/feature-completion.md) is the source completion record. The current published and installed baseline remains v0.2.1-p8 (15); source completion does not update that download.
+Updated 2026-10-16. The [feature ledger](docs/feature-completion.md) records each implementation. This iteration is packaged as v0.3.0-preview.1 (16), installed locally before publication. See [release notes](docs/release-notes-v0.3.0-preview.1.md) for artifacts and verification boundaries.
 
-## Implemented after p8, awaiting release
+## Included in v0.3.0-preview.1
 
 - Per-device Native/1080p/1440p/4K extension resolution.
 - Default mutual TLS, invitation pairing, revocation and explicit legacy compatibility on Apple and Android.

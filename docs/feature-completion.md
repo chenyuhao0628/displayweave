@@ -2,7 +2,7 @@
 
 # Feature completion plan and evidence
 
-Baseline: `89d7d20`, 2026-10-16. This is the active source-development ledger. Installed and published p8 (build 15) is unchanged by this work. Physical acceptance is a separate gate. Historical audits retain their dated evidence; this ledger supersedes their pending-feature lists.
+Baseline: `89d7d20`, 2026-10-16. This ledger records source work by iteration; statements about leaving the installed app unchanged apply to those individual rounds. The completed source is packaged as v0.3.0-preview.1 (16), with the authorized local replacement performed before publication; see [release notes](release-notes-v0.3.0-preview.1.md). Physical acceptance is separate; this ledger supersedes historical pending-feature lists.
 
 ## Scope, feasibility and acceptance
 

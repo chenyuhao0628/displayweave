@@ -53,7 +53,7 @@ Touch coordinates, drag state, cursor movement, and two-finger scroll are encode
 
 ## Security boundaries
 
-- Published p8 uses plaintext TCP on a trusted LAN. Post-p8 Apple/Android source adds pinned mutual TLS, invitation pairing and explicit legacy compatibility. See [the security guide](docs/secure-transport.md).
+- v0.3.0-preview.1 defaults to certificate-pinned mutual TLS and explicit invitation pairing on Apple and Android. Legacy compatibility is an explicit unencrypted choice for trusted networks. See [pairing](docs/secure-transport.md).
 - ADB RSA authorization trusts the Mac as a debugging host beyond DisplayWeave.
 - The macOS Preview is ad-hoc signed and not notarized.
 - The Android APK uses an offline project keystore stored outside Git.
@@ -74,7 +74,7 @@ Android DWV2. See the [design](docs/mac-to-mac-design.md).
 
 ## Source ownership and bounded work (2026-10-16)
 
-The source app supports exclusive Mac send/receive roles over the same Wi-Fi or Ethernet LAN. This is packaged as an experimental feature in v0.2.1-p7; physical acceptance remains pending. Mirroring captures an existing display; extending creates a virtual display.
+The source app supports exclusive Mac send/receive roles over the same Wi-Fi or Ethernet LAN. This is packaged as an experimental feature in v0.3.0-preview.1; physical acceptance remains pending. Mirroring captures an existing display; extending creates a virtual display.
 
 | Area | Ownership |
 | --- | --- |
@@ -97,9 +97,9 @@ Mac HEVC requires both a hardware encoder and an explicitly advertised hardware 
 
 `pencil-v1` uses explicit hello/inputConfig negotiation. `PencilInputForwarder` fixes native/legacy mode for a whole stroke; `PencilSample` validates all numeric fields. `InputInjector` posts tablet point/proximity with deterministic cancellation. iOS `InputSendBudget` admits at most 64 queued/in-flight controls, each framed batch at most 64 KiB, before dispatch; connection epochs reject stale input and completions. An overflow closes that peer so sender cleanup releases held input. See the [protocol and acceptance plan](docs/hevc-wired-pencil-plan.md).
 
-## Apple video source extension after p8
+## Apple video negotiation
 
-Both Apple targets share `Shared/ReceiverVideoBitstream`. iOS advertises `appleVideoV1` codec/refresh envelopes; Mac recognizes its existing device identity. The sender uses bounded Apple operating-point negotiation up to 120fps and HEVC with H.264 fallback, while Android keeps its separate V2 negotiation. See [current implementation and evidence](docs/apple-video.md); the release descriptions above describe p8.
+Both Apple targets share `Shared/ReceiverVideoBitstream`. iOS advertises `appleVideoV1` codec/refresh envelopes; Mac recognizes its existing device identity. The sender uses bounded Apple operating-point negotiation up to 120fps and HEVC with H.264 fallback, while Android keeps its separate V2 negotiation. See [current implementation and evidence](docs/apple-video.md).
 
 ## Completed source extensions
 

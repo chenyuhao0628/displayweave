@@ -2,7 +2,7 @@
 
 # 安全传输与配对设计
 
-F03 实施设计，2026-10-16。Apple 发送/接收端与 Android 接收端已完成源码接入。已发布 p8 未改变。完成状态与实际验证记录见[活动清单](feature-completion.zh-CN.md)，用法见[源码指南](secure-transport.zh-CN.md)。
+F03 实施设计，2026-10-16。Apple 发送/接收端与 Android 接收端已完成源码接入。已包含于 v0.3.0-preview.1。完成状态与实际验证记录见[活动清单](feature-completion.zh-CN.md)，用法见[使用指南](secure-transport.zh-CN.md)。
 
 ## 方案选择
 

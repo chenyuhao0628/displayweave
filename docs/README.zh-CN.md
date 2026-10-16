@@ -4,14 +4,16 @@
 
 ## 当前用户指南
 
+- [`v0.3.0-preview.1` 发布说明](release-notes-v0.3.0-preview.1.zh-CN.md)
+
 - [Apple 正式归档/导出及前提](apple-distribution.zh-CN.md)
 - [公开协议契约与共享样本](protocol.zh-CN.md)
-- [Pencil 高级输入（源码）](pencil-advanced.zh-CN.md)
-- [Mac 接收端键鼠回传（源码）](mac-receiver-input.zh-CN.md)
-- [安全连接与配对（源码）](secure-transport.zh-CN.md)与[设计/待完成集成](secure-transport-design.zh-CN.md)
-- [Mac 有线／Wi-Fi 自动切换（源码）](mac-lan-handover.zh-CN.md)
-- [Apple 接收端 HEVC 与高刷新（源码）](apple-video.zh-CN.md)
-- [每台设备的桌面分辨率（源码）](desktop-resolution.zh-CN.md)
+- [Pencil 高级输入](pencil-advanced.zh-CN.md)
+- [Mac 接收端键鼠回传](mac-receiver-input.zh-CN.md)
+- [安全连接与配对](secure-transport.zh-CN.md)与[设计/集成](secure-transport-design.zh-CN.md)
+- [Mac 有线／Wi-Fi 自动切换](mac-lan-handover.zh-CN.md)
+- [Apple 接收端 HEVC 与高刷新](apple-video.zh-CN.md)
+- [每台设备的桌面分辨率](desktop-resolution.zh-CN.md)
 - [当前功能补全方案与证据](feature-completion.zh-CN.md)
 - [HEVC、直连与 Pencil 使用／当前验收证据](hevc-wired-pencil.zh-CN.md)
 - [HEVC、有线发现与 Pencil 设计和验收](hevc-wired-pencil-plan.zh-CN.md)

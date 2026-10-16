@@ -2,15 +2,15 @@
 
 # 发布检查清单
 
-## 当前发行：v0.2.1-p8（15）
+## 当前发行：v0.3.0-preview.1（16）
 
-[p8 发布说明](release-notes-v0.2.1-p8.zh-CN.md)记录本地发行、产物哈希与签名边界。p8 沿用 p7 的原生源码，使用更高构建号重新打包；p7 产物与 tag 保持不可变。具体操作见[本地发行](local-release.zh-CN.md)。
+[发布说明](release-notes-v0.3.0-preview.1.zh-CN.md)记录逐项功能、升级配对、哈希和签名边界。原生源码 `53d2dfa` 已通过完整本地回归；Mac universal、Android 原证书签名 APK 与无签名 iOS 重签输入包已完成 Release 构建。本机先覆盖更新，且包内/保存更新源均指向 GitHub Pages。
 
-2026-10-16，维护者在托管 Actions 不可用时授权本地构建上传。本地门禁涵盖 37 组 Swift、六组 Android 自测及 Debug/Release 构建、Mac 双架构 Debug/Release、iOS 模拟器与无签名设备构建、网站、双语文档与发布链接检查；这是本地证据，不是成功的 GitHub CI。包内版本／构建号为 0.2.1-p8／15，已验证 Mac ZIP Ed25519、DMG／ZIP 一致性、Android 固定证书及 iOS 无签名边界。
+52 组 Swift、六组 Android、真实平台 TLS/Keychain/Keystore、iOS/Android 隔离运行、Apple 构建、Android Lint、网站、双语、12 项打包测试及 36 项品牌导出检查通过。DMG/ZIP 一致性、原 Sparkle 签名、Android 证书/版本及 iOS 无签名边界均已核验。
 
-八项文件包括四个平台包、两个更新源、对应 tag 源码及校验和。公开前验证远端大小／哈希与历史发行路径；在 `public/` 持久化原始更新源。GitHub 公开访问和 Pages 仍返回 404 时，不宣称原客户端更新渠道恢复；请手动从发行页面安装。
+八项文件包括四个平台包、两个更新源、对应 tag 源码及校验和。公开前核验远端文件，原样持久化 feed 并在部署后比对在线字节。仅使用 GitHub Releases 与 GitHub Pages；不覆盖已发布产物。托管 CI 与本地结果分别记录，不因本地通过而代称远端成功。
 
-Mac 互联、HEVC、直连发现和 Pencil 仍为实验功能。双 Mac／Pencil／Intel 运行与耐久验收待完成；没有独立在线显示器时跳过虚拟显示交互。宣称实机验证前须完成[真机矩阵](hevc-wired-pencil.zh-CN.md)。
+双 Mac/Pencil/Intel 与耐久仍待实机验收；没有独立在线显示器时跳过虚拟显示交互。正式 Apple 身份与最终可编辑品牌素材仍待外部条件。
 
 ## 历史 v0.2.1-p2 证据
 
