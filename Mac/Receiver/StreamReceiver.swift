@@ -9,7 +9,9 @@ import AVFoundation
 import CoreMedia
 import VideoToolbox
 
-final class StreamReceiver: ObservableObject {
+// Connection state is confined to queue; published presentation and callbacks
+// to main. InputSendBudget is the locked bridge between those two domains.
+final class StreamReceiver: ObservableObject, @unchecked Sendable {
     @Published private(set) var status = "接收已停止"
     @Published private(set) var connected = false
     @Published private(set) var videoSize = CGSize.zero
@@ -17,6 +19,12 @@ final class StreamReceiver: ObservableObject {
     @Published private(set) var listeningPort: UInt16 = 0
     @Published private(set) var encrypted = false
     @Published private(set) var codecLabel = "H.264"
+    @Published private(set) var inputForwarding = false
+    @Published private(set) var inputStatus = "键鼠回传已关闭"
+    @Published private(set) var inputGrant: String?
+    private var inputGeneration: UInt64 = 0 // main-thread projection of the queue's grant
+    private let inputBudget: InputSendBudget
+    private var wireInputGrant: String? // receiver queue only
     let displayLayer: AVSampleBufferDisplayLayer
     var onReset: (() -> Void)?
     var onCursor: ((Double, Double, Bool) -> Void)?
@@ -57,7 +65,9 @@ final class StreamReceiver: ObservableObject {
 
     init(displayLayer: AVSampleBufferDisplayLayer = AVSampleBufferDisplayLayer(),
          hardwareHEVCDecode: Bool? = nil,
+         inputBudget: InputSendBudget = InputSendBudget(),
          securityProvider: @escaping () throws -> AppleReceiverSecurity = { try .live(localID: StreamReceiver.installID) }) {
+        self.inputBudget = inputBudget
         self.securityProvider = securityProvider
         self.supportsHEVC = hardwareHEVCDecode ?? VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
         self.displayLayer = displayLayer
@@ -272,7 +282,62 @@ final class StreamReceiver: ObservableObject {
               "refreshRate": maxFps, "maxFps": maxFps, "displayMaxFrameRate": maxFps,
               "maxEncodeWide": limits.width, "maxEncodeHigh": limits.height,
               "videoCaps": caps,
+              "inputCaps": peerID != nil ? [DesktopInputProtocol.capability] : [],
               "transport": "lan"], on: conn)
+    }
+
+    @MainActor func setInputForwarding(_ enabled: Bool) {
+        if !enabled { releaseDesktopInput() }
+        inputForwarding = enabled
+    }
+
+    @MainActor func releaseDesktopInput() {
+        sendDesktopInput(["kind": "releaseAll", "modifiers": 0])
+    }
+
+    /// Reserve before dispatch so high-frequency pointer events cannot create
+    /// an unbounded queue of closures. Old projections cannot use a new socket.
+    @MainActor func sendDesktopInput(_ fields: [String: Any]) {
+        guard inputForwarding, let grant = inputGrant else { return }
+        switch inputBudget.reserve(expectedGeneration: inputGeneration) {
+        case .unavailable: return
+        case .overflow(let epoch):
+            queue.async {
+                guard self.inputBudget.generation == epoch, let conn = self.connection else { return }
+                self.drop(conn, status: "键鼠发送队列已满，请重新连接")
+            }
+        case .accepted(let ticket):
+            var object = fields
+            object["type"] = "desktopInput"; object["inputSession"] = grant; object["sequence"] = ticket.sequence
+            guard let data = try? JSONSerialization.data(withJSONObject: object), DesktopInputEvent.decode(data) != nil else {
+                inputBudget.complete(ticket); return
+            }
+            queue.async {
+                guard self.inputBudget.generation == ticket.generation, self.wireInputGrant == grant,
+                      self.peerID != nil, let conn = self.connection else { self.inputBudget.complete(ticket); return }
+                conn.send(content: ReceiverFrameDecoder.frame(data), completion: .contentProcessed { error in
+                    self.inputBudget.complete(ticket)
+                    if error != nil, self.connection === conn { self.drop(conn, status: "键鼠发送失败，请重新连接") }
+                })
+            }
+        }
+    }
+
+    private func configureDesktopInput(_ object: [String: Any]) {
+        let candidate = object["inputSession"] as? String
+        let valid = peerID != nil && (object["inputCaps"] as? [String])?.contains(DesktopInputProtocol.capability) == true
+            && candidate.flatMap(UUID.init(uuidString:)) != nil
+        let grant = valid ? candidate : nil
+        if grant == wireInputGrant, grant != nil { return }
+        wireInputGrant = grant
+        let epoch = inputBudget.reset(accepting: grant != nil)
+        let labels = ["ready": "已获授权；聚焦接收画面后可操作", "secureRequired": "请先配对并使用加密连接",
+                      "consentRequired": "请在发送端设置中允许 Mac 键鼠回传", "accessibilityRequired": "请在发送端授予辅助功能权限",
+                      "targetPending": "等待发送端准备显示器"]
+        let label = grant != nil ? labels["ready"]! : labels[object["inputStatus"] as? String ?? ""] ?? "发送端未授权键鼠回传，请检查双方设置"
+        DispatchQueue.main.async {
+            self.inputGeneration = epoch; self.inputGrant = grant; self.inputStatus = label
+        }
     }
 
     private func send(_ object: [String: Any], on conn: NWConnection? = nil,
@@ -337,6 +402,8 @@ final class StreamReceiver: ObservableObject {
                 drop(conn, status: "控制消息无效，等待发送端"); return
             }
             switch obj["type"] as? String {
+            case "inputConfig":
+                configureDesktopInput(obj)
             case "ping":
                 send(["type": "pong", "t": obj["t"] ?? 0, "mt": Date().timeIntervalSince1970 * 1000])
             case "streamConfig":
@@ -469,6 +536,11 @@ final class StreamReceiver: ObservableObject {
     }
 
     private func resetStream() {
+        wireInputGrant = nil
+        let epoch = inputBudget.reset(accepting: false)
+        DispatchQueue.main.async {
+            self.inputGeneration = epoch; self.inputGrant = nil; self.inputStatus = "请连接支持键鼠回传的加密发送端"
+        }
         decoder = ReceiverFrameDecoder()
         videoCodec = .h264
         hevcFailureSent = false

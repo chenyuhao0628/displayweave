@@ -39,6 +39,7 @@ def main():
         client_sources = [*helpers["SOURCES"][:-1], "Shared/AppleTLS.swift", "Shared/AppleSecureAdmission.swift",
             "Shared/AppleTransportSecurity.swift", "Shared/ReceiverFrameDecoder.swift", "Shared/ReceiverCursorImage.swift",
             "Shared/ReceiverVideoBitstream.swift", "Shared/AppleVideoPolicy.swift", "Mac/EncoderHardwareCapabilities.swift",
+            "Shared/DesktopInputProtocol.swift", "Shared/InputSendBudget.swift",
             "Mac/Receiver/ReceiverWireProtocol.swift", "Mac/Receiver/StreamReceiver.swift", "MacTests/ReceiverTestSupport.swift",
             "MacTests/MacSecureReceiverSelfTest.swift"]
         run(["xcrun", "swiftc", *client_sources, "-o", str(client)])

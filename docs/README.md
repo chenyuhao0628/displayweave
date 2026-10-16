@@ -4,6 +4,7 @@
 
 ## Current user guides
 
+- [Mac receiver keyboard and mouse (source)](mac-receiver-input.md)
 - [Secure connections and pairing (source)](secure-transport.md) and [design / remaining integration](secure-transport-design.md)
 - [Mac wired / Wi-Fi handover (source)](mac-lan-handover.md)
 - [Apple receiver HEVC and high refresh (source)](apple-video.md)

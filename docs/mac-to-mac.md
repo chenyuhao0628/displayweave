@@ -2,6 +2,8 @@
 
 # Mac-to-Mac over a local network
 
+The published-build instructions below describe p8. Current source additionally supports [secure pairing](secure-transport.md) and opt-in [receiver keyboard/mouse input](mac-receiver-input.md).
+
 This feature is included experimentally in the `v0.2.1-p7` development preview.
 Two-Mac physical performance and endurance acceptance remain pending.
 Both Macs need this build and macOS 14 or later.

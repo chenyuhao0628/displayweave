@@ -30,7 +30,7 @@ Feature completion means implemented behavior and passing automated acceptance, 
 ## Progress
 
 - Assessment: repository clean on baseline; twelve work items enumerated with acceptance and dependencies.
-- Remaining implementation: F05, F07, F09–F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
+- Remaining implementation: F07, F09–F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
 
 ## Official API references
 
@@ -71,3 +71,9 @@ Android now defaults to pinned mutual TLS and advertises `security=tls-v1`; pair
 Real Android 35 emulator testing found two platform-specific faults that software-key JVM tests could not expose: Keystore TLS signing requires `DIGEST_NONE`, and Conscrypt TLS close performs network work that must not run on the UI thread. Both were reproduced before correction. The isolated fixture now uses the actual Keystore private key, checks persistence across process restart, missing-key refusal/repair and stale-state invalidation, then uses the real MainActivity pairing/revocation/legacy settings with an Apple TLS client through ADB forwarding. Light/dark UI, explicit plaintext enable/disable and background listener shutdown were inspected/tested. No production APK contains the test activity or invitation extraction code.
 
 Combined evidence: 48 Swift suites; real Apple↔Java TLS in both directions; Android six groups, Debug assembly and Lint (zero errors); real Android Keystore/TLS/UI suite. TLS tests include ciphertext modification, malformed frames, absolute deadlines, preserved coalesced application bytes, active-session isolation and revocation. Lint also caught and corrected an API-33-only update metadata conversion and made the existing API-29 codec guard explicit. Apple builds/Keychain/receiver-video evidence is recorded above. Physical LAN/USB performance remains separate. No published or installed app was updated. See [source usage](secure-transport.md).
+
+### F05 — implemented in source
+
+Authenticated Mac keyboard/mouse forwarding now requires both local opt-ins and sender Accessibility. A fresh grant identifies each connection/target; bounded receiver tickets, strict wire validation and a 16-key/three-button injector prevent stale or accumulated input. Local AppKit monitoring is scoped to the focused receive view; focus loss, disable, close, role change, disconnect and permission/consent changes cancel held state. Control–Option–Escape disables forwarding. Existing mobile touch/Pencil remain separate; Mac cannot bypass this grant through legacy touch/scroll.
+
+50 Swift suites, the updated production TLS receiver network suite (including saturation and replacement), Mac universal Debug and iOS Simulator builds passed. Captured event tests never post into the user's desktop. Window routing/shortcuts and two-Mac application/layout acceptance remain physical checks. See [usage and evidence](mac-receiver-input.md). No download or installed application was replaced.

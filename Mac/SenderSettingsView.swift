@@ -3,6 +3,7 @@ import SwiftUI
 /// Presentation-only bindings; sender pipeline ownership stays in SenderController.
 struct SenderSettingsView: View {
     @AppStorage("settingsTab") private var selectedTab = "stream"
+    @AppStorage(DesktopInputProtocol.consentKey) private var allowMacDesktopInput = false
     @ObservedObject var controller: SenderController
     @StateObject private var permissions = PermissionMonitor()
     @State private var benchmarkScene = BenchmarkScene.staticDesktop
@@ -169,6 +170,9 @@ struct SenderSettingsView: View {
     }
     @ViewBuilder private var permissionControls: some View {
     Section("权限") {
+        Toggle("允许接收端 Mac 的键鼠回传", isOn: $allowMacDesktopInput)
+        Text("默认关闭。仅允许已配对的加密 Mac 连接；还需授予辅助功能权限，并在接收端开启回传。关闭后释放远端按键。")
+            .font(.caption).foregroundStyle(.secondary)
         permissionRow(
             "屏幕录制",
             granted: permissions.screenRecording,
@@ -179,7 +183,7 @@ struct SenderSettingsView: View {
         permissionRow(
             "辅助功能",
             granted: permissions.accessibility,
-            help: "用于接收设备上的触摸和滚动输入。",
+            help: "用于接收设备上的触摸、滚动和已授权的 Mac 键鼠输入。",
             anchor: "Privacy_Accessibility",
             request: { permissions.requestAccessibility() }
         )

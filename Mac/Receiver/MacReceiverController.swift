@@ -114,7 +114,7 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
         if window == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 600),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            window.title = "DisplayWeave · 接收画面（在发送端操作）"
+            window.title = "DisplayWeave · 接收画面（⌃⌥Esc 停止键鼠回传）"
             window.contentView = videoView
             window.contentMinSize = NSSize(width: 320, height: 200)
             window.isReleasedWhenClosed = false
@@ -124,6 +124,7 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
             placeWindow()
         }
         window?.makeKeyAndOrderFront(nil)
+        window?.makeFirstResponder(videoView)
         NSApp.activate(ignoringOtherApps: true)
         applyFullscreen()
     }
@@ -147,6 +148,7 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
     }
 
     private func hideVideo() {
+        receiver.releaseDesktopInput()
         guard let window else { return }
         closingWindow = true
         movingFullscreenWindow = false

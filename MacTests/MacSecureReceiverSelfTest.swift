@@ -53,7 +53,8 @@ private final class SecureReceiverPeer {
                                            persisted: nil, persist: { _ in })
         let senderState = try SecurePairingState(localID: "test-sender", localFingerprint: sender.fingerprint,
                                                  persisted: nil, persist: { _ in })
-        let receiver = StreamReceiver(securityProvider: { .tls(identity, state) })
+        let inputBudget = InputSendBudget(limit: 2)
+        let receiver = StreamReceiver(inputBudget: inputBudget, securityProvider: { .tls(identity, state) })
         receiver.start(port: 0, advertiseService: false)
         try await wait { receiver.listeningPort != 0 }
         let port = receiver.listeningPort
@@ -68,9 +69,40 @@ private final class SecureReceiverPeer {
                                                 invitation: invitation)
             let hello = try client.hello()
             precondition(hello["id"] as? String == invitation.receiverID)
+            precondition((hello["inputCaps"] as? [String])?.contains(DesktopInputProtocol.capability) == true)
             return client
         }.value
         try await wait { receiver.connected && receiver.encrypted }
+        precondition(!receiver.inputForwarding && receiver.inputGrant == nil)
+        func grant(_ value: String) throws {
+            let data = try JSONSerialization.data(withJSONObject: ["type": "inputConfig", "inputCaps": [DesktopInputProtocol.capability],
+                "inputSession": value, "inputStatus": "ready"])
+            client.connection.send(content: ReceiverFrameDecoder.frame(data), completion: .contentProcessed { _ in })
+        }
+        let firstGrant = UUID().uuidString
+        try grant(firstGrant)
+        try await wait { receiver.inputGrant == firstGrant }
+        // Default-off emits no event. Enable, send a key and disable; disable
+        // must preserve ordering and deliver releaseAll on the encrypted socket.
+        receiver.sendDesktopInput(["kind": "keyDown", "keyCode": 9, "modifiers": 0])
+        receiver.setInputForwarding(true)
+        receiver.sendDesktopInput(["kind": "keyDown", "keyCode": 0, "modifiers": 8])
+        receiver.setInputForwarding(false)
+        let input = try await Task.detached { () -> [[String: Any]] in
+            var messages: [[String: Any]] = []
+            for _ in 0..<10 {
+                let object = try client.hello()
+                if object["type"] as? String == "desktopInput" { messages.append(object) }
+                if messages.count == 2 { return messages }
+            }
+            throw ReceiverTestFailure(message: "missing desktop input on TLS")
+        }.value
+        precondition(input[0]["keyCode"] as? Int == 0 && input[0]["inputSession"] as? String == firstGrant)
+        precondition(input[1]["kind"] as? String == "releaseAll")
+        precondition((input[1]["sequence"] as! Int) > (input[0]["sequence"] as! Int))
+        let newGrant = UUID().uuidString
+        try grant(newGrant)
+        try await wait { receiver.inputGrant == newGrant }
         let frame = try await Task.detached { try receiverTestH264Frame() }.value
         let config = try JSONSerialization.data(withJSONObject: ["type": "streamConfig", "codec": "h264", "width": 64, "height": 64, "fps": 30])
         client.connection.send(content: ReceiverFrameDecoder.frame(config) + ReceiverFrameDecoder.frame(frame), completion: .contentProcessed { _ in })
@@ -83,10 +115,34 @@ private final class SecureReceiverPeer {
         try state.revoke("test-sender")
         TransportSecurityChange.post("revoked", peer: "test-sender")
         try await wait { !receiver.connected && receiver.videoSize == .zero }
+        precondition(receiver.inputGrant == nil)
+        // A new paired connection starts with no inherited grant or tickets.
+        let renewedInvitation = try state.startPairing()
+        let renewedClient = try await Task.detached {
+            let peer = try SecureReceiverPeer(port: port, identity: sender, state: senderState,
+                                              invitation: renewedInvitation)
+            _ = try peer.hello()
+            return peer
+        }.value
+        try await wait { receiver.connected && receiver.encrypted }
+        precondition(receiver.inputGrant == nil)
+        let overflowGrant = UUID().uuidString
+        let inputConfig = try JSONSerialization.data(withJSONObject: ["type": "inputConfig", "inputCaps": [DesktopInputProtocol.capability],
+            "inputSession": overflowGrant, "inputStatus": "ready"])
+        renewedClient.connection.send(content: ReceiverFrameDecoder.frame(inputConfig), completion: .contentProcessed { _ in })
+        try await wait { receiver.inputGrant == overflowGrant }
+        receiver.setInputForwarding(true)
+        guard case .accepted(let oldTicket) = inputBudget.reserve(), case .accepted = inputBudget.reserve() else {
+            fatalError("synthetic stalled send admission")
+        }
+        receiver.sendDesktopInput(["kind": "keyDown", "keyCode": 1, "modifiers": 0])
+        try await wait { !receiver.connected && receiver.inputGrant == nil }
+        precondition(!inputBudget.complete(oldTicket))
+        renewedClient.connection.cancel()
         receiver.stop()
         plain.cancel(); stranger.cancel(); client.connection.cancel()
         try await wait { receiver.listeningPort == 0 }
-        print("Mac receiver: TLS before hello/video, plaintext rejection, active-session isolation and revocation PASS")
+        print("Mac receiver: TLS hello/video/input, opt-in and release ordering, grant replacement, plaintext isolation and revocation PASS")
     }
 
     @MainActor private static func testPhone(folder: URL, port: UInt16) async throws {

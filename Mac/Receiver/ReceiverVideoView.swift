@@ -9,6 +9,7 @@ final class ReceiverVideoView: NSView {
     private weak var receiver: StreamReceiver?
     private let displayLayer: AVSampleBufferDisplayLayer
     private var videoSizeObserver: AnyCancellable?
+    private var inputCapture: ReceiverDesktopInputCapture?
 
     private let cursorLayer: CALayer = {
         let layer = CALayer()
@@ -28,6 +29,7 @@ final class ReceiverVideoView: NSView {
         self.receiver = receiver
         self.displayLayer = receiver.displayLayer
         super.init(frame: .zero)
+        inputCapture = ReceiverDesktopInputCapture(view: self, receiver: receiver)
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
         // AVSBDL aspect-fits internally (videoGravity) — give it full bounds.
@@ -55,6 +57,20 @@ final class ReceiverVideoView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    override var acceptsFirstResponder: Bool { true }
+    override func resignFirstResponder() -> Bool {
+        inputCapture?.release()
+        return super.resignFirstResponder()
+    }
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        inputCapture?.detach()
+        super.viewWillMove(toWindow: newWindow)
+    }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        inputCapture?.attach()
+    }
 
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: blankCursor)

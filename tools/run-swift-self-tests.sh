@@ -104,7 +104,7 @@ run_test MacReceiverPolicySelfTest \
 run_test MacReceiverNetworkSelfTest \
   "${security[@]}" \
   Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
-  Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverNetworkSelfTest.swift
+  Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift Shared/DesktopInputProtocol.swift Shared/InputSendBudget.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverNetworkSelfTest.swift
 
 run_test MacRoleControllerSelfTest \
   Mac/MacRoleController.swift MacTests/MacRoleControllerSelfTest.swift
@@ -156,7 +156,7 @@ run_test MacSecureReceiverSelfTest \
   "${security[@]}" \
   Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
   Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift \
-  Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacSecureReceiverSelfTest.swift
+  Shared/DesktopInputProtocol.swift Shared/InputSendBudget.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacSecureReceiverSelfTest.swift
 
 run_test PencilProtocolSelfTest \
   Shared/PencilProtocol.swift MacTests/PencilProtocolSelfTest.swift
@@ -166,4 +166,9 @@ run_test PencilInputInjectorSelfTest \
   Shared/PencilProtocol.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
   Mac/InputValidationPolicy.swift Mac/InputInjector.swift MacTests/PencilInputInjectorSelfTest.swift
 
-echo "Swift standalone self-tests PASS (48 suites)"
+run_test DesktopInputProtocolSelfTest \
+  Shared/DesktopInputProtocol.swift MacTests/DesktopInputProtocolSelfTest.swift
+run_test DesktopInputSenderSelfTest \
+  Shared/DesktopInputProtocol.swift Mac/DesktopInputInjector.swift Mac/DesktopInputSender.swift MacTests/DesktopInputSenderSelfTest.swift
+
+echo "Swift standalone self-tests PASS (50 suites)"

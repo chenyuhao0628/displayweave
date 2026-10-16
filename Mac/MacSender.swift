@@ -131,6 +131,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var lastHello: PhoneInfo?
     private var helloContinuation: CheckedContinuation<PhoneInfo, Error>?
     private var inputInjector: InputInjector?
+    private lazy var desktopInput = DesktopInputSender { [weak self] object in
+        guard let data = try? JSONSerialization.data(withJSONObject: object) else { return }
+        self?.sendJSONFrame(String(decoding: data, as: UTF8.self))
+    }
     private var protocolIdentity = StreamProtocolIdentity()
     private var protocolHandshake = ReceiverProtocolHandshake()
     private var protocolFailureBudget = ReceiverProtocolFailureBudget(maxReconnects: 1)
@@ -308,7 +312,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                            codec: codec)
         queue.sync {
             inputInjector?.cancelPress()
-            if !stopped { inputInjector = InputInjector(displayID: display.displayID) }
+            if !stopped {
+                inputInjector = InputInjector(displayID: display.displayID)
+                desktopInput.configure(displayID: display.displayID)
+            }
         }
     }
 
@@ -374,6 +381,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             virtualDisplay = vd
             inputInjector?.cancelPress()
             inputInjector = InputInjector(displayID: vd.displayID)
+            desktopInput.configure(displayID: vd.displayID)
             return true
         }
         guard installed else { throw CancellationError() }
@@ -554,6 +562,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             stream = nil
             inputInjector?.cancelPress()
             inputInjector = nil
+            desktopInput.reset(removeTarget: true)
             invalidateConnection()
             cancelPendingReconnect()
             dialGeneration &+= 1
@@ -692,6 +701,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     /// Bookkeeping shared by both transports once a connection is live.
     private func adoptConnection(_ conn: NWConnection) -> UInt64 {
+        desktopInput.reset()
         pencilNegotiated = false
         macCodecFallback.beginConnection()
         inputInjector?.cancelPress()
@@ -710,6 +720,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     }
 
     private func invalidateConnection() {
+        desktopInput.reset()
         pencilNegotiated = false
         inputInjector?.cancelPress()
         connectionGeneration &+= 1
@@ -936,6 +947,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     private func scheduleReconnect(failureObservedAt: Date = Date()) {
         guard !stopped else { return }
+        desktopInput.reset()
         inputInjector?.cancelPress()
         pencilNegotiated = false
         if everConnected {
@@ -1086,6 +1098,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func scheduleWatchdog() {
         queue.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             guard let self, !self.stopped else { return }
+            if self.connectionReady { self.desktopInput.refresh() }
             if self.connectionReady, Date().timeIntervalSince(self.lastReceived) > 5 {
                 Log.info("watchdog: nothing from the phone for >5s — reconnecting")
                 Task { await self.status("连接无响应，正在重新连接…") }
@@ -1318,7 +1331,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 let previous = lastHello
                 lastHello = info
                 if !connectionReady { helloReady() }
-                let supportsPencil = PencilProtocol.supports(info.inputCaps)
+                desktopInput.hello(encrypted: encrypted, capabilities: info.isMacReceiver ? info.inputCaps : nil)
+                let supportsPencil = !info.isMacReceiver && PencilProtocol.supports(info.inputCaps)
                 if pencilNegotiated && !supportsPencil { inputInjector?.cancelPress() }
                 pencilNegotiated = supportsPencil
                 if supportsPencil {
@@ -1351,6 +1365,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             let state = obj["state"] as? String ?? "unknown"
             let reason = obj["reason"] as? String ?? ""
             Log.info("receiver connection state=\(state) reason=\(reason)")
+        case "desktopInput":
+            guard lastHello?.isMacReceiver == true else { return }
+            desktopInput.handle(payload)
         case "pencil":
             guard pencilNegotiated else { return }
             guard let sample = PencilSample(message: obj) else { inputInjector?.cancelPress(); return }
@@ -1364,6 +1381,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             }
             inputInjector?.handleProximity(entering: entering, x: x, y: y)
         case "touch":
+            guard lastHello?.isMacReceiver != true else { return }
             if let phase = obj["phase"] as? String,
                let x = obj["x"] as? Double,
                let y = obj["y"] as? Double {
@@ -1377,6 +1395,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 }
             }
         case "scroll":
+            guard lastHello?.isMacReceiver != true else { return }
             if let dx = obj["dx"] as? Double, let dy = obj["dy"] as? Double {
                 inputInjector?.handleScroll(dx: dx, dy: dy)
             }
