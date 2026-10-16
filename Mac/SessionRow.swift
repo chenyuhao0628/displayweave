@@ -34,6 +34,19 @@ struct SessionRow: View {
                     .foregroundStyle(.secondary)
             }
 
+            if controller.mode == .extend {
+                Picker("桌面像素", selection: Binding(
+                    get: { controller.desktopResolution(for: session) },
+                    set: { controller.setDesktopResolution($0, for: session) })) {
+                    ForEach(DesktopResolution.allCases, id: \.self) { resolution in
+                        Text(resolution.label).tag(resolution)
+                    }
+                }
+                .controlSize(.small)
+                .disabled(controller.replacingSessions || !DesktopResolutionPreferences.validIdentity(session.deviceID))
+                .help("按设备保存；更改仅重连这台设备。Retina 逻辑点为像素的一半；竖屏自动交换宽高。编码画质和接收上限另行生效。")
+            }
+
             }
             Spacer()
             if session.failed {

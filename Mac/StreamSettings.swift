@@ -1,7 +1,7 @@
 import Foundation
 
-/// Capture-resolution / bitrate trade-off. The virtual display always runs at
-/// native size; only the captured/encoded stream is scaled.
+/// Capture-resolution / bitrate trade-off. Desktop mode is configured separately;
+/// only the captured/encoded stream is scaled by this setting.
 enum StreamQuality: String, CaseIterable {
     case low, balanced, high, gaming
 
@@ -36,7 +36,7 @@ enum StreamQuality: String, CaseIterable {
         switch self {
         case .low: return "半分辨率和较低码率，优先降低 WiFi 带宽占用。"
         case .balanced: return "75% 分辨率和均衡码率，兼顾清晰度与延迟。"
-        case .high: return "原生分辨率和完整码率，优先保证画面细节。"
+        case .high: return "按所选桌面分辨率编码（受接收上限约束）和完整码率，优先保证画面细节。"
         case .gaming: return "75% 分辨率和偏高码率，优先保持高帧率与低排队延迟。"
         }
     }
@@ -148,6 +148,7 @@ struct StreamSettings: Equatable {
     var enableDebugStats: Bool
     var bitrateMode: BitrateMode = .auto
     var bitratePreset: BitratePreset = .mbps40
+    var desktopResolutions = DesktopResolutionPreferences()
 
     static func load(from defaults: UserDefaults = .standard) -> StreamSettings {
         let fpsMode = StreamFpsMode(rawValue: defaults.string(forKey: "fpsMode") ?? "") ?? legacyFpsMode(defaults)
@@ -165,7 +166,9 @@ struct StreamSettings: Equatable {
             transportMode: transportMode,
             enableDebugStats: debugStats,
             bitrateMode: bitrateMode,
-            bitratePreset: bitratePreset)
+            bitratePreset: bitratePreset,
+            desktopResolutions: DesktopResolutionPreferences(
+                stored: defaults.dictionary(forKey: "desktopResolutions.v1") as? [String: String] ?? [:]))
     }
 
     func save(to defaults: UserDefaults = .standard) {
@@ -176,6 +179,7 @@ struct StreamSettings: Equatable {
         defaults.set(enableDebugStats, forKey: "debugStats")
         defaults.set(bitrateMode.rawValue, forKey: "bitrateMode")
         defaults.set(bitratePreset.rawValue, forKey: "bitrateMbps")
+        defaults.set(desktopResolutions.stored, forKey: "desktopResolutions.v1")
     }
 
     func selectedFps(deviceMaxFps: Int) -> Int {

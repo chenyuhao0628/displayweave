@@ -17,6 +17,7 @@ run_test() {
 }
 
 settings=(
+  Mac/DesktopResolution.swift
   Mac/FrameSizePolicy.swift
   Mac/RefreshRatePolicy.swift
   Mac/StreamEncodingPolicy.swift
@@ -68,6 +69,9 @@ run_test StreamEncodingPolicySelfTest \
   "${settings[@]}" MacTests/StreamEncodingPolicySelfTest.swift
 run_test StreamSettingsSelfTest \
   "${settings[@]}" MacTests/StreamSettingsSelfTest.swift
+run_test DesktopResolutionSelfTest \
+  "${settings[@]}" Mac/DeviceCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift \
+  Mac/MacReceiverPolicy.swift MacTests/DesktopResolutionSelfTest.swift
 run_test TestPatternLifecycleSelfTest \
   -DDEBUG \
   Shared/BoundedLogWriter.swift Mac/Log.swift Mac/TestPatternWindow.swift \
@@ -129,4 +133,4 @@ run_test PencilInputInjectorSelfTest \
   Shared/PencilProtocol.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
   Mac/InputValidationPolicy.swift Mac/InputInjector.swift MacTests/PencilInputInjectorSelfTest.swift
 
-echo "Swift standalone self-tests PASS (37 suites)"
+echo "Swift standalone self-tests PASS (38 suites)"

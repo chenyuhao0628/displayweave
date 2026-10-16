@@ -321,12 +321,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func setupExtend(_ info: PhoneInfo) async throws {
         Log.info("phone hello: \(info.pixelsWide)x\(info.pixelsHigh) @\(info.scale)x device=\(info.negotiatedDeviceModel) refresh=\(info.negotiatedRefreshRate)Hz maxFps=\(info.negotiatedMaxFps) codecs=\(info.negotiatedSupportedCodecs.joined(separator: ",")) preferred=\(info.negotiatedPreferredCodec) sdk=\(info.negotiatedAndroidSdk) transport=\(info.negotiatedTransport)")
 
-        // Phone panel is @3x; the virtual display runs @2x HiDPI, so points
-        // = native pixels / 2 (rounded down to even for the encoder).
         guard !stopped else { throw CancellationError() }
         let macPlan = info.isMacReceiver ? MacReceiverPolicy.plan(info: info, settings: settings, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
-        let pointsWide = macPlan?.pointsWide ?? ((info.pixelsWide / 2) & ~1)
-        let pointsHigh = macPlan?.pointsHigh ?? ((info.pixelsHigh / 2) & ~1)
+        let mobileDesktop = DesktopResolutionPolicy.geometry(
+            settings.desktopResolutions.resolution(for: info.id),
+            nativeWidth: info.pixelsWide, nativeHeight: info.pixelsHigh, backingScale: 2)
+        let pointsWide = macPlan?.pointsWide ?? mobileDesktop.pointsWide
+        let pointsHigh = macPlan?.pointsHigh ?? mobileDesktop.pointsHigh
         // Rough physical size so macOS picks a sane default UI scale.
         let mm = info.isMacReceiver ? CGSize(width: Double(pointsWide) * 25.4 / 110, height: Double(pointsHigh) * 25.4 / 110) : info.pixelsWide >= info.pixelsHigh
             ? CGSize(width: 147, height: 68)
@@ -368,10 +369,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         guard installed else { throw CancellationError() }
 
         let display = try await findSCDisplay(id: vd.displayID)
-        // Quality scaling: capture/encode below native when requested — the
-        // display itself stays native so window layout is unaffected.
-        let captureW = macPlan?.width ?? ((Int(Double(pointsWide * 2) * quality.scale)) & ~1)
-        let captureH = macPlan?.height ?? ((Int(Double(pointsHigh * 2) * quality.scale)) & ~1)
+        // Mobile legacy peers have no decoder envelope; don't exceed the panel
+        // raster they already support. Desktop layout remains independently selected.
+        let mobileRaster = DesktopResolutionPolicy.raster(mobileDesktop, qualityScale: quality.scale,
+            maxWidth: info.maxEncodeWide ?? info.pixelsWide,
+            maxHeight: info.maxEncodeHigh ?? info.pixelsHigh)
+        let captureW = macPlan?.width ?? mobileRaster.width
+        let captureH = macPlan?.height ?? mobileRaster.height
         let codec = macPlan?.codec ?? settings.selectedCodec(
             supportedCodecs: info.negotiatedSupportedCodecs,
             preferredCodec: info.negotiatedPreferredCodec)

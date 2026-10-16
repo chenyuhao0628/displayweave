@@ -35,8 +35,11 @@ enum MacReceiverPolicy {
         func dimension(_ value: Int) -> Int { min(16384, max(2, value)) & ~1 }
         let pw = dimension(panel?.pixelsWide ?? info.pixelsWide)
         let ph = dimension(panel?.pixelsHigh ?? info.pixelsHigh)
-        let pointsWide = dimension(panel?.pointsWide ?? (pw / scale))
-        let pointsHigh = dimension(panel?.pointsHigh ?? (ph / scale))
+        let desktop = DesktopResolutionPolicy.geometry(settings.desktopResolutions.resolution(for: info.id),
+            nativeWidth: pw, nativeHeight: ph, nativePointsWide: panel?.pointsWide,
+            nativePointsHigh: panel?.pointsHigh, backingScale: scale)
+        let pointsWide = desktop.pointsWide
+        let pointsHigh = desktop.pointsHigh
         let nativeW = dimension(sourceWidth ?? (pointsWide * scale))
         let nativeH = dimension(sourceHeight ?? (pointsHigh * scale))
         let portrait = nativeH > nativeW

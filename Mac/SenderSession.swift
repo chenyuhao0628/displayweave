@@ -44,7 +44,7 @@ final class DeviceSession: ObservableObject, Identifiable {
     @Published var benchmarkStatus = "Idle"
     // Receiver's per-install identity (from hello) — the key for recognizing
     // the same physical device across USB and WiFi.
-    var deviceID: String?
+    @Published var deviceID: String?
     // "iPhone" / "iPad" from hello — naming fallback while (or in case)
     // lockdown hasn't resolved the device's real name.
     var deviceKind: String?

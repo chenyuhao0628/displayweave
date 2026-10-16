@@ -64,6 +64,9 @@ struct SenderSettingsView: View {
         Text(controller.settings.quality.explanation)
             .font(.caption)
             .foregroundStyle(.secondary)
+        Text("每台设备的桌面分辨率在连接列表单独选择；这里的画质只缩放编码，不改变桌面布局。镜像沿用发送端实体显示器尺寸。")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     VStack(alignment: .leading, spacing: 4) {

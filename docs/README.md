@@ -4,6 +4,7 @@
 
 ## Current user guides
 
+- [Per-device desktop resolution (source)](desktop-resolution.md)
 - [Active feature completion plan and evidence](feature-completion.md)
 - [HEVC, direct-link and Pencil usage / current evidence](hevc-wired-pencil.md)
 - [HEVC, wired discovery and Pencil design / acceptance](hevc-wired-pencil-plan.md)

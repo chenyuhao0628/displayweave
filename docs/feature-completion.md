@@ -30,7 +30,7 @@ Feature completion means implemented behavior and passing automated acceptance, 
 ## Progress
 
 - Assessment: repository clean on baseline; twelve work items enumerated with acceptance and dependencies.
-- F02–F12: implementation pending. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
+- F03–F12: implementation pending. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
 
 ## Official API references
 
@@ -39,3 +39,7 @@ Feature completion means implemented behavior and passing automated acceptance, 
 ### F01 — implemented in source
 
 Migrated Mac feed including persisted-feed override; Android bounded availability fallback with TLS/metadata fail-closed behavior. Signing identities are unchanged. Regression first failed against the old configuration, then passed. Mac universal Debug build, Android six groups (including new UpdateClient transport tests) and assembleDebug passed. Live canonical feeds returned 200 and matched tracked p8 bytes. Old p8 still needs manual migration if Pages stays unavailable.
+
+### F02 — implemented in source
+
+Per-installation Native/1080p/1440p/4K selection now rebuilds only the affected extension session. Logical geometry is separate from decoder/quality scaling; mirror ignores the desktop override. Added failing-then-passing geometry, persistence, limit and mirror tests. All 38 Swift suites and Mac universal Debug build passed. See [usage and physical acceptance](desktop-resolution.md).

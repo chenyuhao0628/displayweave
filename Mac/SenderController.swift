@@ -779,6 +779,19 @@ final class SenderController: ObservableObject {
         replace([session], targets: [freshTarget(session.target)])
     }
 
+    func desktopResolution(for session: DeviceSession) -> DesktopResolution {
+        settings.desktopResolutions.resolution(for: session.deviceID)
+    }
+
+    func setDesktopResolution(_ resolution: DesktopResolution, for session: DeviceSession) {
+        guard roleEnabled, mode == .extend, !replacingSessions,
+              sessions.contains(where: { $0 === session }),
+              let id = session.deviceID, DesktopResolutionPreferences.validIdentity(id),
+              desktopResolution(for: session) != resolution else { return }
+        settings.desktopResolutions.set(resolution, for: id)
+        replace([session], targets: [freshTarget(session.target)])
+    }
+
     /// Rebuild only after old capture, startup and ADB-forward cleanup finish.
     /// Rapid edits retain the latest target set and cannot resurrect a receive role.
     func restartAll() {

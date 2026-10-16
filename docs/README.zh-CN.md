@@ -4,6 +4,7 @@
 
 ## 当前用户指南
 
+- [每台设备的桌面分辨率（源码）](desktop-resolution.zh-CN.md)
 - [当前功能补全方案与证据](feature-completion.zh-CN.md)
 - [HEVC、直连与 Pencil 使用／当前验收证据](hevc-wired-pencil.zh-CN.md)
 - [HEVC、有线发现与 Pencil 设计和验收](hevc-wired-pencil-plan.zh-CN.md)
