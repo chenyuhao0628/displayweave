@@ -2,31 +2,25 @@
 
 # 无 Apple 开发者账号的自动更新
 
-已发布 p8 内置历史 GitHub Pages 更新地址；源码分支将新构建的 Mac/Android 更新入口迁移到已有 Cloudflare 镜像的以下 HTTPS 地址：
+DisplayWeave 把不可变的 Mac/Android 安装包发布到 GitHub Releases，把小型更新源发布到 GitHub Pages：
 
-- Mac 源码更新源：`https://downloads.urlget.cyou/displayweave/appcast.xml`
-- Android 源码更新源：`https://downloads.urlget.cyou/displayweave/android-update.json`
-- Android 不可用时的备用源：`https://chenyuhao0628.github.io/displayweave/android-update.json`
+- Mac 更新源：`https://chenyuhao0628.github.io/displayweave/appcast.xml`
+- Android 更新源：`https://chenyuhao0628.github.io/displayweave/android-update.json`
 - Mac 首次安装产物：`DisplayWeave-macOS.dmg`（带引导的后续 Release）
 - Mac 更新产物：`DisplayWeave-macOS.zip`
 - Android 产物：`DisplayWeave-Android.apk`
 
 当前开发发行版本是
-[`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)。
-Android p5 尚不信任新的 Cloudflare 域名，因此需要手动安装一次 p6 或更新版；p6–p8 支持双源 APK 下载，但元数据仍依赖历史 Pages 更新源。
+[`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases)。
+Android p5 尚不支持新的下载路径，因此需要手动安装一次 p6 或更新版；p6 及
+以后版本可自动使用双源更新渠道。
 本版本同时包含引导式 DMG 与 Sparkle ZIP 更新包。
 
 Mac 版本采用 ad-hoc 签名且未公证。Sparkle 使用应用内置的 EdDSA 公钥验证 ZIP，因此后续更新不依赖 Apple Developer Program。它不会让首次下载自动获得 Gatekeeper 信任，也不等同于已公证正式发行。
 
-2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；请使用 [Cloudflare 下载页](https://downloads.urlget.cyou/displayweave/zh.html)。已发布 p8 的应用内检查仍依赖原 Pages 地址；若地址持续不可用，后续包含迁移代码的版本需要手动覆盖安装一次。仅复制 feed 无法修复旧端，本次源码改动尚未发行迁移版本。
+2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；下载统一发布在[发行页面](https://github.com/chenyuhao0628/displayweave/releases)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。
 
 本地发行的可复现命令与验收要求见[本地发行](local-release.zh-CN.md)。
-
-## 源码更新渠道恢复
-
-Mac 通过 Sparkle updater delegate 固定选择 Cloudflare 主源，覆盖旧版持久化的地址，并保留自动检查/安装偏好。ZIP 继续使用 p8 的原 Ed25519 公钥验证。Android 仅网络错误或 HTTP 404/410/408/429/5xx 时最多尝试一次历史备用源；非法/超限元数据、TLS 信任失败、非 HTTPS 或跨主机元数据重定向直接拒绝。普通检查和安装前复查共用此策略，APK 大小/哈希/包名/版本/证书校验继续强制执行。
-
-发行方须在两个主机部署相同的最新 feed，保留不可变安装包和源码归档，并在提供更新前验证 Cloudflare 在线字节。2026-10-16 两个主源均返回 HTTP 200 且与仓库 p8 feed 一致；这仅是可达性证据，不代表未发行构建已安装。
 
 ## 用户一次性迁移
 
@@ -42,7 +36,7 @@ Mac 通过 Sparkle updater delegate 固定选择 Cloudflare 主源，覆盖旧�
 
 1. 手动把首个支持更新的 APK 覆盖安装到现有 `app.opendisplay.android`。它必须继续使用现有 DisplayWeave 证书，否则 Android 会拒绝覆盖。
 2. 应用回到前台时最多每 24 小时自动检查一次；“设置与帮助 → 检查更新”不受此限制。
-3. p6 及更新客户端优先访问 `downloads.urlget.cyou`，只有连接失败、HTTP 不可用或传输中断时才回退到严格匹配的 GitHub Release。
+3. 客户端只从严格匹配的 GitHub Release 路径下载。
 4. 发现更新后，应用通过同一校验路径检查字节数、SHA-256、包名、版本号、最低 SDK 和签名证书；完整性或身份校验失败不会触发换源。
 5. 首次更新时，Android 可能要求允许此应用“安装未知应用”。授权后返回 DisplayWeave。最终始终由 Android 系统安装器显示确认界面，不支持静默安装。
 
@@ -67,7 +61,7 @@ GitHub Actions 必须配置且只需要以下 5 个仓库 secret：
 3. 校验版本、哈希、归档结构和 Android 签名；
 4. 向草稿 Release 上传七项不可变产物，保持在线更新源不变。
 
-下载并独立验证产物后，部署包含新文件和全部需要保留的历史版本的 Cloudflare 完整快照。确认在线镜像字节一致，再公开 GitHub Release。将生成的 `appcast.xml`、`android-update.json` 原样复制到 `public/`，更新发布链接和校验值，待审查与 CI 通过后合并发行 PR。main 分支的 Pages 部署随后一起发布网站与更新源。持久化原始更新源可以防止后续网站部署回退更新渠道。
+下载并独立验证产物后公开 GitHub Release。将生成的 `appcast.xml`、`android-update.json` 原样复制到 `public/`，更新发布链接和校验值，待审查与 CI 通过后合并发行 PR。main 分支的 Pages 部署随后一起发布网站与更新源。持久化原始更新源可以防止后续网站部署回退更新渠道。
 
 设置 `deploy_feeds=true` 时，工作流会直接把更新源交给受保护的 Pages Job。只有引用的下载都已可用时才使用这一方式，并仍须把相同更新源保存到 `public/`。
 

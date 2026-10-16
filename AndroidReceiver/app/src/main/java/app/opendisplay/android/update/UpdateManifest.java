@@ -13,8 +13,6 @@ public final class UpdateManifest {
             "89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d";
     public static final String EXPECTED_RELEASE_PATH_PREFIX =
             "/chenyuhao0628/displayweave/releases/download/";
-    public static final String EXPECTED_MIRROR_HOST = "downloads.urlget.cyou";
-    public static final String EXPECTED_MIRROR_PATH_PREFIX = "/releases/";
     public static final int MINIMUM_SUPPORTED_SDK = 26;
 
     public final int schemaVersion;
@@ -61,9 +59,7 @@ public final class UpdateManifest {
         validateApkUrl(apkUrl, "APK URL");
         if (apkFallbackUrl != null) {
             validateApkUrl(apkFallbackUrl, "fallback APK URL");
-            require(!apkUrl.equals(apkFallbackUrl), "Duplicate APK mirrors");
-            require(isMirrorUrl(apkUrl) && isGitHubUrl(apkFallbackUrl),
-                    "Unexpected APK mirror order");
+            require(!apkUrl.equals(apkFallbackUrl), "Duplicate APK sources");
         }
         require(EXPECTED_SIGNING_CERTIFICATE_SHA256.equals(signingCertificateSha256),
                 "Unexpected APK signing certificate");
@@ -82,22 +78,16 @@ public final class UpdateManifest {
     private static void validateApkUrl(URI uri, String label) {
         validateHttps(uri, label);
         String path = uri.getPath();
-        String prefix = isGitHubUrl(uri)
-                ? EXPECTED_RELEASE_PATH_PREFIX : EXPECTED_MIRROR_PATH_PREFIX;
-        require((isGitHubUrl(uri) || isMirrorUrl(uri))
+        require(isGitHubUrl(uri)
                         && uri.getQuery() == null
                         && path != null
                         && path.equals(uri.getRawPath())
-                        && hasExactReleaseArtifactPath(path, prefix),
+                        && hasExactReleaseArtifactPath(path, EXPECTED_RELEASE_PATH_PREFIX),
                 "Unexpected " + label);
     }
 
     private static boolean isGitHubUrl(URI uri) {
         return "github.com".equalsIgnoreCase(uri.getHost());
-    }
-
-    private static boolean isMirrorUrl(URI uri) {
-        return EXPECTED_MIRROR_HOST.equalsIgnoreCase(uri.getHost());
     }
 
     private static boolean hasExactReleaseArtifactPath(String path, String prefix) {

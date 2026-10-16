@@ -1,7 +1,6 @@
 import Foundation
 
-/// App-managed migration; signing identity remains independent of feed hosting.
+/// App-managed GitHub feed; signing identity remains unchanged.
 enum UpdateFeedPolicy {
-    static let canonical = "https://downloads.urlget.cyou/displayweave/appcast.xml"
-    static let legacy = "https://chenyuhao0628.github.io/displayweave/appcast.xml"
+    static let canonical = "https://chenyuhao0628.github.io/displayweave/appcast.xml"
 }

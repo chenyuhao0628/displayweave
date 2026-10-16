@@ -16,8 +16,6 @@ public final class UpdateClient {
     private static final int MAX_REDIRECTS = 5;
     private static final int MAX_MANIFEST_BYTES = 1024 * 1024;
     private static final String PRIMARY_FEED =
-            "https://downloads.urlget.cyou/displayweave/android-update.json";
-    private static final String FALLBACK_FEED =
             "https://chenyuhao0628.github.io/displayweave/android-update.json";
 
     interface ConnectionOpener {
@@ -35,16 +33,7 @@ public final class UpdateClient {
 
     public UpdateManifest fetchLatestManifest(long nowMillis) throws IOException {
         String query = "?displayweave_cache_bust=" + nowMillis;
-        try {
-            return fetchManifest(new URL(PRIMARY_FEED + query));
-        } catch (MirrorUnavailableException primaryError) {
-            try {
-                return fetchManifest(new URL(FALLBACK_FEED + query));
-            } catch (IOException fallbackError) {
-                fallbackError.addSuppressed(primaryError);
-                throw fallbackError;
-            }
-        }
+        return fetchManifest(new URL(PRIMARY_FEED + query));
     }
 
     public interface Progress {
@@ -118,7 +107,7 @@ public final class UpdateClient {
         try {
             connection = open(url, false);
         } catch (IOException error) {
-            throw unavailable("Unable to connect to update mirror", error);
+            throw unavailable("Unable to connect to update source", error);
         }
         boolean completed = false;
         try {
@@ -135,7 +124,7 @@ public final class UpdateClient {
             try {
                 input = connection.getInputStream();
             } catch (IOException error) {
-                throw unavailable("Update mirror response failed", error);
+                throw unavailable("Update source response failed", error);
             }
             try (InputStream response = input;
                  FileOutputStream output = new FileOutputStream(destination)) {
@@ -144,7 +133,7 @@ public final class UpdateClient {
                 } catch (ArtifactRejectedException error) {
                     throw error;
                 } catch (IOException error) {
-                    throw unavailable("Update mirror download failed", error);
+                    throw unavailable("Update download failed", error);
                 }
                 output.getFD().sync();
             }

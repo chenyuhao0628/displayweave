@@ -7,19 +7,16 @@ networks where GitHub release downloads are unavailable.
 
 ## Android update delivery
 
-- Uses `downloads.urlget.cyou` on Cloudflare Pages as the primary APK mirror.
-- Falls back to the matching GitHub Release APK only after a connection, HTTP
-  availability, or transport failure.
+- Downloads the APK from the matching GitHub Release.
 - Requires both URLs to use HTTPS and match exact trusted hosts and release
   paths.
 - Applies one shared size, SHA-256, package, version, SDK, and pinned signing
   certificate verification path after either download.
-- Does not try another mirror after an oversized artifact, final size mismatch,
-  hash failure, package mismatch, version mismatch, or certificate failure.
+- Stops the update after an oversized artifact, final size mismatch, hash
+  failure, package mismatch, version mismatch, or certificate failure.
 
-Android p5 does not trust the new Cloudflare hostname. Install p6 manually once
-from the website; p6 and later builds can then use Cloudflare with GitHub as the
-automatic fallback.
+Android p5 must be upgraded to p6 or later manually once; later builds use the
+in-app update channel automatically.
 
 ## Distribution
 
@@ -36,4 +33,4 @@ Android APK, unsigned iOS re-signing input, signed update feeds, and
 | `appcast.xml` | `bf1429a9774c2a2661136832902bc4e032a32b0b83108ea3b567ff206dd7df0c` |
 | `android-update.json` | `4fc43c7606b40f786d21872ab3dd1243ecd79308237e75cb3aaff1e84acdb377` |
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p6) · [Cloudflare mirror](https://downloads.urlget.cyou/releases/v0.2.1-p6/SHA256SUMS.txt)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases) · [SHA256SUMS.txt](https://github.com/chenyuhao0628/displayweave/releases/download/v0.2.1-p6/SHA256SUMS.txt)

@@ -8,9 +8,9 @@
 
 包含 p7 的 Mac 双角色单向扩展／镜像、硬件 HEVC 与 H.264 回退、绑定接口的直连候选发现、协商后的 Pencil 压感／倾角／悬停、四端 UI 及会话生命周期加固。详见 [p7 说明](release-notes-v0.2.1-p7.zh-CN.md)和[使用指南](hevc-wired-pencil.zh-CN.md)。p8 没有新增原生功能或分辨率模式选择器，未改变签名密钥、应用 ID、更新源地址及通信协议。
 
-新增可复现的[本地发行流程](local-release.zh-CN.md)，在 Cloudflare 保留历史产物并提供备用网站与对应源码包。源码来自发行 tag 的跟踪文件，包含 GPL-3.0、上游声明与构建脚本。
+新增可复现的[本地发行流程](local-release.zh-CN.md)，保留历史产物并提供对应源码包。源码来自发行 tag 的跟踪文件，包含 GPL-3.0、上游声明与构建脚本。
 
-发行后续提交还修复了 Cloudflare 去掉路由 `.html` 后中文页面 hydration 切回英文的问题。网站页脚提供对应源码快照；应用安装包仍是不可变的 p8 tag 产物。
+发行后续提交还修复了中文路由 hydration 切回英文的问题。应用安装包仍是不可变的 p8 tag 产物。
 
 ## 自动验证与真机边界
 
@@ -22,7 +22,7 @@
 
 ## 下载与更新
 
-[Cloudflare 中文下载页](https://downloads.urlget.cyou/displayweave/zh.html) · [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)
+[发行页面](https://github.com/chenyuhao0628/displayweave/releases) · [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
 八项文件为 Mac DMG／Sparkle ZIP、Android APK、无签名 iOS 自签输入包、`appcast.xml`、`android-update.json`、`DisplayWeave-v0.2.1-p8-source.tar.gz` 及 `SHA256SUMS.txt`。源码包的 SHA-256 见校验和清单，该清单覆盖其余七项文件。
 

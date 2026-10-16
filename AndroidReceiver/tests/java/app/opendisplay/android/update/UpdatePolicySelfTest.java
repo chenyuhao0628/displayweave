@@ -15,10 +15,10 @@ public final class UpdatePolicySelfTest {
         expect(manifest.schemaVersion == 1, "schema parsed");
         expect(manifest.versionCode == 123, "version code parsed");
         expect("0.2.0-preview.3".equals(manifest.versionName), "version name parsed");
-        expect("downloads.urlget.cyou".equals(manifest.apkUrl.getHost()),
-                "Cloudflare primary mirror parsed");
-        expect("github.com".equals(manifest.apkFallbackUrl.getHost()),
-                "GitHub fallback mirror parsed");
+        expect("github.com".equals(manifest.apkUrl.getHost()),
+                "GitHub release host parsed");
+        expect(manifest.apkFallbackUrl == null,
+                "manifest declares no fallback source");
         expect(UpdatePolicy.isNewer(123, 122), "greater version is newer");
         expect(!UpdatePolicy.isNewer(123, 123), "equal version is not newer");
         expect(UpdatePolicy.shouldCheck(86_400_001L, 1L, false),
@@ -43,49 +43,30 @@ public final class UpdatePolicySelfTest {
                 .replace("0.2.0-preview.3", "0.2.0-preview.4"));
         expect(!UpdatePolicy.isSameArtifact(changedVersion, manifest),
                 "superseded download artifact is rejected");
-        UpdateManifest changedFallback = UpdateManifest.parse(validJson().replace(
-                "/v0.2.0-preview.3/DisplayWeave-Android.apk\",\"apkSize\"",
-                "/v0.2.0-preview.4/DisplayWeave-Android.apk\",\"apkSize\""));
-        expect(!UpdatePolicy.isSameArtifact(changedFallback, manifest),
-                "changed fallback mirror is rejected");
-        UpdateManifest legacySingleSource = UpdateManifest.parse(validJson().replace(
-                "\"apkFallbackUrl\":\"https://github.com/chenyuhao0628/displayweave/"+
-                        "releases/download/v0.2.0-preview.3/DisplayWeave-Android.apk\",", ""));
-        expect(legacySingleSource.apkFallbackUrl == null,
-                "legacy single-source manifest remains accepted");
+        UpdateManifest changedUrl = UpdateManifest.parse(validJson().replace(
+                "/v0.2.0-preview.3/DisplayWeave-Android.apk",
+                "/v0.2.0-preview.4/DisplayWeave-Android.apk"));
+        expect(!UpdatePolicy.isSameArtifact(changedUrl, manifest),
+                "changed download path is rejected");
         expect(UpdatePolicy.canInstall(manifest, manifest, 122),
                 "verified newer artifact can install");
         expect(!UpdatePolicy.canInstall(manifest, manifest, 123),
                 "equal installed version cannot reinstall through updater");
 
         expectThrows(() -> UpdateManifest.parse(validJson().replace(
-                "https://downloads.urlget.cyou", "http://downloads.urlget.cyou")),
+                "https://github.com/chenyuhao0628", "http://github.com/chenyuhao0628")),
                 "non-HTTPS APK URL rejected");
         expectThrows(() -> UpdateManifest.parse(validJson().replace(
-                "https://downloads.urlget.cyou", "https://downloads.urlget.cyou.evil.example")),
-                "mirror suffix attack rejected");
+                "https://github.com/", "https://github.com.evil.example/")),
+                "host suffix attack rejected");
         expectThrows(() -> UpdateManifest.parse(validJson().replace(
-                "https://github.com/chenyuhao0628", "https://github.com.evil.example/chenyuhao0628")),
-                "fallback suffix attack rejected");
+                "https://github.com/chenyuhao0628/displayweave/releases/download/v0.2.0-preview.3/DisplayWeave-Android.apk",
+                "https://github.com/chenyuhao0628/displayweave/releases/download/v0.2.0-preview.3/extra/DisplayWeave-Android.apk")),
+                "nested artifact path rejected");
         expectThrows(() -> UpdateManifest.parse(validJson().replace(
-                "https://downloads.urlget.cyou/releases/v0.2.0-preview.3/DisplayWeave-Android.apk",
-                "https://downloads.urlget.cyou/releases/v0.2.0-preview.3/extra/DisplayWeave-Android.apk")),
-                "nested mirror artifact path rejected");
-        expectThrows(() -> UpdateManifest.parse(validJson().replace(
-                "https://downloads.urlget.cyou/releases/v0.2.0-preview.3/DisplayWeave-Android.apk",
-                "https://downloads.urlget.cyou/releases/v0.2.0-preview.3/DisplayWeave-Android.apk?bypass=1")),
-                "mirror query rejected");
-        expectThrows(() -> UpdateManifest.parse(validJson()
-                        .replace("\"apkUrl\":\"https://downloads.urlget.cyou/releases/"+
-                                        "v0.2.0-preview.3/DisplayWeave-Android.apk\"",
-                                "\"apkUrl\":\"https://github.com/chenyuhao0628/displayweave/"+
-                                        "releases/download/v0.2.0-preview.3/DisplayWeave-Android.apk\"")
-                        .replace("\"apkFallbackUrl\":\"https://github.com/chenyuhao0628/"+
-                                        "displayweave/releases/download/v0.2.0-preview.3/"+
-                                        "DisplayWeave-Android.apk\"",
-                                "\"apkFallbackUrl\":\"https://downloads.urlget.cyou/releases/"+
-                                        "v0.2.0-preview.3/DisplayWeave-Android.apk\"")),
-                "reversed mirror order rejected");
+                "https://github.com/chenyuhao0628/displayweave/releases/download/v0.2.0-preview.3/DisplayWeave-Android.apk",
+                "https://github.com/chenyuhao0628/displayweave/releases/download/v0.2.0-preview.3/DisplayWeave-Android.apk?bypass=1")),
+                "artifact query rejected");
         expectThrows(() -> UpdateManifest.parse(validJson().replace(
                 "app.opendisplay.android", "app.example.wrong")),
                 "wrong package rejected");
@@ -150,10 +131,8 @@ public final class UpdatePolicySelfTest {
                 "\"versionCode\":123,"+
                 "\"versionName\":\"0.2.0-preview.3\","+
                 "\"minimumSdk\":26,"+
-                "\"apkUrl\":\"https://downloads.urlget.cyou/releases/"+
+                "\"apkUrl\":\"https://github.com/chenyuhao0628/displayweave/releases/download/"+
                 "v0.2.0-preview.3/DisplayWeave-Android.apk\","+
-                "\"apkFallbackUrl\":\"https://github.com/chenyuhao0628/displayweave/"+
-                "releases/download/v0.2.0-preview.3/DisplayWeave-Android.apk\","+
                 "\"apkSize\":168421,"+
                 "\"sha256\":\""+HASH+"\","+
                 "\"signingCertificateSha256\":\""+CERT+"\","+

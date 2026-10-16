@@ -2,9 +2,9 @@
 
 # DisplayWeave `v0.2.1-p8` 开发分发
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；请使用 [Cloudflare 下载页](https://downloads.urlget.cyou/displayweave/zh.html)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。镜像中的更新源副本不会自动修改客户端地址。
+2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；下载统一发布在[发行页面](https://github.com/chenyuhao0628/displayweave/releases)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。
 
 | 平台/更新源 | 产物 | SHA-256 或信任边界 |
 | --- | --- | --- |
@@ -30,7 +30,7 @@ Android 签名证书 SHA-256：
   或在“隐私与安全性”中选择“仍要打开”。后续版本可使用 EdDSA 认证的
   Sparkle 渠道。
 - **Android：** p5 需要手动把此 APK 覆盖安装到现有包一次。p6 及以后
-  优先从 Cloudflare 下载，只把同一 GitHub Release 作为可用性备用源。
+  下载统一来自对应的 GitHub Release。
   每个产物都会核对固定包身份和证书，但仍需要“安装未知应用”权限和系统
   最终确认。
 - **iOS/iPadOS：** 输入包不能直接安装，用户必须提供有效签名身份；本版本

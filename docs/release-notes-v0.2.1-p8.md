@@ -8,9 +8,9 @@ Version `0.2.1-p8`, Mac build / Android version code `15`, built locally on 2026
 
 Includes p7's exclusive Mac roles for one-way extend/mirror, hardware HEVC with H.264 fallback, interface-pinned direct-link candidates, negotiated Pencil pressure/tilt/hover, four-surface UI and session lifecycle hardening. See [p7 notes](release-notes-v0.2.1-p7.md) and the [feature guide](hevc-wired-pencil.md). p8 adds no native feature or fixed-resolution mode picker and changes no signing keys, application IDs, feed URLs or wire protocol.
 
-Adds a reproducible [local publication procedure](local-release.md), preserved historical Cloudflare downloads, a backup site and corresponding source archive. Source is the tracked tree at the release tag, including GPL-3.0, upstream notices and build scripts.
+Adds a reproducible [local publication procedure](local-release.md), preserved historical downloads, and corresponding source archive. Source is the tracked tree at the release tag, including GPL-3.0, upstream notices and build scripts.
 
-The publication follow-up also fixes Chinese hydration after Cloudflare strips `.html` from the route. The website footer provides its corresponding source snapshot; application packages remain the immutable p8 tag artifacts.
+The publication follow-up also fixes Chinese route hydration. Application packages remain the immutable p8 tag artifacts.
 
 ## Automated verification and hardware boundaries
 
@@ -22,7 +22,7 @@ Two-Mac physical routing/performance, real Pencil pressure/tilt/hover/palm rejec
 
 ## Downloads and updates
 
-[Cloudflare download page](https://downloads.urlget.cyou/displayweave/) · [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)
+[Release page](https://github.com/chenyuhao0628/displayweave/releases) · [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
 Eight files comprise the Mac DMG/Sparkle ZIP, Android APK, unsigned iOS re-signing input, `appcast.xml`, `android-update.json`, `DisplayWeave-v0.2.1-p8-source.tar.gz` and `SHA256SUMS.txt`. The source archive's SHA-256 is in the checksum manifest, which covers the other seven files.
 

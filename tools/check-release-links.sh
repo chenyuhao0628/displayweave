@@ -55,23 +55,23 @@ grep -Fq "<sparkle:shortVersionString>${tag#v}</sparkle:shortVersionString>" pub
   exit 1
 }
 
-mirror_base="https://downloads.urlget.cyou/releases/$tag"
-grep -Fq 'export const releaseBase = `https://downloads.urlget.cyou/releases/${releaseTag}`' src/content.ts || {
-  echo "site download base does not use the Cloudflare mirror: $mirror_base" >&2
+release_base="https://github.com/chenyuhao0628/displayweave/releases/download/$tag"
+grep -Fq 'export const releaseBase = `https://github.com/chenyuhao0628/displayweave/releases/download/${releaseTag}`' src/content.ts || {
+  echo "site download base does not use GitHub Releases: $release_base" >&2
   exit 1
 }
-grep -Fq "<enclosure url=\"$mirror_base/DisplayWeave-macOS.zip\"" public/appcast.xml || {
-  echo "Sparkle enclosure does not use the Cloudflare mirror" >&2
+grep -Fq "<enclosure url=\"$release_base/DisplayWeave-macOS.zip\"" public/appcast.xml || {
+  echo "Sparkle enclosure does not use GitHub Releases" >&2
   exit 1
 }
-grep -Fq '"apkUrl": "'"$mirror_base"'/DisplayWeave-Android.apk"' public/android-update.json || {
-  echo "Android primary APK URL does not use the Cloudflare mirror" >&2
+grep -Fq '"apkUrl": "'"$release_base"'/DisplayWeave-Android.apk"' public/android-update.json || {
+  echo "Android APK URL does not use GitHub Releases" >&2
   exit 1
 }
-grep -Fq '"apkFallbackUrl": "https://github.com/chenyuhao0628/displayweave/releases/download/'"$tag"'/DisplayWeave-Android.apk"' public/android-update.json || {
-  echo "Android fallback APK URL does not use the matching GitHub Release" >&2
+if grep -Fq 'apkFallbackUrl' public/android-update.json; then
+  echo "Android feed must not declare a fallback download source" >&2
   exit 1
-}
+fi
 
 for asset in "${assets[@]}"; do
   grep -R -Fq "$asset" "${sources[@]}" || {
@@ -87,7 +87,7 @@ for hash in "${hashes[@]}"; do
   }
 done
 
-release_url="https://github.com/chenyuhao0628/displayweave/releases/tag/$tag"
+release_url="https://github.com/chenyuhao0628/displayweave/releases"
 mac_feed="https://chenyuhao0628.github.io/displayweave/appcast.xml"
 android_feed="https://chenyuhao0628.github.io/displayweave/android-update.json"
 for url in "$release_url" "$mac_feed" "$android_feed"; do

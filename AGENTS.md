@@ -16,6 +16,7 @@
 - Make coherent, reviewable changes. Add a regression test for a behavior fix; do not invent tests that just repeat static UI structure. Run relevant checks before each commit and the full regression gate before integrating.
 - Keep user-facing guides in English / Simplified Chinese pairs with reciprocal links. Record implementation, automated verification, physical verification and deferred work separately.
 - Generate the Xcode project from `project.yml`. Do not commit build outputs, local credentials, device IDs, private captures or signing material.
+- Release binaries and source archives must use GitHub Releases only; update metadata uses the repository GitHub Pages site. Do not reintroduce external distribution hosts, mirrors or links. See `docs/release-downloads.md`.
 - Do not claim a source feature is in a published download until it is released.
 
 ## Hardware tests

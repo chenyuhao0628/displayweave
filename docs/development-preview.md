@@ -2,9 +2,9 @@
 
 # DisplayWeave `v0.2.1-p8` Development Distribution
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; use the [Cloudflare download page](https://downloads.urlget.cyou/displayweave/). Mac/Android update checks still depend on the original Pages URLs; install manually until they recover. Mirrored feed copies do not change client URLs.
+2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; downloads are published on the [releases page](https://github.com/chenyuhao0628/displayweave/releases). Mac/Android update checks still depend on the original Pages URLs; install manually until they recover.
 
 | Platform/feed | Asset | SHA-256 or trust boundary |
 | --- | --- | --- |
@@ -30,7 +30,7 @@ Android signing certificate SHA-256:
   then use Control-click → Open or Privacy & Security → Open Anyway if needed.
   Later releases can use the EdDSA-authenticated Sparkle channel.
 - **Android:** p5 must install this APK manually over the existing package once.
-  p6 and later download from Cloudflare first and use the matching GitHub Release
+  Downloads come from the matching GitHub Release
   only as an availability fallback. Every artifact is verified against the pinned
   package identity and certificate; unknown-source permission and final system
   installation confirmation are still required.

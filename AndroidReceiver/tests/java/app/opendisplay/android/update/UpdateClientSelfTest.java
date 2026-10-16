@@ -18,18 +18,15 @@ final class UpdateClientSelfTest {
         new UpdateClient(opener).fetchLatestManifest(42);
         expect(opener.urls.size() == 1, "healthy primary needs only one request");
         expect(opener.urls.get(0).toString().equals(
-                "https://downloads.urlget.cyou/displayweave/android-update.json?displayweave_cache_bust=42"),
-                "new clients use migrated feed with cache busting");
+                "https://chenyuhao0628.github.io/displayweave/android-update.json?displayweave_cache_bust=42"),
+                "clients use GitHub feed with cache busting");
 
         for (int status : new int[]{404, 410, 408, 429, 500, 503}) {
             opener = new FakeOpener();
             opener.responses.add(new Response(status, ""));
-            opener.responses.add(new Response(200, validManifest));
-            new UpdateClient(opener).fetchLatestManifest(43);
-            expect(opener.urls.size() == 2, "unavailable feed falls back exactly once");
-            expect(opener.urls.get(1).getHost().equals("chenyuhao0628.github.io"),
-                    "fallback is pinned to historical feed");
-            expect(opener.disconnected == 2, "every connection is released");
+            expectFailure(new UpdateClient(opener));
+            expect(opener.urls.size() == 1, "unavailable GitHub feed does not use another host");
+            expect(opener.disconnected == 1, "failed connection is released");
         }
         for (Response invalid : new Response[]{new Response(403, ""),
                 new Response(200, "{}"), new Response(200, "x".repeat(1024 * 1024 + 1))}) {
@@ -43,7 +40,7 @@ final class UpdateClientSelfTest {
         opener.responses.add(new Response(503, ""));
         opener.responses.add(new Response(503, ""));
         expectFailure(new UpdateClient(opener));
-        expect(opener.urls.size() == 2, "fallback exhaustion is bounded");
+        expect(opener.urls.size() == 1, "failed GitHub request is bounded");
         final int[] attempts = {0};
         expectFailure(new UpdateClient(url -> {
             attempts[0]++;

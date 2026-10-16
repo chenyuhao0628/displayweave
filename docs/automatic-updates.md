@@ -2,32 +2,24 @@
 
 # Automatic updates without an Apple developer account
 
-Published p8 embeds the historical GitHub Pages feed URLs. The source branch migrates new Mac/Android builds to these HTTPS feeds, served by the existing Cloudflare mirror:
+DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases and small update feeds on GitHub Pages:
 
-- Mac source feed: `https://downloads.urlget.cyou/displayweave/appcast.xml`
-- Android source feed: `https://downloads.urlget.cyou/displayweave/android-update.json`
-- Android availability fallback: `https://chenyuhao0628.github.io/displayweave/android-update.json`
+- Mac feed: `https://chenyuhao0628.github.io/displayweave/appcast.xml`
+- Android feed: `https://chenyuhao0628.github.io/displayweave/android-update.json`
 - Mac first-install artifact: `DisplayWeave-macOS.dmg` (guided releases)
 - Mac update artifact: `DisplayWeave-macOS.zip`
 - Android artifact: `DisplayWeave-Android.apk`
 
 The current development release is
-[`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8).
-Android p5 cannot trust the new Cloudflare hostname, so install p6 or newer manually once.
-p6–p8 support dual-source APK downloads, but still require their historical Pages metadata feed.
+[`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases).
+Install a current APK manually once; later builds use the in-app channel automatically.
 This release includes both the guided DMG and the Sparkle ZIP payload.
 
 The Mac build is ad-hoc signed and not notarized. Sparkle authenticates its ZIP with the embedded EdDSA public key, so subsequent updates can be verified without Apple Developer Program credentials. This does not make the first download Gatekeeper-trusted or equivalent to a notarized release.
 
-2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; use the [Cloudflare download page](https://downloads.urlget.cyou/displayweave/). Published p8 update checks still depend on the original Pages URLs. Until those URLs recover, install a future build containing this migration manually once. Mirrored feed copies alone cannot repair old clients. No migration build has been released by this source change.
+2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; downloads are published on the [releases page](https://github.com/chenyuhao0628/displayweave/releases). Mac/Android update checks still depend on the original Pages URLs; install manually until they recover.
 
 See [local releases](local-release.md) for reproducible commands and validation requirements.
-
-## Source channel recovery
-
-Mac selects the canonical Cloudflare feed through Sparkle’s updater delegate, overriding a persisted legacy feed URL without changing user check/install preferences. ZIP verification retains the exact p8 Ed25519 public key. Android tries the canonical feed and at most one historical fallback for network errors or HTTP 404/410/408/429/5xx. Invalid/oversized metadata, TLS trust failures, non-HTTPS or cross-host metadata redirects fail closed. Both ordinary checks and the final pre-install recheck use this policy. APK size/hash/package/version/certificate validation remains mandatory.
-
-Operators must deploy the same current feed to both hosts, preserve immutable artifacts and source archives, and verify Cloudflare live bytes before offering an update. Both canonical feeds returned HTTP 200 and matched the tracked p8 feeds on 2026-10-16. This is availability evidence, not evidence that an unreleased build is installed.
 
 ## One-time user migration
 
@@ -43,8 +35,8 @@ After this migration, Sparkle checks the signed appcast automatically and may in
 
 1. Manually install the first update-capable APK over the current `app.opendisplay.android` app. It must be signed with the existing DisplayWeave certificate; otherwise Android refuses replacement.
 2. The app checks at most once per 24 hours when it resumes. **设置与帮助 → 检查更新** bypasses that throttle.
-3. The p6 and newer clients try `downloads.urlget.cyou` first and fall back to the exact matching GitHub Release only for connection, HTTP availability, or transport failures.
-4. When an update is found, the app downloads it and verifies its byte count, SHA-256, package name, version code, minimum SDK, and signing certificate through one shared verification path. Integrity or identity failures never trigger another mirror.
+3. The client downloads from the exact matching GitHub Release path.
+4. When an update is found, the app downloads it and verifies its byte count, SHA-256, package name, version code, minimum SDK, and signing certificate through one shared verification path. An integrity or identity failure always stops the update.
 5. On the first update, Android may ask to allow this app to install unknown apps. Return to DisplayWeave after granting it. The Android Package Installer always presents the final confirmation; silent installation is not supported.
 
 Declining the permission or installation leaves the receiver usable and does not affect Mac/iPhone connections.
@@ -61,14 +53,14 @@ GitHub Actions requires exactly these repository secrets:
 
 For an explicit release, create its tag and draft GitHub Release, then run **Release** with `release_tag` and a `build_number` higher than every public Mac/Android build. Without an explicit tag, release-please may first create a version PR; merge it before rerunning. The tag determines the display version. If `build_number` is omitted, the workflow uses `github.run_number`; confirm that this is still monotonic.
 
-For a new mirror snapshot, set `deploy_feeds=false` (the default is `true`). The workflow:
+Set `deploy_feeds=false` (the default is `true`) when the release assets are not public yet. The workflow:
 
 1. builds and tests the ad-hoc Mac app, unsigned iOS compatibility target, and signed Android APK;
 2. generates an appcast with an EdDSA-signed ZIP enclosure and a pinned-certificate Android JSON feed;
 3. verifies versions, hashes, archive structure and Android signing; and
 4. uploads the seven immutable assets to the draft release while leaving the live feeds unchanged.
 
-Download and independently verify those assets. Deploy a complete Cloudflare snapshot containing the new files and every historical release that must remain accessible. Verify the live mirror bytes before publishing the GitHub Release. Copy the exact generated `appcast.xml` and `android-update.json` into `public/`, update the release links and checksums, and merge the reviewed publication PR after CI passes. The main-branch Pages deployment then publishes the website and feeds together. Persisting the generated feeds prevents a later site deployment from rolling the update channel back.
+Download and independently verify those assets, then publish the GitHub Release. Copy the exact generated `appcast.xml` and `android-update.json` into `public/`, update the release links and checksums, and merge the reviewed publication PR after CI passes. The main-branch Pages deployment then publishes the website and feeds together. Persisting the generated feeds prevents a later site deployment from rolling the update channel back.
 
 With `deploy_feeds=true`, the workflow sends the feeds directly to the protected Pages job. Use this only when all referenced downloads are already accessible, and still persist those exact feeds in `public/`.
 

@@ -14,7 +14,7 @@ pairs=(
   "docs/apple-video.md:docs/apple-video.zh-CN.md"
   "docs/desktop-resolution.md:docs/desktop-resolution.zh-CN.md"
   "docs/feature-completion.md:docs/feature-completion.zh-CN.md"
-  "docs/cloudflare-download-mirror.md:docs/cloudflare-download-mirror.zh-CN.md"
+  "docs/release-downloads.md:docs/release-downloads.zh-CN.md"
   "docs/release-notes-v0.2.1-p8.md:docs/release-notes-v0.2.1-p8.zh-CN.md"
   "docs/local-release.md:docs/local-release.zh-CN.md"
   "docs/release-notes-v0.2.1-p7.md:docs/release-notes-v0.2.1-p7.zh-CN.md"

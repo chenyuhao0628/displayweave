@@ -44,8 +44,8 @@ enum UpdateReleasePolicySelfTest {
         let valid = """
         {"schemaVersion":1,"packageName":"app.opendisplay.android","versionCode":123,
         "versionName":"0.2.0-preview.3","minimumSdk":26,
-        "apkUrl":"https://downloads.urlget.cyou/releases/test/DisplayWeave-Android.apk",
-        "apkFallbackUrl":"https://github.com/chenyuhao0628/displayweave/releases/download/test/DisplayWeave-Android.apk","apkSize":28,
+        "apkUrl":"https://github.com/chenyuhao0628/displayweave/releases/download/test/DisplayWeave-Android.apk",
+        "apkSize":28,
         "sha256":"\(hash)","signingCertificateSha256":"\(certificate)",
         "publishedAt":"2026-07-14T00:00:00Z",
         "releaseNotesUrl":"https://github.com/example/releases/tag/test"}
@@ -54,9 +54,9 @@ enum UpdateReleasePolicySelfTest {
         require(validStatus == 0,
                 "valid Android feed fixture passes")
         for (label, invalid) in [
-            ("HTTP URL", valid.replacingOccurrences(of: "https://downloads.urlget.cyou/releases/test/DisplayWeave",
-                                                     with: "http://downloads.urlget.cyou/releases/test/DisplayWeave")),
-            ("wrong fallback host", valid.replacingOccurrences(of: "https://github.com/chenyuhao0628",
+            ("HTTP URL", valid.replacingOccurrences(of: "https://github.com/chenyuhao0628/displayweave/releases/download/test/DisplayWeave",
+                                                     with: "http://github.com/chenyuhao0628/displayweave/releases/download/test/DisplayWeave")),
+            ("wrong host", valid.replacingOccurrences(of: "https://github.com/chenyuhao0628",
                                                                 with: "https://github.example/chenyuhao0628")),
             ("wrong size", valid.replacingOccurrences(of: "\"apkSize\":28", with: "\"apkSize\":29")),
             ("wrong hash", valid.replacingOccurrences(of: hash, with: String(repeating: "0", count: 64))),

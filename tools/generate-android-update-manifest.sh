@@ -8,7 +8,11 @@ VERSION_NAME="${DISPLAYWEAVE_VERSION_NAME:?DISPLAYWEAVE_VERSION_NAME is required
 BUILD_NUMBER="${DISPLAYWEAVE_BUILD_NUMBER:?DISPLAYWEAVE_BUILD_NUMBER is required}"
 RELEASE_TAG="${DISPLAYWEAVE_RELEASE_TAG:?DISPLAYWEAVE_RELEASE_TAG is required}"
 RELEASE_BASE_URL="${DISPLAYWEAVE_RELEASE_BASE_URL:?DISPLAYWEAVE_RELEASE_BASE_URL is required}"
-FALLBACK_BASE_URL="${DISPLAYWEAVE_RELEASE_FALLBACK_BASE_URL:-}"
+if [[ "$RELEASE_BASE_URL" != "https://github.com/chenyuhao0628/displayweave/releases/download" || -n "${DISPLAYWEAVE_RELEASE_FALLBACK_BASE_URL:-}" ]]; then
+  echo "Release artifacts must use the project GitHub Releases path without a fallback." >&2
+  exit 2
+fi
+[[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { echo "Invalid release tag." >&2; exit 2; }
 PUBLISHED_AT="${DISPLAYWEAVE_PUBLISHED_AT:?DISPLAYWEAVE_PUBLISHED_AT is required}"
 PINNED_CERT="89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d"
 SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
@@ -34,7 +38,6 @@ temporary="$(mktemp "$(dirname "$OUTPUT")/.android-update.XXXXXX")"
 trap 'rm -f "$temporary"' EXIT
 
 APK_SIZE="$size" APK_SHA256="$sha256" APK_CERTIFICATE="$certificate" \
-DISPLAYWEAVE_RELEASE_FALLBACK_BASE_URL="$FALLBACK_BASE_URL" \
 OUTPUT_FILE="$temporary" ruby <<'RUBY'
 require "json"
 require "time"
@@ -55,8 +58,6 @@ feed = {
   publishedAt: published,
   releaseNotesUrl: "https://github.com/chenyuhao0628/displayweave/releases/tag/#{tag}"
 }
-fallback = ENV.fetch("DISPLAYWEAVE_RELEASE_FALLBACK_BASE_URL", "").sub(%r{/+$}, "")
-feed[:apkFallbackUrl] = "#{fallback}/#{tag}/DisplayWeave-Android.apk" unless fallback.empty?
 File.write(ENV.fetch("OUTPUT_FILE"), JSON.pretty_generate(feed) + "\n")
 RUBY
 

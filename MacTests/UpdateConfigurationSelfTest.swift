@@ -7,9 +7,9 @@ enum UpdateConfigurationSelfTest {
 
         expect(source.contains(
             "SUFeedURL: \(UpdateFeedPolicy.canonical)"
-        ), "Sparkle feed must use the reachable migrated URL")
-        expect(UpdateFeedPolicy.canonical != UpdateFeedPolicy.legacy,
-               "old installations require a migration build")
+        ), "Sparkle feed must use the GitHub Pages URL")
+        expect(UpdateFeedPolicy.canonical == "https://chenyuhao0628.github.io/displayweave/appcast.xml",
+               "feed is pinned to GitHub Pages")
         let delegate = try String(contentsOfFile: "Mac/UpdateViews.swift", encoding: .utf8)
         expect(delegate.contains("func feedURLString(for updater: SPUUpdater) -> String?"),
                "delegate overrides persisted legacy feed preferences")
