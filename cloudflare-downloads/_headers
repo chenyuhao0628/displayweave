@@ -8,3 +8,8 @@
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
+
+/displayweave/*
+  Cache-Control: public, max-age=300
+  X-Robots-Tag: noindex
+  X-Content-Type-Options: nosniff

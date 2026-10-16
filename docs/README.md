@@ -24,6 +24,7 @@
 - [`v0.2.1-p5` release notes](release-notes-v0.2.1-p5.md)
 - [`v0.2.1-p6` release notes](release-notes-v0.2.1-p6.md)
 - [`v0.2.1-p7` release notes](release-notes-v0.2.1-p7.md)
+- [`v0.2.1-p8` release notes](release-notes-v0.2.1-p8.md) and [local build publication](local-release.md)
 - [Release checklist](release-checklist.md)
 - [Mac and Android automatic updates](automatic-updates.md)
 - [Stability and physical-device evidence](stability-test-report.md)

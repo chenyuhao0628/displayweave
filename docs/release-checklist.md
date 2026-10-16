@@ -2,17 +2,19 @@
 
 # Release checklist
 
-## Current release: v0.2.1-p7 (14)
+## Current release: v0.2.1-p8 (15)
 
-The [p7 release notes](release-notes-v0.2.1-p7.md) record the current artifact hashes, signing boundaries and release workflow evidence. The release tag targets `e56250c4539dcd8449508265401b4f28dddf1ccd`; Release run `38839071173` built and verified the seven assets with `deploy_feeds=false` so mirror verification precedes feed publication.
+The [p8 release notes](release-notes-v0.2.1-p8.md) record local publication, hashes and signing boundaries. p8 rebuilds the p7 native source with a higher build number; p7 assets and tag remain immutable. See [local publication](local-release.md) for the procedure.
 
-The current [development gates](development.md) cover 37 Swift suites, six Android groups/build, both Apple builds, website, bilingual docs and release-link checks. Require fresh CI on the publication PR head. Independently verify downloaded packages, app identities, version/build 14, pinned Android certificate, Sparkle ZIP signature and matching DMG/ZIP before publication. Preserve historical mirror paths and persist the exact generated feeds in `public/` before deploying the current website.
+On 2026-10-16 the maintainer authorized local building/upload while hosted Actions was unavailable. Local gates cover 37 Swift suites, six Android groups and Debug/Release builds, universal Mac Debug/Release, iOS Simulator and unsigned device builds, website, bilingual docs and release links. This is local evidence, not successful GitHub CI. Package version/build is 0.2.1-p8/15; Mac ZIP Ed25519, DMG/ZIP consistency, the pinned Android certificate and the unsigned iOS boundary were verified.
 
-Mac-to-Mac, HEVC, direct-link discovery and Pencil are packaged as experimental preview features. Two-Mac/Pencil/Intel runtime and endurance acceptance remain pending; automated checks do not establish hardware performance. Complete the [physical matrix](hevc-wired-pencil.md) before claiming verified status.
+Eight files comprise four platform packages, two feeds, corresponding tagged source and checksums. Verify remote sizes/hashes, historical mirror paths and the backup site before publication; persist the exact feeds in `public/`. While public GitHub and Pages return 404, do not claim the original clients' update channels recovered; install manually from Cloudflare.
+
+Mac-to-Mac, HEVC, direct-link discovery and Pencil remain experimental. Two-Mac/Pencil/Intel runtime and endurance acceptance are pending; skip virtual-display interaction without an independent online display. Complete the [physical matrix](hevc-wired-pencil.md) before claiming hardware verification.
 
 ## Historical v0.2.1-p2 evidence
 
-The remaining entries record p2 only. They do not verify p7 or future releases.
+The remaining entries record p2 only. They do not verify p8 or future releases.
 
 ## Published identity
 

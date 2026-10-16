@@ -6,13 +6,13 @@
 
 DisplayWeave 是独立维护、使用 GPL-3.0、坚持本地优先的第二屏项目，源自 [OpenDisplay](https://github.com/peetzweg/opendisplay)。它可以把 iPhone、iPad 和 Android 设备变成 Mac 的扩展或镜像显示器。
 
-## Mac 与 Mac（v0.2.1-p7 实验功能）
+## Mac 与 Mac（v0.2.1-p8 实验功能）
 
 同一应用可选择发送或接收，通过 Wi-Fi/以太网单向扩展或镜像。双方需 macOS 14+，
-应用协商硬件 HEVC，并可回退 H.264，最高 60fps；实体双 Mac 性能矩阵待验证。此功能已包含在下方 `v0.2.1-p7`
+应用协商硬件 HEVC，并可回退 H.264，最高 60fps；实体双 Mac 性能矩阵待验证。此功能已包含在下方 `v0.2.1-p8`
 发布包内。参见[使用指南](docs/mac-to-mac.zh-CN.md)及[设计与上游评估](docs/mac-to-mac-design.zh-CN.md)。
 
-本版本还包含四端 UI 规范化、上游恢复改进和网络/生命周期加固；该批基线见[源码升级报告](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。本版本增加了 [Mac HEVC、绑定接口的直连发现与经协商的 Apple Pencil 输入](docs/hevc-wired-pencil.zh-CN.md)，Swift 套件增至 37 组；实机验收仍待完成。
+本版本还包含四端 UI 规范化、上游恢复改进和网络/生命周期加固；该批基线见[源码升级报告](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。本版本包含自 p7 引入的 [Mac HEVC、绑定接口的直连发现与经协商的 Apple Pencil 输入](docs/hevc-wired-pencil.zh-CN.md)，Swift 套件增至 37 组；实机验收仍待完成。
 
 ## 当前能力
 
@@ -29,9 +29,11 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 
 下述真机恢复与高刷新观察来自 Preview 2 验证，继续作为既有证据；本版本没有在第二台 Android 上重新执行这些项目。
 
-## 下载 `v0.2.1-p7`
+## 下载 `v0.2.1-p8`
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p7)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)
+
+2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；请使用 [Cloudflare 下载页](https://downloads.urlget.cyou/displayweave/zh.html)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。镜像中的更新源副本不会自动修改客户端地址。
 
 | 平台 | 产物 | 分发边界 |
 | --- | --- | --- |
@@ -41,6 +43,7 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 | iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | 未签名自签输入包，不能直接安装 |
 | Mac 更新源 | `appcast.xml` | 由 Mac 应用内置公钥认证的 Sparkle 更新源 |
 | Android 更新源 | `android-update.json` | 包含大小、哈希、版本、包名与固定证书的 HTTPS 元数据 |
+| 源码 | `DisplayWeave-v0.2.1-p8-source.tar.gz` | 对应发行 tag 的完整跟踪源码，包含 GPL-3.0 与构建脚本 |
 | 验证 | `SHA256SUMS.txt` | 全部 Release 文件的 SHA-256 |
 
 这是开发预览版，不是生产签名的商店版本。使用前请验证校验和；Android 用户还应核对[发布检查清单](docs/release-checklist.zh-CN.md)中的证书指纹。

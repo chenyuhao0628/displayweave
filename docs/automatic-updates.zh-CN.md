@@ -11,12 +11,16 @@ DisplayWeave 把不可变的 Mac/Android 安装包发布到 GitHub Releases，�
 - Android 产物：`DisplayWeave-Android.apk`
 
 当前开发发行版本是
-[`v0.2.1-p7`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p7)。
+[`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)。
 Android p5 尚不信任新的 Cloudflare 域名，因此需要手动安装一次 p6 或更新版；p6 及
 以后版本可自动使用双源更新渠道。
 本版本同时包含引导式 DMG 与 Sparkle ZIP 更新包。
 
 Mac 版本采用 ad-hoc 签名且未公证。Sparkle 使用应用内置的 EdDSA 公钥验证 ZIP，因此后续更新不依赖 Apple Developer Program。它不会让首次下载自动获得 Gatekeeper 信任，也不等同于已公证正式发行。
+
+2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；请使用 [Cloudflare 下载页](https://downloads.urlget.cyou/displayweave/zh.html)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。镜像中的更新源副本不会自动修改客户端地址。
+
+本地发行的可复现命令与验收要求见[本地发行](local-release.zh-CN.md)。
 
 ## 用户一次性迁移
 
