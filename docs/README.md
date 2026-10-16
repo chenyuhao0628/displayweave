@@ -4,6 +4,8 @@
 
 ## Current user guides
 
+- [`v0.3.0-preview.2` UI and OpenDisplay compatibility release](release-notes-v0.3.0-preview.2.md)
+
 - [`v0.3.0-preview.1` release notes](release-notes-v0.3.0-preview.1.md)
 
 - [Production Apple archive/export and prerequisites](apple-distribution.md)

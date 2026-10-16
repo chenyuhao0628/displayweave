@@ -1,20 +1,20 @@
 [English](development-preview.md) | [简体中文](development-preview.zh-CN.md)
 
-# DisplayWeave `v0.3.0-preview.1` Development Distribution
+# DisplayWeave `v0.3.0-preview.2` Development Distribution
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-16: this preview is built locally. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site, which is available again. See the [release notes](release-notes-v0.3.0-preview.1.md) for build evidence and the required pairing migration.
+2026-10-16: this preview is built locally. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site, which is available again. See the [release notes](release-notes-v0.3.0-preview.2.md) for UI changes, OpenDisplay compatibility and build evidence.
 
 | Platform/feed | Asset | SHA-256 or trust boundary |
 | --- | --- | --- |
-| macOS first install | `DisplayWeave-macOS.dmg` | `f3c043d53cce3b459ce36f62ea640e70dfce9a3c9165cf2ec0326ee9d6b4579a`; ad-hoc signed and not notarized |
-| macOS update | `DisplayWeave-macOS.zip` | `a83e6a0a0455bfe7f0c0a5b5cb70f4a1acdbc18b1f8f00c3e76f9eea419ac67c`; EdDSA-authenticated Sparkle payload |
-| Android | `DisplayWeave-Android.apk` | `3f909af1bd0e6da09a72048b124d061aadd8284c2dad7beb0b8a3e7f568a098e`; v2 signed with the pinned project key |
-| iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `8e423d4c6baf60d3b92c990f1d465473c223bce539baf3456abf59799f079bd1`; unsigned re-signing input |
+| macOS first install | `DisplayWeave-macOS.dmg` | `2354ed9f43723b32c74999efffe11ba950f49699a45a8b17a8c64b71ad7f7305`; ad-hoc signed and not notarized |
+| macOS update | `DisplayWeave-macOS.zip` | `8a1368123ed65cd4e4fea6912e62db5d40f6da7dc239bdf18b8312ff8216b8d1`; EdDSA-authenticated Sparkle payload |
+| Android | `DisplayWeave-Android.apk` | `cd00fd37422ff16c9d9b8860abb062dd98b0519dadb0c3fd3047532ecf41fab0`; v2 signed with the pinned project key |
+| iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `50d0c7a7cadc49fc64bf79dc71afd3f6c755d59ac968307135e58f445d68a582`; unsigned re-signing input |
 | Mac update feed | `appcast.xml` | [Configured Sparkle feed](https://chenyuhao0628.github.io/displayweave/appcast.xml) |
 | Android update feed | `android-update.json` | [Configured metadata feed](https://chenyuhao0628.github.io/displayweave/android-update.json) |
-| Source | `DisplayWeave-v0.3.0-preview.1-source.tar.gz` | Tracked source at the release tag; hash in the checksum manifest |
+| Source | `DisplayWeave-v0.3.0-preview.2-source.tar.gz` | Tracked source at the release tag; hash in the checksum manifest |
 | Checksums | `SHA256SUMS.txt` | Hashes all seven release files above |
 
 Android signing certificate SHA-256:
@@ -46,6 +46,4 @@ Personal Team is suitable only for maintainer testing on registered devices,
 not general public distribution. DisplayWeave does not endorse third-party
 signing services.
 
-This remains a development preview. It does not provide encrypted WiFi pairing,
-iOS/iPadOS 120Hz, a completed two-Android test, a controlled same-condition
-USB/WiFi benchmark, or completed 30-minute/2-hour endurance evidence.
+This remains a development preview. It includes encrypted pairing, negotiated Apple refresh targets and main-screen OpenDisplay compatibility. Physical high-refresh performance, two simultaneous Android receivers, controlled USB/WiFi comparisons and 30-minute/2-hour endurance remain unverified for this build.

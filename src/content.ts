@@ -1,7 +1,7 @@
 export type Locale = "en" | "zh"
 export type EvidenceState = "verified" | "experimental" | "deferred"
 
-export const releaseTag = "v0.3.0-preview.1"
+export const releaseTag = "v0.3.0-preview.2"
 export const releaseBase = `https://github.com/chenyuhao0628/displayweave/releases/download/${releaseTag}`
 
 export type ReleaseAsset = {
@@ -179,9 +179,9 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} release`,
       title: "Download the locally built preview.",
       intro:
-        "Release packages are published as GitHub Release assets. Android and macOS verify every download before installing it.",
+        "Refreshed native UI and main-screen OpenDisplay compatibility, distributed through GitHub Releases. Android and macOS verify every download before installing it.",
       warning:
-        "Update both ends and pair using a receiving invitation. Mac is ad-hoc signed and not notarized; iOS requires re-signing.",
+        "Pair DisplayWeave devices or choose the main-screen OpenDisplay compatibility mode. Mac is ad-hoc signed and not notarized; iOS requires re-signing.",
       checksum: "Verify all downloads with SHA256SUMS.txt",
       source: "Download matching source (GPL-3.0)",
       assets: enAssets,
@@ -313,7 +313,7 @@ export const copy: Record<Locale, SiteCopy> = {
       points: [
         {
           title: "Encrypted pairing",
-          body: "Apple and Android default to certificate-pinned mutual TLS. Update both ends and import a receiving invitation. Explicit legacy compatibility is unencrypted and requires a trusted network.",
+          body: "Apple and Android default to certificate-pinned mutual TLS. Pair current devices with an invitation, or select main-screen OpenDisplay compatibility. Explicit legacy compatibility is unencrypted and requires a trusted network.",
         },
         {
           title: "ADB trust is broad",
@@ -398,7 +398,7 @@ export const copy: Record<Locale, SiteCopy> = {
       intro:
         "发布文件以 GitHub Release 附件形式分发。Android 与 macOS 在安装前会校验每一次下载。",
       warning:
-        "请升级两端并通过接收邀请配对。Mac 为 ad-hoc 签名且未公证；iOS 需自行签名。",
+        "DisplayWeave 使用邀请配对；OpenDisplay 可从主界面选择兼容连接。Mac 为 ad-hoc 签名且未公证；iOS 需自行签名。",
       checksum: "使用 SHA256SUMS.txt 验证全部下载",
       source: "下载对应源码（GPL-3.0）",
       assets: zhAssets,
@@ -526,7 +526,7 @@ export const copy: Record<Locale, SiteCopy> = {
       points: [
         {
           title: "加密配对",
-          body: "Apple 与 Android 默认使用固定证书指纹的双向 TLS。请升级两端并导入接收邀请；显式旧版兼容不加密，仅限可信网络。",
+          body: "Apple 与 Android 默认使用固定证书指纹的双向 TLS。新版通过接收邀请配对，OpenDisplay 可选择主界面兼容入口；旧版连接不加密，仅限可信网络。",
         },
         {
           title: "ADB 信任范围较广",

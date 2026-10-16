@@ -116,6 +116,9 @@ def main():
                                           capture_output=True, timeout=10)
                 return response.returncode == 0 and response.stdout.strip() == b"1"
             wait_until(booted, "Android boot", timeout=180)
+            # Only this disposable AVD: remove animation races between tree bounds and taps.
+            for animation in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"):
+                device("shell", "settings", "put", "global", animation, "0")
             device("shell", "input", "keyevent", "82")
             device("shell", "cmd", "uimode", "night", "no")
             device("install", "-g", project / "app/build/outputs/apk/debug/app-debug.apk")
@@ -199,6 +202,8 @@ def main():
             print((folder / "client.log").read_text().strip(), flush=True)
             tap("允许旧版明文接收（不安全）")
             tap("启用明文兼容")
+            wait_until(lambda: any(node.get("text", "").startswith("当前：旧版明文兼容")
+                                   for node in tree().iter("node")), "legacy mode persisted in UI", 10)
             def legacy_hello():
                 try:
                     with socket.create_connection(("127.0.0.1", int(forwarded)), timeout=1) as probe:

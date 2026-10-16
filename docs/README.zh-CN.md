@@ -4,6 +4,8 @@
 
 ## 当前用户指南
 
+- [`v0.3.0-preview.2` UI 与 OpenDisplay 兼容发行说明](release-notes-v0.3.0-preview.2.zh-CN.md)
+
 - [`v0.3.0-preview.1` 发布说明](release-notes-v0.3.0-preview.1.zh-CN.md)
 
 - [Apple 正式归档/导出及前提](apple-distribution.zh-CN.md)
