@@ -41,16 +41,15 @@ LANs. Turning on reception lets LAN senders connect; there is no pairing code or
 authenticated approval. Bonjour uses `_opensidecar._tcp`; video/control use TCP
 9000. No remote shutdown action is offered.
 
-Mac reception uses H.264, at most 60fps, with a 4096×2304 landscape decode bound
+Mac reception negotiates hardware HEVC with H.264 fallback, at most 60fps, with a 4096×2304 landscape decode bound
 (or 2304×4096 portrait). A larger desktop is proportionally scaled for transmission.
 Desktop geometry retains the receiving display's logical points and 1×/2× scale.
-A global HEVC or 120fps preference does not override these Mac limits. The fps
+HEVC requires hardware support at both ends and explicit receiver advertisement; unsupported peers use H.264. A 120fps preference does not override Mac limits. The fps
 label counts frames submitted to the display renderer; it is not a measured
 on-glass refresh guarantee. iOS/Android capability negotiation remains separate.
 
 Audio, keyboard/mouse forwarding from receiver to sender, simultaneous two-way
-video, Internet traversal, and a dedicated USB/Thunderbolt connection mode are
-outside this feature. Ethernet is part of LAN mode. Private `CGVirtualDisplay`
+video and Internet traversal are outside this feature. Thunderbolt Bridge or link-local Ethernet candidates can be discovered and pinned in LAN mode; see the [direct-link guide](hevc-wired-pencil.md). Ordinary USB-C cabling alone is insufficient. Private `CGVirtualDisplay`
 API remains an OS compatibility risk for extend mode.
 
 ## Build and validation
@@ -67,7 +66,7 @@ API remains an OS compatibility risk for extend mode.
 The script generates the Xcode project and builds an ad-hoc signed Debug app
 with its own bundle ID. Codex's Run action uses this same script.
 The network self-test uses a random loopback port without Bonjour advertisement;
-it checks hello, busy rejection, real VideoToolbox H.264 parameter sets, malformed
+it checks hello, busy rejection, real VideoToolbox H.264/HEVC parameter sets, codec fallback and timeout, malformed
 lengths, reconnect, disconnect, and stop/restart isolation. Policy tests check
 5K scaling, 1× geometry, codec/fps limits and fragmented/coalesced framing.
 

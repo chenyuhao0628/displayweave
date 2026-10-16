@@ -52,7 +52,7 @@ final class DeviceSession: ObservableObject, Identifiable {
     var transportLabel: String {
         switch target {
         case .usb, .androidAdb, .androidAdbDevice: return "USB"
-        case .wifi: return "局域网"
+        case .wifi: return sender.directLinkInterfaceName.map { "有线 · \($0)" } ?? "局域网"
         }
     }
 

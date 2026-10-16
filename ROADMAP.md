@@ -8,7 +8,8 @@
 - Shared UI standard and Mac/iOS/Android/web refactor; accessible receiver settings and responsive bilingual navigation.
 - Selected upstream startup recovery, bounded logs and two-finger click suppression.
 - Shared Apple frame/cursor bounds, lifecycle isolation, safe input/geometry conversion and Android control backpressure.
-- 32 Swift suites, six Android self-test groups, platform builds and web/iOS Simulator checks. See the [source audit](docs/source-upgrade-audit-2026-10-16.md) for exact evidence and gaps.
+- Hardware-gated Mac HEVC, interface-pinned direct-link candidates and negotiated Pencil pressure/tilt/proximity.
+- 37 Swift suites and platform compatibility builds. See the [current feature guide/evidence](docs/hevc-wired-pencil.md) and [prior source audit](docs/source-upgrade-audit-2026-10-16.md) for exact results and physical gaps.
 
 These source changes are beyond the published v0.2.1-p6 assets. Release readiness still requires the physical acceptance below.
 
@@ -24,7 +25,7 @@ These source changes are beyond the published v0.2.1-p6 assets. Release readines
 
 ## Next validation
 
-First complete two-Mac acceptance in both directions, mirror/extend, Wi-Fi/Ethernet, sleep/wake, display hotplug and Intel runtime. Repeat Mac UI and virtual-display cleanup with an independent online display; complete Android visual and mobile real-input acceptance.
+Validate HEVC/fallback on Intel and Apple silicon, Thunderbolt Bridge/Ethernet routing with Wi-Fi enabled, and real Pencil pressure/hover/palm rejection. First complete two-Mac acceptance in both directions, mirror/extend, Wi-Fi/Ethernet, sleep/wake, display hotplug and Intel runtime. Repeat Mac UI and virtual-display cleanup with an independent online display; complete Android visual and mobile real-input acceptance.
 
 1. Two simultaneous Android receivers with independent serials, ports, cleanup, input, and reconnect.
 2. Controlled same-resolution/codec/bitrate USB versus WiFi benchmark.

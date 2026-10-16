@@ -21,7 +21,7 @@ The Mac-to-Mac LAN implementation selectively adapts upstream commit
 `23b62b3`). Specifically, `Shared/StreamReceiver.swift`, `Shared/Protocol.swift`
 and the video view in `MacReceiver/MacReceiver.swift` inform
 `Mac/Receiver/StreamReceiver.swift`, `ReceiverWireProtocol.swift` and
-`ReceiverVideoView.swift`. Local changes narrow reception to H.264, add bounded
+`ReceiverVideoView.swift`. Local changes gate HEVC on hardware support with H.264 fallback, add bounded
 framing, exclusive sessions, lifecycle isolation, and integration with the
 DisplayWeave role UI. These adaptations remain GPL-3.0. The complete upstream
 history has not been merged; the assessment is recorded in
@@ -31,6 +31,15 @@ The 2026-10-16 source upgrade also adapts failure/retry handling from
 `87b000b` / `c27e538`, deferred touch-down semantics from `04590ed`, and bounded
 logging from the design in `19481a6`. Implementations and regression coverage
 are local adaptations under GPL-3.0; see `docs/upstream-integration-2026-10-16.md`.
+
+The follow-up HEVC/direct-link/Pencil source iteration selectively adapts
+`91ca272` (HEVC parameter sets and hardware negotiation), `42ad6fb` and the
+helper introduced by `d2dfb3f` (direct-link discovery, excluding remote shutdown),
+and `da9f369` (Pencil tablet pressure/tilt/proximity fields). `1c857a4` is release
+metadata, not the Pencil implementation. Local additions include explicit input
+capability negotiation, conservative fallback envelopes, strict address parsing,
+interface pinning, opt-in auto-connect, bounded controls and lifecycle tests.
+See `docs/hevc-wired-pencil-plan.md`. All adaptations retain GPL-3.0.
 
 ## SideScreen
 

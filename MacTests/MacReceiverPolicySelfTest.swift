@@ -9,6 +9,35 @@ import Foundation
         let plan = MacReceiverPolicy.plan(info: info, settings: settings)
         precondition(plan.pointsWide == 2560 && plan.pointsHigh == 1440 && plan.scale == 2)
         precondition(plan.width == 4096 && plan.height == 2304 && plan.fps == 60 && plan.codec == .h264)
+        let hevc = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":5120,"pixelsHigh":2880,"scale":2,"device":"Mac","supportedCodecs":["h264","hevc"],"videoCaps":[{"codec":"hevc","maxWidth":4096,"maxHeight":2304,"maxFrameRate":60},{"codec":"h264","maxWidth":1920,"maxHeight":1080,"maxFrameRate":30}]}"#.utf8))
+        let efficient = MacReceiverPolicy.plan(info: hevc, settings: settings, hardwareHEVCEncode: true)
+        precondition(efficient.codec == .hevc && efficient.width <= 1920 && efficient.height <= 1080 && efficient.fps == 30)
+        precondition(MacReceiverPolicy.plan(info: hevc, settings: settings, hardwareHEVCEncode: false).codec == .h264)
+        var forced = settings
+        forced.codecMode = .h264
+        precondition(MacReceiverPolicy.plan(info: hevc, settings: forced, hardwareHEVCEncode: true).codec == .h264)
+        forced.codecMode = .auto
+        precondition(MacReceiverPolicy.plan(info: hevc, settings: forced, hardwareHEVCEncode: true).codec == .hevc)
+        var fallback = MacCodecFallbackPolicy()
+        precondition(fallback.codec(for: .hevc, isMacReceiver: true) == .hevc)
+        fallback.recordFailure(.hevc)
+        // A resize / fresh hello on this connection must keep H.264 after a failure.
+        for _ in 0..<3 {
+            let resized = MacReceiverPolicy.plan(info: hevc, settings: forced,
+                sourceWidth: 1600, sourceHeight: 900, hardwareHEVCEncode: true)
+            precondition(fallback.codec(for: resized.codec, isMacReceiver: true) == .h264)
+        }
+        precondition(fallback.codec(for: .hevc, isMacReceiver: false) == .hevc,
+                     "Mac fallback must not alter the Android retry policy")
+        fallback.beginConnection()
+        precondition(fallback.codec(for: .hevc, isMacReceiver: true) == .hevc)
+        fallback.recordFailure(.h264)
+        precondition(fallback.codec(for: .hevc, isMacReceiver: true) == .hevc)
+        let constrained = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":5120,"pixelsHigh":2880,"scale":2,"device":"Mac","supportedCodecs":["h264","hevc"],"maxEncodeWide":1280,"maxEncodeHigh":720,"videoCaps":[{"codec":"hevc","maxWidth":4096,"maxHeight":2304},{"codec":"h264","maxPixelsPerSecond":4}]}"#.utf8))
+        let tiny = MacReceiverPolicy.plan(info: constrained, settings: settings, hardwareHEVCEncode: true)
+        precondition(tiny.width * tiny.height * tiny.fps <= 4, "fallback exceeded pixel budget")
+        let invalid = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":1920,"pixelsHigh":1080,"scale":1,"device":"Mac","videoCaps":[{"codec":"h264","maxWidth":0}]}"#.utf8))
+        precondition(!invalid.hasValidGeometry)
         let oneX = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":1920,"pixelsHigh":1080,"scale":1,"device":"Mac"}"#.utf8))
         let plain = MacReceiverPolicy.plan(info: oneX, settings: settings)
         precondition(plain.scale == 1 && plain.pointsWide == 1920 && plain.width == 1920)

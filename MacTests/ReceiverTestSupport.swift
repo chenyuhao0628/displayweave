@@ -54,9 +54,13 @@ final class ReceiverTestPeer: @unchecked Sendable {
         return try JSONSerialization.jsonObject(with: read(size)) as! [String: Any]
     }
     func isClosed() -> Bool {
-        var byte: UInt8 = 0
-        let n = recv(fd, &byte, 1, 0)
-        return n == 0 || (n < 0 && errno == ECONNRESET)
+        // Controls already in flight (ping / codecFailure) may precede EOF.
+        var bytes = [UInt8](repeating: 0, count: 4096)
+        for _ in 0..<16 {
+            let n = recv(fd, &bytes, bytes.count, 0)
+            if n <= 0 { return n == 0 || errno == ECONNRESET }
+        }
+        return false
     }
 }
 
@@ -66,12 +70,18 @@ private final class EncodedSample {
         guard let format = CMSampleBufferGetFormatDescription(sample),
               let block = CMSampleBufferGetDataBuffer(sample) else { return }
         var result = Data()
-        for i in 0..<2 {
+        let hevc = CMFormatDescriptionGetMediaSubType(format) == kCMVideoCodecType_HEVC
+        for i in 0..<(hevc ? 3 : 2) {
             var pointer: UnsafePointer<UInt8>?
             var size = 0
-            guard CMVideoFormatDescriptionGetH264ParameterSetAtIndex(format, parameterSetIndex: i,
-                parameterSetPointerOut: &pointer, parameterSetSizeOut: &size,
-                parameterSetCountOut: nil, nalUnitHeaderLengthOut: nil) == noErr, let pointer else { return }
+            let status = hevc
+                ? CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(format, parameterSetIndex: i,
+                    parameterSetPointerOut: &pointer, parameterSetSizeOut: &size,
+                    parameterSetCountOut: nil, nalUnitHeaderLengthOut: nil)
+                : CMVideoFormatDescriptionGetH264ParameterSetAtIndex(format, parameterSetIndex: i,
+                    parameterSetPointerOut: &pointer, parameterSetSizeOut: &size,
+                    parameterSetCountOut: nil, nalUnitHeaderLengthOut: nil)
+            guard status == noErr, let pointer else { return }
             result.append(contentsOf: [0,0,0,1]); result.append(pointer, count: size)
         }
         let length = CMBlockBufferGetDataLength(block)
@@ -89,11 +99,11 @@ private final class EncodedSample {
     }
 }
 
-func receiverTestH264Frame() throws -> Data {
+func receiverTestH264Frame(codec: CMVideoCodecType = kCMVideoCodecType_H264) throws -> Data {
     let box = EncodedSample()
     var session: VTCompressionSession?
     let status = VTCompressionSessionCreate(allocator: kCFAllocatorDefault, width: 64, height: 64,
-        codecType: kCMVideoCodecType_H264, encoderSpecification: nil, imageBufferAttributes: nil,
+        codecType: codec, encoderSpecification: nil, imageBufferAttributes: nil,
         compressedDataAllocator: nil, outputCallback: { context, _, status, _, sample in
             if status == noErr, let context, let sample {
                 Unmanaged<EncodedSample>.fromOpaque(context).takeUnretainedValue().accept(sample)

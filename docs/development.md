@@ -56,7 +56,7 @@ Keep screenshots and full logs outside Git. Record reproducible commands and san
 
 ## Current verification coverage
 
-`tools/run-swift-self-tests.sh` runs 32 standalone suites. Android `test` includes six plain-Java groups. `pnpm build` runs TypeScript, client/SSR production builds, bilingual prerendering and generated-site assertions. Run both Apple target builds after adding shared source files.
+`tools/run-swift-self-tests.sh` runs 37 standalone suites. Android `test` includes six plain-Java groups. `pnpm build` runs TypeScript, client/SSR production builds, bilingual prerendering and generated-site assertions. Run both Apple target builds after adding shared source files.
 
 For the opt-in iOS network smoke test, launch the current app in an iOS Simulator and keep it foregrounded, then run `python3 tools/test-ios-receiver.py --port 9000`. The initial listener wait is bounded to 10 seconds; the test sends invalid lengths and fragmented controls, replaces connections and checks liveness. Use an isolated receiver because it intentionally disconnects its test peers. It does not capture the desktop or prove video performance. Background the app separately and verify that port 9000 closes.
 

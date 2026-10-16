@@ -5,7 +5,7 @@ cd "$root"
 temporary="$(mktemp -d "${TMPDIR:-/tmp}/displayweave-window-test.XXXXXX")"
 trap 'rm -rf "$temporary"' EXIT
 swiftc Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
-  Shared/ReceiverCursorImage.swift Mac/Receiver/StreamReceiver.swift Mac/Receiver/ReceiverVideoView.swift \
+  Shared/ReceiverCursorImage.swift Mac/Receiver/ReceiverVideoBitstream.swift Mac/Receiver/StreamReceiver.swift Mac/Receiver/ReceiverVideoView.swift \
   Mac/Receiver/MacReceiverController.swift MacTests/ReceiverTestSupport.swift \
   MacTests/MacReceiverWindowSelfTest.swift -o "$temporary/ReceiverWindowTest"
 "$temporary/ReceiverWindowTest"

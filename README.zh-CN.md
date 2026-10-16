@@ -9,14 +9,14 @@ DisplayWeave 是独立维护、使用 GPL-3.0、坚持本地优先的第二屏�
 ## Mac 与 Mac（源码开发构建）
 
 同一应用可选择发送或接收，通过 Wi-Fi/以太网单向扩展或镜像。双方需 macOS 14+，
-首期 H.264 最高 60fps；实体双 Mac 性能矩阵待验证。此功能尚不在下方 `v0.2.1-p6`
+源码版协商硬件 HEVC，并可回退 H.264，最高 60fps；实体双 Mac 性能矩阵待验证。此功能尚不在下方 `v0.2.1-p6`
 发布包内。参见[使用指南](docs/mac-to-mac.zh-CN.md)及[设计与上游评估](docs/mac-to-mac-design.zh-CN.md)。
 
-当前源码还完成了四端 UI 规范化、上游恢复改进和网络/生命周期加固；实现、32 组 Swift 回归及未完成的真机验收见[源码升级报告](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。
+当前源码还完成了四端 UI 规范化、上游恢复改进和网络/生命周期加固；该批基线见[源码升级报告](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。后续迭代增加了 [Mac HEVC、绑定接口的直连发现与经协商的 Apple Pencil 输入](docs/hevc-wired-pencil.zh-CN.md)，Swift 套件增至 37 组；实机验收仍待完成。
 
 ## 当前能力
 
-- Apple 接收端：通过 `usbmuxd` 使用 USB，或使用本地 WiFi；采用 H.264 链路。
+- iOS/iPadOS 接收端：通过 `usbmuxd` 使用 USB，或使用本地 WiFi；采用 H.264 链路。
 - Android 接收端：支持本地 WiFi 或每设备动态 `adb forward` USB，支持 HEVC/H.265、H.264 回退与 30/60/90/120fps 协商。
 - 传输选择：Auto、USB 或 WiFi。Auto 优先有线 USB，进行有限恢复，只回退到 install ID 相同的 WiFi，并在线缆恢复后升级回 USB。
 - 输入：轻点、拖动、光标和双指滚动可回传 macOS。

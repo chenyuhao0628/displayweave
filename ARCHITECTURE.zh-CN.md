@@ -13,7 +13,8 @@ macOS 虚拟显示器
   -> ScreenCaptureKit
   -> VideoToolbox H.264 / 协商后的 HEVC
   -> 分帧 TCP 会话
-     -> Apple 接收端（usbmuxd USB 或 WiFi，H.264）
+     -> iOS/iPadOS 接收端（usbmuxd USB 或 WiFi，H.264）
+     -> Mac 接收端（局域网／固定直连接口，HEVC/H.264）
      -> Android 接收端（ADB-forward USB 或 WiFi，HEVC/H.264）
   <- 触摸、滚动、codec 状态、指标、生命周期消息
 ```
@@ -65,7 +66,7 @@ Android 接收端在 9000 端口提供 TCP Server，渲染 Surface 返回时会�
 ## Mac 接收角色（开发构建）
 
 Mac 应用可在发送和接收之间切换。接收角色先停止发送会话及发现任务，使用独立 TCP 监听、
-有界分帧和 AVSampleBufferDisplayLayer 渲染 H.264。一次只接受一个发送端；旧连接回调
+有界分帧和 AVSampleBufferDisplayLayer 渲染 H.264／经硬件能力确认的 HEVC。一次只接受一个发送端；旧连接回调
 不能影响替代会话。发送端按接收屏幕逻辑点、缩放和 codec 尺寸/帧率上限配置。
 Mac 使用 Apple legacy 帧，不启用 Android DWV2。详见[设计](docs/mac-to-mac-design.zh-CN.md)。
 
@@ -85,3 +86,11 @@ Mac 使用 Apple legacy 帧，不启用 Android DWV2。详见[设计](docs/mac-t
 `PhoneReceiver` 在串行队列维护监听/连接，忽略旧回调；进入后台先分离旧 socket，再尽力发送 goodbye。Android 控制写入限制为一个线程、128 个排队任务和 64 KiB 单条负载；读取限制为两个线程、两个排队任务。饱和时断开对应会话，避免输入无限积压。发送端在算术和 CoreGraphics 转换前验证几何与输入。
 
 参见 [UI 规范](docs/ui-guidelines.zh-CN.md)、[开发命令](docs/development.zh-CN.md)与[源码验收和验证边界](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。
+
+## HEVC、直连与 Pencil（源码迭代）
+
+Mac HEVC 同时要求硬件编码器与接收端明确声明的硬件解码能力。`ReceiverVideoBitstream` 限制 NAL 数量和参数集大小；一次 codecFailure 请求限时 H.264 回退。HEVC 尺寸／帧率也满足某个完整 H.264 能力范围。非法 Mac 能力声明在采集前被拒绝。
+
+`DirectCable` 仅分类链路本地有线**候选**，不认证设备或证明物理拓扑。选择候选后将 Bonjour 解析和 TCP 固定到同一接口。`DirectCableAutoConnectPolicy` 提供默认关闭的开关、每次出现一次尝试和手动断开抑制。正在等待 hello 的会话也按安装 ID 去重。
+
+`pencil-v1` 通过 hello/inputConfig 显式协商。`PencilInputForwarder` 按整笔画保持原生／兼容协议；`PencilSample` 校验全部数值。`InputInjector` 发送 tablet point／proximity 并确定性取消。iOS `InputSendBudget` 在派发前限制最多 64 项排队／发送中的控制任务，每批不超过 64 KiB，连接代际隔离旧输入和完成回调。溢出关闭当前连接，由发送端释放按下状态。详见[协议与验收设计](docs/hevc-wired-pencil-plan.zh-CN.md)。

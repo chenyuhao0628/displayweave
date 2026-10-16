@@ -2,6 +2,8 @@
 
 # Mac 与 Mac 局域网显示设计
 
+本文记录首版 H.264／局域网设计。[后续 HEVC、直连与 Pencil 方案](hevc-wired-pencil-plan.zh-CN.md)已扩展编码和线缆范围；使用说明见[当前功能指南](hevc-wired-pencil.zh-CN.md)。
+
 设计日期：2026-10-15。基础版本：DisplayWeave `1dbfb48`。
 
 ## 上游合并评估

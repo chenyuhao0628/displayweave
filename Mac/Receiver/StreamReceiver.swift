@@ -1,12 +1,13 @@
 // Adapted from peetzweg/opendisplay Shared/StreamReceiver.swift (GPL-3.0).
 // Source: b9eec1f232fb5ea571c87e8392379a84f47b237f.
-// DisplayWeave: Mac-only H.264, bounded frames, exclusive sessions, deterministic
+// DisplayWeave: Mac H.264/HEVC, bounded frames, exclusive sessions, deterministic
 // shutdown, and queue-owned lifecycle. Upstream Annex B/CoreMedia path retained.
 import Foundation
 import Combine
 import Network
 import AVFoundation
 import CoreMedia
+import VideoToolbox
 
 final class StreamReceiver: ObservableObject {
     @Published private(set) var status = "接收已停止"
@@ -39,9 +40,12 @@ final class StreamReceiver: ObservableObject {
                                            pointsWide: 1920, pointsHigh: 1080)
     private var serviceName = "DisplayWeave Mac"
     private var maxFps = 60
-    private var format: CMVideoFormatDescription?
-    private var sps: Data?
-    private var pps: Data?
+    private let supportsHEVC: Bool
+    private var videoCodec: ReceiverVideoCodec = .h264
+    private var bitstream = ReceiverVideoBitstream(codec: .h264)
+    private var configuredSize: CGSize?
+    private var hevcFailureSent = false
+    private var fallbackDeadline: Date?
     private var waitingForKeyframe = true
     private var lastKeyframeRequest = Date.distantPast
     private var lastReceived = Date()
@@ -49,7 +53,9 @@ final class StreamReceiver: ObservableObject {
     private var statsStart = Date()
     private var lastCursorSequence: UInt64 = 0
 
-    init(displayLayer: AVSampleBufferDisplayLayer = AVSampleBufferDisplayLayer()) {
+    init(displayLayer: AVSampleBufferDisplayLayer = AVSampleBufferDisplayLayer(),
+         hardwareHEVCDecode: Bool? = nil) {
+        self.supportsHEVC = hardwareHEVCDecode ?? VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
         self.displayLayer = displayLayer
         displayLayer.videoGravity = .resizeAspect
     }
@@ -201,14 +207,17 @@ final class StreamReceiver: ObservableObject {
     }
 
     private func sendHello(on conn: NWConnection) {
+        let codecs = supportsHEVC ? ["h264", "hevc"] : ["h264"]
+        let caps: [[String: Any]] = codecs.map {
+            ["codec": $0, "maxWidth": limits.width, "maxHeight": limits.height, "maxFrameRate": maxFps]
+        }
         send(["type": "hello", "device": "Mac", "id": Self.installID,
               "pixelsWide": panel.pixelsWide, "pixelsHigh": panel.pixelsHigh, "scale": panel.scale,
               "panel": panel.json, "pv": WireProtocol.version,
-              "supportedCodecs": ["h264"], "preferredCodec": "h264",
+              "supportedCodecs": codecs, "preferredCodec": supportsHEVC ? "hevc" : "h264",
               "refreshRate": maxFps, "maxFps": maxFps, "displayMaxFrameRate": maxFps,
               "maxEncodeWide": limits.width, "maxEncodeHigh": limits.height,
-              "videoCaps": [["codec": "h264", "maxWidth": limits.width,
-                             "maxHeight": limits.height, "maxFrameRate": maxFps]],
+              "videoCaps": caps,
               "transport": "lan"], on: conn)
     }
 
@@ -250,6 +259,12 @@ final class StreamReceiver: ObservableObject {
                 self.drop(conn, status: "连接超时，等待发送端")
                 return
             }
+            if let deadline = self.fallbackDeadline, Date() >= deadline {
+                self.drop(conn, status: "编码回退超时，请重新连接"); return
+            }
+            if self.videoCodec == .hevc, self.displayLayer.sampleBufferRenderer.status == .failed {
+                self.failVideo(on: conn)
+            }
             self.send(["type": "ping", "t": Date().timeIntervalSince1970 * 1000])
             let elapsed = max(0.001, Date().timeIntervalSince(self.statsStart))
             let fps = Int((Double(self.sampleCount) / elapsed).rounded())
@@ -271,13 +286,22 @@ final class StreamReceiver: ObservableObject {
             case "ping":
                 send(["type": "pong", "t": obj["t"] ?? 0, "mt": Date().timeIntervalSince1970 * 1000])
             case "streamConfig":
-                let codec = obj["codec"] as? String ?? "h264"
+                guard let codec = ReceiverVideoCodec(rawValue: obj["codec"] as? String ?? "h264") else {
+                    drop(conn, status: "不支持的编码，请使用 H.264"); return
+                }
                 let w = obj["width"] as? Int ?? 0
                 let h = obj["height"] as? Int ?? 0
-                guard codec == "h264", w > 0, h > 0, w <= limits.width, h <= limits.height else {
-                    drop(conn, status: "发送配置超出 H.264 接收能力"); return
+                guard w >= 2, h >= 2, w <= limits.width, h <= limits.height, w % 2 == 0, h % 2 == 0 else {
+                    drop(conn, status: "发送配置超出接收能力，请降低画质"); return
                 }
+                if codec == .hevc, hevcFailureSent {
+                    drop(conn, status: "HEVC 回退失败，请选择 H.264 后重连"); return
+                }
+                videoCodec = codec
                 resetVideo()
+                configuredSize = CGSize(width: w, height: h)
+                if codec == .hevc, !supportsHEVC { failVideo(on: conn); return }
+                fallbackDeadline = nil
             case "cursor":
                 if let seq = (obj["s"] as? NSNumber)?.uint64Value {
                     guard seq > lastCursorSequence else { return }; lastCursorSequence = seq
@@ -303,59 +327,46 @@ final class StreamReceiver: ObservableObject {
     }
 
     private func handleAnnexB(_ data: Data, on conn: NWConnection) {
-        // The sender emits four-byte Annex B start codes after an optional JSON
-        // telemetry prefix. Emulation prevention prevents start codes inside NALs.
-        var nalus: [Data] = []
-        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
-            let bytes = raw.bindMemory(to: UInt8.self)
-            var start: Int?
-            var i = 0
-            while i + 4 <= bytes.count {
-                if bytes[i] == 0, bytes[i+1] == 0, bytes[i+2] == 0, bytes[i+3] == 1 {
-                    if let start, start < i { nalus.append(Data(bytes[start..<i])) }
-                    start = i + 4
-                    i += 4
-                } else { i += 1 }
+        guard fallbackDeadline == nil else { return }
+        let packet: ReceiverVideoBitstream.Packet
+        do { packet = try bitstream.parse(data) }
+        catch { failVideo(on: conn); return }
+        if packet.formatChanged { waitingForKeyframe = true }
+        guard let format = packet.format else { requestKeyframe(); return }
+        if packet.formatChanged {
+            let dims = CMVideoFormatDescriptionGetDimensions(format)
+            let size = CGSize(width: Int(dims.width), height: Int(dims.height))
+            guard dims.width > 0, dims.height > 0, dims.width <= limits.width, dims.height <= limits.height,
+                  configuredSize == nil || configuredSize == size else {
+                drop(conn, status: "视频尺寸与配置不符，请重新连接"); return
             }
-            if let start, start < bytes.count { nalus.append(Data(bytes[start...])) }
+            displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
+            DispatchQueue.main.async { self.videoSize = size }
+            publish(status: "正在接收 \(dims.width) × \(dims.height) · \(videoCodec == .hevc ? "HEVC" : "H.264")")
         }
-        var slices: [Data] = []
-        var keyframe = false
-        for nalu in nalus {
-            switch nalu[0] & 0x1f {
-            case 7: if sps != nalu { sps = nalu; format = nil; waitingForKeyframe = true }
-            case 8: if pps != nalu { pps = nalu; format = nil; waitingForKeyframe = true }
-            case 5: keyframe = true; slices.append(nalu)
-            case 1...4: slices.append(nalu)
-            default: break
-            }
+        guard !packet.slices.isEmpty else { return }
+        if displayLayer.sampleBufferRenderer.status == .failed {
+            failVideo(on: conn); return
         }
-        if format == nil, let sps, let pps {
-            sps.withUnsafeBytes { s in pps.withUnsafeBytes { p in
-                let pointers = [s.bindMemory(to: UInt8.self).baseAddress!, p.bindMemory(to: UInt8.self).baseAddress!]
-                let sizes = [sps.count, pps.count]
-                _ = CMVideoFormatDescriptionCreateFromH264ParameterSets(allocator: kCFAllocatorDefault,
-                    parameterSetCount: 2, parameterSetPointers: pointers, parameterSetSizes: sizes,
-                    nalUnitHeaderLength: 4, formatDescriptionOut: &format)
-            } }
-            if let format {
-                let dims = CMVideoFormatDescriptionGetDimensions(format)
-                guard dims.width > 0, dims.height > 0, dims.width <= limits.width, dims.height <= limits.height else {
-                    drop(conn, status: "视频尺寸超出接收能力"); return
-                }
-                displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
-                DispatchQueue.main.async { self.videoSize = CGSize(width: Int(dims.width), height: Int(dims.height)) }
-                publish(status: "正在接收 \(dims.width) × \(dims.height) · H.264")
-            }
-        }
-        guard let format, !slices.isEmpty else { return }
-        if displayLayer.sampleBufferRenderer.status == .failed || !displayLayer.sampleBufferRenderer.isReadyForMoreMediaData {
+        if !displayLayer.sampleBufferRenderer.isReadyForMoreMediaData {
             displayLayer.sampleBufferRenderer.flush()
             waitingForKeyframe = true
         }
-        if waitingForKeyframe && !keyframe { requestKeyframe(); return }
+        if waitingForKeyframe && !packet.keyframe { requestKeyframe(); return }
         waitingForKeyframe = false
-        enqueue(slices, format: format)
+        enqueue(packet.slices, format: format)
+    }
+
+    private func failVideo(on conn: NWConnection) {
+        guard videoCodec == .hevc else {
+            drop(conn, status: "视频解码失败，请重新连接"); return
+        }
+        guard !hevcFailureSent else { return }
+        hevcFailureSent = true
+        resetVideo()
+        fallbackDeadline = Date().addingTimeInterval(3)
+        send(["type": "codecFailure", "codec": "hevc", "message": "Mac HEVC decode failed"], on: conn)
+        publish(status: "HEVC 不可用，正在回退 H.264")
     }
 
     private func requestKeyframe() {
@@ -394,7 +405,8 @@ final class StreamReceiver: ObservableObject {
     }
 
     private func resetVideo() {
-        format = nil; sps = nil; pps = nil
+        bitstream = ReceiverVideoBitstream(codec: videoCodec)
+        configuredSize = nil
         waitingForKeyframe = true
         lastKeyframeRequest = .distantPast
         displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
@@ -403,6 +415,9 @@ final class StreamReceiver: ObservableObject {
 
     private func resetStream() {
         decoder = ReceiverFrameDecoder()
+        videoCodec = .h264
+        hevcFailureSent = false
+        fallbackDeadline = nil
         resetVideo()
         lastCursorSequence = 0
         sampleCount = 0

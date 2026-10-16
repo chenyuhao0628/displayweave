@@ -18,6 +18,15 @@ final class SenderController: ObservableObject {
         }
     }
 
+    @Published var autoConnectDirectMac = UserDefaults.standard.bool(forKey: "autoConnectDirectMac") {
+        didSet {
+            UserDefaults.standard.set(autoConnectDirectMac, forKey: "autoConnectDirectMac")
+            autoConnect()
+        }
+    }
+    private var directCablePolicy = DirectCableAutoConnectPolicy()
+    private var wiredPathMonitor: NWPathMonitor?
+
     @Published var sessions: [DeviceSession] = []
     @Published var discovered: [NWBrowser.Result] = []
     @Published var usbDevices: [UsbmuxDevice] = []
@@ -38,6 +47,13 @@ final class SenderController: ObservableObject {
     @Published var settings = StreamSettings.load() {
         didSet {
             settings.save()
+            if settings.transportMode != oldValue.transportMode {
+                // An in-flight USB recovery must not survive a mode change.
+                for serial in Array(androidRecoveryGeneration.keys) {
+                    androidRecoveryGeneration[serial, default: 0] += 1
+                }
+                androidRecoveryAttempt.removeAll()
+            }
         }
     }
     var quality: StreamQuality { settings.quality }
@@ -122,6 +138,8 @@ final class SenderController: ObservableObject {
         androidPollTask?.cancel(); androidPollTask = nil
         autoConnectTask?.cancel(); autoConnectTask = nil
         browser?.cancel(); browser = nil
+        wiredPathMonitor?.cancel(); wiredPathMonitor = nil
+        _ = directCablePolicy.arrivals(present: [], active: [], enabled: false)
         usbWatcher?.stop(); usbWatcher = nil
         wifiAutoConnectArmed = false
         if !enabled {
@@ -209,12 +227,23 @@ final class SenderController: ObservableObject {
         browser.browseResultsChangedHandler = { [weak self] results, _ in
             DispatchQueue.main.async {
                 guard let self, self.roleEnabled, self.roleGeneration == generation else { return }
-                self.discovered = results.filter { self.txtID(of: $0) != StreamReceiver.installID }
+                self.discovered = Array(results.filter { self.txtID(of: $0) != StreamReceiver.installID }
+                    .sorted { (self.serviceName(of: $0) ?? "") < (self.serviceName(of: $1) ?? "") }.prefix(256))
                 self.autoConnect()
             }
         }
         browser.start(queue: .main)
         self.browser = browser
+        let monitor = NWPathMonitor(requiredInterfaceType: .wiredEthernet)
+        monitor.pathUpdateHandler = { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self, self.roleEnabled, self.roleGeneration == generation else { return }
+                self.objectWillChange.send()
+                self.autoConnect()
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "displayweave.wired-path"))
+        wiredPathMonitor = monitor
     }
 
     // MARK: - Physical-device identity
@@ -262,7 +291,10 @@ final class SenderController: ObservableObject {
             return direct
         }
         return sessions.first { s in
-            if let id = txtID(of: result), s.deviceID == id { return true }
+            if let id = txtID(of: result) {
+                if s.deviceID == id { return true }
+                if case .wifi(let pending) = s.target, txtID(of: pending) == id { return true }
+            }
             switch s.target {
             case .usb(let udid):
                 guard let udid, let device = usbDevices.first(where: { $0.udid == udid })
@@ -316,6 +348,17 @@ final class SenderController: ObservableObject {
             && session(for: "android-adb:\(device.serial)") == nil
             && !androidConnectPending.contains(device.serial) {
             connect(to: .androidAdbDevice(serial: device.serial))
+        }
+        var direct: [String: NWBrowser.Result] = [:]
+        for result in discovered where DirectCable.interface(for: result) != nil {
+            if let id = txtID(of: result) { direct[id] = result }
+        }
+        let active = Set(direct.compactMap { id, result in
+            activeSession(coveringWiFi: result) != nil ? id : nil
+        })
+        for id in directCablePolicy.arrivals(present: Set(direct.keys), active: active,
+                                             enabled: permitsWiFi && autoConnectDirectMac) {
+            if let result = direct[id] { connect(to: .wifi(result)) }
         }
         guard permitsWiFi, wifiAutoConnectArmed, Date() < wifiAutoConnectDeadline else { return }
         for result in discovered {
@@ -399,6 +442,12 @@ final class SenderController: ObservableObject {
 
     func connect(to target: ConnectionTarget, userInitiated: Bool = false) {
         guard roleEnabled, !replacingSessions else { return }
+        guard permits(target) else {
+            if case .androidAdb(let mapping) = target, let manager = androidForwardManager {
+                Task { await manager.remove(sessionID: mapping.sessionID) }
+            }
+            return
+        }
         if case .wifi(let result) = target, txtID(of: result) == StreamReceiver.installID { return }
         if case .androidAdbDevice(let serial) = target {
             connectAndroidAdb(serial: serial, userInitiated: userInitiated)
@@ -434,7 +483,9 @@ final class SenderController: ObservableObject {
         case .usb: usbDisabled.remove(id)
         case .androidAdb: usbDisabled.remove(id)
         case .androidAdbDevice: break
-        case .wifi: wifiRemembered.insert(id)
+        case .wifi(let result):
+            wifiRemembered.insert(id)
+            if userInitiated, let installID = txtID(of: result) { directCablePolicy.manualConnect(installID) }
         }
 
         let transport: SenderTransport
@@ -453,7 +504,7 @@ final class SenderController: ObservableObject {
         case .androidAdbDevice:
             return
         case .wifi(let result):
-            transport = .tcp(result.endpoint)
+            transport = .tcp(result.endpoint, interface: DirectCable.interface(for: result))
         }
 
         let name = label(for: target)
@@ -681,7 +732,9 @@ final class SenderController: ObservableObject {
             androidRecoveryGeneration[mapping.serial, default: 0] += 1
             androidRecoveryAttempt.removeValue(forKey: mapping.serial)
         case .androidAdbDevice: break
-        case .wifi: wifiRemembered.remove(session.id)
+        case .wifi(let result):
+            wifiRemembered.remove(session.id)
+            if let installID = session.deviceID ?? txtID(of: result) { directCablePolicy.disconnect(installID) }
         }
         end(session)
     }
@@ -705,7 +758,20 @@ final class SenderController: ObservableObject {
 
     private func freshTarget(_ target: ConnectionTarget) -> ConnectionTarget {
         if case .androidAdb(let mapping) = target { return .androidAdbDevice(serial: mapping.serial) }
+        if case .wifi(let old) = target {
+            let latest = discovered.first { result in
+                if let id = txtID(of: old) { return txtID(of: result) == id }
+                return serviceName(of: result) == serviceName(of: old)
+            }
+            if let latest { return .wifi(latest) }
+        }
         return target
+    }
+
+    private func permits(_ target: ConnectionTarget) -> Bool {
+        let isLAN: Bool
+        if case .wifi = target { isLAN = true } else { isLAN = false }
+        return TransportSelectionPolicy.permits(mode: settings.transportMode, isLAN: isLAN)
     }
 
     func retry(_ session: DeviceSession) {
@@ -716,9 +782,10 @@ final class SenderController: ObservableObject {
     /// Rebuild only after old capture, startup and ADB-forward cleanup finish.
     /// Rapid edits retain the latest target set and cannot resurrect a receive role.
     func restartAll() {
+        guard roleEnabled else { return }
         let targets = replacementTargets + sessions.map { freshTarget($0.target) }
-        guard !targets.isEmpty, roleEnabled else { return }
-        replace(sessions, targets: targets)
+        guard !targets.isEmpty else { autoConnect(); return }
+        replace(sessions, targets: targets.filter { permits($0) })
     }
 
     private func replace(_ old: [DeviceSession], targets: [ConnectionTarget]) {
@@ -739,6 +806,7 @@ final class SenderController: ObservableObject {
             replacingSessions = false
             replacementTask = nil
             next.forEach { connect(to: $0, userInitiated: true) }
+            autoConnect()
         }
     }
 
@@ -812,13 +880,15 @@ final class SenderController: ObservableObject {
                                        detail: nil,
                                        usbTarget: target, wifiTarget: nil))
         }
+        var listedInstallIDs = Set<String>()
         for result in discovered {
+            if let id = txtID(of: result), !listedInstallIDs.insert(id).inserted { continue }
             guard let name = serviceName(of: result), !mergedServices.contains(name)
             else { continue }
             let target = ConnectionTarget.wifi(result)
             coveredSessionIDs.insert(target.sessionID)
             entries.append(DeviceEntry(id: "service:\(name)", name: name,
-                                       detail: nil,
+                                       detail: DirectCable.interface(for: result).map { "直连候选 · \($0.name)；连接将固定此接口" },
                                        usbTarget: nil, wifiTarget: target))
         }
         // Sessions whose device vanished from discovery (e.g. Bonjour record
@@ -845,7 +915,7 @@ final class SenderController: ObservableObject {
 
     func session(for entry: DeviceEntry) -> DeviceSession? {
         if let target = entry.usbTarget, let s = session(for: target.sessionID) { return s }
-        if let target = entry.wifiTarget, let s = session(for: target.sessionID) { return s }
+        if case .wifi(let result)? = entry.wifiTarget, let s = activeSession(coveringWiFi: result) { return s }
         return session(for: entry.id)   // dangling-session rows
     }
 }
