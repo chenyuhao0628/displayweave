@@ -45,11 +45,19 @@ enum MacReceiverPolicy {
         // Alternative envelopes are evaluated independently, never combined into
         // an operating point that no advertised capability can actually decode.
         let plans = offers.map { cap -> MacStreamPlan in
-            let maxW = min(fallbackW, max(2, cap.maxWidth ?? info.maxEncodeWide ?? fallbackW))
-            let maxH = min(fallbackH, max(2, cap.maxHeight ?? info.maxEncodeHigh ?? fallbackH))
-            let ratio = min(settings.quality.scale, Double(maxW) / Double(nativeW), Double(maxH) / Double(nativeH))
-            let width = max(2, Int(Double(nativeW) * ratio) & ~1)
-            let height = max(2, Int(Double(nativeH) * ratio) & ~1)
+            let maxW = min(fallbackW, max(2, cap.maxWidth ?? fallbackW), max(2, info.maxEncodeWide ?? fallbackW))
+            let maxH = min(fallbackH, max(2, cap.maxHeight ?? fallbackH), max(2, info.maxEncodeHigh ?? fallbackH))
+            let pixelBudget = cap.maxPixelsPerSecond.map { max(4, $0) } ?? Int.max
+            let ratio = min(settings.quality.scale, Double(maxW) / Double(nativeW), Double(maxH) / Double(nativeH),
+                            sqrt(Double(pixelBudget) / Double(nativeW * nativeH)))
+            var width = max(2, Int(Double(nativeW) * ratio) & ~1)
+            var height = max(2, Int(Double(nativeH) * ratio) & ~1)
+            // Rounding a very narrow raster up to two pixels must not exceed
+            // even the one-frame throughput budget of the fallback decoder.
+            if width * height > pixelBudget {
+                if width >= height { width = max(2, (pixelBudget / height) & ~1) }
+                else { height = max(2, (pixelBudget / width) & ~1) }
+            }
             let budgetFps = cap.maxPixelsPerSecond.map { max(1, $0 / (width * height)) } ?? 60
             let limit = min(60, max(1, info.displayMaxFrameRate ?? info.maxFps ?? 60),
                             max(1, cap.maxFrameRate ?? 60), budgetFps,

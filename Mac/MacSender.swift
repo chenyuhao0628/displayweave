@@ -1199,7 +1199,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         case "hello":
             if let info = try? JSONDecoder().decode(PhoneInfo.self, from: payload) {
                 guard info.hasValidGeometry else {
-                    Log.info("rejected invalid receiver geometry")
+                    Log.info("rejected invalid receiver geometry or video capabilities")
                     handleConnectionClosure(.endSession)
                     return
                 }

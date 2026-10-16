@@ -30,6 +30,21 @@ struct PhoneInfo: Decodable {
                 && width * height <= 67_108_864 && scale.isFinite && scale > 0 && scale <= 4
         }
         guard valid(pixelsWide, pixelsHigh, scale) else { return false }
+        if isMacReceiver {
+            if let limit = maxEncodeWide, !(2...16384).contains(limit) { return false }
+            if let limit = maxEncodeHigh, !(2...16384).contains(limit) { return false }
+            if let fps = displayMaxFrameRate, fps < 1 { return false }
+            if let caps = videoCaps {
+                guard !caps.isEmpty, caps.count <= 16,
+                      caps.contains(where: { $0.codec.lowercased() == "h264" }) else { return false }
+                for cap in caps {
+                    if let value = cap.maxWidth, !(2...16384).contains(value) { return false }
+                    if let value = cap.maxHeight, !(2...16384).contains(value) { return false }
+                    if let value = cap.maxFrameRate, value < 1 { return false }
+                    if let value = cap.maxPixelsPerSecond, value < 4 { return false }
+                }
+            }
+        }
         if let panel {
             guard valid(panel.pixelsWide, panel.pixelsHigh, panel.scale) else { return false }
             if let width = panel.pointsWide, !(2...16384).contains(width) { return false }

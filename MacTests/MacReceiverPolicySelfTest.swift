@@ -18,6 +18,11 @@ import Foundation
         precondition(MacReceiverPolicy.plan(info: hevc, settings: forced, hardwareHEVCEncode: true).codec == .h264)
         forced.codecMode = .auto
         precondition(MacReceiverPolicy.plan(info: hevc, settings: forced, hardwareHEVCEncode: true).codec == .hevc)
+        let constrained = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":5120,"pixelsHigh":2880,"scale":2,"device":"Mac","supportedCodecs":["h264","hevc"],"maxEncodeWide":1280,"maxEncodeHigh":720,"videoCaps":[{"codec":"hevc","maxWidth":4096,"maxHeight":2304},{"codec":"h264","maxPixelsPerSecond":4}]}"#.utf8))
+        let tiny = MacReceiverPolicy.plan(info: constrained, settings: settings, hardwareHEVCEncode: true)
+        precondition(tiny.width * tiny.height * tiny.fps <= 4, "fallback exceeded pixel budget")
+        let invalid = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":1920,"pixelsHigh":1080,"scale":1,"device":"Mac","videoCaps":[{"codec":"h264","maxWidth":0}]}"#.utf8))
+        precondition(!invalid.hasValidGeometry)
         let oneX = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":1920,"pixelsHigh":1080,"scale":1,"device":"Mac"}"#.utf8))
         let plain = MacReceiverPolicy.plan(info: oneX, settings: settings)
         precondition(plain.scale == 1 && plain.pointsWide == 1920 && plain.width == 1920)
