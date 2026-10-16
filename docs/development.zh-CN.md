@@ -63,3 +63,5 @@ xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecariOS -configuration 
 旧版可选明文 iOS 网络冒烟测试：在隔离模拟器中以 `-insecureLegacyReceiver YES` 启动应用并保持前台，运行 `python3 tools/test-ios-receiver.py --port 9000`，测试后不带该参数重新启动。首次监听最多等待 10 秒，测试无效长度、分片控制消息、连接替换与存活。它会主动断开测试连接，不捕获桌面，也不证明视频性能。另行把应用切至后台，检查 9000 端口关闭。
 
 实际本地 UI/构建证据及待完成硬件项见 [2026-10-16 验收报告](source-upgrade-audit-2026-10-16.zh-CN.md)。
+
+`python3 tools/test-secure-android-receiver.py --screenshots build/security-ui` 需要 SDK 命令行工具和 `system-images;android-35;default;arm64-v8a`。脚本创建/删除自己的 AVD，并用生产源码构建独立测试包。真实 Keystore 密钥参与 TLS 测试，再通过独立 ADB 转发，用 Mac 客户端检查正式配对/撤销/兼容 UI。测试身份与邀请仅留在一次性应用/容器中；截图在邀请使用后进行。

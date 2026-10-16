@@ -27,6 +27,7 @@ public final class SecurePairingState {
     private byte[] token;
     private long began, expires;
     private int failures;
+    private boolean invalidated;
 
     public SecurePairingState(String localID, String localFingerprint, byte[] persisted,
                                LongSupplier clock, Persistence persistence) throws IOException {
@@ -56,19 +57,21 @@ public final class SecurePairingState {
     }
     public synchronized boolean pairingOpen() {
         long now = clock.getAsLong();
-        if (token == null || now < began || now >= expires || failures >= 5) { token = null; return false; }
+        if (invalidated || token == null || now < began || now >= expires || failures >= 5) { token = null; return false; }
         return true;
     }
-    public synchronized boolean hasPairingHistory(String id) { return records.containsKey(id); }
+    public synchronized boolean hasPairingHistory(String id) { return invalidated || records.containsKey(id); }
     public synchronized Peer trustedPeer(String id) {
-        Peer peer = records.get(id); return peer != null && !peer.revoked ? peer : null;
+        Peer peer = records.get(id); return !invalidated && peer != null && !peer.revoked ? peer : null;
     }
     public synchronized boolean acceptsTLS(String pin) {
+        if (invalidated) return false;
         try { SecurePairingProtocol.fingerprintBytes(pin); } catch (IOException error) { return false; }
         for (Peer peer : records.values()) if (!peer.revoked && peer.certificateSHA256.equals(pin)) return true;
         return pairingOpen();
     }
     public synchronized SecurePairingProtocol.Invitation startPairing() throws IOException {
+        requireValid();
         long now = clock.getAsLong();
         if (now < 0 || now > Long.MAX_VALUE - 120000) throw new IOException("monotonic clock unavailable");
         token = SecurePairingProtocol.randomToken(); began = now; expires = now + 120000; failures = 0;
@@ -77,6 +80,7 @@ public final class SecurePairingState {
     public synchronized void stopPairing() { token = null; }
 
     public synchronized Peer authenticate(SecurePairingProtocol.Auth auth, String pin) throws IOException {
+        requireValid();
         validatePeer(auth.installID, auth.name, pin);
         Peer existing = records.get(auth.installID);
         if (existing != null && !existing.revoked) {
@@ -92,12 +96,27 @@ public final class SecurePairingState {
         return peer;
     }
     public synchronized void revoke(String id) throws IOException {
+        requireValid();
         Peer peer = records.get(id);
         if (peer == null) return;
         Map<String, Peer> next = new LinkedHashMap<>(records);
         next.put(id, new Peer(id, peer.name, peer.certificateSHA256, true));
         commit(next); token = null;
     }
+    public synchronized void revokeAllAndInvalidate() throws IOException {
+        requireValid();
+        Map<String, Peer> next = new LinkedHashMap<>();
+        for (Peer peer : records.values()) {
+            next.put(peer.installID, new Peer(peer.installID, peer.name, peer.certificateSHA256, true));
+        }
+        commit(next);
+        invalidate();
+    }
+    public synchronized void invalidate() { token = null; invalidated = true; }
+    private void requireValid() throws IOException {
+        if (invalidated) throw new IOException("local identity was reloaded/reset; reconnect and pair again");
+    }
+
     private void validatePeer(String id, String name, String pin) throws IOException {
         if (!SecurePairingProtocol.validID(id) || id.equals(localID) || !SecurePairingProtocol.validName(name, 128)
                 || (!records.containsKey(id) && records.size() >= 128)) throw new IOException("invalid peer or trust store full");

@@ -3,6 +3,8 @@ package app.opendisplay.android;
 public interface ReceiverTransport {
     interface Listener {
         void onListening(int port);
+        default void onListenerError(String message) {}
+        default void onAdmissionRejected(String diagnostic) {}
         void onConnected(long generation, String peer);
         void onPayload(long generation, byte[] payload);
         /** Borrowed for this callback only. Async consumers must retain their own lease. */
@@ -17,6 +19,7 @@ public interface ReceiverTransport {
     }
 
     String name();
+    default boolean secure() { return false; }
     void start(Listener listener);
     default void setMaxFrameBytes(long generation, int maximumBytes) {}
     void send(long generation, byte[] payload);

@@ -96,6 +96,13 @@ final class SecurePairingSelfTest {
         SecurePairingProtocol.Invitation overflow = full.startPairing();
         reject(() -> full.authenticate(new SecurePairingProtocol.Auth("overflow", "", overflow.token), clientPin));
         expect(full.peers().size() == 128);
+        state.revokeAllAndInvalidate();
+        expect(!state.acceptsTLS(clientPin) && state.trustedPeer("sender") == null && state.hasPairingHistory("any"));
+        reject(state::startPairing);
+        reject(state::revokeAllAndInvalidate);
+        reject(() -> state.authenticate(auth, clientPin));
+        SecurePairingState rotated = new SecurePairingState("receiver", pin, stored.get(), clock::get, ignored -> { });
+        expect(rotated.hasPairingHistory("sender") && rotated.trustedPeer("sender") == null);
         System.out.println("SecurePairingSelfTest PASS (shared Swift/Java golden vectors)");
     }
 }

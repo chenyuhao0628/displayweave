@@ -2,7 +2,7 @@
 
 # 安全传输与配对设计
 
-F03 实施设计，2026-10-16。Apple 发送/接收端已完成源码接入，Android 应用集成仍在进行。已发布 p8 未改变。完成状态与实际验证记录见[活动清单](feature-completion.zh-CN.md)，用法见[Apple 源码指南](secure-transport.zh-CN.md)。
+F03 实施设计，2026-10-16。Apple 发送/接收端与 Android 接收端已完成源码接入。已发布 p8 未改变。完成状态与实际验证记录见[活动清单](feature-completion.zh-CN.md)，用法见[源码指南](secure-transport.zh-CN.md)。
 
 ## 方案选择
 
@@ -48,4 +48,6 @@ Swift/Java 策略向量覆盖邀请长度、准确指纹、错误 ID/token、tok
 
 传输证书在创建后 365 天过期，起始日期提供一天时钟容差。Apple SSL 策略拒绝了十年有效期的原型，因此未保留。过期/密钥丢失必须显式重置身份并重新配对，不静默旋转指纹。该寿命与应用签名证书无关。
 
-底层测试使用临时身份和临时测试密钥库，不访问应用已保存的配对密钥。Apple→Apple 和 Apple↔Java 双向均运行真实 TLS。真实钥匙串测试使用随机命名空间，仅删除自己的记录；iOS 部分在一次性模拟器中采用 Xcode 生成的应用签名运行。源码 UI 与会话集成使用相同底层，剩余 Android 与实机证据单独跟踪。
+底层测试使用临时身份和临时测试密钥库，不访问应用已保存的配对密钥。Apple→Apple 和 Apple↔Java 双向均运行真实 TLS。真实钥匙串测试使用随机命名空间，仅删除自己的记录；iOS 部分在一次性模拟器中采用 Xcode 生成的应用签名运行。源码 UI 与会话集成使用相同底层，Android Keystore/运行时与实机证据单独跟踪。
+
+Android Keystore 按 [KeyGenParameterSpec 的 TLS 要求](https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.Builder#setDigests(java.lang.String...)) 授权 `DIGEST_NONE`：TLS 提供者先计算握手摘要，再请求 Keystore 对摘要签名。仍授权 SHA-256/384 以签署证书。缺少 TLS 授权的旧密钥会被拒绝并要求显式重置。真实 Keystore 私钥参与 TLS 的测试先复现了该故障，并作为回归门禁；仅使用软件密钥不能覆盖此路径。

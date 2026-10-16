@@ -47,6 +47,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private static final String KEY_WIFI_LOW_LATENCY = "wifiLowLatency";
 
     private ReceiverUi ui;
+    private AndroidSecuritySettings securitySettings;
     private Button streamSettingsButton;
     private FrameLayout root;
     private SurfaceView surfaceView;
@@ -117,6 +118,10 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                         stopServer();
                     }
                 });
+        securitySettings = new AndroidSecuritySettings(this, receiverLifecycle::stopForSettings,
+                receiverLifecycle::reevaluate,
+                () -> { if (server != null) server.cancelPendingAdmissions(); },
+                id -> { if (server != null) server.revokePeer(id); });
         buildUi();
         applyKeepAwakePreference();
         showOnboardingIfNeeded();
@@ -136,6 +141,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     @Override
     protected void onPause() {
         foreground = false;
+        securitySettings.dismiss();
         updateWifiLowLatencyState();
         surfaceFrameRateLifecycle.onPause();
         receiverLifecycle.onPause();
@@ -409,7 +415,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         content.addView(cardText("从 Mac 开始连接\n\n"
                 + "1. 在 Mac 上打开 DisplayWeave，选择发送屏幕。\n\n"
                 + "2. 两端加入同一局域网，或使用已授权 USB 调试的线缆连接。\n\n"
-                + "3. 在 Mac 设备列表中选择本机；连接成功后自动显示桌面。"));
+                + "3. 首次连接先在“安全与配对”生成邀请，导入 Mac 后从设备列表连接。"));
 
         Button settings = ui.button("设置与帮助");
         settings.setOnClickListener(v -> showSettingsDialog());
@@ -417,7 +423,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         buttonParams.setMargins(0, dp(24), 0, dp(8));
         content.addView(settings, buttonParams);
 
-        TextView footnote = text("局域网连接未加密，请仅在可信网络使用。串流时可通过右上角设置调整选项；USB 调试授权会信任当前 Mac。", 13,
+        TextView footnote = text("默认使用配对加密连接。旧版明文兼容须在安全设置中显式开启。串流时可通过右上角设置调整选项；USB 调试授权会信任当前 Mac。", 13,
                 ui.secondary, false);
         footnote.setGravity(Gravity.CENTER);
         footnote.setPadding(0, dp(8), 0, 0);
@@ -437,6 +443,10 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         content.addView(text("连接状态：" + currentStatus, 15, ui.primary, false), matchWrap());
         content.addView(text("服务端口：9000\n设备标识：" + InstallId.get(this), 13,
                 ui.secondary, false), matchWrap());
+
+        Button security = ui.button("安全与配对");
+        security.setOnClickListener(v -> securitySettings.show());
+        content.addView(security, matchWrap());
 
         CheckBox keepAwake = new CheckBox(this);
         keepAwake.setText("保持屏幕常亮");
@@ -724,7 +734,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         new AlertDialog.Builder(this)
                 .setTitle("欢迎使用 DisplayWeave")
                 .setMessage("这个 Android 端需要和 Mac 端配合使用。请先在 Mac 上启动 DisplayWeave，"
-                        + "再让两台设备连接同一个 WiFi，随后在 Mac 端选择这台 Android 设备。")
+                        + "再让两台设备加入同一局域网。在“安全与配对”生成邀请，导入 Mac 后选择这台 Android 设备。")
                 .setPositiveButton("知道了", (dialog, which) ->
                         prefs.edit().putBoolean(KEY_ONBOARDING_DISMISSED, true).apply())
                 .show();
@@ -739,8 +749,12 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         }
         boolean advertiseWifi = ReceiverPermissionPolicy.shouldAdvertiseWifi(
                 hasNearbyWifiPermission());
-        server = new OpenDisplayServer(MainActivity.this, currentDisplaySpec(),
-                MainActivity.this, advertiseWifi);
+        try {
+            server = new OpenDisplayServer(MainActivity.this, currentDisplaySpec(), MainActivity.this, advertiseWifi);
+        } catch (java.io.IOException | java.security.GeneralSecurityException failure) {
+            setStatus("安全身份不可用：请在设置 → 安全与配对中重新载入或显式重置身份。" + failure.getMessage());
+            return false;
+        }
         server.setDecoderLowLatencyMode(currentDecoderLowLatencyMode());
         server.start(activeSurface.getSurface());
         if (!advertiseWifi) {

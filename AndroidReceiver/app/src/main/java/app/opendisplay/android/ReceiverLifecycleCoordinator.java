@@ -41,6 +41,9 @@ final class ReceiverLifecycleCoordinator {
         stopIfRunning();
     }
 
+    /** Security settings stop first, then reevaluate after persistence succeeds. */
+    void stopForSettings() { stopIfRunning(); }
+
     void reevaluate() {
         ensureStarted();
     }

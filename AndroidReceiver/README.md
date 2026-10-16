@@ -6,6 +6,8 @@ The Android receiver accepts DisplayWeave video over local WiFi or a Mac-managed
 
 The waiting screen follows the system light/dark theme. Settings scroll on small displays; the top-right Settings button remains available while streaming even when the status overlay is hidden.
 
+Post-p8 source adds [encrypted pairing](../docs/secure-transport.md) and the [recovered Cloudflare update feed](../docs/automatic-updates.md). These changes are not yet in the published p8 APK. For a source build, first generate an invitation under **Settings & Help → Security and pairing**, import it on the Mac, then select the device. Both LAN and ADB-forwarded USB use the same authenticated stream.
+
 ## Requirements
 
 - Android 8.0+; hardware HEVC support is device-dependent.
@@ -94,4 +96,4 @@ Two simultaneous Android devices, controlled USB/WiFi benchmark, and 30-minute/2
 
 ## Security
 
-WiFi TCP is not production-encrypted. Use a trusted LAN. ADB authorization trusts the Mac as a debugging host beyond this application. See [SECURITY.md](../SECURITY.md).
+Published p8 still uses plaintext TCP and needs a trusted LAN. Post-p8 source defaults to pinned mutual TLS and invitation pairing; insecure legacy mode requires an explicit local choice. Private transport keys remain in Android Keystore and are separate from APK signing. ADB authorization trusts the Mac as a debugging host beyond this application. See [the pairing guide](../docs/secure-transport.md) and [SECURITY.md](../SECURITY.md).

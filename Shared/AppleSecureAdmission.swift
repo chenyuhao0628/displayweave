@@ -118,8 +118,8 @@ final class AppleSecureAdmission {
                     self.fail("未取得 TLS 对端身份，请重新配对"); return
                 }
                 ready(fingerprint)
-            case .failed, .waiting:
-                self.fail("TLS 连接失败，请检查网络、系统时间和配对身份")
+            case .failed(let error), .waiting(let error):
+                self.fail("TLS 连接失败（\(error)），请检查网络、系统时间和配对身份")
             case .cancelled: self.fail("安全连接已结束，请重新连接")
             default: break
             }

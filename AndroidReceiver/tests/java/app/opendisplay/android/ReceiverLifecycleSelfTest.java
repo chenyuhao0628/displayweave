@@ -84,6 +84,20 @@ public final class ReceiverLifecycleSelfTest {
         require(actions.stops == 2,
                 "destroy cleanup must stop the active server only once");
 
+        RecordingActions securityActions = new RecordingActions();
+        securityActions.allowStart = false;
+        ReceiverLifecycleCoordinator security = new ReceiverLifecycleCoordinator(securityActions);
+        security.onResume(); security.onSurfaceCreated();
+        security.stopForSettings();
+        securityActions.allowStart = true;
+        security.reevaluate(); security.onPause();
+        require(securityActions.starts == 1 && securityActions.stops == 1,
+                "repaired identity must remain owned by lifecycle and close on background");
+        security.onResume(); security.stopForSettings(); security.reevaluate();
+        require(securityActions.starts == 3 && securityActions.stops == 2,
+                "security mode switch must stop before starting one replacement");
+        security.onDestroy();
+        require(securityActions.stops == 3, "replacement leaked after destroy");
         System.out.println("ReceiverLifecycleSelfTest PASS");
     }
 }

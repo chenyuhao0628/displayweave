@@ -4,7 +4,7 @@
 
 ## Current user guides
 
-- [Secure connections and pairing (Apple source)](secure-transport.md) and [design / remaining integration](secure-transport-design.md)
+- [Secure connections and pairing (source)](secure-transport.md) and [design / remaining integration](secure-transport-design.md)
 - [Mac wired / Wi-Fi handover (source)](mac-lan-handover.md)
 - [Apple receiver HEVC and high refresh (source)](apple-video.md)
 - [Per-device desktop resolution (source)](desktop-resolution.md)

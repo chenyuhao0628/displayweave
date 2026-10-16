@@ -2,7 +2,7 @@
 
 # Secure transport and pairing design
 
-F03 implementation design, 2026-10-16. Apple sender/receiver integration is now implemented in source; Android application integration remains in progress. Published p8 is unchanged. Completion and exercised evidence are tracked in [the active ledger](feature-completion.md); see [Apple source usage](secure-transport.md).
+F03 implementation design, 2026-10-16. Apple sender/receiver and Android receiver integration is implemented in source. Published p8 is unchanged. Completion and exercised evidence are tracked in [the active ledger](feature-completion.md); see [source usage](secure-transport.md).
 
 ## Decision
 
@@ -48,4 +48,6 @@ The shared pre-application messages use strict bounded binary fields, avoiding d
 
 Transport certificates expire 365 days after creation (with one day of not-before clock tolerance). Apple SSL policy rejected a ten-year prototype, so it was not retained. Expiry/key loss requires an explicit identity reset and fresh pairing; no silent pin rotation. This transport identity lifetime is unrelated to application signing certificates.
 
-Core tests use ephemeral identities and temporary test keystores; they never access the application's saved pairing keys. Apple→Apple and both Apple↔Java directions exercised real TLS. Real Keychain tests use a random scope, delete only their own records, and run the iOS part in a disposable simulator with Xcode-generated app signing. Source UI and session integration use the same core; remaining Android and hardware evidence are tracked separately.
+Core tests use ephemeral identities and temporary test keystores; they never access the application's saved pairing keys. Apple→Apple and both Apple↔Java directions exercised real TLS. Real Keychain tests use a random scope, delete only their own records, and run the iOS part in a disposable simulator with Xcode-generated app signing. Source UI and session integration use the same core; Android Keystore/runtime and hardware evidence are tracked separately.
+
+Android Keystore signing authorizes `DIGEST_NONE` as required by [KeyGenParameterSpec for TLS](https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.Builder#setDigests(java.lang.String...)); the TLS provider hashes its transcript, then asks Keystore to sign that digest. SHA-256/384 remain authorized for certificate signing. Keys lacking the TLS authorization are rejected with an explicit reset action. A real Keystore-backed TLS fixture first reproduced the failure and gates this path; software-only key tests are insufficient.

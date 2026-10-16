@@ -125,7 +125,7 @@ final class FrameBufferPoolSelfTest {
 
     private static void testTransportOwnership() throws Exception {
         FrameBufferPool pool = new FrameBufferPool(4096, 2, 25);
-        WifiTcpReceiverTransport transport = new WifiTcpReceiverTransport(0,
+        WifiTcpReceiverTransport transport = WifiTcpReceiverTransport.legacy(0,
                 WifiTcpReceiverTransport.boundedExecutor(1, 4), pool);
         java.util.concurrent.LinkedBlockingQueue<FrameBufferPool.Lease> frames =
                 new java.util.concurrent.LinkedBlockingQueue<>();

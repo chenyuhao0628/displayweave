@@ -11,7 +11,7 @@ public final class InstallId {
 
     private InstallId() {}
 
-    public static String get(Context context) {
+    public static synchronized String get(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String existing = prefs.getString(KEY, null);
         if (existing != null && !existing.isEmpty()) {

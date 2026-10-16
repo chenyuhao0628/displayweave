@@ -91,7 +91,7 @@ public final class UpdateClient {
                  ByteArrayOutputStream output = new ByteArrayOutputStream()) {
                 copyBounded(input, output, MAX_MANIFEST_BYTES, null, length);
                 try {
-                    return UpdateManifest.parse(output.toString(StandardCharsets.UTF_8));
+                    return UpdateManifest.parse(new String(output.toByteArray(), StandardCharsets.UTF_8));
                 } catch (IllegalArgumentException error) {
                     throw new ArtifactRejectedException("Invalid update manifest: " + error.getMessage());
                 }

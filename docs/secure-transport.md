@@ -2,11 +2,11 @@
 
 # Secure connections and pairing
 
-Source work after p8. Apple sender/receiver integration is implemented on the feature branch; Android integration remains in progress. Published and installed **v0.2.1-p8** still uses its previous plaintext transport. This guide does not describe a new download.
+Source work after p8. Apple and Android receiver integration is implemented on the feature branch; combined verification is recorded in the execution ledger. Published and installed **v0.2.1-p8** still uses its previous plaintext transport. This guide does not describe a new download.
 
 ## Connect for the first time
 
-1. On the receiving Mac, iPhone or iPad, open **Settings → Security and pairing** and generate a receiving invitation. Keep the receiver foregrounded and listening.
+1. On the receiving Mac, iPhone, iPad or Android device, open **Settings → Security and pairing** and generate a receiving invitation. Keep the receiver foregrounded and listening.
 2. Copy the `DW1.` invitation to the sending Mac through a trusted channel. In its **Security and pairing** settings, import it and return to the device list.
 3. Select the matching device over LAN or USB. The invitation pins the receiver's certificate; choosing the wrong cable/device fails verification. After successful pairing, both installations save trust and reconnect without an invitation. Two paired Macs can exchange sender/receiver roles.
 
@@ -19,6 +19,8 @@ Settings lists trusted and revoked peers with full certificate fingerprints. **R
 Transport certificates last one year. For expiry or lost identity material, explicitly **Reset local transport identity**, then revoke the old pairing on the other device and pair again. Reset closes sessions, invalidates old in-memory trust and preserves revoked peer records. Keychain errors fail closed; unlock the Keychain, use **Reload security state**, and retry. Transport identity is separate from app signing, Sparkle, Android updates and ADB authorization.
 
 macOS uses its login Keychain, including for the ad-hoc preview. iOS uses the application's data-protection Keychain with `WhenUnlockedThisDeviceOnly`. No private key or trust record falls back to a file on an identity-storage error. A re-signed iOS app must retain a valid signing-generated application identifier; changing its signing/access-group identity can make previous Keychain data unavailable.
+
+Android private keys are non-exportable Android Keystore entries; only public certificates and bounded peer records use app-private preferences. Cloud backup and device transfer exclude this data. **Reload security state** invalidates old in-memory objects; identity reset retains revoked history and can resume an explicitly recorded reset interrupted by a process exit. Android clears its owned invitation clipboard copy on consumption, expiry, cancellation or backgrounding, provided the clipboard has not changed.
 
 ## Old applications
 

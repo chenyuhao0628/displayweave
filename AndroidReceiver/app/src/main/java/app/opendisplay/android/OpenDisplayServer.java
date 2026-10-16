@@ -120,14 +120,27 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         void onMetrics(StreamMetrics metrics);
     }
 
-    public OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener) {
-        this(context, displaySpec, listener, new WifiTcpReceiverTransport(PORT), true);
+    public OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener) throws java.io.IOException, java.security.GeneralSecurityException {
+        this(context, displaySpec, listener, createTransport(context), true);
     }
 
     public OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener,
-                             boolean wifiAdvertisingEnabled) {
-        this(context, displaySpec, listener, new WifiTcpReceiverTransport(PORT),
+                             boolean wifiAdvertisingEnabled) throws java.io.IOException, java.security.GeneralSecurityException {
+        this(context, displaySpec, listener, createTransport(context),
                 wifiAdvertisingEnabled);
+    }
+
+    private static ReceiverTransport createTransport(Context context) throws java.io.IOException, java.security.GeneralSecurityException {
+        if (AndroidSecuritySettings.legacyEnabled(context)) return WifiTcpReceiverTransport.legacy(PORT);
+        AndroidSecurityStore store = AndroidSecurityStore.get(context);
+        return new WifiTcpReceiverTransport(PORT, new SecureSocketAdmission(store.key, store.certificate, store.pairing));
+    }
+
+    public void cancelPendingAdmissions() {
+        if (transport instanceof WifiTcpReceiverTransport) ((WifiTcpReceiverTransport) transport).cancelPendingAdmissions();
+    }
+    public void revokePeer(String id) {
+        if (transport instanceof WifiTcpReceiverTransport) ((WifiTcpReceiverTransport) transport).revokePeer(id);
     }
 
     OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener,
@@ -199,6 +212,18 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     }
                     listener.onStatus("正在监听 :" + port + " / " + transport.name());
                 });
+            }
+
+            @Override
+            public void onListenerError(String message) {
+                executeTransportEvent(() -> listener.onStatus(message));
+            }
+
+            @Override
+            public void onAdmissionRejected(String diagnostic) {
+                // Admission errors are diagnostics only: never overwrite the
+                // status of an unrelated authenticated application session.
+                android.util.Log.w("DisplayWeave", "Secure admission rejected: " + diagnostic);
             }
 
             @Override
@@ -305,8 +330,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 });
             }
         });
-        timer.scheduleAtFixedRate(this::sendPingIfConnected, 2, 2, TimeUnit.SECONDS);
-        timer.scheduleAtFixedRate(this::publishStatsSafely, 1, 1, TimeUnit.SECONDS);
+        timer.scheduleWithFixedDelay(this::sendPingIfConnected, 2, 2, TimeUnit.SECONDS);
+        timer.scheduleWithFixedDelay(this::publishStatsSafely, 1, 1, TimeUnit.SECONDS);
     }
 
     public synchronized void setDecoderLowLatencyMode(DecoderLowLatencyMode mode) {
@@ -319,6 +344,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
     public void stop() {
         running = false;
+        AndroidSecurityStore.stopPairingIfLoaded();
         listeningPort = 0;
         advertiser.stop();
         transport.stop(LengthPrefixedProtocol.goodbyeJson().getBytes(StandardCharsets.UTF_8));
@@ -348,7 +374,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
     private void startWifiAdvertising(int port) {
         try {
-            advertiser.start("DisplayWeave Android", installId, port);
+            advertiser.start("DisplayWeave Android", installId, port, transport.secure());
         } catch (SecurityException error) {
             listener.onStatus("WiFi 广播等待附近设备权限；USB 仍可使用");
         }

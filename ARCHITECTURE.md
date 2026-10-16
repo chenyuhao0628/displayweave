@@ -53,7 +53,7 @@ Touch coordinates, drag state, cursor movement, and two-finger scroll are encode
 
 ## Security boundaries
 
-- Published p8 uses plaintext TCP on a trusted LAN. Post-p8 Apple source adds pinned mutual TLS, invitation pairing and explicit legacy compatibility; Android integration is pending. See [the security guide](docs/secure-transport.md).
+- Published p8 uses plaintext TCP on a trusted LAN. Post-p8 Apple/Android source adds pinned mutual TLS, invitation pairing and explicit legacy compatibility. See [the security guide](docs/secure-transport.md).
 - ADB RSA authorization trusts the Mac as a debugging host beyond DisplayWeave.
 - The macOS Preview is ad-hoc signed and not notarized.
 - The Android APK uses an offline project keystore stored outside Git.

@@ -28,6 +28,7 @@ public final class VideoStreamPolicySelfTest {
         testFrameSizeMetrics();
         FrameBufferPoolSelfTest.run();
         SecurePairingSelfTest.run();
+        SecureTransportSelfTest.run();
         testFrameAllocationMetrics();
         testGcMetricDeltaSemantics();
         testAndroidPowerMetricsNormalization();
@@ -754,7 +755,7 @@ public final class VideoStreamPolicySelfTest {
     }
 
     private static void testWifiTransportCarriesFramedPayloads() {
-        WifiTcpReceiverTransport transport = new WifiTcpReceiverTransport(0);
+        WifiTcpReceiverTransport transport = WifiTcpReceiverTransport.legacy(0);
         AtomicInteger listeningPort = new AtomicInteger();
         AtomicReference<byte[]> received = new AtomicReference<>();
         AtomicLong generation = new AtomicLong();
@@ -817,7 +818,7 @@ public final class VideoStreamPolicySelfTest {
     }
 
     private static void testWifiTransportAcceptsV2FrameSize() {
-        ReceiverTransport transport = new WifiTcpReceiverTransport(0);
+        ReceiverTransport transport = WifiTcpReceiverTransport.legacy(0);
         AtomicInteger listeningPort = new AtomicInteger();
         CountDownLatch listening = new CountDownLatch(1);
         CountDownLatch connected = new CountDownLatch(1);
@@ -865,7 +866,7 @@ public final class VideoStreamPolicySelfTest {
     }
 
     private static void testWifiTransportKeepsLegacyFrameLimit() {
-        WifiTcpReceiverTransport transport = new WifiTcpReceiverTransport(0);
+        WifiTcpReceiverTransport transport = WifiTcpReceiverTransport.legacy(0);
         AtomicInteger listeningPort = new AtomicInteger();
         AtomicInteger rejectedMaximum = new AtomicInteger();
         CountDownLatch listening = new CountDownLatch(1);
@@ -916,7 +917,7 @@ public final class VideoStreamPolicySelfTest {
     }
 
     private static void testWifiTransportRejectsOversizeWithReason() {
-        ReceiverTransport transport = new WifiTcpReceiverTransport(0);
+        ReceiverTransport transport = WifiTcpReceiverTransport.legacy(0);
         AtomicInteger listeningPort = new AtomicInteger();
         AtomicReference<String> rejectedReason = new AtomicReference<>();
         AtomicInteger rejectedLength = new AtomicInteger();
@@ -974,7 +975,7 @@ public final class VideoStreamPolicySelfTest {
     }
 
     private static void testWifiTransportReplacesBlockedConnection() {
-        WifiTcpReceiverTransport transport = new WifiTcpReceiverTransport(0);
+        WifiTcpReceiverTransport transport = WifiTcpReceiverTransport.legacy(0);
         AtomicInteger listeningPort = new AtomicInteger();
         AtomicInteger connectionCount = new AtomicInteger();
         List<Long> generations = new CopyOnWriteArrayList<>();
@@ -1067,7 +1068,7 @@ public final class VideoStreamPolicySelfTest {
             try { releaseWriter.await(); }
             catch (InterruptedException error) { Thread.currentThread().interrupt(); }
         });
-        WifiTcpReceiverTransport transport = new WifiTcpReceiverTransport(0, writer);
+        WifiTcpReceiverTransport transport = WifiTcpReceiverTransport.legacy(0, writer);
         AtomicInteger listeningPort = new AtomicInteger();
         AtomicInteger connectionCount = new AtomicInteger();
         AtomicLong generation = new AtomicLong();
@@ -1133,7 +1134,7 @@ public final class VideoStreamPolicySelfTest {
     }
 
     private static void testWifiTransportIgnoresSendAfterStop() {
-        ReceiverTransport transport = new WifiTcpReceiverTransport(0);
+        ReceiverTransport transport = WifiTcpReceiverTransport.legacy(0);
         transport.stop();
         try {
             transport.send(1, "late-ping".getBytes(StandardCharsets.UTF_8));

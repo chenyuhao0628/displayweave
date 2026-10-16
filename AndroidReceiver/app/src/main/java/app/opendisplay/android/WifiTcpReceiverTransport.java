@@ -7,6 +7,11 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Locale;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -23,6 +28,13 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
     private final ExecutorService readers = boundedExecutor(2, 2);
     private final ExecutorService writer;
     private final FrameBufferPool framePool;
+    private final SecureSocketAdmission security;
+    private final int admissionDeadlineMs;
+    private final ExecutorService admissionWorkers = new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS,
+            new SynchronousQueue<>(), new ThreadPoolExecutor.AbortPolicy());
+    private final ScheduledThreadPoolExecutor deadlines = new ScheduledThreadPoolExecutor(1);
+    private final Map<Socket, ScheduledFuture<?>> pending = new HashMap<>();
+    private boolean started;
     private volatile boolean running;
     private Listener listener;
     private volatile ServerSocket serverSocket;
@@ -32,6 +44,8 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
     static final class ConnectionContext {
         final long generation;
         final Socket socket;
+        final Socket rawSocket;
+        final SecurePairingState.Peer peer;
         final BufferedInputStream input;
         final BufferedOutputStream output;
         final Object writeLock = new Object();
@@ -41,9 +55,11 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
 
         ConnectionContext(long generation, Socket socket,
                           BufferedInputStream input, BufferedOutputStream output,
-                          long connectedAtMs) {
+                          long connectedAtMs, Socket rawSocket, SecurePairingState.Peer peer) {
             this.generation = generation;
             this.socket = socket;
+            this.rawSocket = rawSocket;
+            this.peer = peer;
             this.input = input;
             this.output = output;
             this.connectedAtMs = connectedAtMs;
@@ -51,19 +67,40 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
         }
     }
 
-    public WifiTcpReceiverTransport(int port) {
-        this(port, boundedExecutor(1, 128));
+    public WifiTcpReceiverTransport(int port, SecureSocketAdmission security) {
+        this(port, java.util.Objects.requireNonNull(security), 10000);
     }
 
-    WifiTcpReceiverTransport(int port, ExecutorService writer) {
-        this(port, writer, new FrameBufferPool());
+    WifiTcpReceiverTransport(int port, SecureSocketAdmission security, int deadlineMs) {
+        this(port, java.util.Objects.requireNonNull(security), deadlineMs,
+                boundedExecutor(1, 128), new FrameBufferPool());
     }
 
-    WifiTcpReceiverTransport(int port, ExecutorService writer, FrameBufferPool framePool) {
+    /** Plaintext requires an explicit local compatibility choice. */
+    public static WifiTcpReceiverTransport legacy(int port) {
+        return legacy(port, boundedExecutor(1, 128), new FrameBufferPool());
+    }
+
+    static WifiTcpReceiverTransport legacy(int port, ExecutorService writer) {
+        return legacy(port, writer, new FrameBufferPool());
+    }
+
+    static WifiTcpReceiverTransport legacy(int port, ExecutorService writer, FrameBufferPool pool) {
+        return new WifiTcpReceiverTransport(port, null, 10000, writer, pool);
+    }
+
+    private WifiTcpReceiverTransport(int port, SecureSocketAdmission security, int deadlineMs,
+                                     ExecutorService writer, FrameBufferPool framePool) {
+        if (deadlineMs <= 0 || deadlineMs > 10000) throw new IllegalArgumentException("admission deadline");
         requestedPort = port;
+        this.security = security;
+        this.admissionDeadlineMs = deadlineMs;
         this.writer = writer;
         this.framePool = framePool;
+        deadlines.setRemoveOnCancelPolicy(true);
     }
+
+    @Override public boolean secure() { return security != null; }
 
     static ThreadPoolExecutor boundedExecutor(int threads, int queueCapacity) {
         return new ThreadPoolExecutor(threads, threads, 0, TimeUnit.MILLISECONDS,
@@ -76,11 +113,12 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
     }
 
     @Override
-    public void start(Listener nextListener) {
-        if (running) {
+    public synchronized void start(Listener nextListener) {
+        if (started) {
             return;
         }
-        listener = nextListener;
+        listener = java.util.Objects.requireNonNull(nextListener);
+        started = true;
         running = true;
         acceptor.execute(this::acceptLoop);
     }
@@ -137,7 +175,11 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
 
     @Override
     public void stop(byte[] finalPayload) {
-        running = false;
+        synchronized (this) {
+            started = true;
+            running = false;
+            cancelPendingAdmissions();
+        }
         // Lifecycle callbacks invoke stop() on Android's main thread. A best-effort
         // goodbye must never turn that path into blocking network I/O; closing the
         // socket is already the protocol's authoritative disconnect signal.
@@ -150,8 +192,12 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
             } catch (IOException ignored) {
             }
         }
+        admissionWorkers.shutdownNow();
+        deadlines.shutdownNow();
         acceptor.shutdownNow();
-        readers.shutdownNow();
+        // Each admitted reader owns its TLS wrapper's final close. Raw sockets
+        // are already closed; drain the bounded queue so no wrapper is orphaned.
+        readers.shutdown();
         writer.shutdownNow();
     }
 
@@ -159,50 +205,106 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
         try (ServerSocket server = new ServerSocket()) {
             server.setReuseAddress(true);
             server.bind(new InetSocketAddress(requestedPort));
-            serverSocket = server;
-            listener.onListening(server.getLocalPort());
+            synchronized (this) {
+                if (!running) return;
+                serverSocket = server;
+                listener.onListening(server.getLocalPort());
+            }
             while (running) {
                 Socket accepted = server.accept();
-                configureAcceptedSocket(accepted);
-                ConnectionContext context;
-                ConnectionContext previous;
-                synchronized (this) {
-                    if (!running) {
-                        closeSocket(accepted);
-                        break;
-                    }
-                    context = new ConnectionContext(
-                            ++nextGeneration,
-                            accepted,
-                            new BufferedInputStream(accepted.getInputStream()),
-                            new BufferedOutputStream(accepted.getOutputStream()),
-                            System.currentTimeMillis());
-                    previous = currentConnection;
-                    currentConnection = context;
-                }
-                closeConnection(previous);
-                listener.onConnected(
-                        context.generation, accepted.getInetAddress().getHostAddress());
                 try {
-                    readers.execute(() -> readLoop(context));
-                } catch (RejectedExecutionException ignored) {
-                    if (running) {
-                        disconnectAfterFailure(context, "transportReadFailure",
-                                "连接切换过于频繁，请稍后重新连接");
+                    configureAcceptedSocket(accepted);
+                    if (security == null) {
+                        adopt(accepted, accepted, new BufferedInputStream(accepted.getInputStream()),
+                                new BufferedOutputStream(accepted.getOutputStream()), null);
                     } else {
-                        closeConnection(context);
+                        beginAdmission(accepted);
                     }
+                } catch (IOException | RuntimeException error) {
+                    closeSocket(accepted);
                 }
             }
         } catch (IOException error) {
-            if (running) {
-                Listener activeListener = listener;
-                ConnectionContext active = current();
-                if (activeListener != null && active != null) {
-                    activeListener.onError(active.generation,
-                            "监听失败：" + error.getMessage());
-                }
+            synchronized (this) {
+                if (running) listener.onListenerError("监听失败，请检查端口占用后重新打开接收：" + error.getMessage());
             }
+        }
+    }
+
+    private synchronized void beginAdmission(Socket raw) {
+        if (!running || pending.size() >= 2) { closeSocket(raw); return; }
+        try {
+            ScheduledFuture<?> deadline = deadlines.schedule(() -> expireAdmission(raw),
+                    admissionDeadlineMs, TimeUnit.MILLISECONDS);
+            pending.put(raw, deadline);
+            admissionWorkers.execute(() -> {
+                try {
+                    SecureSocketAdmission.Accepted accepted = security.authenticate(raw);
+                    adopt(raw, accepted.socket, accepted.input, accepted.output, accepted.peer);
+                } catch (IOException | java.security.GeneralSecurityException | RuntimeException error) {
+                    String diagnostic = error.getClass().getSimpleName() + ": " + error.getMessage();
+                    if (running) listener.onAdmissionRejected(diagnostic.substring(0, Math.min(diagnostic.length(), 512)));
+                    // A rejected candidate is not an application session. It must
+                    // neither replace the active peer nor mutate its UI state.
+                } finally {
+                    finishAdmission(raw);
+                }
+            });
+        } catch (RejectedExecutionException error) {
+            finishAdmission(raw);
+        }
+    }
+
+    private synchronized void expireAdmission(Socket raw) {
+        ScheduledFuture<?> deadline = pending.remove(raw);
+        if (deadline != null) { deadline.cancel(false); closeSocket(raw); }
+    }
+
+    private synchronized void finishAdmission(Socket raw) {
+        ScheduledFuture<?> deadline = pending.remove(raw);
+        if (deadline != null) { deadline.cancel(false); closeSocket(raw); }
+    }
+
+    /** The transport lock orders adoption, revocation and lifecycle shutdown. */
+    private synchronized void adopt(Socket raw, Socket socket, BufferedInputStream input,
+                                     BufferedOutputStream output, SecurePairingState.Peer peer) {
+        if (!running || (security != null && (!pending.containsKey(raw) || !security.stillTrusted(peer)))) {
+            closeSocket(raw); closeSocket(socket); return;
+        }
+        ScheduledFuture<?> deadline = pending.remove(raw);
+        if (deadline != null) deadline.cancel(false);
+        ConnectionContext context = new ConnectionContext(++nextGeneration, socket, input, output,
+                System.currentTimeMillis(), raw, peer);
+        try {
+            // The worker cannot pass isCurrent until this lock is released.
+            // Guarantee a cleanup owner before publishing the connection.
+            readers.execute(() -> readLoop(context));
+        } catch (RejectedExecutionException error) {
+            closeSocket(raw); closeSocket(socket); // admission/accept worker only
+            listener.onAdmissionRejected("连接切换过于频繁，请稍后重新连接");
+            return;
+        }
+        ConnectionContext previous = currentConnection;
+        currentConnection = context;
+        closeConnection(previous);
+        listener.onConnected(context.generation, raw.getInetAddress().getHostAddress());
+    }
+
+    synchronized int pendingAdmissionCount() { return pending.size(); }
+
+    public synchronized void cancelPendingAdmissions() {
+        for (Map.Entry<Socket, ScheduledFuture<?>> entry : pending.entrySet()) {
+            entry.getValue().cancel(false); closeSocket(entry.getKey());
+        }
+        pending.clear();
+    }
+
+    public synchronized void revokePeer(String id) {
+        cancelPendingAdmissions();
+        ConnectionContext active = currentConnection;
+        if (active != null && active.peer != null && active.peer.installID.equals(id)) {
+            clearCurrent(active); closeConnection(active);
+            listener.onDisconnected(active.generation);
         }
     }
 
@@ -241,6 +343,9 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
         } finally {
             boolean wasCurrent = clearCurrent(context);
             closeConnection(context);
+            // Conscrypt's TLS close can write close_notify even when the raw
+            // socket is closed. Keep it on this owned reader, never Android UI.
+            if (context.socket != context.rawSocket) closeSocket(context.socket);
             if (wasCurrent) {
                 listener.onDisconnected(context.generation);
             }
@@ -311,7 +416,7 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
 
     private static void closeConnection(ConnectionContext context) {
         if (context != null) {
-            closeSocket(context.socket);
+            closeSocket(context.rawSocket);
         }
     }
 

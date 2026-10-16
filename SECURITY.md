@@ -12,7 +12,7 @@ Do not post an exploitable vulnerability in a public issue. Use GitHub's private
 
 ## Current trust boundaries
 
-- Published p8 uses plaintext local TCP and requires a trusted LAN. Post-p8 Apple source now defaults to mutually authenticated, certificate-pinned TLS with explicit invitation pairing; Android application integration remains in progress. See [source usage and boundaries](docs/secure-transport.md).
+- Published p8 uses plaintext local TCP and requires a trusted LAN. Post-p8 Apple and Android source defaults to mutually authenticated, certificate-pinned TLS with explicit invitation pairing. See [source usage and boundaries](docs/secure-transport.md).
 - Android USB requires ADB RSA authorization. This grants the Mac broad debugging trust, including shell/install capabilities outside DisplayWeave. Revoke USB debugging authorizations when no longer needed.
 - The macOS Preview is ad-hoc signed and not notarized. Verify `SHA256SUMS.txt` and obtain packages only from the project Release.
 - The Android Preview APK is signed with an offline project keystore. Verify the SHA-256 certificate fingerprint documented in the release checklist before first install or update.

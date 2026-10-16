@@ -6,6 +6,8 @@ Android 接收端可以通过本地 WiFi 或由 Mac 管理的 ADB-forward USB �
 
 等待页面跟随系统明暗主题。设置在小屏上可滚动；串流时右上角设置按钮始终可用，即使已隐藏状态浮层。
 
+p8 之后的源码新增[加密配对](../docs/secure-transport.zh-CN.md)与[恢复的 Cloudflare 更新源](../docs/automatic-updates.zh-CN.md)，已发布 p8 APK 尚不包含这些改动。源码构建首次连接时，在**设置与帮助 → 安全与配对**生成邀请，导入 Mac 后再选择设备。局域网和 ADB 转发 USB 使用相同认证流。
+
 ## 要求
 
 - Android 8.0+；硬件 HEVC 支持取决于设备。
@@ -91,4 +93,4 @@ Keystore 保存在 Git 之外，密码从 macOS Keychain 读取。除非明确�
 
 ## 安全
 
-WiFi TCP 尚未生产级加密，请使用可信局域网。ADB 授权会把 Mac 作为超出本应用范围的调试主机信任。参见 [SECURITY.zh-CN.md](../SECURITY.zh-CN.md)。
+已发布 p8 仍使用明文 TCP，需要可信局域网。p8 之后的源码默认使用固定证书指纹的双向 TLS 与邀请配对；不安全的旧版兼容需要在本机显式开启。传输私钥保存在 Android Keystore，与 APK 签名独立。ADB 授权会把 Mac 作为超出本应用范围的调试主机信任。参见[配对指南](../docs/secure-transport.zh-CN.md)与 [SECURITY.zh-CN.md](../SECURITY.zh-CN.md)。
