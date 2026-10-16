@@ -16,7 +16,8 @@ import CoreGraphics
         precondition(down.getIntegerValueField(.mouseEventSubtype) == Int64(CGEventMouseSubtype.tabletPoint.rawValue))
         // CoreGraphics stores mouse pressure at 8-bit precision.
         precondition(abs(down.getDoubleValueField(.mouseEventPressure) - 0.5) <= 1.0 / 255)
-        precondition(abs(down.getDoubleValueField(.tabletEventTiltY) - 0.5) < 0.001)
+        precondition(abs(down.getDoubleValueField(.tabletEventTiltX) - 0.5) < 0.001)
+        precondition(abs(down.getDoubleValueField(.tabletEventTiltY)) < 0.001)
         precondition(down.getIntegerValueField(.tabletEventPointPressure) == 32768)
         injector.handlePencil(sample(.move))
         precondition(events.last!.type == .leftMouseDragged)

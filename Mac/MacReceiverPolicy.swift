@@ -1,5 +1,19 @@
 import Foundation
 
+/// Queue-owned by the sender. The Mac receiver rejects HEVC for the remainder
+/// of a connection once it has requested fallback, including after a resize.
+struct MacCodecFallbackPolicy {
+    private var hevcFailed = false
+
+    mutating func beginConnection() { hevcFailed = false }
+    mutating func recordFailure(_ codec: StreamCodec) {
+        if codec == .hevc { hevcFailed = true }
+    }
+    func codec(for preferred: StreamCodec, isMacReceiver: Bool) -> StreamCodec {
+        isMacReceiver && hevcFailed && preferred == .hevc ? .h264 : preferred
+    }
+}
+
 struct MacStreamPlan: Equatable {
     let pointsWide: Int
     let pointsHigh: Int

@@ -53,4 +53,14 @@ iOS hello 声明 inputCaps pencil-v1；支持的 Mac 回复 inputConfig。每次
 - 第三轮：已实现经协商的 Pencil 压感／倾角／接近状态、有界真实采样、防手掌干扰、按笔画保持旧版触控协议、控制发送代际隔离和取消清理。37 个 Swift 套件通过，包含内存 CoreGraphics 事件测试（鼠标压感字段为 8 位量化）；Mac arm64＋x86_64 和 iOS 模拟器构建通过。本轮无运行中的模拟器及 Pencil 实机，UIKit 手势与真实绘图效果尚未验收。
 
 - 最终复查：新增回归复现了声明的单帧像素预算仍可能超限；`75c73e5` 现在同时约束传统尺寸上限与编码能力、按吞吐预算缩小画面，并拒绝非法 Mac 能力声明。完整门禁通过：37 组 Swift、Mac arm64/x86_64、iOS 模拟器构建、Android test/assembleDebug、网站构建、发布一致性、64 对双语文档及空白检查。实现提交：`42d63d6`（HEVC）、`14759dd`（直连）、`f8f2282`（Pencil）、`75c73e5`（能力范围修复）；设计提交 `edfd70b` 在实现之前。
-- 本轮源码范围完成。[使用与证据指南](hevc-wired-pencil.zh-CN.md)区分自动验证与待完成的双 Mac 线缆、真实 Pencil／手势及显示会话验证。本轮不执行发版或管理员强制合并 main。
+- 本轮源码范围完成。[使用与证据指南](hevc-wired-pencil.zh-CN.md)区分自动验证与待完成的双 Mac 线缆、真实 Pencil／手势及显示会话验证。功能交付时尚未执行发版或管理员合并 main。
+
+## PR #12 审查后续（2026-10-16）
+
+用户随后要求审查代码，确认无问题后合并。审查发现并在集成前修复三处问题：
+
+- Pencil 倾角交换了屏幕 X/Y 轴。新增四向回归在旧实现上失败，修复后与 CoreGraphics 事件字段检查一同通过。坐标约定已核对 Apple 的 [UIKit 方位角](https://developer.apple.com/documentation/uikit/uitouch/azimuthangle(in:))与 [AppKit 倾角](https://developer.apple.com/documentation/appkit/nsevent/tilt)文档。
+- 尺寸重配置可能在回退后重新选择 HEVC，但接收端会拒绝该连接再次使用 HEVC。发送端现在跨编码器重建保持回退状态，新连接才重置。策略测试覆盖重复重配置、重置及 Android 行为保持。
+- 切换连接模式可能重建已被新模式排除的旧会话。连接准入与重建选择现在遵守当前模式，同时取消待执行的 Android USB 恢复，并在空闲时重新评估自动连接。准入回归覆盖 USB、局域网、自动模式及 Mac 直连。
+
+修复后本地验证：37 组 Swift、Mac arm64/x86_64 无签名构建、iOS 模拟器构建、Android test/assembleDebug、网站生产构建、64 对双语文档、发布一致性和空白检查全部通过。使用指南中的实机验收缺口仍保留；本次不包含新二进制发版。

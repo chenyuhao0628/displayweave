@@ -12,6 +12,19 @@ struct TransportSelectionPolicySelfTest {
         let policy = TransportSelectionPolicy()
         let receiver = WifiTransportCandidate(id: "wifi:pixel", installID: "install-1")
 
+        check(false, TransportSelectionPolicy.permits(mode: .usb, isLAN: true),
+              "switching to USB must reject an existing Mac LAN/direct-link restart")
+        check(false, TransportSelectionPolicy.permits(mode: .wifi, isLAN: false),
+              "switching to LAN must reject an outstanding USB recovery")
+        check(true, TransportSelectionPolicy.permits(mode: .auto, isLAN: true),
+              "Auto must allow the pinned Mac direct-link transport")
+        check(true, TransportSelectionPolicy.permits(mode: .auto, isLAN: false),
+              "Auto must retain USB support")
+        check(true, TransportSelectionPolicy.permits(mode: .wifi, isLAN: true),
+              "LAN mode must allow the pinned Mac direct-link transport")
+        check(true, TransportSelectionPolicy.permits(mode: .usb, isLAN: false),
+              "USB mode must retain wired Apple/Android support")
+
         check(.androidUSB("A"),
               policy.preferred(mode: .auto, androidUSB: "A", wifi: receiver),
               "Auto should prefer an authorized Android USB device")

@@ -130,6 +130,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // every encode to the ready connection that accepted it so an old frame
     // can never be written to a newer peer.
     private var pencilNegotiated = false
+    private var macCodecFallback = MacCodecFallbackPolicy()
     private var wireConnectionGeneration: UInt64 = 0
     private var encoderGeneration: UInt64 = 0
     // Owns every NWConnection callback. `dialGeneration` only protects an
@@ -677,6 +678,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     /// Bookkeeping shared by both transports once a connection is live.
     private func adoptConnection(_ conn: NWConnection) -> UInt64 {
         pencilNegotiated = false
+        macCodecFallback.beginConnection()
         inputInjector?.cancelPress()
         connectionGeneration &+= 1
         connection = conn
@@ -1296,6 +1298,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             let message = obj["message"] as? String ?? "unspecified codec failure"
             Log.info("phone reported codec failure: codec=\(failedCodec) message=\(message)")
             if failedCodec == StreamCodec.hevc.rawValue, streamCodec == .hevc {
+                macCodecFallback.recordFailure(.hevc)
                 decoderRecoveryEvent = "codec-fallback"
                 if let encoder { VTCompressionSessionInvalidate(encoder) }
                 encoder = nil
@@ -1469,6 +1472,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // MARK: - Encoder setup
 
     private func setupEncoder(width: Int, height: Int, fps: Int, preferredCodec: StreamCodec) {
+        let preferredCodec = macCodecFallback.codec(for: preferredCodec,
+                                                   isMacReceiver: lastHello?.isMacReceiver == true)
         if encoderGeneration != 0 {
             pendingEncodeWork.discard(generation: encoderGeneration)
         }
@@ -1500,6 +1505,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             : nil
         var created = createEncoder(width: width, height: height, codec: preferredCodec, spec: spec)
         if created == nil, preferredCodec == .hevc {
+            macCodecFallback.recordFailure(.hevc)
             Log.info("HEVC encoder unavailable; falling back to H.264")
             streamCodec = .h264
             let fallbackAutomatic = StreamEncodingPolicy.bitrate(
@@ -1744,6 +1750,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func handleEncodeFailure(status: OSStatus) {
         Log.info("encode failed for \(streamCodec.label): \(status)")
         guard streamCodec == .hevc else { return }
+        macCodecFallback.recordFailure(.hevc)
         Log.info("falling back to H.264 after HEVC encode failure")
         if let encoder { VTCompressionSessionInvalidate(encoder) }
         encoder = nil

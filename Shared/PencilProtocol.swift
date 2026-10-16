@@ -50,8 +50,10 @@ struct PencilSample {
         return ["type": "touch", "phase": phase, "x": x, "y": y]
     }
     var tilt: (x: Double, y: Double) {
+        // UIKit azimuth starts on +X and increases clockwise. AppKit tablet
+        // tilt uses +X to the right and +Y down, in the same screen axes.
         let magnitude = (Double.pi / 2 - altitude) / (Double.pi / 2)
-        return (sin(azimuth) * magnitude, cos(azimuth) * magnitude)
+        return (cos(azimuth) * magnitude, sin(azimuth) * magnitude)
     }
 }
 

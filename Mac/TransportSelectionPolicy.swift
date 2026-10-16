@@ -37,6 +37,11 @@ enum TransportCandidate: Equatable, Sendable {
 struct TransportSelectionPolicy: Sendable {
     static let recoveryDelays: [Double] = [0.5, 1, 2, 4, 8]
 
+    /// A Thunderbolt/Ethernet Mac still uses LAN, never the USB transport.
+    static func permits(mode: StreamTransportMode, isLAN: Bool) -> Bool {
+        mode == .auto || (isLAN ? mode == .wifi : mode == .usb)
+    }
+
     func preferred(mode: StreamTransportMode,
                    androidUSB: String?,
                    wifi: WifiTransportCandidate?) -> TransportCandidate? {

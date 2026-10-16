@@ -16,6 +16,8 @@ The receiver status names the actual codec. Both codecs stay within 4096×2304 l
 
 Encoder creation/runtime failure falls back to H.264. A receiver HEVC parse/decoder failure requests fallback once, clears video state, and waits up to three seconds for H.264 configuration. Repeated HEVC configurations after failure are rejected. If fallback fails, choose H.264 and reconnect. Real decoding performance depends on the two machines and network.
 
+After a failure, the sender keeps H.264 for that Mac connection, including display-size changes and repeated capability announcements. A new connection may negotiate HEVC again.
+
 ## Connect Macs by cable
 
 1. Establish a working Thunderbolt Bridge or direct Ethernet network between the Macs. An ordinary USB-C charging/data cable does not by itself provide Mac-to-Mac networking.
@@ -26,11 +28,15 @@ Encoder creation/runtime failure falls back to H.264. A receiver HEVC parse/deco
 
 Classification requires a Mac TXT record and a wired, non-internal interface with a nonempty set of exclusively link-local addresses. A DHCP-less Ethernet switch can satisfy the same heuristic: **candidate does not prove a dedicated physical cable or authenticate a peer**. Static-IP or routed Ethernet remains available through ordinary LAN discovery. The inherited transport still requires a trusted network. No remote shutdown command was added.
 
+Switching transport mode ends sessions excluded by the new mode before rebuilding permitted sessions. USB-only excludes Mac direct-link networking as well as Wi-Fi; LAN-only cancels pending Android USB recovery. When no session is active, changing mode immediately reevaluates the existing auto-connect rules.
+
 ## Apple Pencil on iPad
 
 Install the current iOS/iPadOS source build and Mac source build. Connect as usual over USB or LAN, then grant the Mac Accessibility permission for input. The iOS settings show **压感与倾角** after capability confirmation, or **兼容触控** for an older sender. This status describes the negotiated protocol, not proof that an attached Pencil or drawing app supports every feature.
 
 Pencil contact forwards pressure and tilt as native tablet events. Supported iPads/Pencils also send hover. Finger scrolling is separated from pen contact; direct touches are suppressed while the Pencil is drawing or hovering. At most 32 real coalesced samples are forwarded per event; predicted Pencil points are not committed as ink. Existing finger input remains available after the pen leaves.
+
+Tilt preserves the view's screen axes: right/left maps to tablet X, down/up to tablet Y, and an upright Pencil has zero tilt. Automated tests cover all four directions and the resulting CoreGraphics fields.
 
 Old Mac senders receive normal touch down/move/up without pressure. A capability reply arriving mid-stroke applies to the next stroke, so the current press is released using the protocol that started it. Cancellation, view removal, connection replacement, backgrounding and sender teardown release pen/finger state. Control congestion closes the affected session instead of retaining an unbounded input backlog.
 

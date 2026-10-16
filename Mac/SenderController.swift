@@ -47,6 +47,13 @@ final class SenderController: ObservableObject {
     @Published var settings = StreamSettings.load() {
         didSet {
             settings.save()
+            if settings.transportMode != oldValue.transportMode {
+                // An in-flight USB recovery must not survive a mode change.
+                for serial in Array(androidRecoveryGeneration.keys) {
+                    androidRecoveryGeneration[serial, default: 0] += 1
+                }
+                androidRecoveryAttempt.removeAll()
+            }
         }
     }
     var quality: StreamQuality { settings.quality }
@@ -435,6 +442,12 @@ final class SenderController: ObservableObject {
 
     func connect(to target: ConnectionTarget, userInitiated: Bool = false) {
         guard roleEnabled, !replacingSessions else { return }
+        guard permits(target) else {
+            if case .androidAdb(let mapping) = target, let manager = androidForwardManager {
+                Task { await manager.remove(sessionID: mapping.sessionID) }
+            }
+            return
+        }
         if case .wifi(let result) = target, txtID(of: result) == StreamReceiver.installID { return }
         if case .androidAdbDevice(let serial) = target {
             connectAndroidAdb(serial: serial, userInitiated: userInitiated)
@@ -755,6 +768,12 @@ final class SenderController: ObservableObject {
         return target
     }
 
+    private func permits(_ target: ConnectionTarget) -> Bool {
+        let isLAN: Bool
+        if case .wifi = target { isLAN = true } else { isLAN = false }
+        return TransportSelectionPolicy.permits(mode: settings.transportMode, isLAN: isLAN)
+    }
+
     func retry(_ session: DeviceSession) {
         guard session.failed, !replacingSessions, sessions.contains(where: { $0 === session }) else { return }
         replace([session], targets: [freshTarget(session.target)])
@@ -763,9 +782,10 @@ final class SenderController: ObservableObject {
     /// Rebuild only after old capture, startup and ADB-forward cleanup finish.
     /// Rapid edits retain the latest target set and cannot resurrect a receive role.
     func restartAll() {
+        guard roleEnabled else { return }
         let targets = replacementTargets + sessions.map { freshTarget($0.target) }
-        guard !targets.isEmpty, roleEnabled else { return }
-        replace(sessions, targets: targets)
+        guard !targets.isEmpty else { autoConnect(); return }
+        replace(sessions, targets: targets.filter { permits($0) })
     }
 
     private func replace(_ old: [DeviceSession], targets: [ConnectionTarget]) {
@@ -786,6 +806,7 @@ final class SenderController: ObservableObject {
             replacingSessions = false
             replacementTask = nil
             next.forEach { connect(to: $0, userInitiated: true) }
+            autoConnect()
         }
     }
 
