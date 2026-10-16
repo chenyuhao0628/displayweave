@@ -87,7 +87,7 @@ for hash in "${hashes[@]}"; do
   }
 done
 
-release_url="https://github.com/chenyuhao0628/displayweave/releases/tag/$tag"
+release_url="https://github.com/chenyuhao0628/displayweave/releases"
 mac_feed="https://chenyuhao0628.github.io/displayweave/appcast.xml"
 android_feed="https://chenyuhao0628.github.io/displayweave/android-update.json"
 for url in "$release_url" "$mac_feed" "$android_feed"; do
