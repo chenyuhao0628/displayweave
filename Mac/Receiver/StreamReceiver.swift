@@ -9,26 +9,36 @@ import AVFoundation
 import CoreMedia
 import VideoToolbox
 
-final class StreamReceiver: ObservableObject {
+// Connection state is confined to queue; published presentation and callbacks
+// to main. InputSendBudget is the locked bridge between those two domains.
+final class StreamReceiver: ObservableObject, @unchecked Sendable {
     @Published private(set) var status = "接收已停止"
     @Published private(set) var connected = false
     @Published private(set) var videoSize = CGSize.zero
     @Published private(set) var fps = 0
     @Published private(set) var listeningPort: UInt16 = 0
+    @Published private(set) var encrypted = false
+    @Published private(set) var codecLabel = "H.264"
+    @Published private(set) var inputForwarding = false
+    @Published private(set) var inputStatus = "键鼠回传已关闭"
+    @Published private(set) var inputGrant: String?
+    private var inputGeneration: UInt64 = 0 // main-thread projection of the queue's grant
+    private let inputBudget: InputSendBudget
+    private var wireInputGrant: String? // receiver queue only
     let displayLayer: AVSampleBufferDisplayLayer
     var onReset: (() -> Void)?
     var onCursor: ((Double, Double, Bool) -> Void)?
     var onCursorImage: ((CGImage, CGPoint, CGSize) -> Void)?
 
-    static let installID: String = {
-        if let value = UserDefaults.standard.string(forKey: "installID") { return value }
-        let value = UUID().uuidString
-        UserDefaults.standard.set(value, forKey: "installID")
-        return value
-    }()
+    static let installID = TransportInstallIdentity.value
 
     private let queue = DispatchQueue(label: "displayweave.receiver")
     private var listener: NWListener?
+    private lazy var admissionPool = AppleSecureAdmissionPool(queue: queue)
+    private let securityProvider: () throws -> AppleReceiverSecurity
+    private var security: AppleReceiverSecurity = .legacy
+    private var peerID: String?
+    private var securityObserver: NSObjectProtocol?
     private var connection: NWConnection?
     private var running = false
     private var generation: UInt64 = 0
@@ -54,16 +64,39 @@ final class StreamReceiver: ObservableObject {
     private var lastCursorSequence: UInt64 = 0
 
     init(displayLayer: AVSampleBufferDisplayLayer = AVSampleBufferDisplayLayer(),
-         hardwareHEVCDecode: Bool? = nil) {
+         hardwareHEVCDecode: Bool? = nil,
+         inputBudget: InputSendBudget = InputSendBudget(),
+         securityProvider: @escaping () throws -> AppleReceiverSecurity = { try .live(localID: StreamReceiver.installID) }) {
+        self.inputBudget = inputBudget
+        self.securityProvider = securityProvider
         self.supportsHEVC = hardwareHEVCDecode ?? VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
         self.displayLayer = displayLayer
         displayLayer.videoGravity = .resizeAspect
+        securityObserver = NotificationCenter.default.addObserver(forName: TransportSecurityChange.notification,
+            object: nil, queue: nil) { [weak self] notification in
+            let kind = notification.userInfo?["kind"] as? String, peer = notification.userInfo?["peer"] as? String
+            self?.queue.async { [weak self] in self?.securityChanged(kind: kind, peer: peer) }
+        }
+    }
+
+    deinit { if let securityObserver { NotificationCenter.default.removeObserver(securityObserver) } }
+
+    private func securityChanged(kind: String?, peer: String?) {
+        guard kind != "senderMode" else { return }
+        admissionPool.cancelAll()
+        if kind == "revoked", peerID == peer, let connection { drop(connection, status: "配对已撤销，等待重新配对") }
+        if kind == "listenerMode" || kind == "identityReset" {
+            generation &+= 1
+            listener?.cancel(); listener = nil
+            if let connection { drop(connection, status: "安全设置已改变，请重新连接") }
+            if running { startListener() }
+        }
     }
 
     func configure(panel: PanelAnnouncement, name: String, maxFps: Int = 60) {
         queue.async {
             self.panel = panel
-            self.maxFps = min(60, max(30, maxFps))
+            self.maxFps = AppleVideoPolicy.frameRate(maximum: maxFps)
             self.serviceName = name.isEmpty ? "DisplayWeave Mac" : name
             if self.advertiseService { self.listener?.service = self.service }
             if let connection = self.connection { self.sendHello(on: connection) }
@@ -75,6 +108,7 @@ final class StreamReceiver: ObservableObject {
         txt["id"] = Self.installID
         txt["pv"] = String(WireProtocol.version)
         txt["device"] = "Mac"
+        if security.encrypted { txt["security"] = "tls-v1" }
         return NWListener.Service(name: serviceName, type: "_opensidecar._tcp", txtRecord: txt)
     }
 
@@ -98,10 +132,13 @@ final class StreamReceiver: ObservableObject {
             self.generation &+= 1
             self.listener?.cancel()
             self.listener = nil
+            self.admissionPool.cancelAll()
+            if case .tls(_, let state) = self.security { state.stopPairing() }
             self.timer?.cancel()
             self.timer = nil
             let old = self.connection
             self.connection = nil
+            self.peerID = nil
             self.resetStream()
             self.publish(connected: false, status: "接收已停止", port: 0)
             var finished = false
@@ -121,11 +158,13 @@ final class StreamReceiver: ObservableObject {
     /// Ending a visible session leaves the listener ready for a new sender.
     func disconnect() {
         queue.async {
+            self.admissionPool.cancelAll()
             if let old = self.connection {
                 self.send(["type": "closing"], on: old) { old.cancel() }
                 self.queue.asyncAfter(deadline: .now() + 0.25) { old.cancel() }
             }
             self.connection = nil
+            self.peerID = nil
             self.resetStream()
             self.publish(connected: false, status: "等待发送端连接")
         }
@@ -135,9 +174,15 @@ final class StreamReceiver: ObservableObject {
         guard running else { return }
         let token = generation
         do {
+            security = try securityProvider()
             let tcp = NWProtocolTCP.Options()
             tcp.noDelay = true
-            let parameters = NWParameters(tls: nil, tcp: tcp)
+            let tls: NWProtocolTLS.Options?
+            if case .tls(let identity, let state) = security {
+                tls = try AppleTLS.options(identity: identity, peerIsServer: false, queue: queue,
+                                           acceptedFingerprint: { state.acceptsTLS($0) })
+            } else { tls = nil }
+            let parameters = NWParameters(tls: tls, tcp: tcp)
             parameters.allowLocalEndpointReuse = true
             parameters.serviceClass = .interactiveVideo
             let active = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: port)!)
@@ -146,7 +191,16 @@ final class StreamReceiver: ObservableObject {
             active.newConnectionHandler = { [weak self, weak active] conn in
                 guard let self, self.running, self.listener === active,
                       self.connection == nil else { conn.cancel(); return }
-                self.adopt(conn)
+                if case .tls(_, let state) = self.security {
+                    self.admissionPool.accept(conn, pairing: state) { [weak self, weak active] result in
+                        guard let self, self.running, self.generation == token, self.listener === active,
+                              self.connection == nil else { conn.cancel(); return }
+                        switch result {
+                        case .success(let peer): self.adopt(conn, authenticatedPeer: peer)
+                        case .failure(let error): self.publish(status: error.localizedDescription)
+                        }
+                    }
+                } else { self.adopt(conn) }
             }
             active.stateUpdateHandler = { [weak self, weak active] state in
                 guard let self, self.running, self.listener === active else { return }
@@ -157,6 +211,7 @@ final class StreamReceiver: ObservableObject {
                 case .failed(let error):
                     active?.cancel()
                     self.listener = nil
+                    self.admissionPool.cancelAll()
                     self.publish(status: "监听失败：\(error.localizedDescription)；正在重试", port: 0)
                     self.queue.asyncAfter(deadline: .now() + 2) { [weak self] in
                         guard let self, self.running, self.generation == token else { return }
@@ -168,6 +223,7 @@ final class StreamReceiver: ObservableObject {
             active.start(queue: queue)
         } catch {
             publish(status: "无法监听：\(error.localizedDescription)", port: 0)
+            if error is TransportSecurityError { return }
             queue.asyncAfter(deadline: .now() + 2) { [weak self] in
                 guard let self, self.running, self.generation == token else { return }
                 self.startListener()
@@ -175,8 +231,9 @@ final class StreamReceiver: ObservableObject {
         }
     }
 
-    private func adopt(_ conn: NWConnection) {
+    private func adopt(_ conn: NWConnection, authenticatedPeer: SecurePeerRecord? = nil) {
         connection = conn
+        peerID = authenticatedPeer?.installID
         resetStream()
         lastReceived = Date()
         conn.stateUpdateHandler = { [weak self, weak conn] state in
@@ -190,13 +247,19 @@ final class StreamReceiver: ObservableObject {
             default: break
             }
         }
-        conn.start(queue: queue)
+        let encrypted = authenticatedPeer != nil
+        DispatchQueue.main.async { self.encrypted = encrypted }
+        if encrypted {
+            publish(connected: true, status: "已加密连接，等待画面")
+            sendHello(on: conn)
+        } else { conn.start(queue: queue) }
         receive(on: conn)
     }
 
     private func drop(_ conn: NWConnection, status: String) {
         guard connection === conn else { return }
         connection = nil
+        peerID = nil
         conn.cancel()
         resetStream()
         publish(connected: false, status: status)
@@ -209,7 +272,8 @@ final class StreamReceiver: ObservableObject {
     private func sendHello(on conn: NWConnection) {
         let codecs = supportsHEVC ? ["h264", "hevc"] : ["h264"]
         let caps: [[String: Any]] = codecs.map {
-            ["codec": $0, "maxWidth": limits.width, "maxHeight": limits.height, "maxFrameRate": maxFps]
+            ["codec": $0, "maxWidth": limits.width, "maxHeight": limits.height, "maxFrameRate": maxFps,
+             "maxPixelsPerSecond": AppleVideoPolicy.maxPixelsPerSecond]
         }
         send(["type": "hello", "device": "Mac", "id": Self.installID,
               "pixelsWide": panel.pixelsWide, "pixelsHigh": panel.pixelsHigh, "scale": panel.scale,
@@ -218,7 +282,62 @@ final class StreamReceiver: ObservableObject {
               "refreshRate": maxFps, "maxFps": maxFps, "displayMaxFrameRate": maxFps,
               "maxEncodeWide": limits.width, "maxEncodeHigh": limits.height,
               "videoCaps": caps,
+              "inputCaps": peerID != nil ? [DesktopInputProtocol.capability] : [],
               "transport": "lan"], on: conn)
+    }
+
+    @MainActor func setInputForwarding(_ enabled: Bool) {
+        if !enabled { releaseDesktopInput() }
+        inputForwarding = enabled
+    }
+
+    @MainActor func releaseDesktopInput() {
+        sendDesktopInput(["kind": "releaseAll", "modifiers": 0])
+    }
+
+    /// Reserve before dispatch so high-frequency pointer events cannot create
+    /// an unbounded queue of closures. Old projections cannot use a new socket.
+    @MainActor func sendDesktopInput(_ fields: [String: Any]) {
+        guard inputForwarding, let grant = inputGrant else { return }
+        switch inputBudget.reserve(expectedGeneration: inputGeneration) {
+        case .unavailable: return
+        case .overflow(let epoch):
+            queue.async {
+                guard self.inputBudget.generation == epoch, let conn = self.connection else { return }
+                self.drop(conn, status: "键鼠发送队列已满，请重新连接")
+            }
+        case .accepted(let ticket):
+            var object = fields
+            object["type"] = "desktopInput"; object["inputSession"] = grant; object["sequence"] = ticket.sequence
+            guard let data = try? JSONSerialization.data(withJSONObject: object), DesktopInputEvent.decode(data) != nil else {
+                inputBudget.complete(ticket); return
+            }
+            queue.async {
+                guard self.inputBudget.generation == ticket.generation, self.wireInputGrant == grant,
+                      self.peerID != nil, let conn = self.connection else { self.inputBudget.complete(ticket); return }
+                conn.send(content: ReceiverFrameDecoder.frame(data), completion: .contentProcessed { error in
+                    self.inputBudget.complete(ticket)
+                    if error != nil, self.connection === conn { self.drop(conn, status: "键鼠发送失败，请重新连接") }
+                })
+            }
+        }
+    }
+
+    private func configureDesktopInput(_ object: [String: Any]) {
+        let candidate = object["inputSession"] as? String
+        let valid = peerID != nil && (object["inputCaps"] as? [String])?.contains(DesktopInputProtocol.capability) == true
+            && candidate.flatMap(UUID.init(uuidString:)) != nil
+        let grant = valid ? candidate : nil
+        if grant == wireInputGrant, grant != nil { return }
+        wireInputGrant = grant
+        let epoch = inputBudget.reset(accepting: grant != nil)
+        let labels = ["ready": "已获授权；聚焦接收画面后可操作", "secureRequired": "请先配对并使用加密连接",
+                      "consentRequired": "请在发送端设置中允许 Mac 键鼠回传", "accessibilityRequired": "请在发送端授予辅助功能权限",
+                      "targetPending": "等待发送端准备显示器"]
+        let label = grant != nil ? labels["ready"]! : labels[object["inputStatus"] as? String ?? ""] ?? "发送端未授权键鼠回传，请检查双方设置"
+        DispatchQueue.main.async {
+            self.inputGeneration = epoch; self.inputGrant = grant; self.inputStatus = label
+        }
     }
 
     private func send(_ object: [String: Any], on conn: NWConnection? = nil,
@@ -283,23 +402,26 @@ final class StreamReceiver: ObservableObject {
                 drop(conn, status: "控制消息无效，等待发送端"); return
             }
             switch obj["type"] as? String {
+            case "inputConfig":
+                configureDesktopInput(obj)
             case "ping":
                 send(["type": "pong", "t": obj["t"] ?? 0, "mt": Date().timeIntervalSince1970 * 1000])
             case "streamConfig":
-                guard let codec = ReceiverVideoCodec(rawValue: obj["codec"] as? String ?? "h264") else {
-                    drop(conn, status: "不支持的编码，请使用 H.264"); return
-                }
-                let w = obj["width"] as? Int ?? 0
-                let h = obj["height"] as? Int ?? 0
-                guard w >= 2, h >= 2, w <= limits.width, h <= limits.height, w % 2 == 0, h % 2 == 0 else {
+                guard let config = AppleVideoConfiguration(obj, maxWidth: limits.width,
+                        maxHeight: limits.height, maxFps: maxFps) else {
                     drop(conn, status: "发送配置超出接收能力，请降低画质"); return
                 }
+                let codec = config.codec
+                let size = CGSize(width: config.width, height: config.height)
                 if codec == .hevc, hevcFailureSent {
                     drop(conn, status: "HEVC 回退失败，请选择 H.264 后重连"); return
                 }
-                videoCodec = codec
-                resetVideo()
-                configuredSize = CGSize(width: w, height: h)
+                if videoCodec != codec || configuredSize != size {
+                    videoCodec = codec
+                    DispatchQueue.main.async { self.codecLabel = codec == .hevc ? "HEVC" : "H.264" }
+                    resetVideo()
+                }
+                configuredSize = size
                 if codec == .hevc, !supportsHEVC { failVideo(on: conn); return }
                 fallbackDeadline = nil
             case "cursor":
@@ -414,6 +536,11 @@ final class StreamReceiver: ObservableObject {
     }
 
     private func resetStream() {
+        wireInputGrant = nil
+        let epoch = inputBudget.reset(accepting: false)
+        DispatchQueue.main.async {
+            self.inputGeneration = epoch; self.inputGrant = nil; self.inputStatus = "请连接支持键鼠回传的加密发送端"
+        }
         decoder = ReceiverFrameDecoder()
         videoCodec = .h264
         hevcFailureSent = false
@@ -422,7 +549,7 @@ final class StreamReceiver: ObservableObject {
         lastCursorSequence = 0
         sampleCount = 0
         statsStart = Date()
-        DispatchQueue.main.async { self.fps = 0; self.onReset?(); self.onCursor?(0, 0, false) }
+        DispatchQueue.main.async { self.fps = 0; self.codecLabel = "H.264"; self.encrypted = false; self.onReset?(); self.onCursor?(0, 0, false) }
     }
 
     private func publish(connected: Bool? = nil, status: String? = nil, port: UInt16? = nil) {

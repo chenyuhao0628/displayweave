@@ -1,4 +1,4 @@
-// PhoneReceiver — Milestone 1: receive H.264 over TCP and display it.
+// PhoneReceiver — negotiated H.264 / hardware HEVC over framed TCP.
 //
 // Pipeline:  TCP socket -> deframe -> Annex B parse -> CMSampleBuffer
 //            -> AVSampleBufferDisplayLayer (decodes + renders)
@@ -47,16 +47,30 @@ final class PhoneReceiver: ObservableObject {
     @Published var status = "正在启动…"
     @Published var fps = 0
     @Published var connected = false
+    @Published private(set) var encrypted = false
     @Published var videoSize = CGSize.zero   // for touch coordinate mapping
     @Published var perf = PerfStats()
     @Published private(set) var pencilAvailable = false
+    @Published private(set) var pencilExtendedAvailable = false
+    @Published private(set) var pencilShortcutsAvailable = false
+    @Published private(set) var selectedPencilTool = PencilTool.pen
+    private var pencilActionGrant: String? // main-thread projection
+    var onPencilToolChange: (() -> Void)?
+    @Published private(set) var pencilActionStatus = "等待高级 Pencil 协商"
     var onInputReset: (() -> Void)?
     private let inputSendBudget = InputSendBudget()
     private var pencilNegotiated = false
+    private var pencilExtendedNegotiated = false
+    private var pencilActionSession: String?
+    private var pencilActionSequence: UInt64 = 0
     private var pencilForwarder = PencilInputForwarder()
     var inputGeneration: UInt64 { inputSendBudget.generation }
 
     private var listener: NWListener?
+    private lazy var admissionPool = AppleSecureAdmissionPool(queue: queue)
+    private var security: AppleReceiverSecurity = .legacy
+    private var peerID: String?
+    private var securityObserver: NSObjectProtocol?
     private var listenerHealthy = false
     private var connection: NWConnection?
     private let queue = DispatchQueue(label: "receiver.video")
@@ -64,8 +78,15 @@ final class PhoneReceiver: ObservableObject {
     private var running = false
     private var listenerGeneration: UInt64 = 0
     private var formatDesc: CMVideoFormatDescription?
-    private var sps: Data?
-    private var pps: Data?
+    private let supportsHEVC = VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
+    private var videoCodec: ReceiverVideoCodec = .h264
+    private var bitstream = ReceiverVideoBitstream(codec: .h264)
+    private var configuredVideo: AppleVideoConfiguration?
+    private var videoFallback = AppleVideoFallbackPolicy()
+    private var waitingForKeyframe = true
+    private var displayMaxFps = 60
+    @Published private(set) var requestedFps = 60
+    @Published private(set) var codecLabel = "H.264"
 
     // Liveness: the Mac streams video and pings every 2s; if nothing arrives
     // for 5s the connection is half-open (Mac killed, tunnel died) — drop it
@@ -107,9 +128,42 @@ final class PhoneReceiver: ObservableObject {
     var onCursor: ((_ x: Double, _ y: Double, _ visible: Bool) -> Void)?
     var onCursorImage: ((_ image: UIImage, _ anchor: CGPoint, _ normSize: CGSize) -> Void)?
 
+    // Only the current main-thread presentation may clear callbacks. SwiftUI can
+    // create the replacement before dismantling its predecessor.
+    private var presentationID: UUID?
+    private var retirePresentation: (() -> Void)?
+
+    func claimPresentation(_ id: UUID, retire: @escaping () -> Void) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let previous = retirePresentation
+        presentationID = nil; retirePresentation = nil
+        clearPresentationCallbacks()
+        previous?() // release old input before the new view can emit any
+        presentationID = id; retirePresentation = retire
+    }
+
+    func releasePresentation(_ id: UUID) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard presentationID == id else { return }
+        let previous = retirePresentation
+        presentationID = nil; retirePresentation = nil
+        clearPresentationCallbacks()
+        previous?()
+    }
+
+    private func clearPresentationCallbacks() {
+        onInputReset = nil; onPencilToolChange = nil
+        onCursor = nil; onCursorImage = nil; onDecodedFrame = nil
+    }
+
     // Metal renderer path (experimental, "metalRenderer" setting): we decode
     // explicitly and hand BGRA buffers out; called on the receiver queue.
-    var onDecodedFrame: ((_ pixelBuffer: CVPixelBuffer, _ captureMs: Double?) -> Void)?
+    private let decodedFrameLock = NSLock()
+    private var decodedFrameHandler: ((CVPixelBuffer, Double?) -> Void)?
+    var onDecodedFrame: ((_ pixelBuffer: CVPixelBuffer, _ captureMs: Double?) -> Void)? {
+        get { decodedFrameLock.lock(); defer { decodedFrameLock.unlock() }; return decodedFrameHandler }
+        set { decodedFrameLock.lock(); decodedFrameHandler = newValue; decodedFrameLock.unlock() }
+    }
     private var decompressionSession: VTDecompressionSession?
     private var decodeWindow: [Double] = []
     private var photonWindow: [Double] = []
@@ -122,11 +176,11 @@ final class PhoneReceiver: ObservableObject {
 
     /// Called by the renderer's presented handler: maps the CACurrentMediaTime-
     /// based glass timestamp into wall-clock ms and computes true photon e2e.
-    func recordPresented(presentedTime: CFTimeInterval, captureMs: Double?) {
+    func recordPresented(presentedTime: CFTimeInterval, captureMs: Double?, generation: UInt64) {
         guard let captureMs, presentedTime > 0 else { return }
         let presentedWallMs = nowMs - (CACurrentMediaTime() - presentedTime) * 1000
         queue.async {
-            guard let offset = self.clockOffsetMs else { return }
+            guard self.inputSendBudget.generation == generation, let offset = self.clockOffsetMs else { return }
             let photon = (presentedWallMs + offset) - captureMs
             if photon > -50, photon < 5000 {
                 self.photonWindow.append(max(photon, 0))
@@ -157,18 +211,12 @@ final class PhoneReceiver: ObservableObject {
     // transport" — the service name can't serve that role since it's
     // user-editable, and iOS offers no public API for the hardware UDID
     // that usbmuxd reports.
-    static let installID: String = {
-        if let existing = UserDefaults.standard.string(forKey: "installID") {
-            return existing
-        }
-        let fresh = UUID().uuidString
-        UserDefaults.standard.set(fresh, forKey: "installID")
-        return fresh
-    }()
+    static let installID = TransportInstallIdentity.value
 
     private var advertisedService: NWListener.Service {
         var txt = NWTXTRecord()
         txt["id"] = Self.installID
+        if security.encrypted { txt["security"] = "tls-v1" }
         return NWListener.Service(name: serviceName, type: "_opensidecar._tcp",
                                   domain: nil, txtRecord: txt)
     }
@@ -187,7 +235,8 @@ final class PhoneReceiver: ObservableObject {
         }
     }
 
-    func setNativePanel(long: Int, short: Int, scale: Double) {
+    func setNativePanel(long: Int, short: Int, scale: Double, maxFps: Int = 60) {
+        displayMaxFps = AppleVideoPolicy.frameRate(maximum: maxFps)
         nativeLong = long
         nativeShort = short
         deviceScale = scale
@@ -212,6 +261,26 @@ final class PhoneReceiver: ObservableObject {
     init(displayLayer: AVSampleBufferDisplayLayer) {
         self.displayLayer = displayLayer
         displayLayer.videoGravity = .resizeAspect
+        securityObserver = NotificationCenter.default.addObserver(forName: TransportSecurityChange.notification,
+            object: nil, queue: nil) { [weak self] notification in
+            let kind = notification.userInfo?["kind"] as? String, peer = notification.userInfo?["peer"] as? String
+            self?.queue.async { [weak self] in self?.securityChanged(kind: kind, peer: peer) }
+        }
+    }
+
+    deinit { if let securityObserver { NotificationCenter.default.removeObserver(securityObserver) } }
+
+    private func securityChanged(kind: String?, peer: String?) {
+        guard kind != "senderMode" else { return }
+        admissionPool.cancelAll()
+        if (kind == "revoked" && peerID == peer) || kind == "listenerMode" || kind == "identityReset" {
+            connection?.cancel(); connection = nil; peerID = nil
+            resetStreamState(); setConnected(false)
+        }
+        if kind == "listenerMode" || kind == "identityReset" {
+            listenerGeneration &+= 1
+            if running { restartListener() }
+        }
     }
 
     func start(port: UInt16 = 9000) {
@@ -244,9 +313,12 @@ final class PhoneReceiver: ObservableObject {
             let oldListener = self.listener
             self.listener = nil
             oldListener?.cancel()
+            self.admissionPool.cancelAll()
+            if case .tls(_, let state) = self.security { state.stopPairing() }
             self.listenerHealthy = false
             let old = self.connection
             self.connection = nil
+            self.peerID = nil
             self.resetStreamState()
             self.setConnected(false)
             self.setStatus("已在后台断开")
@@ -262,6 +334,7 @@ final class PhoneReceiver: ObservableObject {
         guard running else { return }
         listener?.cancel()
         listener = nil
+        admissionPool.cancelAll()
         listenerHealthy = false
         startListener()
     }
@@ -270,12 +343,18 @@ final class PhoneReceiver: ObservableObject {
         guard running else { return }
         let generation = listenerGeneration
         do {
+            security = try .live(localID: Self.installID)
             // noDelay matters most in THIS direction: touch events are tiny
             // packets, and Nagle would hold each one until the previous is
             // ACKed — batched, late drags read as input lag.
             let tcp = NWProtocolTCP.Options()
             tcp.noDelay = true
-            let params = NWParameters(tls: nil, tcp: tcp)
+            let tls: NWProtocolTLS.Options?
+            if case .tls(let identity, let state) = security {
+                tls = try AppleTLS.options(identity: identity, peerIsServer: false, queue: queue,
+                                           acceptedFingerprint: { state.acceptsTLS($0) })
+            } else { tls = nil }
+            let params = NWParameters(tls: tls, tcp: tcp)
             params.allowLocalEndpointReuse = true
             params.serviceClass = .interactiveVideo
             listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
@@ -289,6 +368,41 @@ final class PhoneReceiver: ObservableObject {
         active.service = advertisedService
         active.newConnectionHandler = { [weak self, weak active] conn in
             guard let self, self.running, self.listener === active else { conn.cancel(); return }
+            if case .tls(_, let state) = self.security {
+                self.admissionPool.accept(conn, pairing: state) { [weak self, weak active] result in
+                    guard let self, self.running, self.listener === active,
+                          self.listenerGeneration == generation else { conn.cancel(); return }
+                    switch result {
+                    case .success(let peer): self.adopt(conn, authenticatedPeer: peer)
+                    case .failure(let error):
+                        if self.connection == nil { self.setStatus(error.localizedDescription) }
+                    }
+                }
+            } else { self.adopt(conn) }
+        }
+        active.stateUpdateHandler = { [weak self, weak active] state in
+            guard let self, self.running, self.listener === active else { return }
+            switch state {
+            case .ready:
+                self.listenerHealthy = true
+                self.setStatus(self.security.encrypted ? "正在安全监听 :\(self.port)" : "旧版兼容（未加密） :\(self.port)")
+            case .failed(let error):
+                Log.info("listener failed: \(error) — restarting in 1s")
+                self.listenerHealthy = false
+                self.setStatus("监听失败，正在重启…")
+                self.queue.asyncAfter(deadline: .now() + 1) { [weak self, weak active] in
+                    guard let self, self.running, self.listenerGeneration == generation,
+                          self.listener === active else { return }
+                    self.restartListener()
+                }
+            case .cancelled: self.listenerHealthy = false
+            default: break
+            }
+        }
+        active.start(queue: queue)
+    }
+
+    private func adopt(_ conn: NWConnection, authenticatedPeer: SecurePeerRecord? = nil) {
             Log.info("new connection from \(String(describing: conn.endpoint))")
             // usbmux-forwarded (cable) connections arrive from loopback;
             // anything else came over the network.
@@ -298,6 +412,7 @@ final class PhoneReceiver: ObservableObject {
             // Replace any existing connection and reset decoder state.
             self.connection?.cancel()
             self.connection = conn
+            self.peerID = authenticatedPeer?.installID
             self.resetStreamState()
             conn.stateUpdateHandler = { [weak self, weak conn] state in
                 guard let self, let conn, self.running, self.connection === conn else { return }
@@ -313,30 +428,18 @@ final class PhoneReceiver: ObservableObject {
                 default: break
                 }
             }
-            conn.start(queue: self.queue)
-            self.receive(on: conn)
-        }
-        active.stateUpdateHandler = { [weak self, weak active] state in
-            guard let self, self.running, self.listener === active else { return }
-            switch state {
-            case .ready:
-                self.listenerHealthy = true
-                self.setStatus("正在监听 :\(self.port)")
-            case .failed(let error):
-                Log.info("listener failed: \(error) — restarting in 1s")
-                self.listenerHealthy = false
-                self.setStatus("监听失败，正在重启…")
-                self.queue.asyncAfter(deadline: .now() + 1) { [weak self, weak active] in
-                    guard let self, self.running, self.listenerGeneration == generation,
-                          self.listener === active else { return }
-                    self.restartListener()
-                }
-            case .cancelled:
-                self.listenerHealthy = false
-            default: break
+            let encrypted = authenticatedPeer != nil
+            let generation = self.inputSendBudget.generation
+            DispatchQueue.main.async {
+                guard self.inputSendBudget.generation == generation else { return }
+                self.encrypted = encrypted
             }
-        }
-        active.start(queue: queue)
+            if encrypted {
+                self.lastDataReceived = Date()
+                self.setConnected(true)
+                self.sendHello(on: conn)
+            } else { conn.start(queue: self.queue) }
+            self.receive(on: conn)
     }
 
     // MARK: - Liveness (ping + watchdog)
@@ -357,12 +460,30 @@ final class PhoneReceiver: ObservableObject {
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = obj["type"] as? String else { return }
         switch type {
+        case "streamConfig":
+            configureVideo(obj)
         case "inputConfig":
             pencilNegotiated = PencilProtocol.supports(obj["inputCaps"] as? [String])
+            pencilExtendedNegotiated = pencilNegotiated && peerID != nil && (obj["inputCaps"] as? [String])?.contains(PencilProtocol.extendedCapability) == true
+            let candidate = obj["pencilActionSession"] as? String
+            let session = pencilExtendedNegotiated && candidate.flatMap(UUID.init(uuidString:)) != nil ? candidate : nil
+            if session != pencilActionSession { pencilActionSequence = 0 }
+            pencilActionSession = session
             let enabled = pencilNegotiated, generation = inputSendBudget.generation
+            let extended = pencilExtendedNegotiated
+            let labels = ["consentRequired": "请在 Mac 权限设置中允许 Pencil 快捷键", "accessibilityRequired": "请在 Mac 授予辅助功能权限",
+                          "targetPending": "等待 Mac 准备显示器", "secureRequired": "快捷键需要加密配对"]
+            let actionStatus = session != nil ? "快捷键已授权" : labels[obj["pencilActionStatus"] as? String ?? ""] ?? "发送端未启用高级快捷键"
             DispatchQueue.main.async {
                 guard self.inputSendBudget.generation == generation else { return }
                 self.pencilAvailable = enabled
+                self.pencilExtendedAvailable = extended
+                if !extended && self.selectedPencilTool != .pen {
+                    self.onPencilToolChange?(); self.selectedPencilTool = .pen
+                }
+                self.pencilShortcutsAvailable = session != nil
+                self.pencilActionGrant = session
+                self.pencilActionStatus = actionStatus
             }
         case "pong":
             guard let t1 = obj["t"] as? Double, let mt = obj["mt"] as? Double else { return }
@@ -388,11 +509,19 @@ final class PhoneReceiver: ObservableObject {
             let x = obj["x"] as? Double ?? 0
             let y = obj["y"] as? Double ?? 0
             guard x.isFinite, y.isFinite else { return }
-            DispatchQueue.main.async { self.onCursor?(x, y, visible) }
+            let generation = inputSendBudget.generation
+            DispatchQueue.main.async {
+                guard self.inputSendBudget.generation == generation else { return }
+                self.onCursor?(x, y, visible)
+            }
         case "cursorImg":
             guard let cursor = ReceiverCursorImage.decode(obj) else { return }
             let image = UIImage(cgImage: cursor.image)
-            DispatchQueue.main.async { self.onCursorImage?(image, cursor.anchor, cursor.normalizedSize) }
+            let generation = inputSendBudget.generation
+            DispatchQueue.main.async {
+                guard self.inputSendBudget.generation == generation else { return }
+                self.onCursorImage?(image, cursor.anchor, cursor.normalizedSize)
+            }
         default:
             break
         }
@@ -416,16 +545,27 @@ final class PhoneReceiver: ObservableObject {
     private func resetStreamState() {
         let generation = inputSendBudget.reset(accepting: connection != nil)
         pencilNegotiated = false
+        pencilExtendedNegotiated = false
+        pencilActionSession = nil; pencilActionSequence = 0
         pencilForwarder = PencilInputForwarder()
         DispatchQueue.main.async {
             guard self.inputSendBudget.generation == generation else { return }
             self.pencilAvailable = false
+            self.pencilExtendedAvailable = false; self.pencilShortcutsAvailable = false
+            self.pencilActionGrant = nil; self.selectedPencilTool = .pen
+            self.pencilActionStatus = "等待高级 Pencil 协商"
             self.onInputReset?()
         }
         frameDecoder = ReceiverFrameDecoder()
-        formatDesc = nil
-        sps = nil
-        pps = nil
+        videoCodec = .h264
+        videoFallback = AppleVideoFallbackPolicy()
+        configuredVideo = nil
+        resetVideoDecoder()
+        DispatchQueue.main.async {
+            guard self.inputSendBudget.generation == generation else { return }
+            self.requestedFps = 60
+            self.codecLabel = "H.264"
+        }
         lastFrameAt = nil
         frameIntervals.removeAll()
         decodeFlushes = 0
@@ -435,6 +575,7 @@ final class PhoneReceiver: ObservableObject {
         offsetSamples.removeAll(); clockOffsetMs = nil; lastRttMs = 0
         e2eWindow.removeAll(); e2eRing.removeAll(); encodeWindow.removeAll()
         DispatchQueue.main.async {
+            guard self.inputSendBudget.generation == generation else { return }
             self.videoSize = .zero
             self.fps = 0
             self.perf = PerfStats()
@@ -450,7 +591,12 @@ final class PhoneReceiver: ObservableObject {
 
     // MARK: - Control messages (phone -> Mac)
 
+    private var videoLimits: (width: Int, height: Int) {
+        devicePixelsHigh > devicePixelsWide ? (2304, 4096) : (4096, 2304)
+    }
+
     private func sendHello(on conn: NWConnection) {
+        let codecs = supportsHEVC ? ["h264", "hevc"] : ["h264"]
         sendControl([
             "type": "hello",
             "pixelsWide": devicePixelsWide,
@@ -458,7 +604,15 @@ final class PhoneReceiver: ObservableObject {
             "scale": deviceScale,
             "device": UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone",
             "id": Self.installID,
-            "inputCaps": [PencilProtocol.capability],
+            "inputCaps": peerID != nil ? [PencilProtocol.capability, PencilProtocol.extendedCapability] : [PencilProtocol.capability],
+            "capabilities": [AppleVideoPolicy.capability],
+            "refreshRate": displayMaxFps, "maxFps": displayMaxFps,
+            "displayMaxFrameRate": displayMaxFps,
+            "supportedCodecs": codecs, "preferredCodec": supportsHEVC ? "hevc" : "h264",
+            "maxEncodeWide": videoLimits.width, "maxEncodeHigh": videoLimits.height,
+            "videoCaps": codecs.map { ["codec": $0, "maxWidth": videoLimits.width,
+                "maxHeight": videoLimits.height, "maxFrameRate": displayMaxFps,
+                "maxPixelsPerSecond": AppleVideoPolicy.maxPixelsPerSecond] as [String: Any] },
         ], on: conn)
         Log.info("hello sent")
     }
@@ -482,8 +636,25 @@ final class PhoneReceiver: ObservableObject {
 
     func sendPencil(_ sample: PencilSample, generation: UInt64) {
         enqueueControl(expectedGeneration: generation) {
-            self.pencilForwarder.messages(for: sample, enabled: self.pencilNegotiated)
+            self.pencilForwarder.messages(for: sample, enabled: self.pencilNegotiated, extended: self.pencilExtendedNegotiated)
         }
+    }
+
+    func sendPencilAction(_ action: PencilRemoteAction, generation: UInt64) {
+        guard let expected = pencilActionGrant else { return }
+        enqueueControl(expectedGeneration: generation) {
+            guard self.pencilExtendedNegotiated, let session = self.pencilActionSession,
+                  session == expected,
+                  self.pencilActionSequence < 9_007_199_254_740_991 else { return [] }
+            self.pencilActionSequence += 1
+            return [["type": "pencilAction", "action": action.rawValue, "inputSession": session, "sequence": self.pencilActionSequence]]
+        }
+    }
+
+    func selectPencilTool(_ tool: PencilTool) {
+        guard pencilExtendedAvailable, tool != selectedPencilTool else { return }
+        onPencilToolChange?()
+        selectedPencilTool = tool
     }
 
     func endPencilProximity(x: Double, y: Double, generation: UInt64) {
@@ -587,97 +758,92 @@ final class PhoneReceiver: ObservableObject {
             return
         }
 
-        // Split on 4-byte start codes (our sender only emits 00 00 00 01).
-        // Bytes before the FIRST start code are the telemetry prefix
-        // ({"cap":…,"snd":…} stamped by the Mac).
-        var nalus: [Data] = []
-        var metaPrefix: Data?
-        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
-            let bytes = raw.bindMemory(to: UInt8.self)
-            var naluStart: Int? = nil
-            var firstSC: Int? = nil
-            var i = 0
-            while i + 4 <= bytes.count {
-                if bytes[i] == 0, bytes[i+1] == 0, bytes[i+2] == 0, bytes[i+3] == 1 {
-                    if firstSC == nil { firstSC = i }
-                    if let s = naluStart, s < i { nalus.append(Data(bytes[s..<i])) }
-                    naluStart = i + 4
-                    i += 4
-                } else {
-                    i += 1
-                }
+        guard !videoFallback.awaitingFallback else { return }
+        let packet: ReceiverVideoBitstream.Packet
+        do { packet = try bitstream.parse(data) }
+        catch { failVideo(); return }
+        if packet.formatChanged { waitingForKeyframe = true }
+        guard let format = packet.format else { requestKeyframeIfNeeded(); return }
+        if packet.formatChanged {
+            let dims = CMVideoFormatDescriptionGetDimensions(format)
+            guard dims.width > 0, dims.height > 0, dims.width <= 8192, dims.height <= 8192,
+                  Int64(dims.width) * Int64(dims.height) <= 33_554_432,
+                  configuredVideo == nil || (Int(dims.width) == configuredVideo?.width
+                    && Int(dims.height) == configuredVideo?.height) else {
+                rejectVideo("视频尺寸与配置不符，请重新连接"); return
             }
-            if let s = naluStart, s < bytes.count { nalus.append(Data(bytes[s...])) }
-            if let f = firstSC, f > 0 { metaPrefix = Data(bytes[0..<f]) }
-        }
-
-        var captureMs: Double?
-        var sendMs: Double?
-        if let metaPrefix,
-           let meta = try? JSONSerialization.jsonObject(with: metaPrefix) as? [String: Any] {
-            captureMs = meta["cap"] as? Double
-            sendMs = meta["snd"] as? Double
-        }
-
-        var vclNALUs: [Data] = []
-        for nalu in nalus {
-            guard let first = nalu.first else { continue }
-            switch first & 0x1F {
-            case 7:                                  // SPS (stream may change
-                if sps != nalu {                     //  size on rotation)
-                    sps = nalu
-                    formatDesc = nil
-                }
-            case 8:                                  // PPS
-                if pps != nalu {
-                    pps = nalu
-                    formatDesc = nil
-                }
-            case 6: break                            // SEI — skip
-            default: vclNALUs.append(nalu)           // slice data
+            displayLayer.flush()
+            formatDesc = format
+            let generation = inputSendBudget.generation
+            DispatchQueue.main.async {
+                guard self.inputSendBudget.generation == generation else { return }
+                self.videoSize = CGSize(width: Int(dims.width), height: Int(dims.height))
             }
+            setStatus("正在接收 \(dims.width)×\(dims.height) · \(videoCodec.rawValue.uppercased())")
         }
-        if formatDesc == nil, let sps, let pps {
-            displayLayer.flush()   // drop any frames from the previous format
-            buildFormatDescription(sps: sps, pps: pps)
+        guard !packet.slices.isEmpty else { return }
+        if displayLayer.status == .failed { failVideo(); return }
+        if !useMetalPath, !displayLayer.isReadyForMoreMediaData {
+            displayLayer.flush()
+            waitingForKeyframe = true
         }
-        guard !vclNALUs.isEmpty else { return }
-        // All slices of one wire frame go into ONE sample buffer.
-        enqueueFrame(vclNALUs, captureMs: captureMs, sendMs: sendMs)
+        if waitingForKeyframe, !packet.keyframe { requestKeyframeIfNeeded(); return }
+        waitingForKeyframe = false
+        let metadata = packet.metadata.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        enqueueFrame(packet.slices, captureMs: metadata?["cap"] as? Double,
+                     sendMs: metadata?["snd"] as? Double)
     }
 
-    private func buildFormatDescription(sps: Data, pps: Data) {
-        sps.withUnsafeBytes { spsBuf in
-            pps.withUnsafeBytes { ppsBuf in
-                let ptrs: [UnsafePointer<UInt8>] = [
-                    spsBuf.bindMemory(to: UInt8.self).baseAddress!,
-                    ppsBuf.bindMemory(to: UInt8.self).baseAddress!
-                ]
-                let sizes = [sps.count, pps.count]
-                let status = CMVideoFormatDescriptionCreateFromH264ParameterSets(
-                    allocator: kCFAllocatorDefault,
-                    parameterSetCount: 2,
-                    parameterSetPointers: ptrs,
-                    parameterSetSizes: sizes,
-                    nalUnitHeaderLength: 4,
-                    formatDescriptionOut: &formatDesc
-                )
-                if status == noErr, let formatDesc {
-                    let dims = CMVideoFormatDescriptionGetDimensions(formatDesc)
-                    guard dims.width > 0, dims.height > 0, dims.width <= 8192, dims.height <= 8192,
-                          Int64(dims.width) * Int64(dims.height) <= 33_554_432 else {
-                        self.formatDesc = nil
-                        return
-                    }
-                    Log.info("format description built: \(dims.width)x\(dims.height)")
-                    DispatchQueue.main.async {
-                        self.videoSize = CGSize(width: Int(dims.width), height: Int(dims.height))
-                    }
-                    setStatus("正在接收 \(dims.width)×\(dims.height)")
-                } else {
-                    Log.info("format description FAILED: \(status)")
-                }
-            }
+    private func resetVideoDecoder() {
+        formatDesc = nil
+        bitstream = ReceiverVideoBitstream(codec: videoCodec)
+        waitingForKeyframe = true
+        decodeErrorCount = 0
+        displayLayer.flushAndRemoveImage()
+        if let session = decompressionSession { VTDecompressionSessionInvalidate(session) }
+        decompressionSession = nil
+    }
+
+    private func configureVideo(_ object: [String: Any]) {
+        guard let config = AppleVideoConfiguration(object, maxWidth: videoLimits.width,
+                maxHeight: videoLimits.height, maxFps: displayMaxFps) else {
+            rejectVideo("视频配置超出能力，请降低画质后重连"); return
+        }
+        guard videoFallback.accepts(config.codec) else {
+            rejectVideo("HEVC 回退失败，请选择 H.264 后重连"); return
+        }
+        let changed = configuredVideo?.codec != config.codec
+            || configuredVideo?.width != config.width || configuredVideo?.height != config.height
+        videoCodec = config.codec
+        configuredVideo = config
+        if changed { resetVideoDecoder() }
+        if config.codec == .hevc, !supportsHEVC { failVideo(); return }
+        if config.codec == .h264 { videoFallback.receivedH264() }
+        let generation = inputSendBudget.generation
+        DispatchQueue.main.async {
+            guard self.inputSendBudget.generation == generation else { return }
+            self.requestedFps = config.fps
+            self.codecLabel = config.codec == .hevc ? "HEVC" : "H.264"
+        }
+    }
+
+    private func rejectVideo(_ message: String) {
+        dropInputConnection(generation: inputSendBudget.generation, status: message)
+    }
+
+    private func failVideo() {
+        guard videoCodec == .hevc else {
+            rejectVideo("视频解码失败，请重新连接"); return
+        }
+        guard videoFallback.failHEVC(now: ProcessInfo.processInfo.systemUptime),
+              let conn = connection else { return }
+        resetVideoDecoder()
+        sendControl(["type": "codecFailure", "codec": "hevc", "message": "Apple HEVC decode failed"], on: conn)
+        setStatus("HEVC 不可用，正在回退 H.264")
+        queue.asyncAfter(deadline: .now() + 3) { [weak self, weak conn] in
+            guard let self, let conn, self.connection === conn,
+                  self.videoFallback.expired(now: ProcessInfo.processInfo.systemUptime) else { return }
+            self.rejectVideo("HEVC 回退超时，请在发送端选择 H.264 后重连")
         }
     }
 
@@ -833,7 +999,9 @@ final class PhoneReceiver: ObservableObject {
                 photonWindow.removeAll(keepingCapacity: true)
             }
 
+            let generation = inputSendBudget.generation
             DispatchQueue.main.async {
+                guard self.inputSendBudget.generation == generation else { return }
                 self.fps = fps
                 self.perf = stats
             }
@@ -863,8 +1031,10 @@ final class PhoneReceiver: ObservableObject {
             allocator: nil, formatDescription: formatDesc, decoderSpecification: nil,
             imageBufferAttributes: attrs as CFDictionary, outputCallback: nil,
             decompressionSessionOut: &session)
-        if status != noErr { Log.info("VTDecompressionSessionCreate failed: \(status)") }
-        decompressionSession = session
+        if status != noErr {
+            Log.info("VTDecompressionSessionCreate failed: \(status)")
+            failVideo()
+        } else { decompressionSession = session }
     }
 
     /// Synchronous hardware decode — the handler runs before this returns,
@@ -873,10 +1043,11 @@ final class PhoneReceiver: ObservableObject {
         ensureDecompressionSession()
         guard let session = decompressionSession else { return }
         let t0 = nowMs
+        let generation = inputSendBudget.generation
         let status = VTDecompressionSessionDecodeFrame(
             session, sampleBuffer: sample, flags: [], infoFlagsOut: nil
         ) { [weak self] status, _, imageBuffer, _, _ in
-            guard let self else { return }
+            guard let self, self.inputSendBudget.generation == generation else { return }
             if status == noErr, let imageBuffer {
                 self.decodeWindow.append(self.nowMs - t0)
                 self.onDecodedFrame?(imageBuffer, captureMs)
@@ -899,6 +1070,7 @@ final class PhoneReceiver: ObservableObject {
             }
             requestKeyframeIfNeeded()
         }
+        if decodeErrorCount >= 3 { failVideo() }
     }
 
     private var lastKeyframeRequest = Date.distantPast
@@ -920,14 +1092,22 @@ final class PhoneReceiver: ObservableObject {
 
     private func setStatus(_ text: String) {
         Log.info("status: \(text)")
-        DispatchQueue.main.async { self.status = text }
+        let generation = inputSendBudget.generation
+        DispatchQueue.main.async {
+            guard self.inputSendBudget.generation == generation else { return }
+            self.status = text
+        }
     }
 
     private func setConnected(_ value: Bool) {
-        DispatchQueue.main.async { self.connected = value }
-        if !value { setStatus("正在监听 :9000") }
+        let generation = inputSendBudget.generation
+        DispatchQueue.main.async {
+            guard self.inputSendBudget.generation == generation else { return }
+            self.connected = value; if !value { self.encrypted = false }
+        }
+        if !value { setStatus(security.encrypted ? "正在安全监听 :9000" : "旧版兼容（未加密） :9000") }
         else {
-            setStatus("已连接")
+            setStatus(peerID == nil ? "已连接（未加密兼容）" : "已加密连接")
             // Remember the first ever successful connection to a Mac so the
             // first-run onboarding hint never reappears (issue #49).
             if !UserDefaults.standard.bool(forKey: "hasConnectedBefore") {

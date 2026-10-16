@@ -11,8 +11,11 @@ final class InputInjector {
     private var isDown = false
     private var penDown = false
     private var inRange = false
+    private var tabletTool = PencilTool.pen
+    private var tabletRoll = 0.0
     private let boundsProvider: () -> CGRect
     private let eventSink: ((CGEvent) -> Void)?
+    private let permission: () -> Bool
     private let tabletDeviceID: Int64 = 424242
     private var lastPoint = CGPoint.zero
     // A real event source (vs nil) plus clickState=1 below: menu tracking
@@ -22,14 +25,16 @@ final class InputInjector {
     private let source = CGEventSource(stateID: .hidSystemState)
 
     init(displayID: CGDirectDisplayID, boundsProvider: (() -> CGRect)? = nil,
-         eventSink: ((CGEvent) -> Void)? = nil) {
+         eventSink: ((CGEvent) -> Void)? = nil, permission: (() -> Bool)? = nil) {
         self.displayID = displayID
         self.boundsProvider = boundsProvider ?? { CGDisplayBounds(displayID) }
         self.eventSink = eventSink
+        self.permission = permission ?? { eventSink != nil || AXIsProcessTrusted() }
     }
 
-    private var canPost: Bool { eventSink != nil || AXIsProcessTrusted() }
+    private var canPost: Bool { permission() }
     private func post(_ event: CGEvent) {
+        guard canPost else { return }
         if let eventSink { eventSink(event) }
         else if AXIsProcessTrusted() { event.post(tap: .cghidEventTap) }
     }
@@ -111,7 +116,13 @@ final class InputInjector {
     }
 
     func handlePencil(_ sample: PencilSample) {
-        guard canPost else { return }
+        guard canPost else { cancelPress(); return }
+        if sample.tool != tabletTool {
+            cancelPress()
+            guard sample.phase == .down || sample.phase == .hover else { return }
+            tabletTool = sample.tool
+        }
+        tabletRoll = (sample.roll * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
         let bounds = boundsProvider()
         let point = CGPoint(x: bounds.minX + sample.x * bounds.width, y: bounds.minY + sample.y * bounds.height)
         switch sample.phase {
@@ -150,6 +161,33 @@ final class InputInjector {
         lastPoint = point
     }
 
+    /// Every chord is synchronous and balanced; no key remains owned after return.
+    func handleShortcut(_ shortcut: PencilShortcut) {
+        guard canPost else { return }
+        cancelPress()
+        let keySource = CGEventSource(stateID: .privateState)
+        let modifierKeys: [CGKeyCode] = [56, 59, 58, 55]
+        let flags: [CGEventFlags] = [.maskShift, .maskControl, .maskAlternate, .maskCommand]
+        var current = CGEventFlags()
+        for bit in 0..<4 where shortcut.modifiers & (1 << bit) != 0 {
+            current.insert(flags[bit])
+            if let e = CGEvent(keyboardEventSource: keySource, virtualKey: modifierKeys[bit], keyDown: true) {
+                e.type = .flagsChanged; e.flags = current; post(e)
+            }
+        }
+        for down in [true, false] {
+            if let e = CGEvent(keyboardEventSource: keySource, virtualKey: shortcut.keyCode, keyDown: down) {
+                e.flags = current; post(e)
+            }
+        }
+        for bit in (0..<4).reversed() where shortcut.modifiers & (1 << bit) != 0 {
+            current.remove(flags[bit])
+            if let e = CGEvent(keyboardEventSource: keySource, virtualKey: modifierKeys[bit], keyDown: false) {
+                e.type = .flagsChanged; e.flags = current; post(e)
+            }
+        }
+    }
+
     private func setProximity(_ entering: Bool, at point: CGPoint) {
         guard entering != inRange else { return }
         inRange = entering
@@ -161,10 +199,10 @@ final class InputInjector {
         event.setIntegerValueField(.tabletProximityEventPointerID, value: 0x0D02)
         event.setIntegerValueField(.tabletProximityEventDeviceID, value: tabletDeviceID)
         event.setIntegerValueField(.tabletProximityEventSystemTabletID, value: 0)
-        event.setIntegerValueField(.tabletProximityEventPointerType, value: 1)
-        event.setIntegerValueField(.tabletProximityEventVendorPointerType, value: 0x0802)
-        // IOLLEvent.h: device ID, X/Y, buttons, tilt X/Y, pressure. No rotation.
-        event.setIntegerValueField(.tabletProximityEventCapabilityMask, value: 0x05C7)
+        event.setIntegerValueField(.tabletProximityEventPointerType, value: tabletTool == .eraser ? 3 : 1)
+        event.setIntegerValueField(.tabletProximityEventVendorPointerType, value: tabletTool == .eraser ? 0x080A : 0x0802)
+        // IOLLEvent.h: device ID, X/Y, buttons, tilt X/Y, pressure and rotation.
+        event.setIntegerValueField(.tabletProximityEventCapabilityMask, value: 0x25C7)
         event.setIntegerValueField(.tabletProximityEventEnterProximity, value: entering ? 1 : 0)
         event.flags = .maskNonCoalesced
         post(event)
@@ -182,7 +220,7 @@ final class InputInjector {
         event.setIntegerValueField(.tabletEventPointPressure, value: Int64((pressure * 65535).rounded()))
         event.setDoubleValueField(.tabletEventTiltX, value: tilt.x)
         event.setDoubleValueField(.tabletEventTiltY, value: tilt.y)
-        event.setDoubleValueField(.tabletEventRotation, value: 0)
+        event.setDoubleValueField(.tabletEventRotation, value: tabletRoll)
         event.flags = .maskNonCoalesced
         post(event)
     }

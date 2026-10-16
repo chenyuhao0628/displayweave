@@ -7,13 +7,10 @@ import android.os.Handler;
 import android.os.Looper;
 
 import java.io.File;
-import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class UpdateCoordinator {
-    private static final String FEED_URL =
-            "https://chenyuhao0628.github.io/displayweave/android-update.json";
     private static final String KEY_LAST_SUCCESSFUL_CHECK = "updateLastSuccessfulCheck";
     private static final String KEY_PENDING_INSTALL_PERMISSION = "updatePendingInstallPermission";
 
@@ -52,7 +49,7 @@ public final class UpdateCoordinator {
         post(() -> listener.onCheckState("正在检查更新…"));
         executor.execute(() -> {
             try {
-                UpdateManifest manifest = client.fetchManifest(freshManifestUrl());
+                UpdateManifest manifest = client.fetchLatestManifest(System.currentTimeMillis());
                 long installed = installedVersionCode();
                 preferences.edit().putLong(KEY_LAST_SUCCESSFUL_CHECK,
                         System.currentTimeMillis()).apply();
@@ -176,10 +173,6 @@ public final class UpdateCoordinator {
         return android.os.Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
     }
 
-    private URL freshManifestUrl() throws Exception {
-        return new URL(FEED_URL + "?displayweave_cache_bust=" + System.currentTimeMillis());
-    }
-
     private synchronized void validateLatestAndInstall(
             UpdateManifest expectedManifest, File verified) {
         if (installing) return;
@@ -188,7 +181,7 @@ public final class UpdateCoordinator {
         executor.execute(() -> {
             boolean installPosted = false;
             try {
-                UpdateManifest latest = client.fetchManifest(freshManifestUrl());
+                UpdateManifest latest = client.fetchLatestManifest(System.currentTimeMillis());
                 if (expectedManifest != null
                         && !UpdatePolicy.isSameArtifact(latest, expectedManifest)) {
                     deleteVerifiedDownload(verified);

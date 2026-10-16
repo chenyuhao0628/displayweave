@@ -17,10 +17,16 @@ run_test() {
 }
 
 settings=(
+  Mac/DesktopResolution.swift
   Mac/FrameSizePolicy.swift
   Mac/RefreshRatePolicy.swift
   Mac/StreamEncodingPolicy.swift
   Mac/StreamSettings.swift
+)
+security=(
+  Shared/AppleTransportIdentity.swift Shared/AppleTLS.swift
+  Shared/SecurePairingProtocol.swift Shared/SecurePairingState.swift
+  Shared/AppleSecurityStore.swift Shared/AppleSecureAdmission.swift Shared/AppleTransportSecurity.swift
 )
 
 run_test AdaptiveBitrateControllerSelfTest \
@@ -39,6 +45,8 @@ run_test BenchmarkIntegrationPolicySelfTest \
   MacTests/BenchmarkIntegrationPolicySelfTest.swift
 run_test BenchmarkSampleSelfTest \
   Mac/BenchmarkSample.swift MacTests/BenchmarkSampleSelfTest.swift
+run_test ProcessCPUSamplerSelfTest \
+  Mac/ProcessCPUSampler.swift MacTests/ProcessCPUSamplerSelfTest.swift
 run_test BenchmarkRecorderSelfTest \
   Mac/BenchmarkSample.swift Mac/BenchmarkRecorder.swift \
   MacTests/BenchmarkRecorderSelfTest.swift
@@ -68,6 +76,13 @@ run_test StreamEncodingPolicySelfTest \
   "${settings[@]}" MacTests/StreamEncodingPolicySelfTest.swift
 run_test StreamSettingsSelfTest \
   "${settings[@]}" MacTests/StreamSettingsSelfTest.swift
+run_test DesktopResolutionSelfTest \
+  "${settings[@]}" Mac/DeviceCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift \
+  Mac/MacReceiverPolicy.swift MacTests/DesktopResolutionSelfTest.swift
+run_test AppleVideoPolicySelfTest \
+  "${settings[@]}" Mac/DeviceCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift \
+  Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift \
+  Mac/MacReceiverPolicy.swift MacTests/AppleVideoPolicySelfTest.swift
 run_test TestPatternLifecycleSelfTest \
   -DDEBUG \
   Shared/BoundedLogWriter.swift Mac/Log.swift Mac/TestPatternWindow.swift \
@@ -76,7 +91,7 @@ run_test TransportSelectionPolicySelfTest \
   "${settings[@]}" Mac/TransportSelectionPolicy.swift \
   MacTests/TransportSelectionPolicySelfTest.swift
 run_test UpdateConfigurationSelfTest \
-  -parse-as-library MacTests/UpdateConfigurationSelfTest.swift
+  Mac/UpdateFeedPolicy.swift MacTests/UpdateConfigurationSelfTest.swift
 run_test UpdateReleasePolicySelfTest \
   -parse-as-library MacTests/UpdateReleasePolicySelfTest.swift
 
@@ -87,8 +102,9 @@ run_test MacReceiverPolicySelfTest \
   MacTests/MacReceiverPolicySelfTest.swift
 
 run_test MacReceiverNetworkSelfTest \
+  "${security[@]}" \
   Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
-  Shared/ReceiverCursorImage.swift Mac/Receiver/ReceiverVideoBitstream.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverNetworkSelfTest.swift
+  Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift Shared/DesktopInputProtocol.swift Shared/InputSendBudget.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverNetworkSelfTest.swift
 
 run_test MacRoleControllerSelfTest \
   Mac/MacRoleController.swift MacTests/MacRoleControllerSelfTest.swift
@@ -115,18 +131,52 @@ run_test ReceiverCursorImageSelfTest \
   Shared/ReceiverCursorImage.swift MacTests/ReceiverCursorImageSelfTest.swift
 
 run_test ReceiverVideoBitstreamSelfTest \
-  Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverVideoBitstream.swift MacTests/ReceiverTestSupport.swift \
+  Mac/EncoderHardwareCapabilities.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift MacTests/ReceiverTestSupport.swift \
   MacTests/ReceiverVideoBitstreamSelfTest.swift
 
 run_test DirectCableSelfTest \
   Mac/DirectCable.swift MacTests/DirectCableSelfTest.swift
+run_test MacLANHandoverSelfTest \
+  Mac/MacLANHandoverPolicy.swift MacTests/MacLANHandoverSelfTest.swift
+run_test TransportIdentitySelfTest \
+  Shared/AppleTransportIdentity.swift Shared/AppleTLS.swift MacTests/TransportIdentitySelfTest.swift
+run_test SecurePairingSelfTest \
+  Shared/AppleTransportIdentity.swift Shared/SecurePairingProtocol.swift Shared/SecurePairingState.swift \
+  Shared/AppleSecurityStore.swift MacTests/SecurePairingSelfTest.swift
+run_test SecureTLSNetworkSelfTest \
+  Shared/AppleTransportIdentity.swift Shared/AppleTLS.swift MacTests/SecureTLSNetworkSelfTest.swift
+run_test SecureAdmissionSelfTest \
+  Shared/AppleTransportIdentity.swift Shared/AppleTLS.swift Shared/SecurePairingProtocol.swift \
+  Shared/SecurePairingState.swift Shared/AppleSecureAdmission.swift MacTests/SecureAdmissionSelfTest.swift
+run_test UsbmuxTLSRelaySelfTest \
+  Shared/AppleTransportIdentity.swift Mac/UsbmuxTLSRelay.swift MacTests/UsbmuxTLSRelaySelfTest.swift
+run_test SecureTransportPlanSelfTest \
+  "${security[@]}" MacTests/SecureTransportPlanSelfTest.swift
+run_test MacSecureReceiverSelfTest \
+  "${security[@]}" \
+  Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
+  Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift \
+  Shared/DesktopInputProtocol.swift Shared/InputSendBudget.swift Mac/Receiver/StreamReceiver.swift Shared/PencilProtocol.swift Shared/PencilActions.swift MacTests/ReceiverTestSupport.swift MacTests/MacSecureReceiverSelfTest.swift
 
 run_test PencilProtocolSelfTest \
   Shared/PencilProtocol.swift MacTests/PencilProtocolSelfTest.swift
 run_test InputSendBudgetSelfTest \
   Shared/InputSendBudget.swift MacTests/InputSendBudgetSelfTest.swift
 run_test PencilInputInjectorSelfTest \
-  Shared/PencilProtocol.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
+  Shared/PencilProtocol.swift Shared/PencilActions.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
   Mac/InputValidationPolicy.swift Mac/InputInjector.swift MacTests/PencilInputInjectorSelfTest.swift
 
-echo "Swift standalone self-tests PASS (37 suites)"
+run_test DesktopInputProtocolSelfTest \
+  Shared/DesktopInputProtocol.swift MacTests/DesktopInputProtocolSelfTest.swift
+run_test DesktopInputSenderSelfTest \
+  Shared/DesktopInputProtocol.swift Mac/DesktopInputInjector.swift Mac/DesktopInputSender.swift MacTests/DesktopInputSenderSelfTest.swift
+
+run_test PencilAdvancedSelfTest \
+  Shared/PencilProtocol.swift Shared/PencilActions.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
+  Mac/InputValidationPolicy.swift Mac/InputInjector.swift Mac/PencilActionSender.swift MacTests/PencilAdvancedSelfTest.swift
+
+run_test WireContractSelfTest \
+  "${settings[@]}" Mac/BinaryFrameHeaderV2.swift Shared/ReceiverFrameDecoder.swift \
+  Shared/DesktopInputProtocol.swift Shared/PencilProtocol.swift Shared/PencilActions.swift MacTests/WireContractSelfTest.swift
+
+echo "Swift standalone self-tests PASS (52 suites)"

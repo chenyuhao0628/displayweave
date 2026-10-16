@@ -94,7 +94,7 @@ private struct MacReceiverPanel: View {
                 Label(receiver.status, systemImage: receiver.connected ? "checkmark.circle.fill" : "antenna.radiowaves.left.and.right")
                     .font(.headline)
                 if receiver.connected {
-                    Text("送入显示层：\(receiver.fps) fps · H.264")
+                    Text("送入显示层：\(receiver.fps) fps · \(receiver.codecLabel) · \(receiver.encrypted ? "已加密" : "未加密兼容")")
                         .font(.caption.monospaced()).foregroundStyle(.secondary)
                 }
                 HStack {
@@ -119,13 +119,21 @@ private struct MacReceiverPanel: View {
             Section("连接帮助") {
                 Label("两台 Mac 加入同一 Wi-Fi 或以太网。", systemImage: "1.circle")
                 Label("在另一台 Mac 选择发送屏幕，再选择本机。", systemImage: "2.circle")
-                Label("在发送端选择扩展或镜像，并使用发送端键盘鼠标操作。", systemImage: "3.circle")
+                Label("在发送端选择扩展或镜像。需要在本机操作时，启用下方键鼠回传。", systemImage: "3.circle")
                 Text("关闭接收画面窗口会断开当前连接。接收不需要屏幕录制或辅助功能权限。找不到设备时，请检查两端本地网络权限、防火墙与路由器隔离设置。")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section {
-                Text("仅在可信局域网开启：当前连接未加密，也无配对认证。开启后局域网内的发送端可以连接，每次仅接收一个发送端。")
+            Section("键盘与鼠标") {
+                Toggle("从此 Mac 操作发送端", isOn: Binding(get: { receiver.inputForwarding }, set: { receiver.setInputForwarding($0) }))
+                Text(receiver.inputForwarding ? receiver.inputStatus : "键鼠回传已关闭")
                     .font(.caption).foregroundStyle(.secondary)
+                Text("双方需开启并使用加密配对；发送端需辅助功能权限。仅聚焦接收画面时回传；⌃⌥Esc 立即停止。键盘布局和输入法沿用发送端。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section {
+                Text("默认加密并验证配对。在“设置 → 安全与配对”生成本机邀请，复制到发送端后再连接。每次仅接收一个发送端。")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("安全与配对设置…") { SettingsWindow.show(tab: "security") }
             }
         }.formStyle(.grouped)
     }

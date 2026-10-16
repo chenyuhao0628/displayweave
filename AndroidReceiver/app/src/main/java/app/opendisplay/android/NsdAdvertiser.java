@@ -25,7 +25,7 @@ public final class NsdAdvertiser {
         this.wifiManager = (WifiManager) this.context.getSystemService(Context.WIFI_SERVICE);
     }
 
-    public void start(String serviceName, String installId, int port) {
+    public void start(String serviceName, String installId, int port, boolean secure) {
         stop();
         if (wifiManager != null) {
             multicastLock = wifiManager.createMulticastLock("OpenDisplayAndroidNsd");
@@ -39,6 +39,7 @@ public final class NsdAdvertiser {
         info.setPort(port);
         if (Build.VERSION.SDK_INT >= 21) {
             info.setAttribute("id", installId);
+            if (secure) info.setAttribute("security", "tls-v1");
         }
 
         registration = new NsdManager.RegistrationListener() {

@@ -32,6 +32,8 @@ enum SenderTransport {
     case androidAdb(port: UInt16)          // localhost endpoint created by adb forward
 }
 
+enum SenderDisconnectReason { case connectionLost, receiverExit }
+
 @available(macOS 14.0, *)
 final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
 
@@ -44,14 +46,20 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // period — the controller ends the session (capture, virtual display,
     // recording indicator all torn down) instead of dialing forever or
     // silently coming back over a different transport.
-    @MainActor var onDisconnected: (() -> Void)?
+    @MainActor var onDisconnected: ((SenderDisconnectReason) -> Void)?
     // Fired on every hello — carries the receiver's install id so the
     // controller can deduplicate USB/WiFi sessions to the same device.
     @MainActor var onHello: ((PhoneInfo) -> Void)?
+    @MainActor var onSecurityError: ((String) -> Void)?
 
     private var stream: SCStream?
     private var encoder: VTCompressionSession?
     private var connection: NWConnection?
+    private var admission: AppleSecureAdmission?
+    private var usbTLSRelay: UsbmuxTLSRelay?
+    private let securityPlan: AppleSenderSecurityPlan
+    var encrypted: Bool { securityPlan.encrypted }
+    var secureReceiverID: String? { securityPlan.receiverID }
     private var virtualDisplay: VirtualDisplay?
     private let queue = DispatchQueue(label: "sender.video")
     private let startCode: [UInt8] = [0, 0, 0, 1]
@@ -123,6 +131,17 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var lastHello: PhoneInfo?
     private var helloContinuation: CheckedContinuation<PhoneInfo, Error>?
     private var inputInjector: InputInjector?
+    private lazy var desktopInput = DesktopInputSender { [weak self] object in
+        guard let data = try? JSONSerialization.data(withJSONObject: object) else { return }
+        self?.sendJSONFrame(String(decoding: data, as: UTF8.self))
+    }
+    private var pencilExtendedNegotiated = false
+    private lazy var pencilActions = PencilActionSender(targetReady: { [weak self] in self?.inputInjector != nil },
+        onChange: { [weak self] in self?.sendPencilConfiguration() },
+        perform: { [weak self] action in
+            guard let shortcut = PencilShortcut.configured(action) else { return }
+            self?.inputInjector?.handleShortcut(shortcut)
+        })
     private var protocolIdentity = StreamProtocolIdentity()
     private var protocolHandshake = ReceiverProtocolHandshake()
     private var protocolFailureBudget = ReceiverProtocolFailureBudget(maxReconnects: 1)
@@ -210,6 +229,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var benchmarkPendingEncodePeak = 0
     private var benchmarkFinishWorkItem: DispatchWorkItem?
     private var benchmarkOutputDirectory: URL?
+    private var benchmarkCPU = ProcessCPUSampler()
 
     // ScreenCaptureKit emits frames only when content changes. After a
     // reconnect on a static screen there is nothing to hang the forced
@@ -218,7 +238,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var lastCaptureAt = Date.distantPast
 
     init(transport: SenderTransport, name: String, mode: CaptureMode,
+         securityPlan: AppleSenderSecurityPlan,
          settings: StreamSettings = StreamSettings.load(), displaySerial: UInt32 = 0x0001) {
+        self.securityPlan = securityPlan
         self.transport = transport
         self.endpointName = name
         self.mode = mode
@@ -286,19 +308,22 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                       userInfo: [NSLocalizedDescriptionKey: "未找到可捕获的显示器"])
         }
         // SCDisplay reports points; capture at point resolution for M1.
-        let macPlan = info.isMacReceiver ? MacReceiverPolicy.plan(info: info, settings: settings, sourceWidth: display.width, sourceHeight: display.height, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
+        let macPlan = info.usesAppleVideoCapabilities ? MacReceiverPolicy.plan(info: info, settings: settings, sourceWidth: display.width, sourceHeight: display.height, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
         let captureW = macPlan?.width ?? ((Int(Double(display.width) * quality.scale)) & ~1)
         let captureH = macPlan?.height ?? ((Int(Double(display.height) * quality.scale)) & ~1)
-        let captureFps = macPlan?.fps ?? RefreshRatePolicy.selected(
-            deviceMaxFps: settings.fpsMode.userSelectedFps ?? RefreshRatePolicy.fallbackFps,
-            userSelectedFps: settings.fpsMode.userSelectedFps)
-        let codec = macPlan?.codec ?? settings.selectedCodec(supportedCodecs: ["h264"], preferredCodec: "h264")
+        let captureFps = macPlan?.fps ?? settings.selectedFps(deviceMaxFps: info.negotiatedMaxFps)
+        let codec = macPlan?.codec ?? (info.isAndroidReceiver ? settings.selectedCodec(
+            supportedCodecs: info.negotiatedSupportedCodecs, preferredCodec: info.negotiatedPreferredCodec) : .h264)
         try await startCapture(display: display, pixelsWide: captureW, pixelsHigh: captureH,
                            fps: captureFps, virtualDisplayRefreshRate: captureFps,
                            codec: codec)
         queue.sync {
             inputInjector?.cancelPress()
-            if !stopped { inputInjector = InputInjector(displayID: display.displayID) }
+            if !stopped {
+                inputInjector = InputInjector(displayID: display.displayID)
+                desktopInput.configure(displayID: display.displayID)
+                pencilActions.begin(encrypted: encrypted, supported: pencilExtendedNegotiated)
+            }
         }
     }
 
@@ -321,12 +346,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func setupExtend(_ info: PhoneInfo) async throws {
         Log.info("phone hello: \(info.pixelsWide)x\(info.pixelsHigh) @\(info.scale)x device=\(info.negotiatedDeviceModel) refresh=\(info.negotiatedRefreshRate)Hz maxFps=\(info.negotiatedMaxFps) codecs=\(info.negotiatedSupportedCodecs.joined(separator: ",")) preferred=\(info.negotiatedPreferredCodec) sdk=\(info.negotiatedAndroidSdk) transport=\(info.negotiatedTransport)")
 
-        // Phone panel is @3x; the virtual display runs @2x HiDPI, so points
-        // = native pixels / 2 (rounded down to even for the encoder).
         guard !stopped else { throw CancellationError() }
-        let macPlan = info.isMacReceiver ? MacReceiverPolicy.plan(info: info, settings: settings, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
-        let pointsWide = macPlan?.pointsWide ?? ((info.pixelsWide / 2) & ~1)
-        let pointsHigh = macPlan?.pointsHigh ?? ((info.pixelsHigh / 2) & ~1)
+        let macPlan = info.usesAppleVideoCapabilities ? MacReceiverPolicy.plan(info: info, settings: settings, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
+        let mobileDesktop = DesktopResolutionPolicy.geometry(
+            settings.desktopResolutions.resolution(for: info.id),
+            nativeWidth: info.pixelsWide, nativeHeight: info.pixelsHigh, backingScale: 2)
+        let pointsWide = macPlan?.pointsWide ?? mobileDesktop.pointsWide
+        let pointsHigh = macPlan?.pointsHigh ?? mobileDesktop.pointsHigh
         // Rough physical size so macOS picks a sane default UI scale.
         let mm = info.isMacReceiver ? CGSize(width: Double(pointsWide) * 25.4 / 110, height: Double(pointsHigh) * 25.4 / 110) : info.pixelsWide >= info.pixelsHigh
             ? CGSize(width: 147, height: 68)
@@ -363,18 +389,23 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             virtualDisplay = vd
             inputInjector?.cancelPress()
             inputInjector = InputInjector(displayID: vd.displayID)
+            desktopInput.configure(displayID: vd.displayID)
+            pencilActions.begin(encrypted: encrypted, supported: pencilExtendedNegotiated)
             return true
         }
         guard installed else { throw CancellationError() }
 
         let display = try await findSCDisplay(id: vd.displayID)
-        // Quality scaling: capture/encode below native when requested — the
-        // display itself stays native so window layout is unaffected.
-        let captureW = macPlan?.width ?? ((Int(Double(pointsWide * 2) * quality.scale)) & ~1)
-        let captureH = macPlan?.height ?? ((Int(Double(pointsHigh * 2) * quality.scale)) & ~1)
-        let codec = macPlan?.codec ?? settings.selectedCodec(
+        // Mobile legacy peers have no decoder envelope; don't exceed the panel
+        // raster they already support. Desktop layout remains independently selected.
+        let mobileRaster = DesktopResolutionPolicy.raster(mobileDesktop, qualityScale: quality.scale,
+            maxWidth: info.maxEncodeWide ?? info.pixelsWide,
+            maxHeight: info.maxEncodeHigh ?? info.pixelsHigh)
+        let captureW = macPlan?.width ?? mobileRaster.width
+        let captureH = macPlan?.height ?? mobileRaster.height
+        let codec = macPlan?.codec ?? (info.isAndroidReceiver ? settings.selectedCodec(
             supportedCodecs: info.negotiatedSupportedCodecs,
-            preferredCodec: info.negotiatedPreferredCodec)
+            preferredCodec: info.negotiatedPreferredCodec) : .h264)
         try await startCapture(display: display, pixelsWide: captureW, pixelsHigh: captureH,
                                fps: macPlan.map { min($0.fps, vd.actualRefreshRate) } ?? vd.actualRefreshRate,
                                virtualDisplayRefreshRate: vd.actualRefreshRate,
@@ -464,7 +495,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                               codec: StreamCodec) async throws {
         let filter = SCContentFilter(display: display, excludingWindows: [])
 
-        let captureFps = lastHello?.isMacReceiver == true ? max(1, min(60, fps)) : RefreshRatePolicy.sanitize(fps)
+        let captureFps = lastHello?.usesAppleVideoCapabilities == true ? max(1, min(120, fps)) : RefreshRatePolicy.sanitize(fps)
         let prepared = queue.sync { () -> (SCStreamConfiguration, StreamCodec, Int, Int)? in
             guard !stopped else { return nil }
             requestedCaptureFps = captureFps
@@ -512,8 +543,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         config.height = height
         config.minimumFrameInterval = CMTime(
             value: 1,
-            timescale: CMTimeScale(
-                (lastHello?.isMacReceiver == true ? max(1, min(60, fps)) : RefreshRatePolicy.captureIntervalTimescale(fps: fps))))
+            timescale: CMTimeScale(max(1, min(120, fps))))
         // 420v matches the encoder's native input and avoids an extra conversion.
         config.pixelFormat = UserDefaults.standard.string(forKey: "pixfmt") == "bgra"
             ? kCVPixelFormatType_32BGRA
@@ -541,6 +571,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             stream = nil
             inputInjector?.cancelPress()
             inputInjector = nil
+            desktopInput.reset(removeTarget: true)
             invalidateConnection()
             cancelPendingReconnect()
             dialGeneration &+= 1
@@ -576,6 +607,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             finishBenchmarkOnQueue(message: nil)
             benchmarkRecorder = recorder
             benchmarkStartedAt = benchmarkClock.now
+            benchmarkCPU.reset()
+            _ = benchmarkCPU.sample()
             benchmarkPhasePolicy = BenchmarkPhasePolicy(runSeconds: TimeInterval(duration.rawValue))
             benchmarkRunId = runId
             benchmarkSessionId = UUID().uuidString.lowercased()
@@ -677,6 +710,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     /// Bookkeeping shared by both transports once a connection is live.
     private func adoptConnection(_ conn: NWConnection) -> UInt64 {
+        desktopInput.reset()
+        pencilActions.reset(); pencilExtendedNegotiated = false
         pencilNegotiated = false
         macCodecFallback.beginConnection()
         inputInjector?.cancelPress()
@@ -695,11 +730,17 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     }
 
     private func invalidateConnection() {
+        desktopInput.reset()
+        pencilActions.reset(); pencilExtendedNegotiated = false
         pencilNegotiated = false
         inputInjector?.cancelPress()
         connectionGeneration &+= 1
         let previous = connection
         connection = nil
+        let pending = admission; admission = nil
+        pending?.cancel()
+        let relay = usbTLSRelay; usbTLSRelay = nil
+        relay?.onClosed = nil; relay?.stop()
         previous?.stateUpdateHandler = nil
         previous?.cancel()
     }
@@ -716,6 +757,17 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             return
         }
         cancelPendingReconnect()
+        connectionReady = false
+        lastReceived = Date()
+        receiveControl(on: conn, generation: generation)
+        queue.asyncAfter(deadline: .now() + 5) { [weak self] in
+            guard let self, self.isCurrentConnection(conn, generation: generation), !self.connectionReady else { return }
+            self.failSecurity("未收到匹配的接收端确认，请更新对端应用并重新连接")
+        }
+        Task { await self.status("正在验证 \(self.endpointName) 的接收能力…") }
+    }
+
+    private func helloReady() {
         Log.info("connection ready to \(endpointName)")
         connectionReady = true
         wireConnectionGeneration &+= 1
@@ -740,17 +792,67 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         lastCursorPNGHash = 0
         lastCursorSent = (-1, -1, false)
         lastReceived = Date()  // fresh grace period for the watchdog
-        receiveControl(on: conn, generation: generation)
-        Task { await self.status("正在连接到 \(self.endpointName)…") }
+    }
+
+    private func failSecurity(_ message: String) {
+        connectionReady = false
+        dialGeneration += 1
+        cancelPendingReconnect()
+        invalidateConnection()
+        Task { @MainActor in self.onSecurityError?(message) }
+    }
+
+    private func watchAuthenticatedConnection(_ conn: NWConnection, generation: UInt64) {
+        conn.stateUpdateHandler = { [weak self] state in
+            guard let self, self.isCurrentConnection(conn, generation: generation) else { return }
+            switch state {
+            case .failed, .waiting: self.scheduleReconnect()
+            case .cancelled: self.connectionReady = false
+            default: break
+            }
+        }
+        becomeReady(conn, generation: generation)
     }
 
     private func connectTCP(_ endpoint: NWEndpoint, interface: NWInterface? = nil) {
         let options = NWProtocolTCP.Options()
         options.noDelay = true   // latency matters more than throughput here
-        let params = NWParameters(tls: nil, tcp: options)
+        let tls: NWProtocolTLS.Options?
+        let clientPlan: SecureClientAdmission?
+        do {
+            if securityPlan.encrypted {
+                let plan = try securityPlan.admission(localName: Host.current().localizedName ?? "DisplayWeave Mac")
+                clientPlan = plan
+                tls = try AppleTLS.options(identity: securityPlan.identity, peerIsServer: true, queue: queue,
+                                           acceptedFingerprint: { $0 == plan.fingerprint })
+            } else { tls = nil; clientPlan = nil }
+        } catch { failSecurity(error.localizedDescription); return }
+        let params = NWParameters(tls: tls, tcp: options)
         params.requiredInterface = interface
         let conn = NWConnection(to: DirectCable.endpoint(endpoint, on: interface), using: params)
         let generation = adoptConnection(conn)
+        if let clientPlan {
+            let admission = AppleSecureAdmission(connection: conn, queue: queue) { [weak self] result in
+                guard let self, self.isCurrentConnection(conn, generation: generation) else { conn.cancel(); return }
+                self.admission = nil
+                switch result {
+                case .success:
+                    self.securityPlan.didAuthenticate()
+                    self.watchAuthenticatedConnection(conn, generation: generation)
+                case .failure(let error):
+                    if self.everConnected {
+                        // A lost LAN/USB route may fail during the new TLS
+                        // handshake. Keep the existing bounded recovery and
+                        // handover policy, always with this same frozen pin.
+                        Task { await self.status(error.localizedDescription + "；正在有限重试已配对连接") }
+                        self.scheduleReconnect()
+                    } else { self.failSecurity(error.localizedDescription) }
+                }
+            }
+            self.admission = admission
+            admission.startClient(clientPlan)
+            return
+        }
         conn.stateUpdateHandler = { [weak self] state in
             guard let self,
                   self.isCurrentConnection(conn, generation: generation) else {
@@ -792,6 +894,25 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 queue.async {
                     guard generation == self.dialGeneration, !self.stopped else {
                         conn.cancel()
+                        return
+                    }
+                    if self.securityPlan.encrypted {
+                        let relay = UsbmuxTLSRelay(tunnel: conn, queue: self.queue)
+                        self.usbTLSRelay = relay
+                        relay.onClosed = { [weak self, weak relay] in
+                            guard let self, let relay, self.usbTLSRelay === relay,
+                                  generation == self.dialGeneration, !self.stopped else { return }
+                            self.scheduleReconnect()
+                        }
+                        relay.start { [weak self, weak relay] result in
+                            guard let self, let relay, self.usbTLSRelay === relay,
+                                  generation == self.dialGeneration, !self.stopped else { return }
+                            switch result {
+                            case .success(let port):
+                                self.connectTCP(.hostPort(host: "127.0.0.1", port: .init(rawValue: port)!))
+                            case .failure(let error): self.failSecurity(error.localizedDescription)
+                            }
+                        }
                         return
                     }
                     let connectionGeneration = self.adoptConnection(conn)
@@ -837,6 +958,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     private func scheduleReconnect(failureObservedAt: Date = Date()) {
         guard !stopped else { return }
+        desktopInput.reset()
+        pencilActions.reset(); pencilExtendedNegotiated = false
         inputInjector?.cancelPress()
         pencilNegotiated = false
         if everConnected {
@@ -857,7 +980,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 if !disconnectCallbackPending {
                     disconnectCallbackPending = true
                     Log.info("device gone for >\(Int(disconnectGraceSeconds))s — ending session")
-                    Task { @MainActor in self.onDisconnected?() }
+                    Task { @MainActor in self.onDisconnected?(.connectionLost) }
                 }
                 return
             }
@@ -987,6 +1110,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func scheduleWatchdog() {
         queue.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             guard let self, !self.stopped else { return }
+            if self.connectionReady { self.desktopInput.refresh() }
+            if self.connectionReady && self.pencilExtendedNegotiated { self.pencilActions.refresh() }
+            if !AXIsProcessTrusted() { self.inputInjector?.cancelPress() }
             if self.connectionReady, Date().timeIntervalSince(self.lastReceived) > 5 {
                 Log.info("watchdog: nothing from the phone for >5s — reconnecting")
                 Task { await self.status("连接无响应，正在重新连接…") }
@@ -1154,6 +1280,17 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         }
     }
 
+    private func sendPencilConfiguration() {
+        guard connectionReady, pencilNegotiated else { return }
+        var object: [String: Any] = ["type": "inputConfig", "inputCaps": pencilExtendedNegotiated
+            ? [PencilProtocol.capability, PencilProtocol.extendedCapability] : [PencilProtocol.capability],
+            "pencilActionStatus": pencilActions.status]
+        if let session = pencilActions.session { object["pencilActionSession"] = session }
+        if let data = try? JSONSerialization.data(withJSONObject: object) {
+            sendJSONFrame(String(decoding: data, as: UTF8.self))
+        }
+    }
+
     private func handleControl(_ payload: Data) {
         lastReceived = Date()
         if ReconnectPeerReadinessPolicy.clearsDisconnectGrace(for: .peerMessage) {
@@ -1165,6 +1302,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             Log.info("unparseable control message (\(payload.count) bytes)")
             return
         }
+        // A new connection must identify itself before it can drive input,
+        // telemetry, decoder negotiation or re-use captured frames.
+        guard connectionReady || type == "hello" else { return }
         if let action = ReceiverControlPolicy.closureAction(
             messageType: type,
             peer: receiverPeerKind
@@ -1200,6 +1340,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             }
         case "hello":
             if let info = try? JSONDecoder().decode(PhoneInfo.self, from: payload) {
+                guard securityPlan.permitsHello(id: info.id) else {
+                    failSecurity("接收端身份不匹配或曾经配对，已拒绝未认证连接；请重新配对")
+                    return
+                }
                 guard info.hasValidGeometry else {
                     Log.info("rejected invalid receiver geometry or video capabilities")
                     handleConnectionClosure(.endSession)
@@ -1211,12 +1355,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 }
                 let previous = lastHello
                 lastHello = info
-                let supportsPencil = PencilProtocol.supports(info.inputCaps)
+                if !connectionReady { helloReady() }
+                desktopInput.hello(encrypted: encrypted, capabilities: info.isMacReceiver ? info.inputCaps : nil)
+                let supportsPencil = !info.isMacReceiver && PencilProtocol.supports(info.inputCaps)
                 if pencilNegotiated && !supportsPencil { inputInjector?.cancelPress() }
                 pencilNegotiated = supportsPencil
-                if supportsPencil {
-                    sendJSONFrame("{\"type\":\"inputConfig\",\"inputCaps\":[\"pencil-v1\"]}")
-                }
+                let extended = supportsPencil && encrypted && info.inputCaps?.contains(PencilProtocol.extendedCapability) == true
+                if pencilExtendedNegotiated && !extended { inputInjector?.cancelPress() }
+                pencilExtendedNegotiated = extended
+                pencilActions.begin(encrypted: encrypted, supported: pencilExtendedNegotiated)
                 if info.supportsProtocolV2 {
                     Task { await self.status("正在协商视频配置…") }
                     if previous?.supportsProtocolV2 != true,
@@ -1231,7 +1378,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 if let continuation = helloContinuation {
                     helloContinuation = nil
                     continuation.resume(returning: info)
-                } else if (mode == .extend || info.isMacReceiver), stream != nil, let previous,
+                } else if (mode == .extend || info.usesAppleVideoCapabilities), stream != nil, let previous,
                           !previous.sameDisplayConfiguration(as: info) {
                     // Phone rotated — rebuild after a short debounce so a
                     // flurry of orientation flips settles into one rebuild.
@@ -1244,8 +1391,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             let state = obj["state"] as? String ?? "unknown"
             let reason = obj["reason"] as? String ?? ""
             Log.info("receiver connection state=\(state) reason=\(reason)")
-        case "pencil":
+        case "desktopInput":
+            guard lastHello?.isMacReceiver == true else { return }
+            desktopInput.handle(payload)
+        case "pencilAction":
+            guard pencilExtendedNegotiated else { return }
+            pencilActions.handle(payload)
+        case "pencil", "pencil2":
             guard pencilNegotiated else { return }
+            guard type != "pencil2" || pencilExtendedNegotiated else { return }
             guard let sample = PencilSample(message: obj) else { inputInjector?.cancelPress(); return }
             inputInjector?.handlePencil(sample)
         case "proximity":
@@ -1257,6 +1411,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             }
             inputInjector?.handleProximity(entering: entering, x: x, y: y)
         case "touch":
+            guard lastHello?.isMacReceiver != true else { return }
             if let phase = obj["phase"] as? String,
                let x = obj["x"] as? Double,
                let y = obj["y"] as? Double {
@@ -1270,6 +1425,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 }
             }
         case "scroll":
+            guard lastHello?.isMacReceiver != true else { return }
             if let dx = obj["dx"] as? Double, let dy = obj["dy"] as? Double {
                 inputInjector?.handleScroll(dx: dx, dy: dy)
             }
@@ -1317,7 +1473,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func finishSessionAfterReceiverExit() {
         connectionReady = false
         invalidateConnection()
-        Task { @MainActor in self.onDisconnected?() }
+        Task { @MainActor in self.onDisconnected?(.receiverExit) }
     }
 
     private func handleReceiverProtocolProgress(type: String, object: [String: Any]) {
@@ -1473,12 +1629,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
     private func setupEncoder(width: Int, height: Int, fps: Int, preferredCodec: StreamCodec) {
         let preferredCodec = macCodecFallback.codec(for: preferredCodec,
-                                                   isMacReceiver: lastHello?.isMacReceiver == true)
+                                                   isMacReceiver: lastHello?.usesAppleVideoCapabilities == true)
         if encoderGeneration != 0 {
             pendingEncodeWork.discard(generation: encoderGeneration)
         }
         encoderGeneration &+= 1
-        let finalFps = lastHello?.isMacReceiver == true ? max(1, min(60, fps)) : RefreshRatePolicy.sanitize(fps)
+        let finalFps = lastHello?.usesAppleVideoCapabilities == true ? max(1, min(120, fps)) : RefreshRatePolicy.sanitize(fps)
         streamCodec = preferredCodec
         let automaticBitrate = StreamEncodingPolicy.bitrate(
             width: width, height: height, fps: finalFps, codec: preferredCodec,
@@ -1925,7 +2081,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             transport: transportName,
             identity: identity,
             maxFrameBytes: lastHello?.negotiatedMaxFrameBytes,
-            exactFrameRate: lastHello?.isMacReceiver == true)
+            exactFrameRate: lastHello?.usesAppleVideoCapabilities == true)
         sendJSONFrame(message.json)
         if let identity {
             scheduleProtocolTimeout(identity: identity, phase: .awaitingStreamConfigAck)
@@ -2119,7 +2275,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             totalPendingWork: Double(pendingSends + pendingEncodes),
             pendingEncodePeak: Double(benchmarkPendingEncodePeak),
             macQueue: Double(pendingSends), macDrops: Double(lastMacDropsSnapshot),
-            macCPU: nil, macMemory: Self.residentMemoryMB())
+            macCPU: benchmarkCPU.sample(), macMemory: Self.residentMemoryMB())
         do {
             try recorder.append(sample)
             lastAdaptiveDecision = nil

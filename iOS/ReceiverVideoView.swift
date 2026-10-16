@@ -12,10 +12,13 @@ struct VideoLayerView: UIViewRepresentable {
     let receiver: PhoneReceiver
     let useMetal: Bool
 
-    func makeUIView(context: Context) -> VideoView {
+    func makeUIView(context: Context) -> VideoView { makeVideoView() }
+
+    func makeVideoView() -> VideoView {
         let view = VideoView()
         view.backgroundColor = .black
         view.isMultipleTouchEnabled = true
+        receiver.claimPresentation(view.presentationID) { [weak view] in view?.retirePresentation() }
         view.receiver = receiver
 
         Log.info("video view: metal=\(useMetal)")
@@ -23,14 +26,16 @@ struct VideoLayerView: UIViewRepresentable {
             Log.info("metal renderer active")
             view.metalRenderer = renderer
             view.layer.addSublayer(renderer.metalLayer)
-            receiver.onDecodedFrame = { [weak renderer] pixelBuffer, captureMs in
-                renderer?.render(pixelBuffer, captureMs: captureMs)
+            receiver.onDecodedFrame = { [weak renderer, weak receiver] pixelBuffer, captureMs in
+                guard let receiver else { return }
+                renderer?.render(pixelBuffer, captureMs: captureMs, generation: receiver.inputGeneration)
             }
-            renderer.onPresented = { [weak receiver] presentedTime, captureMs in
-                receiver?.recordPresented(presentedTime: presentedTime, captureMs: captureMs)
+            renderer.onPresented = { [weak receiver] presentedTime, captureMs, generation in
+                receiver?.recordPresented(presentedTime: presentedTime, captureMs: captureMs, generation: generation)
             }
         } else {
             receiver.onDecodedFrame = nil   // route frames back to AVSBDL
+            view.sampleBufferLayer = displayLayer
             displayLayer.frame = view.bounds
             view.layer.addSublayer(displayLayer)
         }
@@ -43,7 +48,11 @@ struct VideoLayerView: UIViewRepresentable {
         let hover = UIHoverGestureRecognizer(target: view, action: #selector(VideoView.didPencilHover(_:)))
         hover.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
         view.addGestureRecognizer(hover)
+        let pencil = UIPencilInteraction()
+        pencil.delegate = view
+        view.addInteraction(pencil)
         receiver.onInputReset = { [weak view] in view?.resetInput() }
+        receiver.onPencilToolChange = { [weak view] in view?.cancelPress() }
 
         // Local cursor echo: position updates ride the ~2ms control path
         // instead of the ~30ms video path, so the pointer feels native.
@@ -59,17 +68,66 @@ struct VideoLayerView: UIViewRepresentable {
     func updateUIView(_ uiView: VideoView, context: Context) {
         // videoSize arrives after the format description — re-fit the layers.
         uiView.setNeedsLayout()
+        uiView.updateDisplayLink()
     }
 
     static func dismantleUIView(_ uiView: VideoView, coordinator: ()) {
-        uiView.cancelPress()
-        uiView.receiver?.onInputReset = nil
-        uiView.receiver = nil
+        uiView.receiver?.releasePresentation(uiView.presentationID)
+        uiView.retirePresentation()
     }
 
-    final class VideoView: UIView {
+    final class VideoView: UIView, UIPencilInteractionDelegate {
+        let presentationID = UUID()
         weak var receiver: PhoneReceiver?
+        weak var sampleBufferLayer: AVSampleBufferDisplayLayer?
+
+        func retirePresentation() {
+            cancelPress()
+            stopDisplayLink()
+            metalRenderer?.onPresented = nil
+            metalRenderer?.metalLayer.removeFromSuperlayer()
+            metalRenderer = nil
+            if sampleBufferLayer?.superlayer === layer { sampleBufferLayer?.removeFromSuperlayer() }
+            sampleBufferLayer = nil
+            receiver = nil
+        }
+
         var metalRenderer: MetalVideoRenderer?
+        private var displayLink: CADisplayLink?
+        private var cursorDirty = false
+        private final class DisplayLinkTarget: NSObject {
+            weak var view: VideoView?
+            @objc func tick(_ link: CADisplayLink) { view?.presentCursor() }
+        }
+        private let displayLinkTarget = DisplayLinkTarget()
+
+        func updateDisplayLink() {
+            guard window != nil, receiver?.connected == true else { stopDisplayLink(); return }
+            if displayLink == nil {
+                displayLinkTarget.view = self
+                let link = CADisplayLink(target: displayLinkTarget, selector: #selector(DisplayLinkTarget.tick(_:)))
+                link.add(to: .main, forMode: .common)
+                displayLink = link
+            }
+            let maximum = min(window?.screen.maximumFramesPerSecond ?? 60, receiver?.requestedFps ?? 60)
+            let fps = Float(max(1, maximum))
+            displayLink?.preferredFrameRateRange = CAFrameRateRange(minimum: min(30, fps), maximum: fps, preferred: fps)
+        }
+
+        func stopDisplayLink() {
+            displayLink?.invalidate()
+            displayLink = nil
+        }
+
+        private func presentCursor() {
+            guard cursorDirty else { return }
+            cursorDirty = false
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            cursorLayer.isHidden = !cursorVisible || cursorLayer.contents == nil
+            updateCursorLayout()
+            CATransaction.commit()
+        }
 
         private let cursorLayer: CALayer = {
             let layer = CALayer()
@@ -127,11 +185,8 @@ struct VideoLayerView: UIViewRepresentable {
         func moveCursor(x: Double, y: Double, visible: Bool) {
             cursorNorm = CGPoint(x: x, y: y)
             cursorVisible = visible
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            cursorLayer.isHidden = !visible || cursorLayer.contents == nil
-            updateCursorLayout()
-            CATransaction.commit()
+            cursorDirty = true
+            if displayLink == nil { presentCursor() }
         }
 
         func setCursorSprite(_ image: UIImage, anchor: CGPoint, normSize: CGSize) {
@@ -171,6 +226,9 @@ struct VideoLayerView: UIViewRepresentable {
         private var press = TouchPressPolicy()
         private var holdTimer: DispatchWorkItem?
         private var touchGeneration: UInt64?
+        private var pencilTool: PencilTool { receiver?.selectedPencilTool ?? .pen }
+        private var tapEvents = PencilGestureDeduplicator()
+        private var squeezeEvents = PencilGestureDeduplicator()
         private var pencilTouch: UITouch?
         private var pencilGeneration: UInt64?
         private var lastPencil: PencilSample?
@@ -192,19 +250,18 @@ struct VideoLayerView: UIViewRepresentable {
 
         func cancelPress() {
             cancelFingerPress()
-            if let generation = pencilGeneration, let last = lastPencil,
-               let cancel = PencilSample(phase: .cancel, x: last.x, y: last.y, pressure: 0,
-                                         azimuth: last.azimuth, altitude: last.altitude) {
-                receiver?.sendPencil(cancel, generation: generation)
+            if let generation = pencilGeneration, let last = lastPencil {
+                receiver?.sendPencil(last.cancelled, generation: generation)
             }
             if let generation = hoverGeneration ?? pencilGeneration {
                 receiver?.endPencilProximity(x: lastPencil?.x ?? 0.5, y: lastPencil?.y ?? 0.5, generation: generation)
             }
-            resetInput()
+            resetInput(resetGestures: false)
         }
 
         /// A new connection owns a new gesture epoch; old touches cannot cross it.
-        func resetInput() {
+        func resetInput(resetGestures: Bool = true) {
+            if resetGestures { tapEvents = PencilGestureDeduplicator(); squeezeEvents = PencilGestureDeduplicator() }
             holdTimer?.cancel(); holdTimer = nil
             _ = press.cancel()
             touchGeneration = nil; pencilTouch = nil; pencilGeneration = nil
@@ -214,6 +271,7 @@ struct VideoLayerView: UIViewRepresentable {
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
+            updateDisplayLink()
             if window == nil { cancelPress() }
         }
 
@@ -240,15 +298,53 @@ struct VideoLayerView: UIViewRepresentable {
                 guard let x = norm?.x ?? lastPencil?.x, let y = norm?.y ?? lastPencil?.y else { continue }
                 let pressure = sample.maximumPossibleForce > 0 ? sample.force / sample.maximumPossibleForce : 0
                 let ending = penPhase == .up || penPhase == .cancel
+                let roll: Double
+                if #available(iOS 17.5, *) { roll = Double(sample.rollAngle).truncatingRemainder(dividingBy: 2 * .pi) } else { roll = 0 }
                 guard let packet = PencilSample(phase: penPhase, x: x, y: y,
                     pressure: ending ? 0 : Double(min(1, max(0, pressure))),
                     azimuth: ending ? (lastPencil?.azimuth ?? 0) : Double(sample.azimuthAngle(in: self)),
-                    altitude: ending ? (lastPencil?.altitude ?? .pi / 2) : Double(sample.altitudeAngle)) else { continue }
+                    altitude: ending ? (lastPencil?.altitude ?? .pi / 2) : Double(sample.altitudeAngle),
+                    roll: ending ? (lastPencil?.roll ?? 0) : roll, tool: pencilTool) else { continue }
                 lastPencil = packet
                 receiver?.sendPencil(packet, generation: generation)
             }
             if phase == "ended" || phase == "cancelled" {
                 pencilTouch = nil; pencilGeneration = nil
+            }
+        }
+
+        func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
+            performPencilGesture(preference: "pencilDoubleTapAction", system: UIPencilInteraction.preferredTapAction)
+        }
+
+        @available(iOS 17.5, *)
+        func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveTap tap: UIPencilInteraction.Tap) {
+            guard tapEvents.accept(tap.timestamp) else { return }
+            performPencilGesture(preference: "pencilDoubleTapAction", system: UIPencilInteraction.preferredTapAction)
+        }
+
+        @available(iOS 17.5, *)
+        func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
+            // UIKit also uses ended for discrete squeezes, without a preceding began.
+            guard squeeze.phase == .ended, squeezeEvents.accept(squeeze.timestamp) else { return }
+            performPencilGesture(preference: "pencilSqueezeAction", system: UIPencilInteraction.preferredSqueezeAction)
+        }
+
+        private func performPencilGesture(preference: String, system: UIPencilPreferredAction) {
+            guard let window, window.rootViewController?.presentedViewController == nil,
+                  UIApplication.shared.applicationState == .active,
+                  let receiver, receiver.connected, receiver.videoSize != .zero,
+                  receiver.pencilExtendedAvailable else { return }
+            let selected = PencilGestureAction(rawValue: UserDefaults.standard.string(forKey: preference) ?? "system") ?? .system
+            let action = selected.resolve(system: system == .switchEraser ? .toggleEraser : .none)
+            guard action != .none else { return }
+            if action == .toggleEraser {
+                receiver.selectPencilTool(pencilTool == .pen ? .eraser : .pen)
+                UIAccessibility.post(notification: .announcement, argument: pencilTool == .pen ? "画笔" : "橡皮")
+            } else if let remote = PencilRemoteAction(rawValue: action.rawValue), receiver.pencilShortcutsAvailable {
+                let generation = receiver.inputGeneration
+                cancelPress()
+                receiver.sendPencilAction(remote, generation: generation)
             }
         }
 
@@ -259,9 +355,11 @@ struct VideoLayerView: UIViewRepresentable {
                 cancelFingerPress()
                 pencilHoverActive = true
                 if hoverGeneration == nil { hoverGeneration = receiver?.inputGeneration }
+                let roll: Double
+                if #available(iOS 17.5, *) { roll = Double(recognizer.rollAngle).truncatingRemainder(dividingBy: 2 * .pi) } else { roll = 0 }
                 guard let generation = hoverGeneration,
                       let sample = PencilSample(phase: .hover, x: norm.x, y: norm.y, pressure: 0,
-                        azimuth: Double(recognizer.azimuthAngle(in: self)), altitude: Double(recognizer.altitudeAngle)) else { return }
+                        azimuth: Double(recognizer.azimuthAngle(in: self)), altitude: Double(recognizer.altitudeAngle), roll: roll, tool: pencilTool) else { return }
                 lastPencil = sample
                 receiver?.sendPencil(sample, generation: generation)
             case .ended, .cancelled, .failed:

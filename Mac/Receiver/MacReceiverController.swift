@@ -4,7 +4,7 @@ import Combine
 
 @MainActor
 final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate {
-    let receiver = StreamReceiver()
+    let receiver: StreamReceiver
     @Published private(set) var enabled = false
     @Published private(set) var screens: [NSScreen] = []
     @Published var selectedDisplayID: UInt32 = UserDefaults.standard.object(forKey: "receiverDisplayID") as? UInt32 ?? 0
@@ -21,7 +21,9 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
     private var closingWindow = false
     private var movingFullscreenWindow = false
 
-    init(port: UInt16 = 9000, advertiseService: Bool = true) {
+    init(port: UInt16 = 9000, advertiseService: Bool = true,
+         securityProvider: @escaping () throws -> AppleReceiverSecurity = { try .live(localID: StreamReceiver.installID) }) {
+        receiver = StreamReceiver(securityProvider: securityProvider)
         self.port = port
         self.advertiseService = advertiseService
         super.init()
@@ -91,7 +93,7 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
         let size = CGSize(width: screen.frame.width, height: screen.frame.height - screen.safeAreaInsets.top)
         receiver.configure(panel: PanelAnnouncement(pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
             scale: scale, pointsWide: Int(size.width), pointsHigh: Int(size.height)), name: name,
-            maxFps: min(60, screen.maximumFramesPerSecond))
+            maxFps: AppleVideoPolicy.frameRate(maximum: screen.maximumFramesPerSecond))
     }
 
     func start() {
@@ -112,7 +114,7 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
         if window == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 600),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            window.title = "DisplayWeave · 接收画面（在发送端操作）"
+            window.title = "DisplayWeave · 接收画面（⌃⌥Esc 停止键鼠回传）"
             window.contentView = videoView
             window.contentMinSize = NSSize(width: 320, height: 200)
             window.isReleasedWhenClosed = false
@@ -122,6 +124,7 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
             placeWindow()
         }
         window?.makeKeyAndOrderFront(nil)
+        window?.makeFirstResponder(videoView)
         NSApp.activate(ignoringOtherApps: true)
         applyFullscreen()
     }
@@ -145,6 +148,7 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
     }
 
     private func hideVideo() {
+        receiver.releaseDesktopInput()
         guard let window else { return }
         closingWindow = true
         movingFullscreenWindow = false

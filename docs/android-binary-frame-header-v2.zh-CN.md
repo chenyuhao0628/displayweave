@@ -52,7 +52,11 @@ Flag 为 `KEYFRAME = 0x01`、`CODEC_CONFIG = 0x02`、`HEVC = 0x04` 与 `H264 = 0
 - Legacy Classification 使用一次 `NalSummary`，Decoder 配置复用该结果，只在 MediaCodec 真正需要 CSD 时复制 VPS/SPS/PPS；
 - 仅错误日志使用的 NAL 描述以 Range 扫描，不再为每个 NAL 分配 List/`byte[]`。
 
-Transport 仍会分配有界的外层 Payload Array。本 PR 不伪称已经实现 Reusable Transport Pool；`bufferPoolMiss` 会暴露该剩余工作。每窗口 `allocatedFrameBytes`、零拷贝 `bufferReuseCount`、`bufferPoolMiss`，以及 Android Runtime `gcCount`/`gcTimeMs` 会进入 Receiver Stats 与 Benchmark CSV/JSONL。
+原 PR 9/p8 的 Transport 每帧分配有界的外层 Payload Array。p8 之后的源码改用 Transport 共享缓冲池：最多 32 MiB / 32 个缓冲，从 1 KiB 起按二次幂分桶，帧长上限 16 MiB（还受更低的协商上限约束）。池耗尽最多等待 250 ms，随后关闭对应连接进入恢复。可淘汰空闲桶，不复用仍被使用的内存。
+
+Transport 回调借用 lease；执行器任务、待解码视频和异步解码输入各自保留可独立释放的引用。队列替换、过期 generation、解析失败、任务拒绝/停止、解码器重建和断线均释放自己持有的引用。复制到 MediaCodec 输入缓冲后，解码器归还引用。关闭池时立即丢弃空闲桶，使用中的内存在最后一次归还时丢弃。有效帧长与桶容量分开，包括 Legacy JSON/Annex-B 帧。
+
+每窗口 `allocatedFrameBytes` 现在统计新分配的桶字节数，`bufferReuseCount` 统计实际空闲桶复用，`bufferPoolMiss` 统计新数组次数。它们包含当前连接接受的控制帧和视频帧，保持现有 wire/Benchmark 字段名。**不要与 p8 的计数直接对比**：p8 的 reuse 表示零拷贝视图，每帧都记为 miss。Android Runtime 的 `gcCount`/`gcTimeMs` 语义不变。
 
 ## Tests
 
@@ -81,7 +85,7 @@ Transport 仍会分配有界的外层 Payload Array。本 PR 不伪称已经实�
 
 - Flag 只会在本地 Capability Negotiation 后信任，并受边界/一致性校验；损坏 Annex-B 仍可由 Decoder Path 拒绝；
 - 52-byte Inner Header 会轻微减少既有协商 Outer Frame Limit 下的可用编码 Payload；
-- Transport Payload Allocation 仍存在；未来 Pool 必须明确 Latest-frame Replacement 与 Decoder Handoff 间的 Ownership/Release；
+- 缓冲池耗尽时关闭对应连接，避免无限分配；突发流量和内存行为仍需实机验收；
 - Runtime GC Key 由平台提供；不可用时报告零，不伪造数据。
 
 ## Pending Physical Validation
@@ -96,3 +100,7 @@ Transport 仍会分配有界的外层 Payload Array。本 PR 不伪称已经实�
 ## Next Step
 
 执行最终逐项兼容/恢复审计和当前可用的短时真机矩阵，不声称已完成延期的耐久或多设备覆盖。
+
+## 源码缓冲池验证（2026-10-16）
+
+Plain-Java 测试覆盖异步保留引用、池耗尽、重复释放、部分读取失败、分配前长度拒绝、Binary/Legacy 桶尾排除、任务取消/拒绝/异常、并发引用、真实 TCP 连接替换以及停止后的延迟归还。连续 1,000 个同为 1,000 字节的合成帧只分配一个 1,024 字节桶：1 次 miss、999 次池复用。这只证明软件分配路径，不是实机 GC、延迟或 FPS 结果。Android 六组自测和 Debug 构建通过。

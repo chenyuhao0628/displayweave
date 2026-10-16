@@ -35,8 +35,11 @@ enum MacReceiverPolicy {
         func dimension(_ value: Int) -> Int { min(16384, max(2, value)) & ~1 }
         let pw = dimension(panel?.pixelsWide ?? info.pixelsWide)
         let ph = dimension(panel?.pixelsHigh ?? info.pixelsHigh)
-        let pointsWide = dimension(panel?.pointsWide ?? (pw / scale))
-        let pointsHigh = dimension(panel?.pointsHigh ?? (ph / scale))
+        let desktop = DesktopResolutionPolicy.geometry(settings.desktopResolutions.resolution(for: info.id),
+            nativeWidth: pw, nativeHeight: ph, nativePointsWide: panel?.pointsWide,
+            nativePointsHigh: panel?.pointsHigh, backingScale: scale)
+        let pointsWide = desktop.pointsWide
+        let pointsHigh = desktop.pointsHigh
         let nativeW = dimension(sourceWidth ?? (pointsWide * scale))
         let nativeH = dimension(sourceHeight ?? (pointsHigh * scale))
         let portrait = nativeH > nativeW
@@ -72,11 +75,11 @@ enum MacReceiverPolicy {
                 if width >= height { width = max(2, (pixelBudget / height) & ~1) }
                 else { height = max(2, (pixelBudget / width) & ~1) }
             }
-            let budgetFps = cap.maxPixelsPerSecond.map { max(1, $0 / (width * height)) } ?? 60
-            let limit = min(60, max(1, info.displayMaxFrameRate ?? info.maxFps ?? 60),
+            let budgetFps = cap.maxPixelsPerSecond.map { max(1, $0 / (width * height)) } ?? 120
+            let limit = min(120, max(1, info.displayMaxFrameRate ?? info.maxFps ?? 60),
                             max(1, cap.maxFrameRate ?? 60), budgetFps,
-                            settings.fpsMode.userSelectedFps ?? 60)
-            let fps = limit >= 60 ? 60 : (limit >= 30 ? 30 : limit)
+                            settings.fpsMode.userSelectedFps ?? 120)
+            let fps = [120, 90, 60, 30].first(where: { $0 <= limit }) ?? limit
             return MacStreamPlan(pointsWide: pointsWide, pointsHigh: pointsHigh, scale: scale,
                                  width: width, height: height, fps: fps, codec: hevc ? .hevc : .h264)
         }

@@ -24,7 +24,11 @@ public final class VideoFrameTelemetry {
     }
 
     public static VideoFrameTelemetry fromWirePayload(byte[] payload, long receivedAndroidMs) {
-        String prefix = AnnexB.telemetryPrefix(payload);
+        return fromWirePayload(payload, payload.length, receivedAndroidMs);
+    }
+
+    public static VideoFrameTelemetry fromWirePayload(byte[] payload, int length, long receivedAndroidMs) {
+        String prefix = AnnexB.telemetryPrefix(payload, length);
         if (prefix == null) {
             return new VideoFrameTelemetry(
                     MISSING_MS, MISSING_MS, receivedAndroidMs,

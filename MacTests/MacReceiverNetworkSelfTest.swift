@@ -30,7 +30,9 @@ import VideoToolbox
             }.value
             return
         }
-        let receiver = StreamReceiver()
+        let receiver = StreamReceiver(securityProvider: { .legacy })
+        receiver.configure(panel: PanelAnnouncement(pixelsWide: 1920, pixelsHigh: 1080, scale: 1),
+                           name: "Test", maxFps: 120)
         receiver.start(port: 0, advertiseService: false)
         try await waitFor("listen") { receiver.listeningPort != 0 }
         let port = receiver.listeningPort
@@ -38,6 +40,7 @@ import VideoToolbox
             let peer = try ReceiverTestPeer(port: port)
             let hello = try peer.hello()
             precondition(hello["device"] as? String == "Mac")
+            precondition(hello["maxFps"] as? Int == 120)
             precondition((hello["supportedCodecs"] as? [String])?.contains("h264") == true)
             precondition(hello["protocolVersion"] == nil && hello["power"] == nil && hello["cursorPort"] == nil)
             return peer
@@ -48,7 +51,7 @@ import VideoToolbox
             precondition(busy.isClosed(), "second sender displaced active sender")
         }.value
         let video = try await Task.detached { try receiverTestH264Frame() }.value
-        let config = try JSONSerialization.data(withJSONObject: ["type":"streamConfig", "codec":"h264", "width":64, "height":64, "fps":60])
+        let config = try JSONSerialization.data(withJSONObject: ["type":"streamConfig", "codec":"h264", "width":64, "height":64, "fps":120])
         let stream = ReceiverFrameDecoder.frame(config) + ReceiverFrameDecoder.frame(video)
         try await Task.detached {
             try first.write(Data(stream.prefix(2)))
@@ -86,10 +89,17 @@ import VideoToolbox
         receiver.disconnect()
         try await waitFor("disconnect retains listener") { !receiver.connected }
         precondition(receiver.listeningPort == freshPort)
+        try await Task.detached {
+            let invalid = try ReceiverTestPeer(port: freshPort)
+            _ = try invalid.hello()
+            let bad = try JSONSerialization.data(withJSONObject: ["type":"streamConfig", "codec":"h264", "width":64, "height":64, "fps":121])
+            try invalid.write(ReceiverFrameDecoder.frame(bad))
+            precondition(invalid.isClosed(), "out-of-envelope FPS accepted")
+        }.value
         await withCheckedContinuation { continuation in receiver.stop { continuation.resume() } }
         try await waitFor("stopped") { receiver.listeningPort == 0 }
         withExtendedLifetime((first, next, fresh)) {}
-        let legacy = StreamReceiver(hardwareHEVCDecode: false)
+        let legacy = StreamReceiver(hardwareHEVCDecode: false, securityProvider: { .legacy })
         legacy.start(port: 0, advertiseService: false)
         try await waitFor("legacy listen") { legacy.listeningPort != 0 }
         let legacyPort = legacy.listeningPort

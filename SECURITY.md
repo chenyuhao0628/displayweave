@@ -12,7 +12,7 @@ Do not post an exploitable vulnerability in a public issue. Use GitHub's private
 
 ## Current trust boundaries
 
-- WiFi video and control currently use direct local TCP without production-grade encryption or authenticated pairing. Use only a trusted LAN.
+- v0.3.0-preview.1 defaults to certificate-pinned mutual TLS and explicit invitation pairing on Apple and Android. Legacy compatibility is an explicit unencrypted choice for trusted networks. See [pairing](docs/secure-transport.md).
 - Android USB requires ADB RSA authorization. This grants the Mac broad debugging trust, including shell/install capabilities outside DisplayWeave. Revoke USB debugging authorizations when no longer needed.
 - The macOS Preview is ad-hoc signed and not notarized. Verify `SHA256SUMS.txt` and obtain packages only from the project Release.
 - The Android Preview APK is signed with an offline project keystore. Verify the SHA-256 certificate fingerprint documented in the release checklist before first install or update.
@@ -29,10 +29,11 @@ Never commit Android keystores/passwords, Apple certificates/private keys, provi
 Follow [docs/release-checklist.md](docs/release-checklist.md). A valid Preview publication requires source/build checks, APK v2 verification, macOS bundle verification, IPA archive hygiene, and SHA-256 validation.
 
 
-## Mac LAN reception (source development build)
+## Mac LAN reception
 
-Receive mode advertises on the LAN and listens on TCP 9000. It accepts one
-sender, without pairing authentication or transport encryption. Enable it only
-on a trusted network. Role changes and Stop receiving close the listener and
-session; remote shutdown is not exposed. Frame lengths and video dimensions
-are bounded. See the [user guide](docs/mac-to-mac.md).
+Receive mode advertises on the LAN and listens on TCP 9000. The current Apple release
+requires authenticated TLS by default; explicit legacy compatibility is
+unencrypted and should be enabled only on a trusted network. It accepts one
+sender. Role changes, revocation and Stop receiving close owned connections;
+remote shutdown is not exposed. Frame lengths, admission time and pending
+sockets are bounded. See the [pairing guide](docs/secure-transport.md).

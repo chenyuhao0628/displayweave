@@ -28,7 +28,7 @@ pnpm install --frozen-lockfile
 pnpm build
 pnpm run check:docs
 pnpm run check:release
-(cd AndroidReceiver && ./gradlew --no-daemon test assembleDebug)
+(cd AndroidReceiver && ./gradlew --no-daemon test assembleDebug lintDebug)
 ```
 
 The Run action starts an ad-hoc signed development application. To compile without launching:
@@ -56,8 +56,16 @@ Keep screenshots and full logs outside Git. Record reproducible commands and san
 
 ## Current verification coverage
 
-`tools/run-swift-self-tests.sh` runs 37 standalone suites. Android `test` includes six plain-Java groups. `pnpm build` runs TypeScript, client/SSR production builds, bilingual prerendering and generated-site assertions. Run both Apple target builds after adding shared source files.
+`tools/run-swift-self-tests.sh` runs 52 standalone suites. Android `test` includes six plain-Java groups. `pnpm build` runs TypeScript, client/SSR production builds, bilingual prerendering and generated-site assertions. Run both Apple target builds after adding shared source files.
 
-For the opt-in iOS network smoke test, launch the current app in an iOS Simulator and keep it foregrounded, then run `python3 tools/test-ios-receiver.py --port 9000`. The initial listener wait is bounded to 10 seconds; the test sends invalid lengths and fragmented controls, replaces connections and checks liveness. Use an isolated receiver because it intentionally disconnects its test peers. It does not capture the desktop or prove video performance. Background the app separately and verify that port 9000 closes.
+`python3 tools/test-apple-keychain.py --ios-simulator` exercises real Mac/iOS Keychain identity persistence, missing-key recovery and explicit reset in random test namespaces. `python3 tools/test-secure-ios-receiver.py` builds an isolated app from the production PhoneReceiver/security code, sends synthetic video over authenticated TLS, checks revocation and backgrounds the app. Both create/delete their own simulator and leave installed applications untouched. Use `--screenshots build/security-ui` on the latter for light/dark settings evidence after its test invitation has been consumed. Run simulator suites sequentially to avoid competing cold boots; no desktop capture or virtual display is involved.
+
+For the older opt-in plaintext iOS network smoke test, launch an isolated Simulator app with `-insecureLegacyReceiver YES`, keep it foregrounded, then run `python3 tools/test-ios-receiver.py --port 9000`. Relaunch without that argument after testing. The initial listener wait is bounded to 10 seconds; the test sends invalid lengths and fragmented controls, replaces connections and checks liveness. It intentionally disconnects its test peers, does not capture the desktop and does not prove video performance. Background the app separately and verify that port 9000 closes.
 
 See [the 2026-10-16 audit](source-upgrade-audit-2026-10-16.md) for actual local UI/build evidence and pending hardware work.
+
+`python3 tools/test-secure-android-receiver.py --screenshots build/security-ui` requires SDK command-line tools and `system-images;android-35;default;arm64-v8a`. It creates/deletes its own AVD and builds a separate test package from production sources. Real Keystore keys exercise TLS; a Mac client then uses the production pairing/revocation/legacy UI over an owned ADB forward. Test identities and invitations are confined to the disposable app/container; screenshots are taken after invitation consumption.
+
+## Final source regression
+
+Run `python3 tools/test-tls-interop.py` for actual Apple↔Java TLS. Run the Apple Keychain, secure iOS and secure Android runtime scripts above sequentially, using isolated containers only. The iOS fixture also checks replacement video-view ownership, delayed dismantle and callback/layer cleanup; Android resolves the packaged adaptive icon. Run `python3 tools/test-apple-distribution.py` (12 offline checks) and `python3 tools/export-brand-assets.py --check` (install `tools/brand-requirements.txt`). Distribution preflight may be blocked by external certificates; it is not a substitute for signing a real artifact. See [production Apple packaging](apple-distribution.md).

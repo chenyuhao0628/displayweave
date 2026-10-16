@@ -2,6 +2,8 @@
 
 # Binary Frame Header V2 与 Legacy 当前审计
 
+当前源码状态：p8 之后已实现 Transport 缓冲池，详见[所有权和分配指南](android-binary-frame-header-v2.zh-CN.md)。下文保留此前审计的历史结果。
+
 基线：`79cbf90`；Legacy 真机兼容：**Pending**。
 
 Swift/Java 对 Magic `DWV2`、Version 2、固定 52-byte 大端 Header、Flags、三个正身份字段、非负时间戳，以及包含在 16 MiB 外层绝对上限内的 Payload Length 定义一致。冲突/缺失 Codec Flag、未知 Flag/Version、错误 Header Length、非正身份、截断、长度不符和 Oversize 均拒绝。

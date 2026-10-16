@@ -26,8 +26,26 @@ final class SenderController: ObservableObject {
     }
     private var directCablePolicy = DirectCableAutoConnectPolicy()
     private var wiredPathMonitor: NWPathMonitor?
+    @Published var autoSwitchMacLAN = UserDefaults.standard.bool(forKey: "autoSwitchMacLAN") {
+        didSet {
+            UserDefaults.standard.set(autoSwitchMacLAN, forKey: "autoSwitchMacLAN")
+            if !autoSwitchMacLAN { cancelMacLANRecovery() }
+            evaluateMacLANHandover()
+        }
+    }
+    @Published private(set) var macLANStatus: String?
+    private var macLANPolicy = MacLANHandoverPolicy()
+    private var macLANTokens: [String: UUID] = [:]
+    private var macLANRecoveryTasks: [String: Task<Void, Never>] = [:]
+    private var macLANMonitorTask: Task<Void, Never>?
+    var macLANRecoveryActive: Bool { !macLANTokens.isEmpty }
+    private var permitsMacLANHandover: Bool {
+        roleEnabled && autoConnectEnabled && autoSwitchMacLAN && settings.transportMode == .auto
+    }
 
     @Published var sessions: [DeviceSession] = []
+    @Published private(set) var securityStatus: String?
+    private var securityObserver: NSObjectProtocol?
     @Published var discovered: [NWBrowser.Result] = []
     @Published var usbDevices: [UsbmuxDevice] = []
     @Published var androidDevices: [AndroidAdbDevice] = []
@@ -48,6 +66,7 @@ final class SenderController: ObservableObject {
         didSet {
             settings.save()
             if settings.transportMode != oldValue.transportMode {
+                cancelMacLANRecovery()
                 // An in-flight USB recovery must not survive a mode change.
                 for serial in Array(androidRecoveryGeneration.keys) {
                     androidRecoveryGeneration[serial, default: 0] += 1
@@ -73,9 +92,9 @@ final class SenderController: ObservableObject {
     private let benchmarkLaunch = BenchmarkLaunchOptions.parse(ProcessInfo.processInfo.arguments)
     private var didAutoStartBenchmark = false
 
-    // Connection policy keeps one session per physical device. Apple
-    // transports retain the existing explicit/no-mid-session-handover
-    // behavior. Android Auto is different by design: bounded USB recovery
+    // Connection policy keeps one session per physical device. iOS
+    // transports retain explicit handover; Mac LAN handover is opt-in.
+    // Android Auto supports bounded USB recovery which
     // may fall back only to the same install ID over App WiFi, and a later
     // wired attach upgrades that same WiFi session back to USB. The old
     // session must end before dialing the replacement because the Android
@@ -127,6 +146,19 @@ final class SenderController: ObservableObject {
     @Published private(set) var replacingSessions = false
 
     init() {
+        securityObserver = NotificationCenter.default.addObserver(forName: TransportSecurityChange.notification,
+            object: nil, queue: .main) { [weak self] notification in
+            let kind = notification.userInfo?["kind"] as? String, peer = notification.userInfo?["peer"] as? String
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if kind == "identityReset" || kind == "senderMode" { self.disconnectAll() }
+                if kind == "revoked" {
+                    for session in self.sessions where session.deviceID == peer || session.sender.secureReceiverID == peer {
+                        self.disconnect(session)
+                    }
+                }
+            }
+        }
         setRoleEnabled(UserDefaults.standard.string(forKey: "macRole") != "receiver")
     }
 
@@ -135,6 +167,9 @@ final class SenderController: ObservableObject {
         guard enabled != roleEnabled else { return nil }
         roleEnabled = enabled
         roleGeneration += 1
+        macLANMonitorTask?.cancel(); macLANMonitorTask = nil
+        cancelMacLANRecovery()
+        macLANPolicy.clearCandidates()
         androidPollTask?.cancel(); androidPollTask = nil
         autoConnectTask?.cancel(); autoConnectTask = nil
         browser?.cancel(); browser = nil
@@ -169,6 +204,14 @@ final class SenderController: ObservableObject {
             self.autoConnect()
         }
         androidPollTask = Task { [weak self] in await self?.pollAndroidAdb() }
+        macLANMonitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled, self.roleEnabled,
+                      self.roleGeneration == generation else { return }
+                self.evaluateMacLANHandover()
+            }
+        }
         return nil
     }
 
@@ -326,6 +369,7 @@ final class SenderController: ObservableObject {
     private func autoConnect() {
         guard !replacingSessions else { return }
         guard roleEnabled, autoConnectEnabled else { return }
+        evaluateMacLANHandover()
         dedupeSessions()
         let permitsUSB = settings.transportMode != .wifi
         let permitsWiFi = settings.transportMode != .usb
@@ -440,8 +484,19 @@ final class SenderController: ObservableObject {
         return hash == 0 ? 1 : hash
     }
 
-    func connect(to target: ConnectionTarget, userInitiated: Bool = false) {
+    func connect(to target: ConnectionTarget, userInitiated: Bool = false,
+                 macRoute: MacLANRoute? = nil, handoverToken: UUID? = nil) {
         guard roleEnabled, !replacingSessions else { return }
+        if case .wifi(let result) = target, let peer = txtID(of: result) {
+            if let pending = macLANTokens[peer], pending != handoverToken { return }
+            if userInitiated {
+                macLANPolicy.manualConnect(peer)
+            } else if macLANPolicy.isSuppressed(peer) { return }
+        }
+        if userInitiated, !cleanupTasks.isEmpty {
+            replace([], targets: [freshTarget(target)])
+            return
+        }
         guard permits(target) else {
             if case .androidAdb(let mapping) = target, let manager = androidForwardManager {
                 Task { await manager.remove(sessionID: mapping.sessionID) }
@@ -489,6 +544,7 @@ final class SenderController: ObservableObject {
         }
 
         let transport: SenderTransport
+        var selectedMacRoute: MacLANRoute?
         switch target {
         case .usb(let udid):
             guard let portNum = UInt16(port) else { return }
@@ -504,13 +560,51 @@ final class SenderController: ObservableObject {
         case .androidAdbDevice:
             return
         case .wifi(let result):
-            transport = .tcp(result.endpoint, interface: DirectCable.interface(for: result))
+            var interface = DirectCable.interface(for: result)
+            if let macRoute {
+                guard let peer = txtID(of: result),
+                      let candidate = macLANCandidates(peer: peer).first(where: { $0.route == macRoute }) else { return }
+                interface = candidate.interface
+                selectedMacRoute = macRoute
+            } else if case .bonjour(let txt) = result.metadata, txt["device"]?.lowercased() == "mac" {
+                selectedMacRoute = MacLANRoute(interfaceName: interface?.name ?? "", direct: interface != nil)
+            }
+            transport = .tcp(result.endpoint, interface: interface)
         }
 
         let name = label(for: target)
+        let securityPlan: AppleSenderSecurityPlan
+        var securityID: String?
+        var advertisedTLS = false
+        switch target {
+        case .wifi(let result):
+            securityID = txtID(of: result)
+            if case .bonjour(let txt) = result.metadata { advertisedTLS = txt["security"] == "tls-v1" }
+        case .usb(let udid): securityID = udid.flatMap { installIDByUDID[$0] }
+        case .androidAdb(let mapping): securityID = installIDByAndroidSerial[mapping.serial]
+        case .androidAdbDevice: return
+        }
+        do {
+            securityPlan = try AppleTransportSecurityModel.shared.plan(receiverID: securityID,
+                advertisedTLS: advertisedTLS, name: name)
+            securityStatus = nil
+        } catch {
+            securityStatus = "\(name)：\(error.localizedDescription)"
+            if case .androidAdb(let mapping) = target, let manager = androidForwardManager {
+                Task { await manager.remove(sessionID: mapping.sessionID) }
+            }
+            return
+        }
         let sender = MacSender(transport: transport, name: name, mode: mode,
+                               securityPlan: securityPlan,
                                settings: settings, displaySerial: Self.displaySerial(for: id))
         let session = DeviceSession(id: id, target: target, name: name, sender: sender)
+        session.macLANRoute = selectedMacRoute
+        sender.onSecurityError = { [weak self, weak session] message in
+            guard let self, let session, self.sessions.contains(where: { $0 === session }) else { return }
+            self.securityStatus = "\(session.name)：\(message)"
+            self.disconnect(session)
+        }
         if case .androidAdb = target {
             session.androidForwardManager = androidForwardManager
         }
@@ -526,7 +620,17 @@ final class SenderController: ObservableObject {
             guard let self, let session, self.roleEnabled, !session.failed,
                   self.sessions.contains(where: { $0 === session }) else { return }
             guard info.id != StreamReceiver.installID else { self.end(session); return }
+            if let expected = self.macPeerID(session), info.device?.lowercased() != "mac" || info.id != expected {
+                self.macLANPolicy.disconnect(expected)
+                self.macLANStatus = "Mac 身份与发现记录不符，已停止连接；请检查接收端后手动重连。"
+                self.end(session)
+                return
+            }
             session.deviceID = info.id
+            if session.sender.encrypted {
+                if AppleTransportSecurityModel.shared.importedID == info.id { AppleTransportSecurityModel.shared.clearImport() }
+                AppleTransportSecurityModel.shared.refresh()
+            }
             session.deviceKind = info.device
             if case .usb(let udid?) = session.target, let installID = info.id {
                 self.installIDByUDID[udid] = installID
@@ -548,11 +652,24 @@ final class SenderController: ObservableObject {
         sender.onBenchmarkStatus = { [weak session] status in
             session?.benchmarkStatus = status
         }
-        sender.onDisconnected = { [weak self, weak session] in
+        sender.onDisconnected = { [weak self, weak session] reason in
             guard let self, let session, self.roleEnabled, self.sessions.contains(where: { $0 === session }) else { return }
             if case .androidAdb(let mapping) = session.target {
                 self.recoverAndroidAdb(session: session, mapping: mapping)
+            } else if reason == .connectionLost, let peer = self.macPeerID(session),
+                      session.deviceKind?.lowercased() == "mac", self.macLANTokens[peer] == nil,
+                      self.macLANPolicy.recover(peer: peer, now: ProcessInfo.processInfo.systemUptime,
+                                               enabled: self.permitsMacLANHandover) {
+                self.beginMacLANTransition(session, peer: peer)
             } else {
+                if reason == .connectionLost, self.permitsMacLANHandover,
+                   let peer = self.macPeerID(session), self.macLANPolicy.isSuppressed(peer) {
+                    self.macLANStatus = "Mac 连接反复失效，自动恢复已停止；请检查网络后手动连接。"
+                }
+                if reason == .receiverExit, let peer = self.macPeerID(session) {
+                    self.macLANPolicy.disconnect(peer)
+                    self.directCablePolicy.disconnect(peer)
+                }
                 Log.info("device disconnected — session \(session.id) stopped")
                 self.end(session)
             }
@@ -725,6 +842,10 @@ final class SenderController: ObservableObject {
 
     /// User-initiated disconnect: also opt the device out of auto-connect.
     func disconnect(_ session: DeviceSession) {
+        if let peer = macPeerID(session) {
+            macLANPolicy.disconnect(peer)
+            macLANRecoveryTasks[peer]?.cancel()
+        }
         switch session.target {
         case .usb: usbDisabled.insert(session.id)
         case .androidAdb(let mapping):
@@ -740,6 +861,7 @@ final class SenderController: ObservableObject {
     }
 
     func disconnectAll() {
+        cancelMacLANRecovery()
         sessions.forEach { disconnect($0) }
     }
 
@@ -779,10 +901,24 @@ final class SenderController: ObservableObject {
         replace([session], targets: [freshTarget(session.target)])
     }
 
+    func desktopResolution(for session: DeviceSession) -> DesktopResolution {
+        settings.desktopResolutions.resolution(for: session.deviceID)
+    }
+
+    func setDesktopResolution(_ resolution: DesktopResolution, for session: DeviceSession) {
+        guard roleEnabled, mode == .extend, !replacingSessions,
+              sessions.contains(where: { $0 === session }),
+              let id = session.deviceID, DesktopResolutionPreferences.validIdentity(id),
+              desktopResolution(for: session) != resolution else { return }
+        settings.desktopResolutions.set(resolution, for: id)
+        replace([session], targets: [freshTarget(session.target)])
+    }
+
     /// Rebuild only after old capture, startup and ADB-forward cleanup finish.
     /// Rapid edits retain the latest target set and cannot resurrect a receive role.
     func restartAll() {
         guard roleEnabled else { return }
+        cancelMacLANRecovery()
         let targets = replacementTargets + sessions.map { freshTarget($0.target) }
         guard !targets.isEmpty else { autoConnect(); return }
         replace(sessions, targets: targets.filter { permits($0) })
@@ -808,6 +944,130 @@ final class SenderController: ObservableObject {
             next.forEach { connect(to: $0, userInitiated: true) }
             autoConnect()
         }
+    }
+
+    // MARK: - Opt-in Mac LAN handover
+
+    private struct MacLANCandidate {
+        let result: NWBrowser.Result
+        let interface: NWInterface
+        let route: MacLANRoute
+    }
+
+    private func macPeerID(_ session: DeviceSession) -> String? {
+        guard case .wifi(let result) = session.target,
+              case .bonjour(let txt) = result.metadata,
+              txt["device"]?.lowercased() == "mac",
+              let id = txt["id"], !id.isEmpty, id.utf8.count <= 256 else { return nil }
+        return id
+    }
+
+    private func macLANCandidates(peer: String) -> [MacLANCandidate] {
+        var seen = Set<MacLANRoute>()
+        var candidates: [MacLANCandidate] = []
+        for result in discovered {
+            guard case .bonjour(let txt) = result.metadata, txt["id"] == peer,
+                  txt["device"]?.lowercased() == "mac" else { continue }
+            let direct = DirectCable.interface(for: result)
+            for interface in result.interfaces where interface.type == .wifi || interface.type == .wiredEthernet {
+                let route = MacLANRoute(interfaceName: interface.name, direct: interface == direct,
+                                        wireless: interface.type == .wifi)
+                if seen.insert(route).inserted {
+                    candidates.append(MacLANCandidate(result: result, interface: interface, route: route))
+                }
+            }
+        }
+        return candidates
+    }
+
+    private func evaluateMacLANHandover() {
+        guard permitsMacLANHandover, !replacingSessions else {
+            macLANPolicy.clearCandidates()
+            return
+        }
+        for session in sessions where !session.failed && session.deviceKind?.lowercased() == "mac" {
+            guard let peer = macPeerID(session), session.deviceID == peer,
+                  macLANTokens[peer] == nil, let current = session.macLANRoute else { continue }
+            let direct = macLANCandidates(peer: peer).filter(\.route.direct)
+                .sorted { $0.route.interfaceName < $1.route.interfaceName }.first?.route
+            if macLANPolicy.upgrade(peer: peer, current: current, candidate: direct,
+                                    now: ProcessInfo.processInfo.systemUptime, enabled: true) {
+                beginMacLANTransition(session, peer: peer)
+            }
+        }
+    }
+
+    private func beginMacLANTransition(_ old: DeviceSession, peer: String) {
+        guard permitsMacLANHandover, macLANTokens[peer] == nil, macLANTokens.count < 32 else { return }
+        let token = UUID(), role = roleGeneration
+        macLANTokens[peer] = token
+        macLANStatus = "正在切换 \(old.name) 的连接，等待旧会话释放…"
+        let cleanup = end(old)
+        macLANRecoveryTasks[peer] = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                if self.macLANTokens[peer] == token {
+                    self.macLANTokens.removeValue(forKey: peer)
+                    self.macLANRecoveryTasks.removeValue(forKey: peer)
+                    self.objectWillChange.send()
+                }
+            }
+            let current = {
+                self.permitsMacLANHandover && self.roleGeneration == role
+                    && self.macLANTokens[peer] == token && !self.macLANPolicy.isSuppressed(peer)
+                    && !self.replacingSessions
+            }
+            var failedDirectRoutes = Set<MacLANRoute>()
+            if let route = old.macLANRoute, route.direct { failedDirectRoutes.insert(route) }
+            var attemptSession: DeviceSession?
+            let outcome = await MacLANRecoveryRunner.run(cleanup: cleanup, current: current) { attempt in
+                let candidates = self.macLANCandidates(peer: peer)
+                let identities = candidates.map { MacLANCandidateIdentity(installID: peer, route: $0.route) }
+                guard let route = MacLANHandoverPolicy.select(peer: peer, candidates: identities,
+                                                             failed: failedDirectRoutes),
+                      let candidate = candidates.first(where: { $0.route == route }) else {
+                    self.macLANStatus = "等待发现 \(old.name) 的可用接口（\(attempt + 1)/5）；可取消后检查网络。"
+                    return false
+                }
+                let target = ConnectionTarget.wifi(candidate.result)
+                self.macLANStatus = "正在连接 \(old.name) · \(route.interfaceName)（\(attempt + 1)/5）"
+                self.connect(to: target, macRoute: route, handoverToken: token)
+                guard let session = self.session(for: target.sessionID), session.macLANRoute == route else { return false }
+                attemptSession = session
+                let deadline = ProcessInfo.processInfo.systemUptime + MacLANHandoverPolicy.helloTimeout
+                while !Task.isCancelled, current(), ProcessInfo.processInfo.systemUptime < deadline,
+                      self.sessions.contains(where: { $0 === session }), !session.failed {
+                    if session.deviceID == peer && session.deviceKind?.lowercased() == "mac" {
+                        self.macLANStatus = "\(old.name) 已通过 \(route.direct ? "有线" : "局域网") · \(route.interfaceName) 恢复连接。"
+                        return true
+                    }
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+                await self.end(session).value
+                attemptSession = nil
+                if route.direct { failedDirectRoutes.insert(route) }
+                return false
+            }
+            if outcome != .connected, let session = attemptSession {
+                await self.end(session).value
+            }
+            if outcome == .exhausted, self.macLANTokens[peer] == token {
+                self.macLANPolicy.disconnect(peer)
+                self.directCablePolicy.disconnect(peer)
+                self.macLANStatus = "\(old.name) 自动恢复已停止；请检查接收端、线缆或 Wi-Fi 后手动连接。"
+            }
+        }
+    }
+
+    func cancelMacLANRecovery() {
+        let peers = Set(macLANTokens.keys)
+        for peer in peers {
+            macLANPolicy.disconnect(peer)
+            directCablePolicy.disconnect(peer)
+            macLANRecoveryTasks[peer]?.cancel()
+        }
+        for session in sessions where macPeerID(session).map(peers.contains) == true { end(session) }
+        if !peers.isEmpty { macLANStatus = "已取消 Mac 自动恢复；需要时请手动连接。" }
     }
 
     // MARK: - Device list (one row per physical device)

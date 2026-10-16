@@ -53,8 +53,8 @@ targets:
         NSBonjourServices: ["_opensidecar._tcp"]
         LSApplicationCategoryType: public.app-category.utilities
         # --- Sparkle auto-update (issue #52) ---
-        # The release workflow publishes appcast.xml into public/. Automatic
-        # checks remain off until the first DisplayWeave-signed release exists.
+        # GitHub Pages metadata references GitHub Release artifacts only.
+        # UpdateFeedDelegate overrides stale persisted feed preferences.
         SUFeedURL: https://chenyuhao0628.github.io/displayweave/appcast.xml
         # Public EdDSA key from Sparkle's `generate_keys`. The matching private
         # key lives only as the `SPARKLE_PRIVATE_KEY` GitHub Actions secret
@@ -99,6 +99,7 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
+        CADisableMinimumFrameDurationOnPhone: true
         NSLocalNetworkUsageDescription: DisplayWeave 需要在本地网络中广播此设备，以便你的 Mac 通过 WiFi 连接。
         NSBonjourServices: ["_opensidecar._tcp"]
         UISupportedInterfaceOrientations:

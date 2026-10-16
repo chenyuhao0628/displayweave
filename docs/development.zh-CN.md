@@ -28,7 +28,7 @@ pnpm install --frozen-lockfile
 pnpm build
 pnpm run check:docs
 pnpm run check:release
-(cd AndroidReceiver && ./gradlew --no-daemon test assembleDebug)
+(cd AndroidReceiver && ./gradlew --no-daemon test assembleDebug lintDebug)
 ```
 
 Run 动作启动 ad-hoc 签名开发应用。只编译而不启动：
@@ -56,8 +56,16 @@ xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecariOS -configuration 
 
 ## 当前验证覆盖
 
-`tools/run-swift-self-tests.sh` 执行 37 组独立测试；Android `test` 包含六组纯 Java 自测；`pnpm build` 执行 TypeScript、client/SSR 生产构建、双语预渲染与生成页面断言。添加共用源码后需构建两个 Apple 目标。
+`tools/run-swift-self-tests.sh` 执行 52 组独立测试；Android `test` 包含六组纯 Java 自测；`pnpm build` 执行 TypeScript、client/SSR 生产构建、双语预渲染与生成页面断言。添加共用源码后需构建两个 Apple 目标。
 
-可选 iOS 网络冒烟测试：在 iOS 模拟器启动当前应用并保持前台，运行 `python3 tools/test-ios-receiver.py --port 9000`。首次监听最多等待 10 秒，测试无效长度、分片控制消息、连接替换与存活。它会主动断开测试连接，应使用独立接收实例；不捕获桌面，也不证明视频性能。另行把应用切至后台，检查 9000 端口关闭。
+`python3 tools/test-apple-keychain.py --ios-simulator` 在随机测试命名空间验证真实 Mac/iOS 钥匙串身份持久化、密钥丢失恢复与显式重置。`python3 tools/test-secure-ios-receiver.py` 使用生产 PhoneReceiver/安全代码构建隔离应用，以认证 TLS 发送合成视频、检查撤销并切至后台。两者均创建/删除自己的模拟器，不改动已安装应用。后者可加 `--screenshots build/security-ui`，在测试邀请消耗后记录浅色/深色设置界面。模拟器测试需顺序运行，避免多个冷启动互相争用；不捕获用户桌面，不创建虚拟显示器。
+
+旧版可选明文 iOS 网络冒烟测试：在隔离模拟器中以 `-insecureLegacyReceiver YES` 启动应用并保持前台，运行 `python3 tools/test-ios-receiver.py --port 9000`，测试后不带该参数重新启动。首次监听最多等待 10 秒，测试无效长度、分片控制消息、连接替换与存活。它会主动断开测试连接，不捕获桌面，也不证明视频性能。另行把应用切至后台，检查 9000 端口关闭。
 
 实际本地 UI/构建证据及待完成硬件项见 [2026-10-16 验收报告](source-upgrade-audit-2026-10-16.zh-CN.md)。
+
+`python3 tools/test-secure-android-receiver.py --screenshots build/security-ui` 需要 SDK 命令行工具和 `system-images;android-35;default;arm64-v8a`。脚本创建/删除自己的 AVD，并用生产源码构建独立测试包。真实 Keystore 密钥参与 TLS 测试，再通过独立 ADB 转发，用 Mac 客户端检查正式配对/撤销/兼容 UI。测试身份与邀请仅留在一次性应用/容器中；截图在邀请使用后进行。
+
+## 最终源码回归
+
+运行 `python3 tools/test-tls-interop.py` 验证真实 Apple↔Java TLS。上述 Apple Keychain、安全 iOS 与安全 Android runtime 脚本须串行执行，只用独立容器。iOS fixture 同时检查视频视图替换归属、延迟销毁和回调/图层清理；Android 检查打包后的 adaptive icon。执行 `python3 tools/test-apple-distribution.py`（12 项离线检查）与 `python3 tools/export-brand-assets.py --check`（先安装 `tools/brand-requirements.txt`）。分发预检可能被外部证书阻塞，不能代替真实产物签名，见[Apple 正式打包](apple-distribution.zh-CN.md)。

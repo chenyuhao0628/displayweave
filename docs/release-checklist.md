@@ -2,15 +2,15 @@
 
 # Release checklist
 
-## Current release: v0.2.1-p8 (15)
+## Current release: v0.3.0-preview.1 (16)
 
-The [p8 release notes](release-notes-v0.2.1-p8.md) record local publication, hashes and signing boundaries. p8 rebuilds the p7 native source with a higher build number; p7 assets and tag remain immutable. See [local publication](local-release.md) for the procedure.
+The [release notes](release-notes-v0.3.0-preview.1.md) record features, pairing migration, hashes and signing boundaries. Native source `53d2dfa` passed the complete local regression gate. Release builds include universal Mac, the original-certificate Android APK and unsigned iOS re-signing input. The local app was replaced first, with embedded and saved feeds pointing to GitHub Pages.
 
-On 2026-10-16 the maintainer authorized local building/upload while hosted Actions was unavailable. Local gates cover 37 Swift suites, six Android groups and Debug/Release builds, universal Mac Debug/Release, iOS Simulator and unsigned device builds, website, bilingual docs and release links. This is local evidence, not successful GitHub CI. Package version/build is 0.2.1-p8/15; Mac ZIP Ed25519, DMG/ZIP consistency, the pinned Android certificate and the unsigned iOS boundary were verified.
+Passed: 52 Swift suites, six Android groups, actual platform TLS/Keychain/Keystore, isolated iOS/Android runtimes, Apple builds, Android Lint, website, bilingual docs, 12 packaging tests and 36 brand exports. DMG/ZIP consistency, the existing Sparkle signature, Android certificate/version and the unsigned iOS boundary were verified.
 
-Eight files comprise four platform packages, two feeds, corresponding tagged source and checksums. Verify remote sizes/hashes and historical release paths before publication; persist the exact feeds in `public/`. While public GitHub and Pages return 404, do not claim the original clients' update channels recovered; install manually from the releases page.
+Eight files comprise four binaries, two feeds, tagged source and checksums. Verify uploaded assets before publication; persist exact feeds and compare live bytes after deployment. Use GitHub Releases and GitHub Pages only; never overwrite published assets. Record hosted CI separately from local evidence.
 
-Mac-to-Mac, HEVC, direct-link discovery and Pencil remain experimental. Two-Mac/Pencil/Intel runtime and endurance acceptance are pending; skip virtual-display interaction without an independent online display. Complete the [physical matrix](hevc-wired-pencil.md) before claiming hardware verification.
+Two-Mac/Pencil/Intel and endurance acceptance remain physical gaps. Skip virtual-display interaction without an independent online display. Production Apple identities and final editable artwork remain external prerequisites.
 
 ## Historical v0.2.1-p2 evidence
 

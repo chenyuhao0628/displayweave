@@ -2,6 +2,8 @@
 
 # Binary Frame Header V2 and Legacy Audit
 
+Current source status: transport pooling is now implemented after p8; see the [ownership and allocation guide](android-binary-frame-header-v2.md). The findings below record the earlier audit.
+
 Baseline: `79cbf90`; physical Legacy compatibility: **Pending**.
 
 The Swift and Java implementations agree on magic `DWV2`, version 2, a fixed 52-byte network-order header, flags, three positive identity fields, non-negative timestamps, and a payload length contained inside the 16 MiB outer absolute bound. Conflicting/missing codec flags, unknown flags/version, invalid header length, non-positive identity, truncation, payload mismatch, and oversize payload are rejected.

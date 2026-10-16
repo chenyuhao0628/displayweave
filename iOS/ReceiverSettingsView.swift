@@ -23,16 +23,17 @@ struct SettingsView: View {
                     LabeledContent("连接",
                                    value: receiver.connected ? "已连接" : "正在等待 Mac")
                     if receiver.videoSize != .zero {
+                        LabeledContent("编码 / 目标", value: "\(receiver.codecLabel) · \(receiver.requestedFps) fps")
                         LabeledContent("画面",
                                        value: "\(Int(receiver.videoSize.width))×\(Int(receiver.videoSize.height)) @ \(receiver.fps) fps")
+                        Text("画面 FPS 为视频提交速率；系统按屏幕、温度与电量决定真实刷新。")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
 
-                Section("Apple Pencil") {
-                    LabeledContent("输入模式", value: receiver.pencilAvailable ? "压感与倾角" : "兼容触控")
-                    Text("支持的 iPad 可传递压感、倾角和悬停；Mac 需授予辅助功能权限，绘图软件需支持数位笔输入。旧版 Mac 使用普通触控，当前笔画结束后再应用新能力。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                PencilSettingsSection(receiver: receiver)
+
+                TransportSecuritySettings()
 
                 Section {
                     // Isolated from the receiver: the Status section above
@@ -69,7 +70,7 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Label("USB：插上线并运行 Mac 端 app，它会自动通过线缆连接，可减少无线网络干扰。",
+                    Label("USB：首次导入配对邀请后连接；之后可通过线缆自动重连，减少无线网络干扰。",
                           systemImage: "cable.connector")
                     Label("局域网：两台设备连接到同一网络，然后在 Mac 端连接菜单中选择这台 \(deviceKind)。",
                           systemImage: "wifi")
@@ -109,6 +110,7 @@ struct SettingsView: View {
         }
     }
 }
+
 
 /// The device-name editor, deliberately kept out of any high-frequency
 /// @ObservedObject so streaming updates can't rebuild it and steal focus.

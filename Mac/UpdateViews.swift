@@ -1,6 +1,13 @@
 import SwiftUI
 import Sparkle
 
+/// A persisted SUFeedURL from an older build must not strand an upgraded app.
+final class UpdateFeedDelegate: NSObject, SPUUpdaterDelegate {
+    func feedURLString(for updater: SPUUpdater) -> String? {
+        UpdateFeedPolicy.canonical
+    }
+}
+
 /// "Check for Updates…" button wired to Sparkle. Follows Sparkle 2's
 /// documented SwiftUI pattern: a small view model publishes the updater's
 /// `canCheckForUpdates` so the button disables itself while a check is

@@ -2,42 +2,32 @@
 
 # DisplayWeave 路线图
 
-## v0.2.1-p7 已打包 — 2026-10-16
+更新于 2026-10-16。[功能台账](docs/feature-completion.zh-CN.md)记录逐项实现；本轮产物为 v0.3.0-preview.1（16），本机已更新。下载内容及验证边界见[发布说明](docs/release-notes-v0.3.0-preview.1.zh-CN.md)。
 
-- Mac 发送/接收角色互斥，局域网单向镜像/扩展。
-- 统一 UI 规范及 Mac/iOS/Android/网站重构，可达的接收设置与双语响应式导航。
-- 选择性迁入上游启动恢复、有界日志与双指误点击抑制。
-- Apple 共用帧/游标边界、生命周期隔离、安全输入/几何转换、Android 控制消息背压。
-- 经硬件能力确认的 Mac HEVC、绑定接口的直连候选和经协商的 Pencil 压感／倾角／接近事件。
-- 37 组 Swift 与各平台兼容构建。具体结果和实机缺口见[当前功能指南／证据](docs/hevc-wired-pencil.zh-CN.md)与[前批源码验收报告](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。
+## v0.3.0-preview.1 内容
 
-v0.2.1-p7 将这些变更作为开发预览版打包。新增硬件相关功能仍为实验性，下列真机验收完成前不升级为已验证。
+- 按设备 Native/1080p/1440p/4K 扩展桌面分辨率。
+- Apple/Android 默认双向 TLS、邀请配对、撤销和显式旧版兼容。
+- Apple HEVC/H.264 回退及有界 30–120fps 协商。
+- 双端同意的 Mac 接收键鼠回传，焦点、角色和会话变化释放输入。
+- 可选 Mac 有线/Wi-Fi 切换及同安装身份的有界恢复。
+- Pencil roll/橡皮擦及经同意、由发送端定义的快捷操作。
+- Mac 进程 CPU 指标与 Android 有界租借帧缓冲。
+- 公开协议规范和 Swift/Java 共用样例。
+- 仅 GitHub 发行规则、Apple 正式归档/导出预检工具、可复现 Android 自适应图标。
 
-## Preview 2 已交付并验证
+各项指南、检查和兼容边界见台账。目标 FPS 不等于实测渲染 FPS。
 
-- Android 每设备动态 ADB-forward USB。
-- Auto 优先 USB、有限恢复、同 install ID WiFi 回退和 USB 重新升级。
-- Android 前台/Surface 重连与 streamConfig 恢复。
-- 在现有 OnePlus 真机验证 Android HEVC/120 与 H.264/60 USB。
-- 已检查拔插、ADB 重启、取消/恢复授权、触摸和双指滚动。
-- 离线 v2 签名 Android APK，以及当前 iPhone/Android 混合并发。
-- 短时 benchmark 记录、Target/Actual Bitrate 分离、Auto/Manual/Benchmark、自适应码率、受限发送队列和传输感知关键帧（自动验证完成；实体性能矩阵待测）。
+## 已发布基线
 
-## 下一步验证
+p8 包含 p7 的 Mac 收发局域网镜像/扩展预览、四端 UI 重构、选择性上游启动恢复、有界队列/帧协议、硬件条件下的 Mac HEVC、绑定接口的直连候选和基础 Pencil。更早预览验证过 Android 动态 ADB-forward USB、有界 USB/Wi-Fi 恢复及一个当前 iPhone/Android 并发。以带日期的发布说明和实机报告为准；历史证据不自动证明新加密传输表现。
 
-先完成双 Mac 双方向、镜像/扩展、Wi-Fi/以太网、睡眠唤醒、显示器热插拔和 Intel 运行；在独立在线显示器下复核 Mac UI 与虚拟显示器清理，并完成 Android 视觉和移动端真实触摸验收。
+## 外部前提
 
-1. 两台 Android 同时连接，验证独立 serial、端口、清理、输入和重连。
-2. 同分辨率、codec、码率条件下的 USB/WiFi 受控 Benchmark。
-3. 由维护者执行 30 分钟和 2 小时耐久测试，记录温度、内存、重连与 forward 泄漏。
-4. 扩大 Android SoC、macOS 版本、线缆和网络矩阵。
+Apple 正式分发需要维护者的 Developer ID Application / Apple Distribution 身份、provisioning 和公证权限。工具已实现，真实正式签名/导出/公证仍阻塞。批准的可编辑/透明/深色/monochrome 品牌 master 与授权宣传截图也尚缺，继续使用现有位图衍生资源。
 
-## 产品工作
+## 实机验收
 
-- 加密 WiFi 配对与认证会话。
-- iOS/iPadOS 高刷新链路和更广泛 Apple 真机验证。
-- 稳定的公开协议版本与兼容性测试。
-- 获得付费身份后提供 Developer ID 签名/公证与常规 iOS 分发。
-- 最终透明/浅色/深色品牌母版与平台自适应图标。
+双 Mac 双向镜像/扩展、Wi-Fi/以太网/Thunderbolt Bridge 路由变化、睡眠唤醒、热插拔、Intel 运行、输入/键盘布局/快捷键；真实 Pencil 手势/旋转/橡皮擦与绘画软件；Apple HEVC/高刷显示；配对后的 LAN/USB 性能与重连。
 
-高刷新目标在持续渲染帧证据达到定义阈值前保持实验状态。参见 [docs/roadmap-and-acceptance.zh-CN.md](docs/roadmap-and-acceptance.zh-CN.md)。
+还需双 Android 并发、相同分辨率/编码/码率的 USB/Wi-Fi 受控对比、30 分钟/2 小时耐久，以及更多 OS/SoC/线缆矩阵。虚拟显示测试必须具备独立在线显示器，见[验收要求](docs/roadmap-and-acceptance.zh-CN.md)。

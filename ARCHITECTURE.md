@@ -12,8 +12,8 @@ Each connected device owns an independent sender pipeline and benchmark recorder
 macOS virtual display
   -> ScreenCaptureKit
   -> VideoToolbox H.264 / negotiated HEVC
-  -> framed TCP session
-     -> iOS/iPadOS receiver (usbmuxd USB or WiFi, H.264)
+  -> framed mutual-TLS session (legacy plaintext is explicit)
+     -> iOS/iPadOS receiver (usbmuxd USB or WiFi, negotiated HEVC/H.264)
      -> Mac receiver (LAN / pinned direct-link interface, HEVC/H.264)
      -> Android receiver (ADB-forward USB or WiFi, HEVC/H.264)
   <- touch, scroll, codec status, metrics, lifecycle messages
@@ -53,7 +53,7 @@ Touch coordinates, drag state, cursor movement, and two-finger scroll are encode
 
 ## Security boundaries
 
-- WiFi TCP is not production-encrypted; use a trusted LAN.
+- v0.3.0-preview.1 defaults to certificate-pinned mutual TLS and explicit invitation pairing on Apple and Android. Legacy compatibility is an explicit unencrypted choice for trusted networks. See [pairing](docs/secure-transport.md).
 - ADB RSA authorization trusts the Mac as a debugging host beyond DisplayWeave.
 - The macOS Preview is ad-hoc signed and not notarized.
 - The Android APK uses an offline project keystore stored outside Git.
@@ -74,7 +74,7 @@ Android DWV2. See the [design](docs/mac-to-mac-design.md).
 
 ## Source ownership and bounded work (2026-10-16)
 
-The source app supports exclusive Mac send/receive roles over the same Wi-Fi or Ethernet LAN. This is packaged as an experimental feature in v0.2.1-p7; physical acceptance remains pending. Mirroring captures an existing display; extending creates a virtual display.
+The source app supports exclusive Mac send/receive roles over the same Wi-Fi or Ethernet LAN. This is packaged as an experimental feature in v0.3.0-preview.1; physical acceptance remains pending. Mirroring captures an existing display; extending creates a virtual display.
 
 | Area | Ownership |
 | --- | --- |
@@ -96,3 +96,11 @@ Mac HEVC requires both a hardware encoder and an explicitly advertised hardware 
 `DirectCable` classifies link-local wired **candidates**; it does not authenticate peers or prove physical topology. A selected candidate pins both Bonjour resolution and TCP to its interface. `DirectCableAutoConnectPolicy` implements default-off opt-in, one attempt per appearance and manual opt-out. Existing sessions are deduplicated by installation ID, including pending hello.
 
 `pencil-v1` uses explicit hello/inputConfig negotiation. `PencilInputForwarder` fixes native/legacy mode for a whole stroke; `PencilSample` validates all numeric fields. `InputInjector` posts tablet point/proximity with deterministic cancellation. iOS `InputSendBudget` admits at most 64 queued/in-flight controls, each framed batch at most 64 KiB, before dispatch; connection epochs reject stale input and completions. An overflow closes that peer so sender cleanup releases held input. See the [protocol and acceptance plan](docs/hevc-wired-pencil-plan.md).
+
+## Apple video negotiation
+
+Both Apple targets share `Shared/ReceiverVideoBitstream`. iOS advertises `appleVideoV1` codec/refresh envelopes; Mac recognizes its existing device identity. The sender uses bounded Apple operating-point negotiation up to 120fps and HEVC with H.264 fallback, while Android keeps its separate V2 negotiation. See [current implementation and evidence](docs/apple-video.md).
+
+## Completed source extensions
+
+The [feature ledger](docs/feature-completion.md) records desktop resolution, default authenticated transport, consented Mac keyboard/mouse input, same-ID Mac handover, Pencil v2 and named shortcuts, process CPU sampling, Android pooled leases and shared protocol vectors. The iOS presentation owns callbacks by view identity: replacement retires old input before attachment, and late old-view teardown cannot clear new callbacks or remove a borrowed video layer. Decoder/presentation callbacks carry connection generations; cross-thread frame callbacks use locks. Actual production signing and final artwork remain external requirements.

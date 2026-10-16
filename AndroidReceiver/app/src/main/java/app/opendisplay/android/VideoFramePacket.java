@@ -4,7 +4,8 @@ import app.opendisplay.android.protocol.AnnexB;
 import app.opendisplay.android.protocol.BinaryFrameHeaderV2;
 
 /** Owns one transport buffer and a zero-copy view of its Annex-B payload. */
-public final class VideoFramePacket {
+public final class VideoFramePacket implements AutoCloseable {
+    private FrameBufferPool.Lease lease;
     public final byte[] bytes;
     public final int payloadOffset;
     public final int payloadLength;
@@ -34,8 +35,29 @@ public final class VideoFramePacket {
     public static VideoFramePacket parse(
             byte[] wirePayload, long receivedAndroidMs, VideoStreamConfig config)
             throws BinaryFrameHeaderV2.ParseException {
-        if (BinaryFrameHeaderV2.looksLikeBinary(wirePayload)) {
-            BinaryFrameHeaderV2.Parsed parsed = BinaryFrameHeaderV2.parse(wirePayload);
+        return parse(wirePayload, wirePayload.length, receivedAndroidMs, config);
+    }
+
+    public static VideoFramePacket parse(FrameBufferPool.Lease borrowed, long receivedAndroidMs,
+                                        VideoStreamConfig config) throws BinaryFrameHeaderV2.ParseException {
+        VideoFramePacket packet = parse(borrowed.bytes(), borrowed.length, receivedAndroidMs, config);
+        packet.lease = borrowed.retain();
+        return packet;
+    }
+
+    public VideoFramePacket retained() {
+        VideoFramePacket copy = new VideoFramePacket(bytes, payloadOffset, payloadLength, telemetry,
+                binaryHeaderV2, keyframe, codecConfig, binaryHevc, nalSummary);
+        if (lease != null) copy.lease = lease.retain();
+        return copy;
+    }
+
+    @Override public void close() { if (lease != null) lease.close(); }
+
+    private static VideoFramePacket parse(byte[] wirePayload, int wireLength,
+            long receivedAndroidMs, VideoStreamConfig config) throws BinaryFrameHeaderV2.ParseException {
+        if (wireLength >= 4 && BinaryFrameHeaderV2.looksLikeBinary(wirePayload)) {
+            BinaryFrameHeaderV2.Parsed parsed = BinaryFrameHeaderV2.parse(wirePayload, wireLength);
             return new VideoFramePacket(
                     wirePayload, parsed.payloadOffset, parsed.payloadLength,
                     VideoFrameTelemetry.fromBinaryHeader(parsed, receivedAndroidMs),
@@ -43,14 +65,14 @@ public final class VideoFramePacket {
                     parsed.isHevc(), null);
         }
 
-        int offset = AnnexB.firstStartCode(wirePayload);
+        int offset = AnnexB.firstStartCode(wirePayload, 0, wireLength);
         int safeOffset = offset >= 0 ? offset : 0;
-        int length = Math.max(0, wirePayload.length - safeOffset);
+        int length = Math.max(0, wireLength - safeOffset);
         AnnexB.NalSummary summary = scan(
                 wirePayload, safeOffset, length, config);
         return new VideoFramePacket(
                 wirePayload, safeOffset, length,
-                VideoFrameTelemetry.fromWirePayload(wirePayload, receivedAndroidMs),
+                VideoFrameTelemetry.fromWirePayload(wirePayload, wireLength, receivedAndroidMs),
                 false, summary.isKeyframe, summary.hasCodecConfig(),
                 false, summary);
     }

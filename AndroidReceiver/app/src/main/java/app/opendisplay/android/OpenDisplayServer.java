@@ -120,14 +120,27 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         void onMetrics(StreamMetrics metrics);
     }
 
-    public OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener) {
-        this(context, displaySpec, listener, new WifiTcpReceiverTransport(PORT), true);
+    public OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener) throws java.io.IOException, java.security.GeneralSecurityException {
+        this(context, displaySpec, listener, createTransport(context), true);
     }
 
     public OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener,
-                             boolean wifiAdvertisingEnabled) {
-        this(context, displaySpec, listener, new WifiTcpReceiverTransport(PORT),
+                             boolean wifiAdvertisingEnabled) throws java.io.IOException, java.security.GeneralSecurityException {
+        this(context, displaySpec, listener, createTransport(context),
                 wifiAdvertisingEnabled);
+    }
+
+    private static ReceiverTransport createTransport(Context context) throws java.io.IOException, java.security.GeneralSecurityException {
+        if (AndroidSecuritySettings.legacyEnabled(context)) return WifiTcpReceiverTransport.legacy(PORT);
+        AndroidSecurityStore store = AndroidSecurityStore.get(context);
+        return new WifiTcpReceiverTransport(PORT, new SecureSocketAdmission(store.key, store.certificate, store.pairing));
+    }
+
+    public void cancelPendingAdmissions() {
+        if (transport instanceof WifiTcpReceiverTransport) ((WifiTcpReceiverTransport) transport).cancelPendingAdmissions();
+    }
+    public void revokePeer(String id) {
+        if (transport instanceof WifiTcpReceiverTransport) ((WifiTcpReceiverTransport) transport).revokePeer(id);
     }
 
     OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener,
@@ -202,6 +215,18 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             }
 
             @Override
+            public void onListenerError(String message) {
+                executeTransportEvent(() -> listener.onStatus(message));
+            }
+
+            @Override
+            public void onAdmissionRejected(String diagnostic) {
+                // Admission errors are diagnostics only: never overwrite the
+                // status of an unrelated authenticated application session.
+                android.util.Log.w("DisplayWeave", "Secure admission rejected: " + diagnostic);
+            }
+
+            @Override
             public void onConnected(long generation, String peer) {
                 executeTransportEvent(() -> {
                     if (!connectionCoordinator.onConnected(generation, "socketAccepted")) {
@@ -225,9 +250,26 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             public void onPayload(long generation, byte[] payload) {
                 executeTransportEvent(() -> {
                     if (connectionCoordinator.isCurrent(generation)) {
-                        handleTransportPayload(generation, payload);
+                        handleTransportPayload(generation, payload, payload.length, null);
                     }
                 });
+            }
+
+            @Override
+            public void onFrame(long generation, FrameBufferPool.Lease borrowed) {
+                if (!running) return;
+                // Do not hide this task inside a lambda: shutdownNow must be able
+                // to release queued leases that never reach the event worker.
+                OwnedFrameTask task = new OwnedFrameTask(borrowed, frame -> {
+                    if (running && connectionCoordinator.isCurrent(generation)) {
+                        handleTransportPayload(generation, frame.bytes(), frame.length, frame);
+                    }
+                });
+                try {
+                    transportEvents.execute(task);
+                } catch (java.util.concurrent.RejectedExecutionException ignored) {
+                    task.close();
+                }
             }
 
             @Override
@@ -288,8 +330,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 });
             }
         });
-        timer.scheduleAtFixedRate(this::sendPingIfConnected, 2, 2, TimeUnit.SECONDS);
-        timer.scheduleAtFixedRate(this::publishStatsSafely, 1, 1, TimeUnit.SECONDS);
+        timer.scheduleWithFixedDelay(this::sendPingIfConnected, 2, 2, TimeUnit.SECONDS);
+        timer.scheduleWithFixedDelay(this::publishStatsSafely, 1, 1, TimeUnit.SECONDS);
     }
 
     public synchronized void setDecoderLowLatencyMode(DecoderLowLatencyMode mode) {
@@ -302,12 +344,15 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
     public void stop() {
         running = false;
+        AndroidSecurityStore.stopPairingIfLoaded();
         listeningPort = 0;
         advertiser.stop();
         transport.stop(LengthPrefixedProtocol.goodbyeJson().getBytes(StandardCharsets.UTF_8));
         resetQueuedFrames();
         releaseDecoderImmediately();
-        transportEvents.shutdownNow();
+        for (Runnable pending : transportEvents.shutdownNow()) {
+            if (pending instanceof OwnedFrameTask) ((OwnedFrameTask) pending).close();
+        }
         decoderWorker.shutdownNow();
         timer.shutdownNow();
     }
@@ -329,7 +374,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
     private void startWifiAdvertising(int port) {
         try {
-            advertiser.start("DisplayWeave Android", installId, port);
+            advertiser.start("DisplayWeave Android", installId, port, transport.secure());
         } catch (SecurityException error) {
             listener.onStatus("WiFi 广播等待附近设备权限；USB 仍可使用");
         }
@@ -360,14 +405,15 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         }
     }
 
-    private void enqueueVideoFrame(long generation, byte[] payload) {
+    private void enqueueVideoFrame(long generation, byte[] payload, FrameBufferPool.Lease lease) {
         if (!connectionCoordinator.isCurrent(generation)) {
             return;
         }
         VideoFramePacket frame;
         try {
-            frame = VideoFramePacket.parse(
-                    payload, System.currentTimeMillis(), currentStreamConfig);
+            frame = lease == null
+                    ? VideoFramePacket.parse(payload, System.currentTimeMillis(), currentStreamConfig)
+                    : VideoFramePacket.parse(lease, System.currentTimeMillis(), currentStreamConfig);
         } catch (BinaryFrameHeaderV2.ParseException error) {
             AndroidDropReason reason = error.failure
                     == BinaryFrameHeaderV2.Failure.INVALID_PAYLOAD_LENGTH
@@ -377,69 +423,84 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             recordDrop(reason, generation, null);
             return;
         }
-        VideoFrameTelemetry telemetry = frame.telemetry;
-        if (frame.binaryHeaderV2 && !protocolSession.isNegotiatedV2()) {
-            recordDrop(AndroidDropReason.MALFORMED_ANNEX_B, generation, telemetry);
-            return;
-        }
-        if (!frame.hasAnnexBPayload()) {
-            recordDrop(AndroidDropReason.MALFORMED_ANNEX_B, generation, telemetry);
-            return;
-        }
-        frameAllocationMetrics.recordTransportFrame(
-                payload.length, frame.bytes == payload);
-        lastVideoReceivedMs = System.currentTimeMillis();
-        AndroidDropReason rejection =
-                protocolSession.frameRejectionReason(generation, telemetry);
-        if (rejection != null) {
-            if (rejection != AndroidDropReason.STALE_CONNECTION_GENERATION) {
-                recordDrop(rejection, generation, telemetry);
-            }
-            return;
-        }
-        if (!frame.codecMatches(currentStreamConfig)) {
-            recordDrop(AndroidDropReason.MALFORMED_ANNEX_B, generation, telemetry);
-            return;
-        }
-        if (!protocolSession.acceptFrame(generation, telemetry)) {
-            recordDrop(AndroidDropReason.STALE_CONFIG_VERSION, generation, telemetry);
-            return;
-        }
-        frameSizeMetrics.recordFrame(
-                frame.payloadLength, frame.keyframe);
-        synchronized (this) {
-            receivedFrames++;
-            if (frame.keyframe) {
-                keyframeReceivedCount++;
-            }
-            boolean wasAwaitingKeyframe = referenceChainRecovery.isAwaitingKeyframe();
-            if (referenceChainRecovery.shouldReject(
-                    frame.keyframe, System.currentTimeMillis())) {
-                recordDrop(AndroidDropReason.AWAITING_KEYFRAME_REJECTED,
-                        generation, telemetry);
+        boolean transferred = false;
+        try {
+            VideoFrameTelemetry telemetry = frame.telemetry;
+            if (frame.binaryHeaderV2 && !protocolSession.isNegotiatedV2()) {
+                recordDrop(AndroidDropReason.MALFORMED_ANNEX_B, generation, telemetry);
                 return;
             }
-            if (wasAwaitingKeyframe && frame.keyframe) {
-                awaitingKeyframeDurationMs +=
-                        referenceChainRecovery.lastCompletedDurationMs();
+            if (!frame.hasAnnexBPayload()) {
+                recordDrop(AndroidDropReason.MALFORMED_ANNEX_B, generation, telemetry);
+                return;
             }
-            if (!pendingVideoFrames.offer(new QueuedVideoFrame(generation, frame))) {
-                pendingSlotReplaceCount++;
-                for (QueuedVideoFrame dropped : pendingVideoFrames.clearAndReturn()) {
-                    recordDrop(AndroidDropReason.LATEST_SLOT_REPLACED,
-                            dropped.generation, dropped.frame.telemetry);
+            lastVideoReceivedMs = System.currentTimeMillis();
+            AndroidDropReason rejection =
+                    protocolSession.frameRejectionReason(generation, telemetry);
+            if (rejection != null) {
+                if (rejection != AndroidDropReason.STALE_CONNECTION_GENERATION) {
+                    recordDrop(rejection, generation, telemetry);
                 }
-                queueDepthAndroid = 0;
-                if (!frame.keyframe) {
-                    breakReferenceChain(generation, telemetry);
+                return;
+            }
+            if (!frame.codecMatches(currentStreamConfig)) {
+                recordDrop(AndroidDropReason.MALFORMED_ANNEX_B, generation, telemetry);
+                return;
+            }
+            if (!protocolSession.acceptFrame(generation, telemetry)) {
+                recordDrop(AndroidDropReason.STALE_CONFIG_VERSION, generation, telemetry);
+                return;
+            }
+            frameSizeMetrics.recordFrame(
+                    frame.payloadLength, frame.keyframe);
+            synchronized (this) {
+                if (!running || !connectionCoordinator.isCurrent(generation)) return;
+                receivedFrames++;
+                if (frame.keyframe) {
+                    keyframeReceivedCount++;
+                }
+                boolean wasAwaitingKeyframe = referenceChainRecovery.isAwaitingKeyframe();
+                if (referenceChainRecovery.shouldReject(
+                        frame.keyframe, System.currentTimeMillis())) {
+                    recordDrop(AndroidDropReason.AWAITING_KEYFRAME_REJECTED,
+                            generation, telemetry);
                     return;
                 }
-                pendingVideoFrames.offer(new QueuedVideoFrame(generation, frame));
+                if (wasAwaitingKeyframe && frame.keyframe) {
+                    awaitingKeyframeDurationMs +=
+                            referenceChainRecovery.lastCompletedDurationMs();
+                }
+                if (!pendingVideoFrames.offer(new QueuedVideoFrame(generation, frame))) {
+                    pendingSlotReplaceCount++;
+                    for (QueuedVideoFrame dropped : pendingVideoFrames.clearAndReturn()) {
+                        try (VideoFramePacket discarded = dropped.frame) {
+                            recordDrop(AndroidDropReason.LATEST_SLOT_REPLACED,
+                                    dropped.generation, discarded.telemetry);
+                        }
+                    }
+                    queueDepthAndroid = 0;
+                    if (!frame.keyframe) {
+                        breakReferenceChain(generation, telemetry);
+                        return;
+                    }
+                    pendingVideoFrames.offer(new QueuedVideoFrame(generation, frame));
+                }
+                transferred = true;
+                queueDepthAndroid = pendingVideoFrames.size();
+                if (decodeWorkerState.markFrameAvailable()) {
+                    scheduleFrameDrain();
+                }
             }
-            queueDepthAndroid = pendingVideoFrames.size();
-            if (decodeWorkerState.markFrameAvailable()) {
-                decoderWorker.execute(this::drainLatestVideoFrames);
-            }
+        } finally {
+            if (!transferred) frame.close();
+        }
+    }
+
+    private void scheduleFrameDrain() {
+        try {
+            decoderWorker.execute(this::drainLatestVideoFrames);
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            resetQueuedFrames();
         }
     }
 
@@ -455,10 +516,11 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                         return;
                     }
                 }
-                if (!connectionCoordinator.isCurrent(queued.generation)) {
-                    continue;
+                try (VideoFramePacket frame = queued.frame) {
+                    if (connectionCoordinator.isCurrent(queued.generation)) {
+                        queueFrameIfCurrentDecoder(queued.generation, frame);
+                    }
                 }
-                queueFrameIfCurrentDecoder(queued.generation, queued.frame);
             }
         } catch (RuntimeException error) {
             android.util.Log.e(
@@ -471,7 +533,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                         running && !pendingVideoFrames.isEmpty());
             }
             if (reschedule) {
-                decoderWorker.execute(this::drainLatestVideoFrames);
+                scheduleFrameDrain();
             }
             if (requestRecovery) {
                 requestKeyframe();
@@ -479,11 +541,14 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         }
     }
 
-    private void handleTransportPayload(long generation, byte[] payload) {
-        if (LengthPrefixedProtocol.isPureJsonControl(payload)) {
-            handleMacJson(generation, new String(payload, StandardCharsets.UTF_8));
+    private void handleTransportPayload(long generation, byte[] payload, int length,
+                                        FrameBufferPool.Lease lease) {
+        frameAllocationMetrics.recordTransportFrame(
+                lease == null ? length : lease.allocatedBytes, lease != null && lease.reused);
+        if (LengthPrefixedProtocol.isPureJsonControl(payload, length)) {
+            handleMacJson(generation, new String(payload, 0, length, StandardCharsets.UTF_8));
         } else if (decoder != null) {
-            enqueueVideoFrame(generation, payload);
+            enqueueVideoFrame(generation, payload, lease);
         }
     }
 
@@ -697,7 +762,9 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     }
 
     private synchronized void resetQueuedFrames() {
-        pendingVideoFrames.clear();
+        for (QueuedVideoFrame pending : pendingVideoFrames.clearAndReturn()) {
+            pending.frame.close();
+        }
         referenceChainRecovery.reset();
         decoderRecoveryStartedAtMs = 0;
         queueDepthAndroid = 0;

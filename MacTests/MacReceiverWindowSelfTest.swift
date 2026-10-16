@@ -12,7 +12,7 @@ import Foundation
     }
 
     @MainActor static func run() async throws {
-        let controller = MacReceiverController(port: 0, advertiseService: false)
+        let controller = MacReceiverController(port: 0, advertiseService: false, securityProvider: { .legacy })
         controller.fullscreen = false
         controller.start()
         let receiver = controller.receiver

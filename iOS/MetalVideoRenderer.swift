@@ -26,11 +26,15 @@ final class MetalVideoRenderer {
 
     private let renderQueue = DispatchQueue(label: "metal.render", qos: .userInteractive)
     private let lock = NSLock()
-    private var pendingFrame: (buffer: CVPixelBuffer, captureMs: Double?)?
+    private var pendingFrame: (buffer: CVPixelBuffer, captureMs: Double?, generation: UInt64)?
 
     /// presentedTime (CACurrentMediaTime base) + the capture timestamp that
     /// was threaded through render(_:captureMs:).
-    var onPresented: ((_ presentedTime: CFTimeInterval, _ captureMs: Double?) -> Void)?
+    private var presentedHandler: ((CFTimeInterval, Double?, UInt64) -> Void)?
+    var onPresented: ((_ presentedTime: CFTimeInterval, _ captureMs: Double?, _ generation: UInt64) -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return presentedHandler }
+        set { lock.lock(); presentedHandler = newValue; lock.unlock() }
+    }
 
     init?() {
         guard let device = MTLCreateSystemDefaultDevice(),
@@ -96,10 +100,10 @@ final class MetalVideoRenderer {
     }
 
     /// Called on the receiver's queue — returns immediately.
-    func render(_ pixelBuffer: CVPixelBuffer, captureMs: Double?) {
+    func render(_ pixelBuffer: CVPixelBuffer, captureMs: Double?, generation: UInt64) {
         lock.lock()
         let hadPending = pendingFrame != nil
-        pendingFrame = (pixelBuffer, captureMs)
+        pendingFrame = (pixelBuffer, captureMs, generation)
         lock.unlock()
         // A pending frame means a drain is already queued and will pick up
         // the newer buffer we just stored.
@@ -114,10 +118,10 @@ final class MetalVideoRenderer {
         pendingFrame = nil
         lock.unlock()
         guard let frame else { return }
-        draw(frame.buffer, captureMs: frame.captureMs)
+        draw(frame.buffer, captureMs: frame.captureMs, generation: frame.generation)
     }
 
-    private func draw(_ pixelBuffer: CVPixelBuffer, captureMs: Double?) {
+    private func draw(_ pixelBuffer: CVPixelBuffer, captureMs: Double?, generation: UInt64) {
         let w = CVPixelBufferGetWidth(pixelBuffer)
         let h = CVPixelBufferGetHeight(pixelBuffer)
         if metalLayer.drawableSize != CGSize(width: w, height: h) {
@@ -153,7 +157,7 @@ final class MetalVideoRenderer {
         // glass-time telemetry, so skipping it in the Simulator is harmless.
         #if !targetEnvironment(simulator)
         drawable.addPresentedHandler { [weak self] d in
-            self?.onPresented?(d.presentedTime, captureMs)
+            self?.onPresented?(d.presentedTime, captureMs, generation)
         }
         #endif
         // Keep the source textures alive until the GPU is done with them.

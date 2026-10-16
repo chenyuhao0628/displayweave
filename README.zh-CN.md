@@ -6,17 +6,19 @@
 
 DisplayWeave 是独立维护、使用 GPL-3.0、坚持本地优先的第二屏项目，源自 [OpenDisplay](https://github.com/peetzweg/opendisplay)。它可以把 iPhone、iPad 和 Android 设备变成 Mac 的扩展或镜像显示器。
 
-## Mac 与 Mac（v0.2.1-p8 实验功能）
+## Mac 与 Mac（v0.3.0-preview.1 实验功能）
 
 同一应用可选择发送或接收，通过 Wi-Fi/以太网单向扩展或镜像。双方需 macOS 14+，
-应用协商硬件 HEVC，并可回退 H.264，最高 60fps；实体双 Mac 性能矩阵待验证。此功能已包含在下方 `v0.2.1-p8`
+应用协商硬件 HEVC，并可回退 H.264，在屏幕/编码能力内最高协商 120fps；实体双 Mac 性能矩阵待验证。此功能已包含在下方 `v0.3.0-preview.1`
 发布包内。参见[使用指南](docs/mac-to-mac.zh-CN.md)及[设计与上游评估](docs/mac-to-mac-design.zh-CN.md)。
 
-本版本还包含四端 UI 规范化、上游恢复改进和网络/生命周期加固；该批基线见[源码升级报告](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。本版本包含自 p7 引入的 [Mac HEVC、绑定接口的直连发现与经协商的 Apple Pencil 输入](docs/hevc-wired-pencil.zh-CN.md)，Swift 套件增至 37 组；实机验收仍待完成。
+本版本还包含四端 UI 规范化、上游恢复改进和网络/生命周期加固；该批基线见[源码升级报告](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。本版本包含自 p7 引入的 [Mac HEVC、绑定接口的直连发现与经协商的 Apple Pencil 输入](docs/hevc-wired-pencil.zh-CN.md)，Swift 套件增至 52 组；实机验收仍待完成。
+
+本预览版还加入[按设备分辨率](docs/desktop-resolution.zh-CN.md)、[安全配对](docs/secure-transport.zh-CN.md)、[经许可的 Mac 键鼠回传](docs/mac-receiver-input.zh-CN.md)、[有线/Wi-Fi 切换](docs/mac-lan-handover.zh-CN.md)与[高级 Pencil](docs/pencil-advanced.zh-CN.md)。连接前请升级两端，并导入接收邀请。
 
 ## 当前能力
 
-- iOS/iPadOS 接收端：通过 `usbmuxd` 使用 USB，或使用本地 WiFi；采用 H.264 链路。
+- iOS/iPadOS 接收端：通过 `usbmuxd` 使用 USB，或使用本地 WiFi；采用硬件条件下的 HEVC，并可回退 H.264。
 - Android 接收端：支持本地 WiFi 或每设备动态 `adb forward` USB，支持 HEVC/H.265、H.264 回退与 30/60/90/120fps 协商。
 - 传输选择：Auto、USB 或 WiFi。Auto 优先有线 USB，进行有限恢复，只回退到 install ID 相同的 WiFi，并在线缆恢复后升级回 USB。
 - 输入：轻点、拖动、光标和双指滚动可回传 macOS。
@@ -29,11 +31,11 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 
 下述真机恢复与高刷新观察来自 Preview 2 验证，继续作为既有证据；本版本没有在第二台 Android 上重新执行这些项目。
 
-## 下载 `v0.2.1-p8`
+## 下载 `v0.3.0-preview.1`
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；下载统一发布在[发行页面](https://github.com/chenyuhao0628/displayweave/releases)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。
+2026-10-16：本预览版在本地构建，下载仅使用 GitHub Releases；Mac 与 Android 更新元数据使用已恢复访问的项目 GitHub Pages。构建证据及必需的配对迁移见[发布说明](docs/release-notes-v0.3.0-preview.1.zh-CN.md)。
 
 | 平台 | 产物 | 分发边界 |
 | --- | --- | --- |
@@ -43,7 +45,7 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 | iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | 未签名自签输入包，不能直接安装 |
 | Mac 更新源 | `appcast.xml` | 由 Mac 应用内置公钥认证的 Sparkle 更新源 |
 | Android 更新源 | `android-update.json` | 包含大小、哈希、版本、包名与固定证书的 HTTPS 元数据 |
-| 源码 | `DisplayWeave-v0.2.1-p8-source.tar.gz` | 对应发行 tag 的完整跟踪源码，包含 GPL-3.0 与构建脚本 |
+| 源码 | `DisplayWeave-v0.3.0-preview.1-source.tar.gz` | 对应发行 tag 的完整跟踪源码，包含 GPL-3.0 与构建脚本 |
 | 验证 | `SHA256SUMS.txt` | 全部 Release 文件的 SHA-256 |
 
 这是开发预览版，不是生产签名的商店版本。使用前请验证校验和；Android 用户还应核对[发布检查清单](docs/release-checklist.zh-CN.md)中的证书指纹。
@@ -125,8 +127,8 @@ Android Release 签名密钥库保存在仓库外。参见[开发预览分发](d
 
 ## 当前限制
 
-- iOS/iPadOS 120Hz 尚未实现。
-- 当前 WiFi TCP 视频/控制流量尚未生产级加密，请仅在可信局域网使用。
+- 已包含 [Apple HEVC / 高刷协商](docs/apple-video.zh-CN.md)，实机 120fps 性能尚未验证。
+- 新连接需要[认证 TLS 配对](docs/secure-transport.zh-CN.md)，USB 隧道也相同；旧版客户端需要在可信网络中显式启用未加密旧版兼容。
 - 双 Android 并发、同条件 USB/WiFi 受控 Benchmark，以及 30 分钟/2 小时耐久测试尚未完成。
 - macOS 使用私有 `CGVirtualDisplay` 行为，未来 macOS 版本可能发生变化。
 - 公开 macOS 与 iOS 包未使用 Developer ID/App Store 签名。

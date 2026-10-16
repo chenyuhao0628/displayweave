@@ -9,6 +9,7 @@
 
     <application
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="DisplayWeave Android"
         android:resizeableActivity="true"

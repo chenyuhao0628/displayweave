@@ -2,6 +2,10 @@
 
 # HEVC, direct-link Macs and Apple Pencil
 
+For current v0.3.0-preview.1 behavior, see [resolution](desktop-resolution.md), [Apple video](apple-video.md), [secure pairing](secure-transport.md), [wired/Wi-Fi handover](mac-lan-handover.md) and [advanced Pencil](pencil-advanced.md). These extensions are included; physical acceptance remains pending. The following p7/p8 baseline and dated evidence are historical, not current feature limits.
+
+## Historical p7/p8 baseline
+
 Packaged in the v0.2.1-p7 development preview on 2026-10-16. Hardware-dependent behavior remains experimental. See the [design and upstream provenance](hevc-wired-pencil-plan.md).
 
 ## Resolution switching
@@ -68,3 +72,11 @@ Compilation for Intel is not Intel runtime validation. Parsing real encoded samp
 - Thunderbolt Bridge and Ethernet: Wi-Fi enabled concurrently, verify the active interface, candidate appearance, unplug/replug, manual opt-out and no duplicate sessions. Include a normal routed/static-IP network and confirm it remains a normal LAN device.
 - Pencil: supported iPad/Pencil pairs and a tablet-aware drawing app; light/heavy pressure, tilt in four directions, hover enter/exit, palm contact, two-finger scrolling, rotation, drawing while disconnecting/backgrounding and old-sender compatibility. Confirm no held mouse button or proximity state after cancellation.
 - Run 30-minute and 2-hour endurance tests before making performance/release claims. Record failures and device/OS/transport details without committing private identifiers or captures.
+
+## Source update after p8
+
+The source adds iOS HEVC and Apple high-refresh negotiation; see [Apple video and verification](apple-video.md). The p8 download retains the earlier iOS H.264 / Mac 60fps behavior described above.
+
+The source also adds opt-in [Mac wired / Wi-Fi handover](mac-lan-handover.md); p8 still uses the manual cable-switching behavior above.
+
+Current source adds [advanced Pencil rotation, eraser tools and configurable gestures/shortcuts](pencil-advanced.md) over authenticated connections. The published p8 behavior described above remains unchanged.

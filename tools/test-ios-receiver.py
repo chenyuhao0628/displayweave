@@ -7,6 +7,7 @@ import json
 import socket
 import struct
 import time
+from pathlib import Path
 
 
 def exact(peer, count):
@@ -25,12 +26,32 @@ def message(peer):
     return json.loads(exact(peer, length))
 
 
-def connect(port):
+def connect(port, with_hello=False):
     peer = socket.create_connection(("127.0.0.1", port), timeout=2)
     peer.settimeout(2)
     hello = message(peer)
     assert hello.get("type") == "hello" and hello.get("device") in ("iPhone", "iPad"), "not an iOS receiver"
-    return peer
+    assert "appleVideoV1" in hello.get("capabilities", []), "missing Apple video negotiation"
+    assert 1 <= hello["displayMaxFrameRate"] <= 120
+    return (peer, hello) if with_hello else peer
+
+
+def send(peer, payload):
+    if isinstance(payload, dict):
+        payload = json.dumps(payload).encode()
+    peer.sendall(struct.pack("!I", len(payload)) + payload)
+
+
+def until_message(peer, kind):
+    deadline = time.monotonic() + 4
+    while time.monotonic() < deadline:
+        # The receiver schedules its heartbeat every 2s; allow scheduling jitter
+        # without turning a healthy boundary into an exact-2s timeout failure.
+        peer.settimeout(max(0.01, deadline - time.monotonic()))
+        result = message(peer)
+        if result.get("type") == kind:
+            return result
+    raise AssertionError(f"missing {kind}")
 
 
 def closed(peer):
@@ -49,6 +70,8 @@ def closed(peer):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=9000)
+    parser.add_argument("--video-fixtures", type=Path,
+                        help="Synthetic frames exported by ReceiverVideoBitstreamSelfTest")
     args = parser.parse_args()
     # Simulator launch is asynchronous; wait only for the initial connection.
     deadline = time.monotonic() + 10
@@ -73,7 +96,33 @@ def main():
         assert message(fresh)["type"] == "ping", "replacement transport stopped sending liveness"
     with connect(args.port):
         pass
-    print("iOS loopback: invalid lengths, old peer closure, fragmentation and replacement liveness PASS")
+    base = {"type": "streamConfig", "codec": "h264", "width": 64, "height": 64, "fps": 60}
+    for patch in ({"width": 3}, {"fps": 121}, {"codec": "unsupported"}):
+        with connect(args.port) as peer:
+            send(peer, base | patch)
+            assert closed(peer), f"invalid video config accepted: {patch}"
+    if args.video_fixtures:
+        h264 = (args.video_fixtures / "synthetic.h264").read_bytes()
+        peer, hello = connect(args.port, with_hello=True)
+        with peer:
+            send(peer, base | {"fps": hello["maxFps"]})
+            send(peer, h264)
+            until_message(peer, "ping")
+            send(peer, base | {"codec": "hevc"})
+            hevc = args.video_fixtures / "synthetic.hevc"
+            if "hevc" in hello["supportedCodecs"] and hevc.exists():
+                send(peer, hevc.read_bytes())
+                until_message(peer, "ping")
+            else:
+                print("SKIP iOS HEVC presentation: simulator did not advertise hardware HEVC")
+            send(peer, bytes([0, 0, 0, 1, 0x26, 0]))
+            assert until_message(peer, "codecFailure")["codec"] == "hevc"
+            send(peer, base)
+            send(peer, h264)
+            until_message(peer, "ping")
+            send(peer, base | {"codec": "hevc"})
+            assert closed(peer), "failed HEVC codec reaccepted during same connection"
+    print("iOS loopback: framing, replacement, capability/config bounds and optional synthetic codec fallback PASS")
 
 
 if __name__ == "__main__":

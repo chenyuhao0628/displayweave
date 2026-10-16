@@ -4,7 +4,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
-tag="v0.2.1-p8"
+tag="v0.3.0-preview.1"
 assets=(
   "DisplayWeave-Android.apk"
   "DisplayWeave-macOS.zip"
@@ -12,23 +12,23 @@ assets=(
   "DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa"
   "appcast.xml"
   "android-update.json"
-  "DisplayWeave-v0.2.1-p8-source.tar.gz"
+  "DisplayWeave-v0.3.0-preview.1-source.tar.gz"
   "SHA256SUMS.txt"
 )
 hashes=(
-  "3f909af1bd0e6da09a72048b124d061aadd8284c2dad7beb0b8a3e7f568a098e"
-  "a83e6a0a0455bfe7f0c0a5b5cb70f4a1acdbc18b1f8f00c3e76f9eea419ac67c"
-  "f3c043d53cce3b459ce36f62ea640e70dfce9a3c9165cf2ec0326ee9d6b4579a"
-  "8e423d4c6baf60d3b92c990f1d465473c223bce539baf3456abf59799f079bd1"
-  "a16c4277d46e6f30185c629a060f356f341bb76dc5adb268cc1907ed4a662d47"
-  "b032f7cc19c963b5559306c3459e402fb5b87466f6e48d9b98044e68ea012ba2"
+  "72e158c825f8ba16ac14677312167ee83a72aa6590b089c788dc54521c1b3057"
+  "c4cb42af68f0479d8fc884ae3c631655a24dca5ce5000ed9d2b3e81214e88cc7"
+  "820bad434a200cba3e7ef2d7acad0b3f052fcef6c479d57a1d8efb5bb1d5ac29"
+  "ba881f0c23e3a992ce0ca615ee245b8c638765b06e65dac0a9b3f913d51db965"
+  "159a629e28cfb739479c86471ad521d967414e7835764a1e536e623cdcb73ce6"
+  "0a41d1c4635bf94803e946e3bad133172a7de319831daf9e0ab0c6ec8c3ee452"
 )
 sources=(
   src index.html README.md README.zh-CN.md
   AndroidReceiver/README.md AndroidReceiver/README.zh-CN.md
   docs/development-preview.md docs/development-preview.zh-CN.md
-  docs/release-notes-v0.2.1-p8.md
-  docs/release-notes-v0.2.1-p8.zh-CN.md
+  docs/release-notes-v0.3.0-preview.1.md
+  docs/release-notes-v0.3.0-preview.1.zh-CN.md
   docs/release-checklist.md docs/release-checklist.zh-CN.md
   docs/automatic-updates.md docs/automatic-updates.zh-CN.md
 )

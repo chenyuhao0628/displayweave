@@ -156,7 +156,7 @@ public final class CodecCapabilities {
             List<MediaCodecInfo.VideoCapabilities.PerformancePoint> points =
                     android.os.Build.VERSION.SDK_INT >= 29
                             ? video.getSupportedPerformancePoints() : null;
-            if (points != null && !points.isEmpty()) {
+            if (android.os.Build.VERSION.SDK_INT >= 29 && points != null && !points.isEmpty()) {
                 MediaCodecInfo.VideoCapabilities.PerformancePoint requested =
                         new MediaCodecInfo.VideoCapabilities.PerformancePoint(width, height, fps);
                 for (MediaCodecInfo.VideoCapabilities.PerformancePoint point : points) {

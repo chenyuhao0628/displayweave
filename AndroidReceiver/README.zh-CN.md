@@ -6,17 +6,19 @@ Android 接收端可以通过本地 WiFi 或由 Mac 管理的 ADB-forward USB �
 
 等待页面跟随系统明暗主题。设置在小屏上可滚动；串流时右上角设置按钮始终可用，即使已隐藏状态浮层。
 
+v0.3.0-preview.1 包含[加密配对](../docs/secure-transport.zh-CN.md)与[仅 GitHub 更新](../docs/automatic-updates.zh-CN.md)。首次连接时，在**设置与帮助 → 安全与配对**生成邀请，导入 Mac 后再选择设备。局域网和 ADB 转发 USB 使用相同认证流。
+
 ## 要求
 
 - Android 8.0+；硬件 HEVC 支持取决于设备。
 - WiFi：Mac 与 Android 位于同一可信局域网，并按系统要求授予附近 WiFi/本地网络发现权限。
 - USB：支持数据传输的线缆、开发者选项、USB 调试，以及允许 Mac 的 RSA 身份。
 
-## 安装 `v0.2.1-p8`
+## 安装 `v0.3.0-preview.1`
 
-2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；下载统一发布在[发行页面](https://github.com/chenyuhao0628/displayweave/releases)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。
+2026-10-16：本预览版在本地构建，下载仅使用 GitHub Releases；Mac 与 Android 更新元数据使用已恢复访问的项目 GitHub Pages。构建证据及必需的配对迁移见[发布说明](../docs/release-notes-v0.3.0-preview.1.zh-CN.md)。
 
-从 [`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。p5 需要手动覆盖安装一次 p6 或更新版；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/release-checklist.zh-CN.md)中的证书指纹。
+从 [`v0.3.0-preview.1`](https://github.com/chenyuhao0628/displayweave/releases) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。p5 需要手动覆盖安装一次 p6 或更新版；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/release-checklist.zh-CN.md)中的证书指纹。
 
 ## 首次安装后的更新
 
@@ -91,4 +93,4 @@ Keystore 保存在 Git 之外，密码从 macOS Keychain 读取。除非明确�
 
 ## 安全
 
-WiFi TCP 尚未生产级加密，请使用可信局域网。ADB 授权会把 Mac 作为超出本应用范围的调试主机信任。参见 [SECURITY.zh-CN.md](../SECURITY.zh-CN.md)。
+本版默认使用固定证书指纹的双向 TLS 与邀请配对；不安全的旧版兼容需要在本机显式开启。传输私钥保存在 Android Keystore，与 APK 签名独立。ADB 授权会把 Mac 作为超出本应用范围的调试主机信任。参见[配对指南](../docs/secure-transport.zh-CN.md)与 [SECURITY.zh-CN.md](../SECURITY.zh-CN.md)。

@@ -11,13 +11,13 @@ DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases an
 - Android artifact: `DisplayWeave-Android.apk`
 
 The current development release is
-[`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases).
+[`v0.3.0-preview.1`](https://github.com/chenyuhao0628/displayweave/releases).
 Install a current APK manually once; later builds use the in-app channel automatically.
 This release includes both the guided DMG and the Sparkle ZIP payload.
 
 The Mac build is ad-hoc signed and not notarized. Sparkle authenticates its ZIP with the embedded EdDSA public key, so subsequent updates can be verified without Apple Developer Program credentials. This does not make the first download Gatekeeper-trusted or equivalent to a notarized release.
 
-2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; downloads are published on the [releases page](https://github.com/chenyuhao0628/displayweave/releases). Mac/Android update checks still depend on the original Pages URLs; install manually until they recover.
+2026-10-16: this preview is built locally. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site, which is available again. See the [release notes](release-notes-v0.3.0-preview.1.md) for build evidence and the required pairing migration.
 
 See [local releases](local-release.md) for reproducible commands and validation requirements.
 

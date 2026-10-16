@@ -2,6 +2,8 @@ import SwiftUI
 
 /// Presentation-only bindings; sender pipeline ownership stays in SenderController.
 struct SenderSettingsView: View {
+    @AppStorage("settingsTab") private var selectedTab = "stream"
+    @AppStorage(DesktopInputProtocol.consentKey) private var allowMacDesktopInput = false
     @ObservedObject var controller: SenderController
     @StateObject private var permissions = PermissionMonitor()
     @State private var benchmarkScene = BenchmarkScene.staticDesktop
@@ -14,13 +16,15 @@ struct SenderSettingsView: View {
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             Form { Section("画质与带宽") { streamControls } }
-                .tabItem { Label("串流", systemImage: "slider.horizontal.3") }
+                .tabItem { Label("串流", systemImage: "slider.horizontal.3") }.tag("stream")
             Form { connectionControls; generalControls }
-                .tabItem { Label("通用", systemImage: "gearshape") }
-            Form { permissionControls; Section("诊断") { diagnosticControls } }
-                .tabItem { Label("权限与诊断", systemImage: "checkmark.shield") }
+                .tabItem { Label("通用", systemImage: "gearshape") }.tag("general")
+            Form { permissionControls; PencilShortcutSettings(); Section("诊断") { diagnosticControls } }
+                .tabItem { Label("权限与诊断", systemImage: "checkmark.shield") }.tag("permissions")
+            Form { TransportSecuritySettings(permitsSending: true) }
+                .tabItem { Label("安全与配对", systemImage: "lock.shield") }.tag("security")
         }
         .formStyle(.grouped)
         .padding(12)
@@ -36,7 +40,7 @@ struct SenderSettingsView: View {
         }
         .pickerStyle(.segmented)
         .onChange(of: controller.settings.fpsMode) { _, _ in controller.restartAll() }
-        Text("自动选择接收设备支持的帧率；Mac 接收最高 60 fps。实际帧率取决于设备与网络。")
+        Text("自动在接收屏幕和解码上限内选择，最高请求 120 fps。实际帧率取决于设备、分辨率与网络。")
             .font(.caption)
             .foregroundStyle(.secondary)
     }
@@ -62,6 +66,9 @@ struct SenderSettingsView: View {
         }
         .onChange(of: controller.settings.quality) { _, _ in controller.restartAll() }
         Text(controller.settings.quality.explanation)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        Text("每台设备的桌面分辨率在连接列表单独选择；这里的画质只缩放编码，不改变桌面布局。镜像沿用发送端实体显示器尺寸。")
             .font(.caption)
             .foregroundStyle(.secondary)
     }
@@ -120,6 +127,9 @@ struct SenderSettingsView: View {
         Text("仅在自动或局域网模式下生效。识别 Thunderbolt Bridge／链路本地以太网候选；手动断开后停止自动连接。普通 USB-C 线不一定能建立网络。")
             .font(.caption)
             .foregroundStyle(.secondary)
+        Toggle("Mac 有线／无线自动切换", isOn: $controller.autoSwitchMacLAN)
+        Text("仅在自动模式下生效。已连接的同一台 Mac 出现稳定有线候选时切换；连接失效后有限重试其他接口。切换会短暂中断画面，手动断开或取消会停止恢复。")
+            .font(.caption).foregroundStyle(.secondary)
         Text(controller.androidAdbStatus)
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -160,6 +170,9 @@ struct SenderSettingsView: View {
     }
     @ViewBuilder private var permissionControls: some View {
     Section("权限") {
+        Toggle("允许接收端 Mac 的键鼠回传", isOn: $allowMacDesktopInput)
+        Text("默认关闭。仅允许已配对的加密 Mac 连接；还需授予辅助功能权限，并在接收端开启回传。关闭后释放远端按键。")
+            .font(.caption).foregroundStyle(.secondary)
         permissionRow(
             "屏幕录制",
             granted: permissions.screenRecording,
@@ -170,7 +183,7 @@ struct SenderSettingsView: View {
         permissionRow(
             "辅助功能",
             granted: permissions.accessibility,
-            help: "用于接收设备上的触摸和滚动输入。",
+            help: "用于接收设备上的触摸、滚动和已授权的 Mac 键鼠输入。",
             anchor: "Privacy_Accessibility",
             request: { permissions.requestAccessibility() }
         )
