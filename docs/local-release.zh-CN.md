@@ -10,7 +10,7 @@
 
 Android keystore 保存在 Git 外的 `~/Library/Application Support/DisplayWeave/Signing/android-preview.jks`；既有 Keychain 服务为 `app.displayweave.android-preview-signing`，account/alias 为 `displayweave-preview`。打包脚本读取密码但不打印。Sparkle 使用 Keychain account `ed25519`。只用现有 Sparkle 的 `generate_keys -p` 检查公钥，必须匹配 `N9dMZV/F1ui58IsEmCv5jFVgDWiWv2yB/01KBlAHFjE=`；不匹配时停止，不生成替代密钥。
 
-从仓库根目录运行：
+以下 p8 命令是历史示例。新发行须选择新的版本、build 和输出目录，不复用示例。从仓库根目录运行：
 
 ```bash
 python3 -m venv build/local-release-venv
@@ -21,6 +21,7 @@ export DISPLAYWEAVE_BUILD_NUMBER=15
 export DISPLAYWEAVE_UPDATE_RELEASE=1
 export DISPLAYWEAVE_RELEASE_TAG=v0.2.1-p8
 export DISPLAYWEAVE_OUTPUT_DIR="$PWD/build/release-p8"
+test ! -e "$DISPLAYWEAVE_OUTPUT_DIR"
 ./tools/package-preview-0.1.sh
 ```
 
@@ -42,7 +43,7 @@ export DISPLAYWEAVE_ANDROID_FEED_OUTPUT="$DISPLAYWEAVE_OUTPUT_DIR/android-update
 
 ## 本地回归与对应源码
 
-运行全部[开发门禁](development.zh-CN.md)：37 组 Swift、Mac Debug universal 构建、iOS 模拟器构建、Android `test assembleDebug`、网站构建、双语文档、发布链接和空白检查。完整日志保存在被忽略的 `build/`。没有独立在线显示器时不运行虚拟显示测试，单独记录真机缺口。
+运行全部[开发门禁](development.zh-CN.md)：52 组 Swift、Mac Debug universal 构建、iOS 模拟器构建、Android `test assembleDebug lintDebug`、网站构建、双语文档、发布链接和空白检查。完整日志保存在被忽略的 `build/`。没有独立在线显示器时不运行虚拟显示测试，单独记录真机缺口。
 
 把生成的更新源原样复制到 `public/`，更新当前发布链接／哈希及双语说明，审查并提交。原生源码与打包输入必须匹配二进制，任何一项变化都应重新构建。为验证过的提交打 tag。执行 `git archive --format=tar.gz --prefix=DisplayWeave-v0.2.1-p8/ v0.2.1-p8 -o "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-v0.2.1-p8-source.tar.gz"` 生成对应跟踪源码包，将其哈希加入校验和文件并验证全部七项。即使 GitHub 公开访问失败，源码、GPL-3.0 与构建脚本仍与安装包同时可用。
 
@@ -52,4 +53,4 @@ export DISPLAYWEAVE_ANDROID_FEED_OUTPUT="$DISPLAYWEAVE_OUTPUT_DIR/android-update
 
 下载并核对在线文件哈希，再公开 GitHub Release。审查最终 PR，按维护者授权合并，如实记录本地检查和不可用的托管检查。使用 merge commit 保留发行 tag 祖先关系，同步本地／远端 main。
 
-GitHub API 上传成功不等于匿名下载可用。2026-10-16 的观察是 GitHub 公开访问和 Pages 返回 404，而已认证管理接口仍正常。两端应用仍从原 GitHub Pages 地址读取更新元数据；在原地址恢复前需手动安装，本流程不修改内置更新源身份。
+GitHub API 上传成功本身不证明匿名下载可用，每次发行都要重新检查 Release 和 Pages feed。2026-10-16 再次检查时 GitHub Pages 已返回 HTTP 200，最新部署成功；早期 404/账户失败只是历史证据。本地 p8（15）与当前公开列表分别记录。Apple 正式分发使用[独立关卡流程](apple-distribution.zh-CN.md)，上述脚本仍为预览打包。

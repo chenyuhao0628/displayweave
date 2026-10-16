@@ -21,6 +21,7 @@ export DISPLAYWEAVE_BUILD_NUMBER=15
 export DISPLAYWEAVE_UPDATE_RELEASE=1
 export DISPLAYWEAVE_RELEASE_TAG=v0.2.1-p8
 export DISPLAYWEAVE_OUTPUT_DIR="$PWD/build/release-p8"
+test ! -e "$DISPLAYWEAVE_OUTPUT_DIR"
 ./tools/package-preview-0.1.sh
 ```
 
@@ -42,7 +43,7 @@ Generate `SHA256SUMS.txt` for the four binaries and both feeds, then run `./tool
 
 ## Local regression and release source
 
-Run all [development gates](development.md): 37 Swift suites, Mac Debug universal build, iOS Simulator build, Android `test assembleDebug`, website build, bilingual docs, release links and whitespace checks. Keep full logs in ignored `build/` paths. Do not launch virtual-display tests without an independent online display; record physical gaps separately.
+Run all [development gates](development.md): 52 Swift suites, Mac Debug universal build, iOS Simulator build, Android `test assembleDebug lintDebug`, website build, bilingual docs, release links and whitespace checks. Keep full logs in ignored `build/` paths. Do not launch virtual-display tests without an independent online display; record physical gaps separately.
 
 Copy the generated feeds exactly into `public/`, update the active release links/hashes and bilingual notes, review and commit. Native source and packaging inputs must match the binaries; rebuild if either changes. Tag the verified commit. Create the corresponding tracked-source archive with `git archive --format=tar.gz --prefix=DisplayWeave-v0.2.1-p8/ v0.2.1-p8 -o "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-v0.2.1-p8-source.tar.gz"`, then add its hash to the checksum manifest and verify all seven entries. Source, GPL-3.0 and build scripts stay available beside the binaries even during GitHub public-access failures.
 
@@ -52,4 +53,4 @@ Create a draft GitHub Release at the verified tag and upload the eight files exp
 
 Download and hash the live files, then publish the GitHub Release. Review the final PR and merge using the maintainer's authorization, documenting local checks and the unavailable hosted checks honestly. Preserve release-tag ancestry with a merge commit and synchronize local/remote main.
 
-GitHub API upload success does not prove anonymous download availability. As observed on 2026-10-16, public GitHub and Pages returned 404 while authenticated management still worked. Both apps fetch update metadata from their original GitHub Pages URLs; use manual installation until those URLs recover. This process does not change embedded feed identities.
+GitHub API upload success does not by itself prove anonymous download access. Recheck the release and Pages feeds on each publication. On 2026-10-16 GitHub Pages returned HTTP 200 again and its latest deployment succeeded; earlier 404/account failures are historical evidence. The local p8 build (15) is separate from the currently public release list. Formal Apple production packaging is available through [the separate gated workflow](apple-distribution.md); the script above remains the preview path.

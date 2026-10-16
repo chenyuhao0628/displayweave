@@ -21,7 +21,7 @@ def main():
         folder = pathlib.Path(temporary)
         sources = sorted(str(path) for path in (ROOT / "Shared").glob("*.swift"))
         sources += [str(ROOT / path) for path in ["iOS/PhoneReceiver.swift", "iOS/ReceiverSceneLifecyclePolicy.swift",
-                                                 "iOS/Log.swift", "iOS/PencilSettings.swift", "MacTests/SecurePhoneReceiverFixture.swift"]]
+                                                 "iOS/Log.swift", "iOS/PencilSettings.swift", "iOS/ReceiverVideoView.swift", "iOS/TouchPressPolicy.swift", "iOS/MetalVideoRenderer.swift", "MacTests/SecurePhoneReceiverFixture.swift"]]
         bundle_id = "app.displayweave.secure-phone-self-test"
         spec = folder / "project.json"
         spec.write_text(json.dumps({"name": "PhoneTest", "targets": {"PhoneTest": {
@@ -64,6 +64,7 @@ def main():
                 if time.monotonic() >= deadline:
                     raise RuntimeError("simulator fixture did not open pairing")
                 time.sleep(0.1)
+            print((documents / "presentation-result.txt").read_text(), flush=True)
             print(run([str(client), "--ios-fixture", str(documents), str(port)], timeout=55).strip(), flush=True)
             if args.screenshots:
                 args.screenshots.mkdir(parents=True, exist_ok=True)

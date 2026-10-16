@@ -8,7 +8,7 @@
 - [Public protocol contract and shared fixtures](protocol.md)
 - [Advanced Pencil input (source)](pencil-advanced.md)
 - [Mac receiver keyboard and mouse (source)](mac-receiver-input.md)
-- [Secure connections and pairing (source)](secure-transport.md) and [design / remaining integration](secure-transport-design.md)
+- [Secure connections and pairing (source)](secure-transport.md) and [design / integration](secure-transport-design.md)
 - [Mac wired / Wi-Fi handover (source)](mac-lan-handover.md)
 - [Apple receiver HEVC and high refresh (source)](apple-video.md)
 - [Per-device desktop resolution (source)](desktop-resolution.md)

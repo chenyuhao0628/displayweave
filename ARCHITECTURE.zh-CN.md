@@ -12,8 +12,8 @@ DisplayWeave 由 macOS 发送端和 Apple/Android 接收端组成。Mac 使用 `
 macOS 虚拟显示器
   -> ScreenCaptureKit
   -> VideoToolbox H.264 / 协商后的 HEVC
-  -> 分帧 TCP 会话
-     -> iOS/iPadOS 接收端（usbmuxd USB 或 WiFi，H.264）
+  -> 双向 TLS 内的分帧会话（明文需显式旧版兼容）
+     -> iOS/iPadOS 接收端（usbmuxd USB 或 WiFi，协商 HEVC/H.264）
      -> Mac 接收端（局域网／固定直连接口，HEVC/H.264）
      -> Android 接收端（ADB-forward USB 或 WiFi，HEVC/H.264）
   <- 触摸、滚动、codec 状态、指标、生命周期消息
@@ -98,3 +98,7 @@ Mac HEVC 同时要求硬件编码器与接收端明确声明的硬件解码能�
 ## p8 之后的 Apple 视频源码扩展
 
 两个 Apple 目标共用 `Shared/ReceiverVideoBitstream`。iOS 声明 `appleVideoV1` 编码/刷新范围；Mac 继续通过原设备身份识别。发送端在上限内协商最高 120fps、HEVC 和 H.264 回退，Android 保留独立 V2 协商。见[实现与证据](docs/apple-video.zh-CN.md)；上文发布描述对应 p8。
+
+## 已完成源码扩展
+
+[功能台账](docs/feature-completion.zh-CN.md)记录桌面分辨率、默认认证传输、同意后的 Mac 键鼠回传、同身份 Mac 切换、Pencil v2 与具名快捷操作、进程 CPU 采样、Android 池化租借和共用协议样例。iOS 展示回调按视图身份归属：替换时先释放旧输入，旧视图延迟销毁不能清除新回调或移除借用图层。解码/展示回调带连接代次，跨线程帧回调加锁。真实正式签名与最终素材仍有外部前提。

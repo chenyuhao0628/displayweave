@@ -26,7 +26,7 @@ jobs:
         with:
           packages: platform-tools
       - working-directory: AndroidReceiver
-        run: ./gradlew --no-daemon test assembleDebug
+        run: ./gradlew --no-daemon test assembleDebug lintDebug
 
   mac-and-swift:
     runs-on: macos-26
@@ -40,7 +40,7 @@ jobs:
         run: >-
           xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac
           -configuration Debug -derivedDataPath "$RUNNER_TEMP/mac-derived"
-          CODE_SIGNING_ALLOWED=NO build
+          CODE_SIGNING_ALLOWED=NO ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO build
       - name: iOS Simulator compatibility build
         run: >-
           xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecariOS
@@ -59,6 +59,12 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tools/brand-requirements.txt
+      - run: python tools/test-apple-distribution.py
+      - run: python tools/export-brand-assets.py --check
       - run: pnpm build
       - run: pnpm run check:docs
       - run: pnpm run check:release

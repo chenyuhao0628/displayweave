@@ -30,7 +30,7 @@ Feature completion means implemented behavior and passing automated acceptance, 
 ## Progress
 
 - Assessment: repository clean on baseline; twelve work items enumerated with acceptance and dependencies.
-- Remaining implementation: F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
+- F01–F12 source implementation and automated acceptance are complete. External production identities/final artwork and physical acceptance remain explicit gates. The maintainer subsequently authorized a new GitHub-only preview and local application replacement; release evidence will be recorded separately.
 
 ## Official API references
 
@@ -97,3 +97,9 @@ Added a local manual-signing archive/export workflow, actual exported-bundle val
 ### F11 — source packaging complete; final artwork blocked
 
 Added API-26 adaptive launcher layers around the unchanged raster mark, a 36-asset reproducible exporter, source checksum, safe-area validation and bilingual palette/usage guidance. Inspected circle/rounded/square masks on light/dark backgrounds. Android tests/assembly/Lint and both Apple builds passed. The disposable Android runtime resolved a real AdaptiveIconDrawable and passed Keystore/TLS/UI regression on a serial retry; the first run encountered a system-UI ANR, not an application assertion. Approved editable/transparent/dark/monochrome masters and promotional captures remain externally pending. See [brand assets](brand-assets.md).
+
+### F12 — completed source review and final gate
+
+Updated roadmap/acceptance, architecture, Android decoder-cap audit, developer commands and packaging guidance to separate source, downloadable artifacts and physical evidence. Review reproduced an iOS renderer replacement bug before fixing it: retired views now release input and callbacks by identity; late dismantle cannot clear replacement callbacks or detach its layer. Cross-thread frame callbacks are synchronized and presentation/status/cursor work checks its session generation. The production iOS fixture passes replacement, TLS video/Pencil, revocation and background shutdown.
+
+Final local gate passed: 52 Swift suites; actual Apple↔Java TLS in both directions; actual Mac/iOS Keychain; isolated Android Keystore/TLS/UI and adaptive resource resolution; universal Mac Debug and iOS Simulator builds; six Android test groups, assembly and Lint; website type/client/SSR/prerender checks; 78 bilingual pairs; release links; 12 packaging tests; 36 brand exports and whitespace checks. The final Android runtime passed after the earlier system-UI ANR retry. No virtual display or desktop capture was created; physical matrix remains SKIP/pending. On final remote inspection GitHub Pages had recovered (HTTP 200 and successful deployment), superseding the earlier account/404 observation. Production signing identities and approved final artwork remain blocked as above.

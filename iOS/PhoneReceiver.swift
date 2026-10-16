@@ -128,9 +128,42 @@ final class PhoneReceiver: ObservableObject {
     var onCursor: ((_ x: Double, _ y: Double, _ visible: Bool) -> Void)?
     var onCursorImage: ((_ image: UIImage, _ anchor: CGPoint, _ normSize: CGSize) -> Void)?
 
+    // Only the current main-thread presentation may clear callbacks. SwiftUI can
+    // create the replacement before dismantling its predecessor.
+    private var presentationID: UUID?
+    private var retirePresentation: (() -> Void)?
+
+    func claimPresentation(_ id: UUID, retire: @escaping () -> Void) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let previous = retirePresentation
+        presentationID = nil; retirePresentation = nil
+        clearPresentationCallbacks()
+        previous?() // release old input before the new view can emit any
+        presentationID = id; retirePresentation = retire
+    }
+
+    func releasePresentation(_ id: UUID) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard presentationID == id else { return }
+        let previous = retirePresentation
+        presentationID = nil; retirePresentation = nil
+        clearPresentationCallbacks()
+        previous?()
+    }
+
+    private func clearPresentationCallbacks() {
+        onInputReset = nil; onPencilToolChange = nil
+        onCursor = nil; onCursorImage = nil; onDecodedFrame = nil
+    }
+
     // Metal renderer path (experimental, "metalRenderer" setting): we decode
     // explicitly and hand BGRA buffers out; called on the receiver queue.
-    var onDecodedFrame: ((_ pixelBuffer: CVPixelBuffer, _ captureMs: Double?) -> Void)?
+    private let decodedFrameLock = NSLock()
+    private var decodedFrameHandler: ((CVPixelBuffer, Double?) -> Void)?
+    var onDecodedFrame: ((_ pixelBuffer: CVPixelBuffer, _ captureMs: Double?) -> Void)? {
+        get { decodedFrameLock.lock(); defer { decodedFrameLock.unlock() }; return decodedFrameHandler }
+        set { decodedFrameLock.lock(); decodedFrameHandler = newValue; decodedFrameLock.unlock() }
+    }
     private var decompressionSession: VTDecompressionSession?
     private var decodeWindow: [Double] = []
     private var photonWindow: [Double] = []
@@ -143,11 +176,11 @@ final class PhoneReceiver: ObservableObject {
 
     /// Called by the renderer's presented handler: maps the CACurrentMediaTime-
     /// based glass timestamp into wall-clock ms and computes true photon e2e.
-    func recordPresented(presentedTime: CFTimeInterval, captureMs: Double?) {
+    func recordPresented(presentedTime: CFTimeInterval, captureMs: Double?, generation: UInt64) {
         guard let captureMs, presentedTime > 0 else { return }
         let presentedWallMs = nowMs - (CACurrentMediaTime() - presentedTime) * 1000
         queue.async {
-            guard let offset = self.clockOffsetMs else { return }
+            guard self.inputSendBudget.generation == generation, let offset = self.clockOffsetMs else { return }
             let photon = (presentedWallMs + offset) - captureMs
             if photon > -50, photon < 5000 {
                 self.photonWindow.append(max(photon, 0))
@@ -396,7 +429,11 @@ final class PhoneReceiver: ObservableObject {
                 }
             }
             let encrypted = authenticatedPeer != nil
-            DispatchQueue.main.async { self.encrypted = encrypted }
+            let generation = self.inputSendBudget.generation
+            DispatchQueue.main.async {
+                guard self.inputSendBudget.generation == generation else { return }
+                self.encrypted = encrypted
+            }
             if encrypted {
                 self.lastDataReceived = Date()
                 self.setConnected(true)
@@ -472,11 +509,19 @@ final class PhoneReceiver: ObservableObject {
             let x = obj["x"] as? Double ?? 0
             let y = obj["y"] as? Double ?? 0
             guard x.isFinite, y.isFinite else { return }
-            DispatchQueue.main.async { self.onCursor?(x, y, visible) }
+            let generation = inputSendBudget.generation
+            DispatchQueue.main.async {
+                guard self.inputSendBudget.generation == generation else { return }
+                self.onCursor?(x, y, visible)
+            }
         case "cursorImg":
             guard let cursor = ReceiverCursorImage.decode(obj) else { return }
             let image = UIImage(cgImage: cursor.image)
-            DispatchQueue.main.async { self.onCursorImage?(image, cursor.anchor, cursor.normalizedSize) }
+            let generation = inputSendBudget.generation
+            DispatchQueue.main.async {
+                guard self.inputSendBudget.generation == generation else { return }
+                self.onCursorImage?(image, cursor.anchor, cursor.normalizedSize)
+            }
         default:
             break
         }
@@ -530,6 +575,7 @@ final class PhoneReceiver: ObservableObject {
         offsetSamples.removeAll(); clockOffsetMs = nil; lastRttMs = 0
         e2eWindow.removeAll(); e2eRing.removeAll(); encodeWindow.removeAll()
         DispatchQueue.main.async {
+            guard self.inputSendBudget.generation == generation else { return }
             self.videoSize = .zero
             self.fps = 0
             self.perf = PerfStats()
@@ -953,7 +999,9 @@ final class PhoneReceiver: ObservableObject {
                 photonWindow.removeAll(keepingCapacity: true)
             }
 
+            let generation = inputSendBudget.generation
             DispatchQueue.main.async {
+                guard self.inputSendBudget.generation == generation else { return }
                 self.fps = fps
                 self.perf = stats
             }
@@ -1044,11 +1092,19 @@ final class PhoneReceiver: ObservableObject {
 
     private func setStatus(_ text: String) {
         Log.info("status: \(text)")
-        DispatchQueue.main.async { self.status = text }
+        let generation = inputSendBudget.generation
+        DispatchQueue.main.async {
+            guard self.inputSendBudget.generation == generation else { return }
+            self.status = text
+        }
     }
 
     private func setConnected(_ value: Bool) {
-        DispatchQueue.main.async { self.connected = value; if !value { self.encrypted = false } }
+        let generation = inputSendBudget.generation
+        DispatchQueue.main.async {
+            guard self.inputSendBudget.generation == generation else { return }
+            self.connected = value; if !value { self.encrypted = false }
+        }
         if !value { setStatus(security.encrypted ? "正在安全监听 :9000" : "旧版兼容（未加密） :9000") }
         else {
             setStatus(peerID == nil ? "已连接（未加密兼容）" : "已加密连接")

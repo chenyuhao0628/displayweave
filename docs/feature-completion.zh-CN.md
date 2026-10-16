@@ -30,7 +30,7 @@
 ## 进度
 
 - 评估：基线工作区干净；十二项已列明验收、依赖与边界。
-- 剩余待实现：F12。后续各条记录提交、真实自动证据及剩余外部/实机条件。
+- F01–F12 源码实现与自动验收已完成。正式身份/最终素材等外部条件和实机验收仍独立记录。维护者随后授权仅 GitHub 的新版预览发行及本机覆盖，发行证据单独记录。
 
 ## 官方 API 参考
 
@@ -99,3 +99,9 @@ Mac 键鼠回传要求双方显式启用、加密认证和发送端辅助功能�
 ### F11 — 源码包装完成；最终素材仍阻塞
 
 围绕未改变的位图图形增加 API-26 adaptive layer、36 项可复现导出、源哈希、安全区验证和双语色彩/用法规范。已检查浅色/深色的圆/圆角/方形遮罩。Android 测试/assemble/Lint、两端 Apple 构建通过。独立 Android runtime 正确解析 AdaptiveIconDrawable，并在串行重跑时通过 Keystore/TLS/UI 回归；首次运行遇到系统 UI ANR，而非应用断言失败。批准的可编辑/透明/深色/monochrome master 和宣传截图仍等待外部条件，见[品牌资源](brand-assets.zh-CN.md)。
+
+### F12 — 源码审查与完整回归完成
+
+更新路线图/验收、架构、Android 解码能力审计、开发命令及打包指南，区分源码、可下载产物与实机证据。先复现再修复 iOS renderer 替换问题：旧视图按身份释放输入和回调，延迟销毁不能清除新回调或移走新图层。跨线程帧回调同步，展示/状态/光标按会话代次检查。生产 iOS fixture 通过替换、TLS 视频/Pencil、撤销和后台关闭。
+
+最终本地关卡通过：52 组 Swift，双向真实 Apple↔Java TLS，真实 Mac/iOS Keychain，独立 Android Keystore/TLS/UI 与 adaptive 资源解析，Mac universal Debug 和 iOS Simulator 构建，Android 六组测试/assemble/Lint，网站类型/client/SSR/预渲染，78 对双语文档，发行链接，12 项打包测试，36 项品牌导出及空白检查。Android runtime 在此前系统 UI ANR 后重跑通过。没有创建虚拟显示或采集桌面，实机矩阵仍 SKIP/待验。最终远端检查时 GitHub Pages 已恢复（HTTP 200、部署成功），取代早期账户/404 观察。正式签名身份与批准素材仍如上阻塞。

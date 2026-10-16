@@ -1,43 +1,33 @@
 [English](ROADMAP.md) | [简体中文](ROADMAP.zh-CN.md)
 
-# DisplayWeave Roadmap
+# DisplayWeave roadmap
 
-## Packaged in v0.2.1-p7 — 2026-10-16
+Updated 2026-10-16. The [feature ledger](docs/feature-completion.md) is the source completion record. The current published and installed baseline remains v0.2.1-p8 (15); source completion does not update that download.
 
-- Exclusive Mac sender/receiver roles for one-way LAN mirror/extend.
-- Shared UI standard and Mac/iOS/Android/web refactor; accessible receiver settings and responsive bilingual navigation.
-- Selected upstream startup recovery, bounded logs and two-finger click suppression.
-- Shared Apple frame/cursor bounds, lifecycle isolation, safe input/geometry conversion and Android control backpressure.
-- Hardware-gated Mac HEVC, interface-pinned direct-link candidates and negotiated Pencil pressure/tilt/proximity.
-- 37 Swift suites and platform compatibility builds. See the [current feature guide/evidence](docs/hevc-wired-pencil.md) and [prior source audit](docs/source-upgrade-audit-2026-10-16.md) for exact results and physical gaps.
+## Implemented after p8, awaiting release
 
-v0.2.1-p7 packages these changes as a development preview. The new hardware-dependent features remain experimental until the physical acceptance below is complete.
+- Per-device Native/1080p/1440p/4K extension resolution.
+- Default mutual TLS, invitation pairing, revocation and explicit legacy compatibility on Apple and Android.
+- Apple HEVC/H.264 fallback and bounded 30–120fps negotiation.
+- Consented Mac receiver keyboard/mouse input with release on focus, role and session changes.
+- Opt-in Mac wired/Wi-Fi handover with bounded same-installation recovery.
+- Advanced Pencil roll/eraser and consented, sender-defined shortcut actions.
+- Mac process CPU metrics and Android bounded leased frame buffers.
+- Public protocol specification and shared Swift/Java fixtures.
+- GitHub-only distribution policy, Apple production archive/export preflight tooling and reproducible Android adaptive icons.
 
-## Shipped and verified in Preview 2
+Each feature has its own guide, checks and compatibility boundaries in the ledger. Requested FPS is not measured rendered FPS.
 
-- Android per-device dynamic ADB-forward USB.
-- Auto USB preference, bounded recovery, same-install-ID WiFi fallback, and USB upgrade.
-- Android foreground/surface reconnect and stream configuration restoration.
-- Android HEVC/120 and H.264/60 USB paths on the available OnePlus device.
-- Cable, ADB restart, authorization revoke/reallow, touch, and two-finger scroll checks.
-- Offline v2-signed Android APK and mixed current-iPhone/Android concurrency.
-- Short benchmark recording, target/actual bitrate separation, Auto/Manual/Benchmark modes, adaptive bitrate, bounded send queues, and transport-aware keyframes (automated verification; physical performance matrix pending).
+## Published baseline
 
-## Next validation
+p8 includes the p7 Mac send/receive LAN mirror/extend preview, four-surface UI refactor, selected upstream startup recovery, bounded queues/framing, Mac hardware-gated HEVC, interface-pinned direct-link candidates and basic Pencil. Earlier previews exercised Android dynamic ADB-forward USB, bounded USB/Wi-Fi recovery and one current iPhone/Android concurrent session. See the dated release notes and physical reports; historical evidence is not automatically evidence for new secure transport.
 
-Validate HEVC/fallback on Intel and Apple silicon, Thunderbolt Bridge/Ethernet routing with Wi-Fi enabled, and real Pencil pressure/hover/palm rejection. First complete two-Mac acceptance in both directions, mirror/extend, Wi-Fi/Ethernet, sleep/wake, display hotplug and Intel runtime. Repeat Mac UI and virtual-display cleanup with an independent online display; complete Android visual and mobile real-input acceptance.
+## External prerequisites
 
-1. Two simultaneous Android receivers with independent serials, ports, cleanup, input, and reconnect.
-2. Controlled same-resolution/codec/bitrate USB versus WiFi benchmark.
-3. Maintainer-run 30-minute and 2-hour endurance checks with thermal, memory, reconnect, and forward-leak evidence.
-4. Broader Android SoC, macOS version, cable, and network matrix.
+Production Apple distribution requires the maintainer's Developer ID Application / Apple Distribution identities, provisioning and notarization access. Tooling is implemented, but actual production signing/export/notarization is blocked. Approved editable/transparent/dark/monochrome brand masters and licensed promotional screenshots are also missing; current raster derivatives remain in use.
 
-## Product work
+## Physical acceptance
 
-- Encrypted WiFi pairing and authenticated sessions.
-- iOS/iPadOS high-refresh path and broader Apple-device validation.
-- Stable public protocol versioning and compatibility tests.
-- Developer ID signing/notarization and normal iOS distribution when paid identities become available.
-- Final transparent/light/dark brand masters and platform-adaptive icons.
+Two-Mac both-direction mirror/extend, Wi-Fi/Ethernet/Thunderbolt Bridge route changes, sleep/wake, hotplug, Intel runtime, input/layout/shortcut behavior; real Pencil gestures/rotation/eraser and drawing applications; Apple HEVC/high-refresh display behavior; paired LAN/USB performance and reconnects.
 
-High-refresh targets remain experimental until sustained rendered-frame evidence passes defined acceptance thresholds. See [docs/roadmap-and-acceptance.md](docs/roadmap-and-acceptance.md).
+Also pending: two simultaneous Android receivers, controlled same-resolution/codec/bitrate USB-versus-Wi-Fi benchmarks, 30-minute/2-hour endurance, and broader OS/SoC/cable matrices. Test virtual displays only with an independent online display. See [acceptance](docs/roadmap-and-acceptance.md).

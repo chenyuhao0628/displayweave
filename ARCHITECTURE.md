@@ -12,8 +12,8 @@ Each connected device owns an independent sender pipeline and benchmark recorder
 macOS virtual display
   -> ScreenCaptureKit
   -> VideoToolbox H.264 / negotiated HEVC
-  -> framed TCP session
-     -> iOS/iPadOS receiver (usbmuxd USB or WiFi, H.264)
+  -> framed mutual-TLS session (legacy plaintext is explicit)
+     -> iOS/iPadOS receiver (usbmuxd USB or WiFi, negotiated HEVC/H.264)
      -> Mac receiver (LAN / pinned direct-link interface, HEVC/H.264)
      -> Android receiver (ADB-forward USB or WiFi, HEVC/H.264)
   <- touch, scroll, codec status, metrics, lifecycle messages
@@ -100,3 +100,7 @@ Mac HEVC requires both a hardware encoder and an explicitly advertised hardware 
 ## Apple video source extension after p8
 
 Both Apple targets share `Shared/ReceiverVideoBitstream`. iOS advertises `appleVideoV1` codec/refresh envelopes; Mac recognizes its existing device identity. The sender uses bounded Apple operating-point negotiation up to 120fps and HEVC with H.264 fallback, while Android keeps its separate V2 negotiation. See [current implementation and evidence](docs/apple-video.md); the release descriptions above describe p8.
+
+## Completed source extensions
+
+The [feature ledger](docs/feature-completion.md) records desktop resolution, default authenticated transport, consented Mac keyboard/mouse input, same-ID Mac handover, Pencil v2 and named shortcuts, process CPU sampling, Android pooled leases and shared protocol vectors. The iOS presentation owns callbacks by view identity: replacement retires old input before attachment, and late old-view teardown cannot clear new callbacks or remove a borrowed video layer. Decoder/presentation callbacks carry connection generations; cross-thread frame callbacks use locks. Actual production signing and final artwork remain external requirements.

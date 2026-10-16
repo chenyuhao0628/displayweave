@@ -12,10 +12,13 @@ struct VideoLayerView: UIViewRepresentable {
     let receiver: PhoneReceiver
     let useMetal: Bool
 
-    func makeUIView(context: Context) -> VideoView {
+    func makeUIView(context: Context) -> VideoView { makeVideoView() }
+
+    func makeVideoView() -> VideoView {
         let view = VideoView()
         view.backgroundColor = .black
         view.isMultipleTouchEnabled = true
+        receiver.claimPresentation(view.presentationID) { [weak view] in view?.retirePresentation() }
         view.receiver = receiver
 
         Log.info("video view: metal=\(useMetal)")
@@ -23,14 +26,16 @@ struct VideoLayerView: UIViewRepresentable {
             Log.info("metal renderer active")
             view.metalRenderer = renderer
             view.layer.addSublayer(renderer.metalLayer)
-            receiver.onDecodedFrame = { [weak renderer] pixelBuffer, captureMs in
-                renderer?.render(pixelBuffer, captureMs: captureMs)
+            receiver.onDecodedFrame = { [weak renderer, weak receiver] pixelBuffer, captureMs in
+                guard let receiver else { return }
+                renderer?.render(pixelBuffer, captureMs: captureMs, generation: receiver.inputGeneration)
             }
-            renderer.onPresented = { [weak receiver] presentedTime, captureMs in
-                receiver?.recordPresented(presentedTime: presentedTime, captureMs: captureMs)
+            renderer.onPresented = { [weak receiver] presentedTime, captureMs, generation in
+                receiver?.recordPresented(presentedTime: presentedTime, captureMs: captureMs, generation: generation)
             }
         } else {
             receiver.onDecodedFrame = nil   // route frames back to AVSBDL
+            view.sampleBufferLayer = displayLayer
             displayLayer.frame = view.bounds
             view.layer.addSublayer(displayLayer)
         }
@@ -67,15 +72,26 @@ struct VideoLayerView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ uiView: VideoView, coordinator: ()) {
-        uiView.cancelPress()
-        uiView.stopDisplayLink()
-        uiView.receiver?.onInputReset = nil
-        uiView.receiver?.onPencilToolChange = nil
-        uiView.receiver = nil
+        uiView.receiver?.releasePresentation(uiView.presentationID)
+        uiView.retirePresentation()
     }
 
     final class VideoView: UIView, UIPencilInteractionDelegate {
+        let presentationID = UUID()
         weak var receiver: PhoneReceiver?
+        weak var sampleBufferLayer: AVSampleBufferDisplayLayer?
+
+        func retirePresentation() {
+            cancelPress()
+            stopDisplayLink()
+            metalRenderer?.onPresented = nil
+            metalRenderer?.metalLayer.removeFromSuperlayer()
+            metalRenderer = nil
+            if sampleBufferLayer?.superlayer === layer { sampleBufferLayer?.removeFromSuperlayer() }
+            sampleBufferLayer = nil
+            receiver = nil
+        }
+
         var metalRenderer: MetalVideoRenderer?
         private var displayLink: CADisplayLink?
         private var cursorDirty = false

@@ -12,6 +12,11 @@ import AVFoundation
     func start() {
         guard !started else { return }
         started = true
+        do { try checkPresentationReplacement() }
+        catch {
+            try? Data(error.localizedDescription.utf8).write(to: folder.appendingPathComponent("error.txt"))
+            return
+        }
         receiver.setNativePanel(long: 1920, short: 1080, scale: 1)
         receiver.start(port: port)
         AppleTransportSecurityModel.shared.openPairing()
@@ -22,6 +27,31 @@ import AVFoundation
             try invitation.write(to: file, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
         } catch { try? Data(error.localizedDescription.utf8).write(to: folder.appendingPathComponent("error.txt")) }
+    }
+
+    private func checkPresentationReplacement() throws {
+        func expect(_ value: Bool, _ message: String) throws {
+            if !value { throw TransportSecurityError.failed(message) }
+        }
+        let layer = AVSampleBufferDisplayLayer()
+        let old = VideoLayerView(displayLayer: layer, receiver: receiver, useMetal: false).makeVideoView()
+        let replacement = VideoLayerView(displayLayer: layer, receiver: receiver, useMetal: false).makeVideoView()
+        try expect(old.receiver == nil, "replaced view still owns input receiver")
+        var resets = 0, tools = 0
+        receiver.onInputReset = { resets += 1 }
+        receiver.onPencilToolChange = { tools += 1 }
+        VideoLayerView.dismantleUIView(old, coordinator: ())
+        receiver.onInputReset?(); receiver.onPencilToolChange?()
+        try expect(resets == 1 && tools == 1 && replacement.receiver === receiver,
+                   "late old-view teardown cleared replacement callbacks")
+        try expect(layer.superlayer === replacement.layer, "old teardown detached the new video layer")
+        VideoLayerView.dismantleUIView(replacement, coordinator: ())
+        try expect(receiver.onInputReset == nil && receiver.onPencilToolChange == nil &&
+                   receiver.onCursor == nil && receiver.onCursorImage == nil && receiver.onDecodedFrame == nil,
+                   "current view teardown retained callbacks")
+        try expect(replacement.receiver == nil && layer.superlayer == nil, "current view retained its receiver/layer")
+        try Data("iOS presentation replacement, late teardown and callback cleanup PASS".utf8)
+            .write(to: folder.appendingPathComponent("presentation-result.txt"))
     }
 
     func tick() {
