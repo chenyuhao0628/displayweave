@@ -11,7 +11,7 @@ DisplayWeave 在主界面直接提供两种连接入口。已有 OpenDisplay 不
 | OpenDisplay → DisplayWeave Mac/iOS/Android | 在 DisplayWeave 接收端主界面选择 **OpenDisplay 兼容**，再从 OpenDisplay 选择该设备 |
 | DisplayWeave → 新旧混合接收端 | 发送端启用 **兼容两种客户端**；已配对的 DisplayWeave 继续加密，未配对的 OpenDisplay 使用旧协议 |
 
-发送端选项允许两种协议。接收端按所选模式监听，每次只接收一个发送端；切换模式会断开当前会话。TLS 失败不会自动回退明文。旧版模式未加密，只应在可信网络使用。曾配对的身份不能通过移除 TLS 广播、修改或删除 hello ID 绕过信任。由 OpenDisplay 升级的接收端保留原安装 ID；使用加密连接时需要配对。
+发送端选项允许两种协议。接收端按所选模式监听，每次只接收一个发送端；切换模式会断开当前会话。TLS 失败不会自动回退明文。旧版模式未加密，只应在可信网络使用。已知身份的连接计划不能通过移除 TLS 广播、修改或删除 hello ID 绕过信任。匿名旧版对端没有经过认证的身份。由 OpenDisplay 升级的接收端保留原安装 ID；使用加密连接时需要配对。
 
 ## 兼容边界
 

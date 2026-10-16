@@ -4,7 +4,7 @@
 
 ## Current release: v0.3.0-preview.2 (17)
 
-The [release notes](release-notes-v0.3.0-preview.2.md) record UI and compatibility changes, hashes and signing boundaries. Native source `f8a2e67` passed the complete local regression gate. Release builds include universal Mac, the original-certificate Android APK and unsigned iOS re-signing input. Installed applications were left intact; development checks used isolated apps.
+The [release notes](release-notes-v0.3.0-preview.2.md) record UI and compatibility changes, hashes and signing boundaries. Native source `4f6e096` passed the complete local regression gate. Release builds include universal Mac, the original-certificate Android APK and unsigned iOS re-signing input. Installed applications were left intact; development checks used isolated apps.
 
 Passed: 52 Swift suites, six Android groups, actual platform TLS/Keychain/Keystore, isolated iOS/Android runtimes, Apple builds, Android Lint, website, bilingual docs, 12 packaging tests and 36 brand exports. DMG/ZIP consistency, the existing Sparkle signature, Android certificate/version and the unsigned iOS boundary were verified.
 

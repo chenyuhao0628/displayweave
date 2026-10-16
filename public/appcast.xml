@@ -9,7 +9,7 @@
             <sparkle:version>17</sparkle:version>
             <sparkle:shortVersionString>0.3.0-preview.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/chenyuhao0628/displayweave/releases/download/v0.3.0-preview.2/DisplayWeave-macOS.zip" length="3802139" type="application/octet-stream" sparkle:edSignature="VayaIEWNq9dZlrvqjRwpDdu1O95Lbz2kps/HEzRfvqFQuMP4RB5bD/sY2BcvxOUcKkvMFIcnBF/XyspXT9XcCA=="/>
+            <enclosure url="https://github.com/chenyuhao0628/displayweave/releases/download/v0.3.0-preview.2/DisplayWeave-macOS.zip" length="3802139" type="application/octet-stream" sparkle:edSignature="aiko2thSoE4HhT3BGl6X8hMWHbDRR63enm8F2b4mpX2uvCWLMzXbbLzYUuXV6auRmUcKoBhkHZYdCf4Fp1ibDQ=="/>
         </item>
     </channel>
 </rss>

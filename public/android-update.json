@@ -5,9 +5,9 @@
   "versionName": "0.3.0-preview.2",
   "minimumSdk": 26,
   "apkUrl": "https://github.com/chenyuhao0628/displayweave/releases/download/v0.3.0-preview.2/DisplayWeave-Android.apk",
-  "apkSize": 308040,
-  "sha256": "cd00fd37422ff16c9d9b8860abb062dd98b0519dadb0c3fd3047532ecf41fab0",
+  "apkSize": 308308,
+  "sha256": "a3c4e1f2c98e55073d63b305aaca7e5bf31510be18069b9b7de3138a3ae332bb",
   "signingCertificateSha256": "89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d",
-  "publishedAt": "2026-10-16T14:57:15Z",
+  "publishedAt": "2026-10-16T15:29:08Z",
   "releaseNotesUrl": "https://github.com/chenyuhao0628/displayweave/releases/tag/v0.3.0-preview.2"
 }

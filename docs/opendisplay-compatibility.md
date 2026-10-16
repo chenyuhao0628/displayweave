@@ -11,7 +11,7 @@ DisplayWeave exposes both connection choices on the main screen. Existing OpenDi
 | OpenDisplay → DisplayWeave Mac/iOS/Android | On the DisplayWeave receiver's main screen choose **OpenDisplay compatibility**; then select it in OpenDisplay |
 | DisplayWeave → mixed new and old receivers | Enable **Both clients** on the sender; paired DisplayWeave connections stay encrypted and unpaired OpenDisplay peers use the legacy protocol |
 
-The sender's option allows both protocols. A receiver listens in the selected mode, one sender at a time; switching mode disconnects its current session. There is no automatic plaintext fallback after a TLS failure. Legacy mode is unencrypted and should be used on a trusted network. A previously paired identity cannot bypass trust by removing its TLS advertisement or claiming a different/missing hello ID. A receiver upgraded from OpenDisplay keeps its original install ID; pair it for encrypted use.
+The sender's option allows both protocols. A receiver listens in the selected mode, one sender at a time; switching mode disconnects its current session. There is no automatic plaintext fallback after a TLS failure. Legacy mode is unencrypted and should be used on a trusted network. A connection plan with a known identity cannot bypass trust by removing its TLS advertisement or claiming a different/missing hello ID. An anonymous legacy peer has no authenticated identity. A receiver upgraded from OpenDisplay keeps its original install ID; pair it for encrypted use.
 
 ## Compatibility boundary
 
