@@ -2,15 +2,19 @@
 
 # Release checklist
 
-## Current release: v0.3.0-preview.2 (17)
+## Current release: v0.3.0-preview.3 (18)
 
-The [release notes](release-notes-v0.3.0-preview.2.md) record UI and compatibility changes, hashes and signing boundaries. Native source `4f6e096` passed the complete local regression gate. Release builds include universal Mac, the original-certificate Android APK and unsigned iOS re-signing input. Installed applications were left intact; development checks used isolated apps.
+The [release notes](release-notes-v0.3.0-preview.3.md) record fixed Mac signing, hashes and verification limits. Native/signing baseline `92b5834` retains preview.2's UI, protocol and application identifiers. The [documentation audit](documentation-audit-2026-10-17.md) covers current guides and historical-reference cleanup.
 
-Passed: 52 Swift suites, six Android groups, actual platform TLS/Keychain/Keystore, isolated iOS/Android runtimes, Apple builds, Android Lint, website, bilingual docs, 12 packaging tests and 36 brand exports. DMG/ZIP consistency, the existing Sparkle signature, Android certificate/version and the unsigned iOS boundary were verified.
+- [x] Signing-source CI `38932980548`: all three jobs passed, including 52 Swift suites, Android tests/Lint and Apple compatibility builds.
+- [x] 20 signing regressions, 12 distribution tests, real two-binary Keychain continuity and local signed 17 → 17.1 permission continuity passed.
+- [x] Build 18 Mac universal Release and DMG/ZIP signatures/content, original-certificate Android Release and unsigned arm64 iOS input verified.
+- [x] Independent Sparkle Ed25519 signature and all feed/artifact identities, versions, sizes and hashes verified.
+- [x] Installed exact build 18 over signed 17.1; Screen Recording/Accessibility stayed allowed, three Local Network entries stayed enabled, no old-app backup retained.
 
-Eight files comprise four binaries, two feeds, tagged source and checksums. Verify uploaded assets before publication; persist exact feeds and compare live bytes after deployment. Use GitHub Releases and GitHub Pages only; never overwrite published assets. Record hosted CI separately from local evidence.
+Publication gate: verify eight remote files (four binaries, two feeds, source, checksums), publish the Release, then merge only after full release-commit CI. Persist exact feeds and compare live bytes after Pages deployment. The publication PR and GitHub Release record hosted checks and live verification; local checks alone do not establish online availability.
 
-Two-Mac/Pencil/Intel and endurance acceptance remain physical gaps. Skip virtual-display interaction without an independent online display. Production Apple identities and final editable artwork remain external prerequisites.
+Physical gaps remain: two-device LAN/USB performance, Intel/Pencil and endurance. Skip capture/virtual-display interaction without an independent online display. This preview uses Apple Development, not Developer ID notarization; iOS still requires re-signing.
 
 ## Historical v0.2.1-p2 evidence
 

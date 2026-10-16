@@ -2,7 +2,7 @@
 
 # DisplayWeave brand assets
 
-Updated 2026-10-16. Source now has reproducible exports and Android adaptive packaging. The existing blue/teal device mark is preserved. Its opaque raster is still a temporary derivative, **not a final editable or transparent master**. Published p8 predates this export workflow.
+Updated 2026-10-16. Source now has reproducible exports and Android adaptive packaging. The existing blue/teal device mark is preserved. Its opaque raster is still a temporary derivative, **not a final editable or transparent master**. The local p8 artifact predates this export workflow; v0.3.0 previews include the reproducible exports.
 
 ## Sources and exports
 

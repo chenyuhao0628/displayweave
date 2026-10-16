@@ -26,7 +26,7 @@
 
 八项文件为 Mac DMG／Sparkle ZIP、Android APK、无签名 iOS 自签输入包、`appcast.xml`、`android-update.json`、`DisplayWeave-v0.2.1-p8-source.tar.gz` 及 `SHA256SUMS.txt`。源码包的 SHA-256 见校验和清单，该清单覆盖其余七项文件。
 
-Mac 保持 ad-hoc 签名且未公证；Android 保留原包名与固定证书，可覆盖安装；iOS IPA 需个人有效签名后安装。2026-10-16，已认证 GitHub 管理接口可用，但公开 GitHub／Pages 返回 404。可从镜像手动下载；Mac 和 Android 仍依赖原 GitHub Pages 元数据，原地址恢复前不能保证应用内更新。备用网站上的更新源副本不会重定向客户端。
+Mac 保持 ad-hoc 签名且未公证；Android 保留原包名与固定证书，可覆盖安装；iOS IPA 需个人有效签名后安装。2026-10-16，已认证 GitHub 管理接口可用，但公开 GitHub／Pages 返回 404。这是历史可用性观察，不是当前下载指引。外部镜像已停用，请使用[分发指南](development-preview.zh-CN.md)链接的当前 GitHub Release 与 GitHub Pages 更新源。
 
 ## 产物完整性
 

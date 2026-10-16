@@ -2,10 +2,12 @@
 
 # DisplayWeave roadmap
 
-Updated 2026-10-16. The [feature ledger](docs/feature-completion.md) records each implementation. This iteration is packaged as v0.3.0-preview.1 (16), installed locally before publication. See [release notes](docs/release-notes-v0.3.0-preview.1.md) for artifacts and verification boundaries.
+Updated 2026-10-17. The [feature ledger](docs/feature-completion.md) records each implementation. The current release is v0.3.0-preview.3 (18), adding fixed Mac signing and upgrade identity checks. See [release notes](docs/release-notes-v0.3.0-preview.3.md) for artifacts and verification boundaries.
 
-## Included in v0.3.0-preview.1
+## Included in the current v0.3.0 preview
 
+- Fixed Apple Development signing and upgrade comparisons; local permission continuity verified.
+- Shared UI standards and main-screen OpenDisplay compatibility in both connection directions.
 - Per-device Native/1080p/1440p/4K extension resolution.
 - Default mutual TLS, invitation pairing, revocation and explicit legacy compatibility on Apple and Android.
 - Apple HEVC/H.264 fallback and bounded 30–120fps negotiation.
@@ -18,9 +20,9 @@ Updated 2026-10-16. The [feature ledger](docs/feature-completion.md) records eac
 
 Each feature has its own guide, checks and compatibility boundaries in the ledger. Requested FPS is not measured rendered FPS.
 
-## Published baseline
+## Earlier implementation baseline
 
-p8 includes the p7 Mac send/receive LAN mirror/extend preview, four-surface UI refactor, selected upstream startup recovery, bounded queues/framing, Mac hardware-gated HEVC, interface-pinned direct-link candidates and basic Pencil. Earlier previews exercised Android dynamic ADB-forward USB, bounded USB/Wi-Fi recovery and one current iPhone/Android concurrent session. See the dated release notes and physical reports; historical evidence is not automatically evidence for new secure transport.
+The local p8 artifact included the p7 Mac send/receive LAN mirror/extend preview, four-surface UI refactor, selected upstream startup recovery, bounded queues/framing, Mac hardware-gated HEVC, interface-pinned direct-link candidates and basic Pencil. Earlier previews exercised Android dynamic ADB-forward USB, bounded USB/Wi-Fi recovery and one current iPhone/Android concurrent session. See the dated release notes and physical reports; historical evidence is not automatically evidence for new secure transport.
 
 ## External prerequisites
 

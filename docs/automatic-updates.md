@@ -11,15 +11,15 @@ DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases an
 - Android artifact: `DisplayWeave-Android.apk`
 
 The current development release is
-[`v0.3.0-preview.2`](https://github.com/chenyuhao0628/displayweave/releases).
+[`v0.3.0-preview.3`](https://github.com/chenyuhao0628/displayweave/releases).
 Install a current APK manually once; later builds use the in-app channel automatically.
 This release includes both the guided DMG and the Sparkle ZIP payload.
 
-The published preview.2 Mac build is ad-hoc signed and not notarized. Sparkle authenticates its ZIP with the embedded EdDSA public key, so subsequent updates can be verified without Apple Developer Program credentials. This does not make the first download Gatekeeper-trusted or equivalent to a notarized release.
+The preview.3 Mac build uses a pinned Apple Development identity and is not notarized. Sparkle authenticates the ZIP with the unchanged embedded EdDSA key. Update authenticity and permission continuity are separate: packaging checks the Mac signing identity, while Sparkle verifies the update signature. Neither makes this a Developer ID notarized release.
 
-2026-10-16: this preview is built locally. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site, which is available again. See the [release notes](release-notes-v0.3.0-preview.2.md) for UI changes, OpenDisplay compatibility and build evidence.
+2026-10-17: build 18 uses a pinned Apple Development identity for macOS. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](release-notes-v0.3.0-preview.3.md) for permission continuity, retained OpenDisplay compatibility and build evidence.
 
-The source workflow now requires a pinned Apple signing identity and an upgrade comparison; see [permission continuity](mac-permissions.md). This does not change existing public downloads. See [local releases](local-release.md) for reproducible commands and validation requirements.
+The source workflow now requires a pinned Apple signing identity and an upgrade comparison; see [permission continuity](mac-permissions.md). Previous release assets remain immutable; preview.3 is a new signed build. See [local releases](local-release.md) for reproducible commands and validation requirements.
 
 ## One-time user migration
 
@@ -43,30 +43,17 @@ Declining the permission or installation leaves the receiver usable and does not
 
 ## Release operation
 
-The Sparkle and Android steps require these repository secrets:
+Use [local publication](local-release.md) for the current preview. It uses the pinned Mac Keychain identity, the existing Sparkle Keychain key and Android keystore without exporting private keys. Set a new version/build and compare the Mac app with the previous published app using `DISPLAYWEAVE_MAC_BASELINE_APP`. Only the first ad-hoc → fixed-signature migration uses `DISPLAYWEAVE_ALLOW_ADHOC_MIGRATION=1`.
 
-- `SPARKLE_PRIVATE_KEY`
-- `DISPLAYWEAVE_ANDROID_KEYSTORE_BASE64`
-- `DISPLAYWEAVE_ANDROID_STORE_PASSWORD`
-- `DISPLAYWEAVE_ANDROID_KEY_ALIAS`
-- `DISPLAYWEAVE_ANDROID_KEY_PASSWORD`
+1. Build the Mac DMG/ZIP, signed Android APK and unsigned iOS re-signing input; generate the two update feeds.
+2. Verify versions, hashes, archive contents, all Mac architectures and signing continuity, the Sparkle Ed25519 signature and the pinned Android certificate.
+3. Commit the reviewed documentation and exact feeds in `public/`; require full CI before integration. Tag the verified commit and create its tracked-source archive.
+4. Upload eight explicit files to a draft GitHub Release: four binaries, two feeds, source archive and checksums. Verify remote bytes before publishing.
+5. Publish the Release before merging the publication PR. The main-branch Pages deployment then publishes the website and feeds; compare both live feeds byte-for-byte with the Release assets.
 
-Mac signing additionally requires the pinned local policy and its existing Keychain identity, plus the previous published app as `DISPLAYWEAVE_MAC_BASELINE_APP`. Hosted runners are not provisioned with these credentials and stop at preflight; use the local release path until a runner is explicitly provisioned. No Mac private key is exported by this change.
+The hosted **Release** workflow has no maintainer Mac identity or previous-release baseline and deliberately stops at preflight. It also does not generate the required source archive. Do not use it as a complete publication path until these prerequisites are provisioned and that missing source step is implemented. Its Sparkle/Android secret names remain in the workflow for future setup; no new credentials are uploaded by this release.
 
-For an explicit release, create its tag and draft GitHub Release, then run **Release** with `release_tag` and a `build_number` higher than every public Mac/Android build. Without an explicit tag, release-please may first create a version PR; merge it before rerunning. The tag determines the display version. If `build_number` is omitted, the workflow uses `github.run_number`; confirm that this is still monotonic.
-
-Set `deploy_feeds=false` (the default is `true`) when the release assets are not public yet. The workflow:
-
-1. builds and tests the Mac app with the pinned Apple identity, unsigned iOS compatibility target, and signed Android APK;
-2. generates an appcast with an EdDSA-signed ZIP enclosure and a pinned-certificate Android JSON feed;
-3. verifies versions, hashes, archive structure, Mac identity continuity and Android signing; and
-4. uploads the seven immutable assets to the draft release while leaving the live feeds unchanged.
-
-Download and independently verify those assets, then publish the GitHub Release. Copy the exact generated `appcast.xml` and `android-update.json` into `public/`, update the release links and checksums, and merge the reviewed publication PR after CI passes. The main-branch Pages deployment then publishes the website and feeds together. Persisting the generated feeds prevents a later site deployment from rolling the update channel back.
-
-With `deploy_feeds=true`, the workflow sends the feeds directly to the protected Pages job. Use this only when all referenced downloads are already accessible, and still persist those exact feeds in `public/`.
-
-Do not replace or use `--clobber` on a published update asset. Publish a new, higher build number for every correction.
+Never replace a published asset or use `--clobber`. Every correction receives a new higher build number.
 
 ## Key backup and recovery
 

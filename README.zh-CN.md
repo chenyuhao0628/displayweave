@@ -6,10 +6,10 @@
 
 DisplayWeave 是独立维护、使用 GPL-3.0、坚持本地优先的第二屏项目，源自 [OpenDisplay](https://github.com/peetzweg/opendisplay)。它可以把 iPhone、iPad 和 Android 设备变成 Mac 的扩展或镜像显示器。
 
-## Mac 与 Mac（v0.3.0-preview.2 实验功能）
+## Mac 与 Mac（v0.3.0-preview.3 实验功能）
 
 同一应用可选择发送或接收，通过 Wi-Fi/以太网单向扩展或镜像。双方需 macOS 14+，
-应用协商硬件 HEVC，并可回退 H.264，在屏幕/编码能力内最高协商 120fps；实体双 Mac 性能矩阵待验证。此功能已包含在下方 `v0.3.0-preview.2`
+应用协商硬件 HEVC，并可回退 H.264，在屏幕/编码能力内最高协商 120fps；实体双 Mac 性能矩阵待验证。此功能已包含在下方 `v0.3.0-preview.3`
 发布包内。参见[使用指南](docs/mac-to-mac.zh-CN.md)及[设计与上游评估](docs/mac-to-mac-design.zh-CN.md)。
 
 本版本还包含四端 UI 规范化、上游恢复改进和网络/生命周期加固；该批基线见[源码升级报告](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。本版本包含自 p7 引入的 [Mac HEVC、绑定接口的直连发现与经协商的 Apple Pencil 输入](docs/hevc-wired-pencil.zh-CN.md)，Swift 套件增至 52 组；实机验收仍待完成。
@@ -31,21 +31,21 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 
 下述真机恢复与高刷新观察来自 Preview 2 验证，继续作为既有证据；本版本没有在第二台 Android 上重新执行这些项目。
 
-## 下载 `v0.3.0-preview.2`
+## 下载 `v0.3.0-preview.3`
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-16：本预览版在本地构建，下载仅使用 GitHub Releases；Mac 与 Android 更新元数据使用已恢复访问的项目 GitHub Pages。UI 改造、OpenDisplay 兼容与构建证据见[发布说明](docs/release-notes-v0.3.0-preview.2.zh-CN.md)。
+2026-10-17：构建 18 的 macOS 产物使用固定 Apple Development 签名。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。权限延续、保留的 OpenDisplay 兼容与构建证据见[发布说明](docs/release-notes-v0.3.0-preview.3.zh-CN.md)。
 
 | 平台 | 产物 | 分发边界 |
 | --- | --- | --- |
-| macOS | `DisplayWeave-macOS.dmg` | 推荐的引导式首次安装包；ad-hoc 签名且未公证 |
+| macOS | `DisplayWeave-macOS.dmg` | 推荐的引导式首次安装包；固定 Apple Development 签名，未公证 |
 | macOS 更新 | `DisplayWeave-macOS.zip` | Sparkle 更新包，也可作为等价的手动安装选项 |
 | Android | `DisplayWeave-Android.apk` | 离线 v2 签名 APK；后续应用内下载会先验证，再由系统确认 |
 | iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | 未签名自签输入包，不能直接安装 |
 | Mac 更新源 | `appcast.xml` | 由 Mac 应用内置公钥认证的 Sparkle 更新源 |
 | Android 更新源 | `android-update.json` | 包含大小、哈希、版本、包名与固定证书的 HTTPS 元数据 |
-| 源码 | `DisplayWeave-v0.3.0-preview.2-source.tar.gz` | 对应发行 tag 的完整跟踪源码，包含 GPL-3.0 与构建脚本 |
+| 源码 | `DisplayWeave-v0.3.0-preview.3-source.tar.gz` | 对应发行 tag 的完整跟踪源码，包含 GPL-3.0 与构建脚本 |
 | 验证 | `SHA256SUMS.txt` | 全部 Release 文件的 SHA-256 |
 
 这是开发预览版，不是生产签名的商店版本。使用前请验证校验和；Android 用户还应核对[发布检查清单](docs/release-checklist.zh-CN.md)中的证书指纹。
@@ -56,14 +56,14 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 容器里是同一个 `DisplayWeave.app`，放入 `/Applications` 后都能收到后续 Sparkle
 更新。
 
-新版 Mac 构建使用 DisplayWeave 自有应用身份。设置会从旧 OpenDisplay/OpenSidecar 偏好域迁移，但升级后需要在 macOS 重新授予屏幕录制、辅助功能和本地网络权限。
+Mac 保留 `app.displayweave.mac` 和既有偏好迁移。从旧临时签名版本首次升级到固定签名时，可能需要再授权一次；后续构建保持相同签名身份。本机 17 → 17.1 覆盖安装已验证屏幕录制、辅助功能权限保留，详见[权限延续](docs/mac-permissions.zh-CN.md)的证据与边界。
 
 ### 一次性迁移与后续更新
 
 - **Mac：** 手动用此版本替换 `/Applications` 中的旧应用。Gatekeeper
   可能要求按住 Control 点击并选择“打开”，或在“隐私与安全性”中选择
   “仍要打开”；不需要全局开启“任何来源”。后续版本通过 Sparkle 检查和
-  验证，但应用仍为 ad-hoc 签名且未公证。
+  验证；本版使用 Apple Development 签名，仍未公证。
 - **Android：** 先把此 APK 覆盖安装到现有包。之后接收端最多每天自动
   检查一次，也可在“设置与帮助”手动检查。下载会校验大小、SHA-256、
   包名、版本、最低 SDK 和固定签名证书，再打开 Android 系统安装器。p6 及以后
@@ -85,13 +85,12 @@ ADB 授权会向 Mac 提供广泛调试权限，而不只限于 DisplayWeave。�
 
 ## 从源码构建
 
-Apple 目标：
+Mac 开发使用明确选定的已有 Apple 身份。把占位符换成证书 SHA-1；只编译、不签名的检查命令见[开发指南](docs/development.zh-CN.md)：
 
 ```bash
-./generate.sh
-xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac \
-  -configuration Debug -derivedDataPath build-run \
-  -clonedSourcePackagesDirPath build-run/SourcePackages build
+security find-identity -v -p codesigning
+python3 tools/mac_signing.py configure --identity CERTIFICATE_SHA1
+./script/build_and_run.sh
 ```
 
 Android：
@@ -108,7 +107,7 @@ python3 -m pip install -r tools/dmg-requirements.txt
 ./tools/package-preview-0.1.sh
 ```
 
-Android Release 签名密钥库保存在仓库外。参见[开发预览分发](docs/development-preview.zh-CN.md)。
+打包命令需要已配置的 Mac 身份与 Git 外的 Android keystore。正式发布新版本时，按[本地发行](docs/local-release.zh-CN.md)明确设置版本／构建号并比较升级基线。
 
 ## 文档
 

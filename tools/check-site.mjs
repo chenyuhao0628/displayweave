@@ -27,7 +27,7 @@ for (const [file, locale] of [['index.html', 'en'], ['zh.html', 'zh-CN']]) {
   for (const anchor of ['download', 'status', 'transport', 'evidence', 'trust', 'faq']) {
     assert.ok(html.includes(`id="${anchor}"`), `${file}: reachable ${anchor} navigation`)
   }
-  assert.ok(html.includes(locale === 'en' ? 'Experimental in v0.3.0-preview.2' : 'v0.3.0-preview.2 实验功能'),
+  assert.ok(html.includes(locale === 'en' ? 'Experimental in v0.3.0-preview.3' : 'v0.3.0-preview.3 实验功能'),
     `${file}: published experimental capability is labeled`)
 }
 console.log('Bilingual site metadata, navigation and release-scope checks PASS')

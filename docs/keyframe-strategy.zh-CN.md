@@ -1,3 +1,5 @@
+[English](keyframe-strategy.md) | [简体中文](keyframe-strategy.zh-CN.md)
+
 # 关键帧策略
 
 周期 GOP 候选默认值为 WiFi 两秒、USB 一秒：减少 WiFi 周期性突发，同时保留有线连接的快速恢复。

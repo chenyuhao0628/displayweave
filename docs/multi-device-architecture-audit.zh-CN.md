@@ -1,3 +1,5 @@
+[English](multi-device-architecture-audit.md) | [简体中文](multi-device-architecture-audit.zh-CN.md)
+
 # 多设备架构审计
 
 状态：代码审计完成；尚未进行双 Android 实体验证。

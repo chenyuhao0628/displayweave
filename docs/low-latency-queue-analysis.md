@@ -1,3 +1,5 @@
+[English](low-latency-queue-analysis.md) | [简体中文](low-latency-queue-analysis.zh-CN.md)
+
 # Low-latency send queue analysis
 
 The sender already enables TCP no-delay and accounts for an outstanding send until Network.framework reports completion. It drops a newly captured frame when the outstanding-send count reaches the budget, preventing an extra frame from entering the queue.

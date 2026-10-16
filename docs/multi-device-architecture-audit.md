@@ -1,3 +1,5 @@
+[English](multi-device-architecture-audit.md) | [简体中文](multi-device-architecture-audit.zh-CN.md)
+
 # Multi-device architecture audit
 
 Status: code audit complete; two-Android physical verification not performed.

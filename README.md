@@ -6,11 +6,11 @@
 
 DisplayWeave is an independently maintained, GPL-3.0, local-first second-display project derived from [OpenDisplay](https://github.com/peetzweg/opendisplay). It turns iPhone, iPad, and Android devices into extended or mirrored displays for a Mac.
 
-## Mac-to-Mac (experimental in v0.3.0-preview.2)
+## Mac-to-Mac (experimental in v0.3.0-preview.3)
 
 The same app can send or receive a one-way extended/mirrored desktop over Wi-Fi
 or Ethernet. Both Macs require macOS 14+; the app negotiates hardware HEVC with H.264 fallback, with targets up to 120fps within screen/codec limits.
-This feature is included in the `v0.3.0-preview.2` downloads below.
+This feature is included in the `v0.3.0-preview.3` downloads below.
 The two-Mac physical performance matrix remains unverified. See the [user guide](docs/mac-to-mac.md) and
 [design/upstream assessment](docs/mac-to-mac-design.md).
 
@@ -35,21 +35,21 @@ The physical-device recovery and high-refresh observations below were recorded
 during Preview 2 validation and remain prior evidence; they were not rerun on a
 second Android device for this release.
 
-## Download `v0.3.0-preview.2`
+## Download `v0.3.0-preview.3`
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-16: this preview is built locally. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site, which is available again. See the [release notes](docs/release-notes-v0.3.0-preview.2.md) for UI changes, OpenDisplay compatibility and build evidence.
+2026-10-17: build 18 uses a pinned Apple Development identity for macOS. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](docs/release-notes-v0.3.0-preview.3.md) for permission continuity, retained OpenDisplay compatibility and build evidence.
 
 | Platform | Asset | Distribution boundary |
 | --- | --- | --- |
-| macOS | `DisplayWeave-macOS.dmg` | Recommended guided first-install package; ad-hoc signed and not notarized |
+| macOS | `DisplayWeave-macOS.dmg` | Recommended guided first-install package; pinned Apple Development signature, not notarized |
 | macOS update | `DisplayWeave-macOS.zip` | Sparkle update payload and equivalent manual install option |
 | Android | `DisplayWeave-Android.apk` | Offline v2-signed APK; future in-app downloads are verified before system confirmation |
 | iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | Unsigned re-signing input; cannot be installed directly |
 | Mac feed | `appcast.xml` | Sparkle feed authenticated by the public key embedded in the Mac app |
 | Android feed | `android-update.json` | HTTPS metadata with size, hash, version, package, and pinned certificate |
-| Source | `DisplayWeave-v0.3.0-preview.2-source.tar.gz` | Tracked source at the release tag, including GPL-3.0 and build scripts |
+| Source | `DisplayWeave-v0.3.0-preview.3-source.tar.gz` | Tracked source at the release tag, including GPL-3.0 and build scripts |
 | Verification | `SHA256SUMS.txt` | SHA-256 for all Release files |
 
 This is a development preview, not a production-signed store release. Verify the checksum before use. Android users should also compare the certificate fingerprint in the [release checklist](docs/release-checklist.md).
@@ -61,15 +61,15 @@ background. The ZIP remains the Sparkle update payload and an equivalent manual
 install option. Both containers hold the same `DisplayWeave.app`, so either
 installation receives later Sparkle updates after the app is in `/Applications`.
 
-The refreshed Mac build uses a DisplayWeave-owned application identity. Settings migrate from the legacy OpenDisplay/OpenSidecar preference domains, but macOS will require Screen Recording, Accessibility, and Local Network permission to be granted again after the upgrade.
+The Mac keeps `app.displayweave.mac` and the existing preference migration. The first move from an ad-hoc release to this fixed signature may require permission grants once more. Subsequent builds retain the same signing identity: a local 17 → 17.1 overwrite preserved Screen Recording and Accessibility grants. See [permission continuity](docs/mac-permissions.md) for evidence and limits.
 
 ### One-time migration and later updates
 
 - **Mac:** manually replace the old app with this build in `/Applications`.
   Gatekeeper may require Control-click → **Open** or Privacy & Security →
   **Open Anyway**. Do not enable **Anywhere** globally. Later releases are
-  checked and verified through Sparkle, but the app remains ad-hoc signed and
-  not notarized.
+  checked and verified through Sparkle. This build uses Apple Development
+  signing and remains unnotarized.
 - **Android:** install this APK over the existing package once. The receiver
   then checks at most daily, with a manual check in **Settings & Help**.
   Downloads come from the matching GitHub Release.
@@ -92,13 +92,12 @@ ADB authorization grants the Mac broad debugging access, not only DisplayWeave a
 
 ## Build from source
 
-Apple targets:
+Mac development uses an explicitly selected existing Apple identity. Replace the placeholder with its certificate SHA-1; [development](docs/development.md) also documents unsigned compile-only checks:
 
 ```bash
-./generate.sh
-xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac \
-  -configuration Debug -derivedDataPath build-run \
-  -clonedSourcePackagesDirPath build-run/SourcePackages build
+security find-identity -v -p codesigning
+python3 tools/mac_signing.py configure --identity CERTIFICATE_SHA1
+./script/build_and_run.sh
 ```
 
 Android:
@@ -115,7 +114,7 @@ python3 -m pip install -r tools/dmg-requirements.txt
 ./tools/package-preview-0.1.sh
 ```
 
-Android release signing uses a keystore stored outside the repository. See [development preview distribution](docs/development-preview.md).
+The packaging command requires the configured Mac identity and Android keystore outside Git. To publish a new version with explicit version/build values and upgrade-baseline checks, follow [local publication](docs/local-release.md).
 
 ## Documentation
 

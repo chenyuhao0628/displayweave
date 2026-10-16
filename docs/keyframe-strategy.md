@@ -1,3 +1,5 @@
+[English](keyframe-strategy.md) | [简体中文](keyframe-strategy.zh-CN.md)
+
 # Keyframe strategy
 
 The candidate periodic GOP is two seconds on WiFi and one second on USB. This reduces periodic WiFi bursts while retaining faster wired recovery.

@@ -1,3 +1,5 @@
+[English](bitrate-modes.md) | [简体中文](bitrate-modes.zh-CN.md)
+
 # 码率模式
 
 Auto 是默认模式，会在 codec/传输边界内自适应。Manual 选择固定预设，并按实际链路限制。Benchmark 仅用于本地实验，可选择 10–200 Mbps，界面明确警告：Experimental、May increase latency、May cause queueing、For local benchmark only。
