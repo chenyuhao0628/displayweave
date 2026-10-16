@@ -20,6 +20,7 @@ import app.opendisplay.android.TouchEventMapper;
 
 public final class ProtocolSelfTest {
     public static void main(String[] args) throws Exception {
+        WireContractSelfTest.run();
         testLengthPrefixedRoundTrip();
         testNegotiatedFrameSizeLimits();
         testJsonClassification();

@@ -30,7 +30,7 @@ Feature completion means implemented behavior and passing automated acceptance, 
 ## Progress
 
 - Assessment: repository clean on baseline; twelve work items enumerated with acceptance and dependencies.
-- Remaining implementation: F09–F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
+- Remaining implementation: F10–F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
 
 ## Official API references
 
@@ -83,3 +83,9 @@ Authenticated Mac keyboard/mouse forwarding now requires both local opt-ins and 
 Authenticated `pencil-v2` adds normalized roll, eraser proximity and explicit per-stroke compatibility. UIKit double-tap/squeeze actions map to tool selection or named undo/redo/custom slots; discrete ended-only squeezes and duplicate timestamps are handled. The Mac owns shortcut mappings and default-off consent. Fresh grants, strict sequences, five actions per second, target/permission checks and balanced synchronous key events bound the new action path. Settings/background gestures are suppressed; tool changes cancel strokes and permission loss clears owned pen state.
 
 All 51 Swift suites, Mac universal Debug and iOS Simulator builds passed. The production iOS receiver passed mutual-TLS V2 roll/tool/cancel and shortcut transmission, V1 downgrade with shortcut suppression, live revocation and background closure. Its Pencil settings section was inspected in light/dark disconnected states in an isolated simulator. Actual Pencil hardware callbacks, roll reference behavior and drawing-app support remain physical checks; no physical claims or installed-app changes. See [usage and evidence](pencil-advanced.md).
+
+### F09 — implemented in source
+
+Published a paired [protocol contract](protocol.md), revision 1, covering unchanged namespaces/framing, TLS admission, capability gates, Apple/Android video paths, readiness/epochs, resource limits and desktop/Pencil input. The document revision is not a wire-version migration. Swift and Java now consume the same public synthetic framing/DWV2/legacy fixtures with production codecs, every Swift split boundary, Java one-byte reads/EOF, coalescing and malformed versions/flags/lengths/identity. Apple-specific input fixtures use Swift parsers; Java checks their opaque framing. Existing shared security vectors remain in use.
+
+All 52 Swift suites, Android six test groups plus Debug assembly/Lint, and actual Apple↔Java TLS in both directions passed. The bilingual checker now includes the previously unlisted security/handover/input guides and the new specification: 77 pairs passed. No runtime wire format or installed/published application changed in this round.

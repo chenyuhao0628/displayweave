@@ -4,6 +4,7 @@
 
 ## Current user guides
 
+- [Public protocol contract and shared fixtures](protocol.md)
 - [Advanced Pencil input (source)](pencil-advanced.md)
 - [Mac receiver keyboard and mouse (source)](mac-receiver-input.md)
 - [Secure connections and pairing (source)](secure-transport.md) and [design / remaining integration](secure-transport-design.md)

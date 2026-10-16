@@ -175,4 +175,8 @@ run_test PencilAdvancedSelfTest \
   Shared/PencilProtocol.swift Shared/PencilActions.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
   Mac/InputValidationPolicy.swift Mac/InputInjector.swift Mac/PencilActionSender.swift MacTests/PencilAdvancedSelfTest.swift
 
-echo "Swift standalone self-tests PASS (51 suites)"
+run_test WireContractSelfTest \
+  "${settings[@]}" Mac/BinaryFrameHeaderV2.swift Shared/ReceiverFrameDecoder.swift \
+  Shared/DesktopInputProtocol.swift Shared/PencilProtocol.swift Shared/PencilActions.swift MacTests/WireContractSelfTest.swift
+
+echo "Swift standalone self-tests PASS (52 suites)"
