@@ -1,3 +1,5 @@
+[English](adaptive-bitrate.md) | [简体中文](adaptive-bitrate.zh-CN.md)
+
 # Adaptive bitrate
 
 DisplayWeave exposes Auto, Manual, and Benchmark bitrate modes. Auto starts from the resolution/FPS/codec estimate, clamped to codec and transport bounds. Manual uses a bounded preset. Benchmark permits 10–200 Mbps and is experimental.

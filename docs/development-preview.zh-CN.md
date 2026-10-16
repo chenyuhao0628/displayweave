@@ -1,20 +1,20 @@
 [English](development-preview.md) | [简体中文](development-preview.zh-CN.md)
 
-# DisplayWeave `v0.3.0-preview.2` 开发分发
+# DisplayWeave `v0.3.0-preview.3` 开发分发
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-16：本预览版在本地构建，下载仅使用 GitHub Releases；Mac 与 Android 更新元数据使用已恢复访问的项目 GitHub Pages。UI 改造、OpenDisplay 兼容与构建证据见[发布说明](release-notes-v0.3.0-preview.2.zh-CN.md)。
+2026-10-17：构建 18 的 macOS 产物使用固定 Apple Development 签名。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。权限延续、保留的 OpenDisplay 兼容与构建证据见[发布说明](release-notes-v0.3.0-preview.3.zh-CN.md)。
 
 | 平台/更新源 | 产物 | SHA-256 或信任边界 |
 | --- | --- | --- |
-| macOS 首次安装 | `DisplayWeave-macOS.dmg` | `e98505756aa347b9c4bcb56f9bad1aa8c24ffac36719962e519f58e685ebb7d9`；ad-hoc 签名且未公证 |
-| macOS 更新 | `DisplayWeave-macOS.zip` | `ea46bc18891964c4be53d5875a74d88bb2555f04f6d9c59897572fe7153552b0`；EdDSA 认证的 Sparkle 更新包 |
-| Android | `DisplayWeave-Android.apk` | `a3c4e1f2c98e55073d63b305aaca7e5bf31510be18069b9b7de3138a3ae332bb`；项目固定密钥 v2 签名 |
-| iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `43010892e883272dc647e81943ed147368ad781631bdab8f345c488dd84f9d06`；未签名自签输入包 |
+| macOS 首次安装 | `DisplayWeave-macOS.dmg` | `a29756e94f48f7eeab5968ed9c03e5aebaf0b74e743d69200748195dc6431518`；固定 Apple Development 签名，未公证 |
+| macOS 更新 | `DisplayWeave-macOS.zip` | `b3a0a5e7d7dea6e9e487bd7e1f6b89e7bd3f3ddd597febbd99d7bf5276f41bd7`；EdDSA 认证的 Sparkle 更新包 |
+| Android | `DisplayWeave-Android.apk` | `370e1ba6b40cbeb9a66a3cfca280d0c5f9ab710d7b3d4a9468c4238c78646bf8`；项目固定密钥 v2 签名 |
+| iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `83328fc764068b365b6726439c9a9f10dd22502a4244d74cbf7c78d5e862a29c`；未签名自签输入包 |
 | Mac 更新源 | `appcast.xml` | [配置的 Sparkle 更新源](https://chenyuhao0628.github.io/displayweave/appcast.xml) |
 | Android 更新源 | `android-update.json` | [配置的元数据更新源](https://chenyuhao0628.github.io/displayweave/android-update.json) |
-| 源码 | `DisplayWeave-v0.3.0-preview.2-source.tar.gz` | 发行 tag 的跟踪源码；哈希见校验和文件 |
+| 源码 | `DisplayWeave-v0.3.0-preview.3-source.tar.gz` | 发行 tag 的跟踪源码；哈希见校验和文件 |
 | 校验和 | `SHA256SUMS.txt` | 覆盖以上七个 Release 文件 |
 
 Android 签名证书 SHA-256：
@@ -36,10 +36,8 @@ Android 签名证书 SHA-256：
 - **iOS/iPadOS：** 输入包不能直接安装，用户必须提供有效签名身份；本版本
   不包含 iOS 自动更新。
 
-先运行 `python3 -m pip install -r tools/dmg-requirements.txt` 安装固定版本的
-DMG 元数据依赖，再运行 `./tools/package-preview-0.1.sh` 生成本地产物集合。Android keystore
-位于 `~/Library/Application Support/DisplayWeave/Signing/`，密码存于
-Keychain，均不得提交 Git。免费 Apple Personal Team 只适合维护者在已登记
-设备测试，不适合公开通用分发；项目不背书第三方签名服务。
+可复现的版本化构建与发布见[本地发行](local-release.zh-CN.md)和[Mac 权限延续](mac-permissions.zh-CN.md)。Mac 身份、Sparkle 私钥和 Android keystore 保存在 Git 外，密码从 Keychain 读取而不打印。首次从临时签名 Mac 版本迁移可能需要再授权，后续构建比较前一发行版的代码身份要求。
+
+Apple Development 签名用于本次未公证预览，不等同于 Developer ID 公证。无签名 iOS 输入包仍需要用户的有效签名身份，项目不背书第三方签名服务。
 
 这仍是开发预览版，包含加密配对、Apple 刷新率目标协商和主界面 OpenDisplay 兼容入口。本构建的实体高刷新性能、双 Android 同时连接、受控 USB/WiFi 对比及 30 分钟/2 小时耐久仍未验证。

@@ -1,3 +1,5 @@
+[English](usb-vs-wifi-short-benchmark.md) | [简体中文](usb-vs-wifi-short-benchmark.zh-CN.md)
+
 # USB versus WiFi short benchmark
 
 Status: pending valid capture permission and completed runs on the connected OPD2413.

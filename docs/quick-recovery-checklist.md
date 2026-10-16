@@ -1,3 +1,5 @@
+[English](quick-recovery-checklist.md) | [简体中文](quick-recovery-checklist.zh-CN.md)
+
 # Quick recovery checklist
 
 Superseded for the current Android build by [Android quick recovery V2 evidence](android-quick-recovery-v2.md).

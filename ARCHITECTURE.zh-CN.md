@@ -55,7 +55,7 @@ Android 接收端在 9000 端口提供 TCP Server，渲染 Surface 返回时会�
 
 - v0.3.0-preview.1 的 Apple 与 Android 默认使用固定证书指纹的双向 TLS 和显式邀请配对；旧版兼容需主动启用且仅限可信网络。详见[配对指南](docs/secure-transport.zh-CN.md)。
 - ADB RSA 授权会把 Mac 作为广泛调试主机信任，不只限 DisplayWeave。
-- macOS Preview 使用 ad-hoc 签名且未公证。
+- macOS v0.3.0-preview.3 使用固定 Apple Development 身份，仍未公证；首次从临时签名迁移可能需要再授权，后续构建检查签名连续性。
 - Android APK 使用保存在 Git 之外的项目离线密钥库。
 - iOS 公开产物是未签名自签输入包。
 - `CGVirtualDisplay` 是私有 API，可能随 macOS 版本变化。

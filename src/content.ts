@@ -1,7 +1,7 @@
 export type Locale = "en" | "zh"
 export type EvidenceState = "verified" | "experimental" | "deferred"
 
-export const releaseTag = "v0.3.0-preview.2"
+export const releaseTag = "v0.3.0-preview.3"
 export const releaseBase = `https://github.com/chenyuhao0628/displayweave/releases/download/${releaseTag}`
 
 export type ReleaseAsset = {
@@ -93,7 +93,7 @@ const enAssets: ReleaseAsset[] = [
     title: "Guided Mac first install",
     file: "DisplayWeave-macOS.dmg",
     description:
-      "Drag DisplayWeave into Applications; later releases use EdDSA-authenticated Sparkle updates. Ad-hoc signed, not notarized, and may require Gatekeeper approval.",
+      "Drag DisplayWeave into Applications; later releases use EdDSA-authenticated Sparkle updates. Signed with a fixed Apple Development identity, not notarized; the first upgrade from an ad-hoc version may need permission grants again.",
     action: "Download macOS DMG",
   },
   {
@@ -123,7 +123,7 @@ const zhAssets: ReleaseAsset[] = [
     title: "带引导的 Mac 首次安装",
     file: "DisplayWeave-macOS.dmg",
     description:
-      "把 DisplayWeave 拖入“应用程序”，后续版本使用 EdDSA 认证的 Sparkle 更新。应用为 ad-hoc 签名、未公证，可能需要手动允许 Gatekeeper。",
+      "把 DisplayWeave 拖入“应用程序”，后续版本使用 EdDSA 认证的 Sparkle 更新。使用固定 Apple Development 签名，未公证；首次从临时签名版升级可能需要重新授权。",
     action: "下载 macOS DMG",
   },
   {
@@ -179,9 +179,9 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} release`,
       title: "Download the locally built preview.",
       intro:
-        "Refreshed native UI and main-screen OpenDisplay compatibility, distributed through GitHub Releases. Android and macOS verify every download before installing it.",
+        "Stable Mac signing for permission continuity, with the refreshed UI and main-screen OpenDisplay compatibility, distributed through GitHub Releases. Android and macOS verify every download before installing it.",
       warning:
-        "Pair DisplayWeave devices or choose the main-screen OpenDisplay compatibility mode. Mac is ad-hoc signed and not notarized; iOS requires re-signing.",
+        "Pair DisplayWeave devices or choose the main-screen OpenDisplay compatibility mode. Mac uses a fixed Apple Development signature and remains unnotarized; iOS requires re-signing.",
       checksum: "Verify all downloads with SHA256SUMS.txt",
       source: "Download matching source (GPL-3.0)",
       assets: enAssets,
@@ -341,7 +341,7 @@ export const copy: Record<Locale, SiteCopy> = {
         ],
         [
           "Why does macOS warn about the app?",
-          "The Preview is ad-hoc signed and not notarized because this release does not use a paid Developer ID. Inspect the source and checksum, then follow the documented Gatekeeper steps only if you trust the package.",
+          "The Preview uses Apple Development signing to keep its identity consistent across upgrades. It is not Developer ID signed or notarized, so macOS may still require approval. Verify the checksum and follow the documented first-install steps.",
         ],
         [
           "Can I install the IPA directly?",
@@ -396,9 +396,9 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} 发布`,
       title: "下载本地构建的开发预览版。",
       intro:
-        "发布文件以 GitHub Release 附件形式分发。Android 与 macOS 在安装前会校验每一次下载。",
+        "固定 Mac 签名改善升级后的权限延续，保留新版 UI 和主界面 OpenDisplay 兼容入口。发行文件来自 GitHub Releases，Android 与 macOS 在安装前校验下载。",
       warning:
-        "DisplayWeave 使用邀请配对；OpenDisplay 可从主界面选择兼容连接。Mac 为 ad-hoc 签名且未公证；iOS 需自行签名。",
+        "DisplayWeave 使用邀请配对；OpenDisplay 可从主界面选择兼容连接。Mac 使用固定 Apple Development 签名且未公证；iOS 需自行签名。",
       checksum: "使用 SHA256SUMS.txt 验证全部下载",
       source: "下载对应源码（GPL-3.0）",
       assets: zhAssets,
@@ -554,7 +554,7 @@ export const copy: Record<Locale, SiteCopy> = {
         ],
         [
           "为什么 macOS 会显示安全警告？",
-          "Preview 使用 ad-hoc 签名且未公证，因为本次没有付费 Developer ID。请先检查源码和校验和，仅在信任产物时按文档允许 Gatekeeper。",
+          "Preview 使用 Apple Development 签名保持升级身份一致，尚未使用 Developer ID 签名或公证，因此 macOS 仍可能要求确认。请核对校验和，并按首次安装说明操作。",
         ],
         [
           "IPA 可以直接安装吗？",

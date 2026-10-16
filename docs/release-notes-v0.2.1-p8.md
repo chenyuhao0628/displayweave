@@ -26,7 +26,7 @@ Two-Mac physical routing/performance, real Pencil pressure/tilt/hover/palm rejec
 
 Eight files comprise the Mac DMG/Sparkle ZIP, Android APK, unsigned iOS re-signing input, `appcast.xml`, `android-update.json`, `DisplayWeave-v0.2.1-p8-source.tar.gz` and `SHA256SUMS.txt`. The source archive's SHA-256 is in the checksum manifest, which covers the other seven files.
 
-Mac remains ad-hoc signed and not notarized; Android retains the package/certificate for in-place installation; iOS requires personal valid signing before installation. On 2026-10-16 authenticated GitHub management worked while public GitHub/Pages returned 404. Download manually from the mirror; Mac and Android still depend on original GitHub Pages metadata, so in-app updates cannot be guaranteed until those URLs recover. Feed copies on the backup site do not redirect clients.
+Mac remains ad-hoc signed and not notarized; Android retains the package/certificate for in-place installation; iOS requires personal valid signing before installation. On 2026-10-16 authenticated GitHub management worked while public GitHub/Pages returned 404. This is a historical availability observation, not a current download instruction. Off-platform mirrors are retired; use the current GitHub Release and GitHub Pages update feeds linked in the [distribution guide](development-preview.md).
 
 ## Artifact integrity
 

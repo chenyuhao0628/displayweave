@@ -1,3 +1,5 @@
+[English](usb-vs-wifi-short-benchmark.md) | [简体中文](usb-vs-wifi-short-benchmark.zh-CN.md)
+
 # USB 与 WiFi 短时 Benchmark
 
 状态：等待当前 OPD2413 获得有效屏幕捕获权限并完成测试。

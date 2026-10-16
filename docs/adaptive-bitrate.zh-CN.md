@@ -1,3 +1,5 @@
+[English](adaptive-bitrate.md) | [简体中文](adaptive-bitrate.zh-CN.md)
+
 # 自适应码率
 
 DisplayWeave 提供 Auto、Manual、Benchmark 三种码率模式。Auto 从分辨率、FPS、codec 估算值开始，并受 codec/传输边界约束；Manual 使用边界内的固定预设；Benchmark 允许 10–200 Mbps，属于实验功能。

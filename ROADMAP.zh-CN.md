@@ -2,10 +2,12 @@
 
 # DisplayWeave 路线图
 
-更新于 2026-10-16。[功能台账](docs/feature-completion.zh-CN.md)记录逐项实现；本轮产物为 v0.3.0-preview.1（16），本机已更新。下载内容及验证边界见[发布说明](docs/release-notes-v0.3.0-preview.1.zh-CN.md)。
+更新于 2026-10-17。[功能台账](docs/feature-completion.zh-CN.md)记录逐项实现；当前版本为 v0.3.0-preview.3（18），增加固定 Mac 签名与升级身份检查。下载内容及验证边界见[发布说明](docs/release-notes-v0.3.0-preview.3.zh-CN.md)。
 
-## v0.3.0-preview.1 内容
+## 当前 v0.3.0 预览内容
 
+- 固定 Apple Development 签名与升级比较，本机已验证权限延续。
+- 统一 UI 规范与主界面双向 OpenDisplay 兼容连接。
 - 按设备 Native/1080p/1440p/4K 扩展桌面分辨率。
 - Apple/Android 默认双向 TLS、邀请配对、撤销和显式旧版兼容。
 - Apple HEVC/H.264 回退及有界 30–120fps 协商。
@@ -18,9 +20,9 @@
 
 各项指南、检查和兼容边界见台账。目标 FPS 不等于实测渲染 FPS。
 
-## 已发布基线
+## 早期实现基线
 
-p8 包含 p7 的 Mac 收发局域网镜像/扩展预览、四端 UI 重构、选择性上游启动恢复、有界队列/帧协议、硬件条件下的 Mac HEVC、绑定接口的直连候选和基础 Pencil。更早预览验证过 Android 动态 ADB-forward USB、有界 USB/Wi-Fi 恢复及一个当前 iPhone/Android 并发。以带日期的发布说明和实机报告为准；历史证据不自动证明新加密传输表现。
+本地 p8 产物包含 p7 的 Mac 收发局域网镜像/扩展预览、四端 UI 重构、选择性上游启动恢复、有界队列/帧协议、硬件条件下的 Mac HEVC、绑定接口的直连候选和基础 Pencil。更早预览验证过 Android 动态 ADB-forward USB、有界 USB/Wi-Fi 恢复及一个当前 iPhone/Android 并发。以带日期的发布说明和实机报告为准；历史证据不自动证明新加密传输表现。
 
 ## 外部前提
 

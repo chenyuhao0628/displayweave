@@ -1,3 +1,5 @@
+[English](low-latency-queue-analysis.md) | [简体中文](low-latency-queue-analysis.zh-CN.md)
+
 # 低延迟发送队列分析
 
 发送端已启用 TCP no-delay，并持续占用 pending 计数直到 Network.framework 回报发送完成。当前待发送数达到预算时会丢弃新捕获帧，避免再多塞入一帧。

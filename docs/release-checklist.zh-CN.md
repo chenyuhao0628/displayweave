@@ -2,15 +2,19 @@
 
 # 发布检查清单
 
-## 当前发行：v0.3.0-preview.2（17）
+## 当前发行：v0.3.0-preview.3（18）
 
-[发布说明](release-notes-v0.3.0-preview.2.zh-CN.md)记录UI 与兼容改动、哈希和签名边界。原生源码 `4f6e096` 已通过完整本地回归；Mac universal、Android 原证书签名 APK 与无签名 iOS 重签输入包已完成 Release 构建。本机已安装应用保持不变，开发检查使用隔离 app。
+[发布说明](release-notes-v0.3.0-preview.3.zh-CN.md)记录固定 Mac 签名、哈希和验证边界。原生／签名基线 `92b5834` 保留 preview.2 的 UI、协议和应用标识。[文档检查](documentation-audit-2026-10-17.zh-CN.md)覆盖当前指南与历史引用清理。
 
-52 组 Swift、六组 Android、真实平台 TLS/Keychain/Keystore、iOS/Android 隔离运行、Apple 构建、Android Lint、网站、双语、12 项打包测试及 36 项品牌导出检查通过。DMG/ZIP 一致性、原 Sparkle 签名、Android 证书/版本及 iOS 无签名边界均已核验。
+- [x] 签名源码 CI `38932980548` 三项任务通过，包含 52 组 Swift、Android 测试／Lint 和 Apple 兼容构建。
+- [x] 20 项签名回归、12 项分发检查、真实双程序钥匙串延续、本机固定签名 17 → 17.1 权限延续通过。
+- [x] Build 18 Mac universal Release 和 DMG／ZIP 签名／内容、Android 原证书 Release、无签名 arm64 iOS 输入包验证通过。
+- [x] 独立验证 Sparkle Ed25519 签名及全部更新源／产物身份、版本、大小和哈希。
+- [x] 将实际 build 18 覆盖安装到固定签名 17.1；屏幕录制／辅助功能仍已允许，本地网络三个条目仍开启，未保留旧应用备份。
 
-八项文件包括四个平台包、两个更新源、对应 tag 源码及校验和。公开前核验远端文件，原样持久化 feed 并在部署后比对在线字节。仅使用 GitHub Releases 与 GitHub Pages；不覆盖已发布产物。托管 CI 与本地结果分别记录，不因本地通过而代称远端成功。
+发行门禁：核对八个远端文件（四个平台包、两个更新源、源码、校验和），公开 Release，再在发行提交的完整 CI 通过后合并。原样持久化更新源，Pages 部署后比较在线字节。托管检查与在线验收记录在发行 PR 和 GitHub Release；本地通过本身不证明在线可用。
 
-双 Mac/Pencil/Intel 与耐久仍待实机验收；没有独立在线显示器时跳过虚拟显示交互。正式 Apple 身份与最终可编辑品牌素材仍待外部条件。
+实机缺口仍包括双设备 LAN／USB 性能、Intel／Pencil 和耐久。没有独立在线显示器时跳过采集／虚拟显示交互。本预览采用 Apple Development，未做 Developer ID 公证；iOS 仍需重签。
 
 ## 历史 v0.2.1-p2 证据
 

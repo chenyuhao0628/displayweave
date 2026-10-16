@@ -4,6 +4,9 @@
 
 ## Current user guides
 
+- [`v0.3.0-preview.3` fixed signing and permission continuity](release-notes-v0.3.0-preview.3.md)
+- [Documentation audit (2026-10-17)](documentation-audit-2026-10-17.md)
+
 - [`v0.3.0-preview.2` UI and OpenDisplay compatibility release](release-notes-v0.3.0-preview.2.md)
 
 - [`v0.3.0-preview.1` release notes](release-notes-v0.3.0-preview.1.md)

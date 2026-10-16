@@ -1,3 +1,5 @@
+[English](bitrate-modes.md) | [简体中文](bitrate-modes.zh-CN.md)
+
 # Bitrate modes
 
 Auto is the default and adapts within codec/transport bounds. Manual selects a fixed preset and clamps it to the active path. Benchmark exposes 10–200 Mbps for local experiments only and displays these warnings: Experimental; May increase latency; May cause queueing; For local benchmark only.

@@ -2,7 +2,7 @@
 
 # Connecting OpenDisplay and DisplayWeave
 
-DisplayWeave exposes both connection choices on the main screen. Existing OpenDisplay installations do not need to be renamed or reinstalled to use their supported stream protocol. This guide covers the changes prepared for v0.3.0-preview.2 (17).
+DisplayWeave exposes both connection choices on the main screen. Existing OpenDisplay installations do not need to be renamed or reinstalled to use their supported stream protocol. These connection choices were introduced in v0.3.0-preview.2 (17) and are retained unchanged in v0.3.0-preview.3 (18).
 
 | Sender → receiver | What to select |
 | --- | --- |

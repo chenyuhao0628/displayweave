@@ -1,3 +1,5 @@
+[English](quick-recovery-checklist.md) | [简体中文](quick-recovery-checklist.zh-CN.md)
+
 # 快速异常恢复清单
 
 当前 Android 构建请使用 [Android 快速恢复 V2 证据](android-quick-recovery-v2.zh-CN.md)。

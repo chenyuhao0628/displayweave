@@ -14,7 +14,7 @@
 
 - v0.3.0-preview.1 的 Apple 与 Android 默认使用固定证书指纹的双向 TLS 和显式邀请配对；旧版兼容需主动启用且仅限可信网络。详见[配对指南](docs/secure-transport.zh-CN.md)。
 - Android USB 需要 ADB RSA 授权，这会向 Mac 提供包括 shell/安装在内的广泛调试信任，不只限于 DisplayWeave；不用时请撤销 USB 调试授权。
-- macOS Preview 使用 ad-hoc 签名且未公证，只从项目 Release 获取，并核对 `SHA256SUMS.txt`。
+- macOS v0.3.0-preview.3 使用固定 Apple Development 身份，仍未公证；首次从临时签名迁移可能需要再授权，后续构建检查签名连续性，只从项目 Release 获取，并核对 `SHA256SUMS.txt`。
 - Android Preview APK 使用项目离线密钥库签名；首次安装或更新前，核对发布检查清单中的 SHA-256 证书指纹。
 - iOS 产物是未签名自签输入包，用户提供有效签名身份前不能安装或信任；第三方签名服务会引入独立风险。
 - 屏幕录制、辅助功能输入注入、本地网络和 USB 调试权限都很强大。只授予当前传输所需权限，测试后撤销。

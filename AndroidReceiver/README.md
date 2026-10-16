@@ -6,7 +6,7 @@ The Android receiver accepts DisplayWeave video over local WiFi or a Mac-managed
 
 The waiting screen follows the system light/dark theme. Settings scroll on small displays; the top-right Settings button remains available while streaming even when the status overlay is hidden.
 
-v0.3.0-preview.2 includes [encrypted pairing](../docs/secure-transport.md) and [GitHub-only updates](../docs/automatic-updates.md). First generate an invitation under **Settings & Help → Security and pairing**, import it on the Mac, then select the device. LAN and ADB-forwarded USB use the same authenticated stream.
+v0.3.0-preview.3 includes [encrypted pairing](../docs/secure-transport.md) and [GitHub-only updates](../docs/automatic-updates.md). First generate an invitation under **Settings & Help → Security and pairing**, import it on the Mac, then select the device. LAN and ADB-forwarded USB use the same authenticated stream.
 
 ## Requirements
 
@@ -14,11 +14,11 @@ v0.3.0-preview.2 includes [encrypted pairing](../docs/secure-transport.md) and [
 - WiFi: Mac and Android on the same trusted LAN with Nearby WiFi/Local Network discovery permission where required.
 - USB: a data-capable cable, Developer options, USB debugging, and approval of the Mac's RSA identity.
 
-## Install `v0.3.0-preview.2`
+## Install `v0.3.0-preview.3`
 
-2026-10-16: this preview is built locally. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site, which is available again. See the [release notes](../docs/release-notes-v0.3.0-preview.2.md) for UI changes, OpenDisplay compatibility and build evidence.
+2026-10-17: build 18 uses a pinned Apple Development identity for macOS. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](../docs/release-notes-v0.3.0-preview.3.md) for permission continuity, retained OpenDisplay compatibility and build evidence.
 
-Download `DisplayWeave-Android.apk` from [`v0.3.0-preview.2`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/release-checklist.md).
+Download `DisplayWeave-Android.apk` from [`v0.3.0-preview.3`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/release-checklist.md).
 
 ## Updates after the first install
 

@@ -2,7 +2,7 @@
 
 # Mac signing and permission continuity
 
-The source Run and preview-packaging paths now require a pinned Apple signing identity. The published `v0.3.0-preview.2` downloads remain ad-hoc signed; this change does not replace those immutable assets. A locally rebuilt copy can already use the fixed identity. Its first migration from an ad-hoc copy may require authorization once more.
+Starting with `v0.3.0-preview.3` (18), the Mac preview uses a pinned Apple Development identity. Run and preview packaging enforce that identity and compare upgrades. Earlier preview.2 assets remain ad-hoc signed and unchanged. The first migration from an ad-hoc copy may require authorization once more; subsequent fixed-signature builds preserve their code identity.
 
 ## Why upgrades lost permissions
 
@@ -49,4 +49,5 @@ Historical builds can leave multiple entries with the same name. On the tested m
 - Artifacts: universal signed Release and Debug builds pass verification; the installed Release launches with the normal empty entitlements and signed Sparkle. Guided DMG creation, mounting and strict nested signature validation pass. The existing 12 production-distribution tests, bilingual documentation, release links and website build also pass.
 - Real Keychain: `python3 tools/test-mac-signing-runtime.py` compiles two different signed binaries from the production security store. Their designated requirements match, and the second reads the first's unchanged transport identity and trusted peer without prompting. Only a random test namespace is created and removed.
 - Interactive local acceptance on macOS 26.5.2: installed signed build `17`, confirmed Screen Recording and Accessibility allowed, then replaced it with a different signed executable/build `17.1` at the same path. Both permissions remained allowed without further authorization. Local Network retained the same three enabled DisplayWeave entries. The temporary previous app was deleted after validation.
-- Build `17.1` is a **local validation rebuild of preview.2**, not a published release. Public downloads/feeds are unchanged. No certificate-expiry, cross-team migration, real receiver traffic, screen capture or virtual-display behavior is claimed by this test. No independent online display was established, so display/capture tests were skipped.
+- Release candidate `v0.3.0-preview.3` build `18` was then installed over signed `17.1` at the same path. Screen Recording and Accessibility again remained allowed without reauthorization; the same three Local Network entries stayed enabled. No previous-app backup was retained.
+- Build `17.1` is a **local validation rebuild of preview.2**, not a published release. That experiment did not change public downloads; preview.3 (18) is the subsequent release of the signing fix. No certificate-expiry, cross-team migration, real receiver traffic, screen capture or virtual-display behavior is claimed by this test. No independent online display was established, so display/capture tests were skipped.
