@@ -1,12 +1,20 @@
 [English](release-checklist.md) | [简体中文](release-checklist.zh-CN.md)
 
-# `v0.2.1-p2` 发布检查清单
+# 发布检查清单
 
-## 当前源码门禁
+## 当前发行：v0.2.1-p8（15）
 
-下方保留历史 v0.2.1-p2 发布证据。当前公开下载为 v0.2.1-p6，其结果以对应发布说明为准；2026-10-16 源码升级不是新发行版。合并源码前执行[开发门禁](development.zh-CN.md)：32 组 Swift、六组 Android 自测及构建、两个 Apple 构建、网站、双语文档与发行链接检查，并要求 PR 头提交的新 CI 通过。[源码验收报告](source-upgrade-audit-2026-10-16.zh-CN.md)记录本地结果。
+[p8 发布说明](release-notes-v0.2.1-p8.zh-CN.md)记录本地发行、产物哈希与签名边界。p8 沿用 p7 的原生源码，使用更高构建号重新打包；p7 产物与 tag 保持不可变。具体操作见[本地发行](local-release.zh-CN.md)。
 
-后续发布二进制还需完成真机矩阵、核对签名/版本/更新源身份并验证新产物。下方历史勾选项不代表未来版本获准发布。
+2026-10-16，维护者在托管 Actions 不可用时授权本地构建上传。本地门禁涵盖 37 组 Swift、六组 Android 自测及 Debug/Release 构建、Mac 双架构 Debug/Release、iOS 模拟器与无签名设备构建、网站、双语文档与发布链接检查；这是本地证据，不是成功的 GitHub CI。包内版本／构建号为 0.2.1-p8／15，已验证 Mac ZIP Ed25519、DMG／ZIP 一致性、Android 固定证书及 iOS 无签名边界。
+
+八项文件包括四个平台包、两个更新源、对应 tag 源码及校验和。公开前验证远端大小／哈希、历史镜像路径与备用网站；在 `public/` 持久化原始更新源。GitHub 公开访问和 Pages 仍返回 404 时，不宣称原客户端更新渠道恢复；请手动从 Cloudflare 安装。
+
+Mac 互联、HEVC、直连发现和 Pencil 仍为实验功能。双 Mac／Pencil／Intel 运行与耐久验收待完成；没有独立在线显示器时跳过虚拟显示交互。宣称实机验证前须完成[真机矩阵](hevc-wired-pencil.zh-CN.md)。
+
+## 历史 v0.2.1-p2 证据
+
+以下条目只记录 p2，不能证明 p8 或未来版本已验证。
 
 ## 已发布身份
 

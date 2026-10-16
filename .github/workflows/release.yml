@@ -11,6 +11,11 @@ on:
         description: "Optional monotonic Mac build / Android version code"
         required: false
         type: string
+      deploy_feeds:
+        description: "Deploy update feeds immediately (disable while staging the download mirror)"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -167,7 +172,7 @@ jobs:
   deploy_update_feeds:
     name: deploy-update-feeds
     needs: build_updates
-    if: ${{ always() && needs.build_updates.result == 'success' }}
+    if: ${{ always() && needs.build_updates.result == 'success' && inputs.deploy_feeds }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

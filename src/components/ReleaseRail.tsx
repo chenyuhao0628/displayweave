@@ -34,6 +34,7 @@ export default function ReleaseRail({ copy }: { copy: SiteCopy["release"] }) {
         <span>{releaseTag}</span>
         <strong>{copy.warning}</strong>
         <a href={assetHref("SHA256SUMS.txt")}>{copy.checksum}</a>
+        <a href={assetHref(`DisplayWeave-${releaseTag}-source.tar.gz`)}>{copy.source}</a>
       </div>
     </div>
   )

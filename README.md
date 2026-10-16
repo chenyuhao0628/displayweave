@@ -6,15 +6,15 @@
 
 DisplayWeave is an independently maintained, GPL-3.0, local-first second-display project derived from [OpenDisplay](https://github.com/peetzweg/opendisplay). It turns iPhone, iPad, and Android devices into extended or mirrored displays for a Mac.
 
-## Mac-to-Mac (source development build)
+## Mac-to-Mac (experimental in v0.2.1-p8)
 
 The same app can send or receive a one-way extended/mirrored desktop over Wi-Fi
-or Ethernet. Both Macs require macOS 14+; source builds negotiate hardware HEVC with H.264 fallback, up to 60fps.
-The two-Mac physical performance matrix remains unverified. This feature is not
-in the `v0.2.1-p6` downloads below. See the [user guide](docs/mac-to-mac.md) and
+or Ethernet. Both Macs require macOS 14+; the app negotiates hardware HEVC with H.264 fallback, up to 60fps.
+This feature is included in the `v0.2.1-p8` downloads below.
+The two-Mac physical performance matrix remains unverified. See the [user guide](docs/mac-to-mac.md) and
 [design/upstream assessment](docs/mac-to-mac-design.md).
 
-Current source also includes the four-surface UI refactor, selected upstream recovery improvements and network/lifecycle hardening. The [source upgrade report](docs/source-upgrade-audit-2026-10-16.md) records that baseline. The next iteration adds [Mac HEVC, pinned direct-link discovery and negotiated Apple Pencil input](docs/hevc-wired-pencil.md), with 37 Swift suites; physical acceptance remains pending.
+This release also includes the four-surface UI refactor, selected upstream recovery improvements and network/lifecycle hardening. The [source upgrade report](docs/source-upgrade-audit-2026-10-16.md) records that baseline. This release includes the p7 [Mac HEVC, pinned direct-link discovery and negotiated Apple Pencil input](docs/hevc-wired-pencil.md), with 37 Swift suites; physical acceptance remains pending.
 
 ## Current capabilities
 
@@ -33,9 +33,11 @@ The physical-device recovery and high-refresh observations below were recorded
 during Preview 2 validation and remain prior evidence; they were not rerun on a
 second Android device for this release.
 
-## Download `v0.2.1-p6`
+## Download `v0.2.1-p8`
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p6)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)
+
+2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; use the [Cloudflare download page](https://downloads.urlget.cyou/displayweave/). Mac/Android update checks still depend on the original Pages URLs; install manually until they recover. Mirrored feed copies do not change client URLs.
 
 | Platform | Asset | Distribution boundary |
 | --- | --- | --- |
@@ -45,6 +47,7 @@ second Android device for this release.
 | iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | Unsigned re-signing input; cannot be installed directly |
 | Mac feed | `appcast.xml` | Sparkle feed authenticated by the public key embedded in the Mac app |
 | Android feed | `android-update.json` | HTTPS metadata with size, hash, version, package, and pinned certificate |
+| Source | `DisplayWeave-v0.2.1-p8-source.tar.gz` | Tracked source at the release tag, including GPL-3.0 and build scripts |
 | Verification | `SHA256SUMS.txt` | SHA-256 for all Release files |
 
 This is a development preview, not a production-signed store release. Verify the checksum before use. Android users should also compare the certificate fingerprint in the [release checklist](docs/release-checklist.md).
@@ -67,7 +70,7 @@ The refreshed Mac build uses a DisplayWeave-owned application identity. Settings
   not notarized.
 - **Android:** install this APK over the existing package once. The receiver
   then checks at most daily, with a manual check in **Settings & Help**.
-  p6 downloads from Cloudflare first and falls back to the matching GitHub
+  p6 and later download from Cloudflare first and fall back to the matching GitHub
   Release only for availability or transport failures.
   Downloads are verified by size, SHA-256, package, version, minimum SDK, and
   the pinned signing certificate before Android shows its system installer.

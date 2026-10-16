@@ -32,6 +32,9 @@ export default function SiteFooter({
           <a href="https://github.com/chenyuhao0628/displayweave">
             {copy.source}
           </a>
+          <a href="https://downloads.urlget.cyou/displayweave/DisplayWeave-website-source.tar.gz">
+            {locale === "zh" ? "网站对应源码" : "Website source archive"}
+          </a>
         </div>
         <span>© 2026 · GPL-3.0</span>
       </div>

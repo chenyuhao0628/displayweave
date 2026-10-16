@@ -1,5 +1,14 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { localeForPathname } from '../dist-ssr/entry-server.js'
+
+// Pages strips .html; initial client rendering must retain the SSR language.
+for (const pathname of ['/zh.html', '/zh', '/displayweave/zh.html', '/displayweave/zh', '/displayweave/zh/']) {
+  assert.equal(localeForPathname(pathname), 'zh', `${pathname}: Chinese after canonical redirect`)
+}
+for (const pathname of ['/', '/displayweave/', '/displayweave/index.html', '/displayweave/not-zh']) {
+  assert.equal(localeForPathname(pathname), 'en', `${pathname}: English route`)
+}
 
 for (const [file, locale] of [['index.html', 'en'], ['zh.html', 'zh-CN']]) {
   const html = await readFile(`site-dist/${file}`, 'utf8')
@@ -18,7 +27,7 @@ for (const [file, locale] of [['index.html', 'en'], ['zh.html', 'zh-CN']]) {
   for (const anchor of ['download', 'status', 'transport', 'evidence', 'trust', 'faq']) {
     assert.ok(html.includes(`id="${anchor}"`), `${file}: reachable ${anchor} navigation`)
   }
-  assert.ok(html.includes(locale === 'en' ? 'not in the downloads below' : '尚未包含在下方发布包'),
-    `${file}: source capability is distinct from published downloads`)
+  assert.ok(html.includes(locale === 'en' ? 'Experimental in v0.2.1-p8' : 'v0.2.1-p8 实验功能'),
+    `${file}: published experimental capability is labeled`)
 }
 console.log('Bilingual site metadata, navigation and release-scope checks PASS')

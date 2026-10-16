@@ -10,13 +10,17 @@ DisplayWeave 把不可变的 Mac/Android 安装包发布到 GitHub Releases，�
 - Mac 更新产物：`DisplayWeave-macOS.zip`
 - Android 产物：`DisplayWeave-Android.apk`
 
-当前迁移版本是
-[`v0.2.1-p6`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p6)。
-Android p5 尚不信任新的 Cloudflare 域名，因此需要手动安装一次 p6；p6 及
+当前开发发行版本是
+[`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)。
+Android p5 尚不信任新的 Cloudflare 域名，因此需要手动安装一次 p6 或更新版；p6 及
 以后版本可自动使用双源更新渠道。
 本版本同时包含引导式 DMG 与 Sparkle ZIP 更新包。
 
 Mac 版本采用 ad-hoc 签名且未公证。Sparkle 使用应用内置的 EdDSA 公钥验证 ZIP，因此后续更新不依赖 Apple Developer Program。它不会让首次下载自动获得 Gatekeeper 信任，也不等同于已公证正式发行。
+
+2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；请使用 [Cloudflare 下载页](https://downloads.urlget.cyou/displayweave/zh.html)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。镜像中的更新源副本不会自动修改客户端地址。
+
+本地发行的可复现命令与验收要求见[本地发行](local-release.zh-CN.md)。
 
 ## 用户一次性迁移
 
@@ -32,7 +36,7 @@ Mac 版本采用 ad-hoc 签名且未公证。Sparkle 使用应用内置的 EdDSA
 
 1. 手动把首个支持更新的 APK 覆盖安装到现有 `app.opendisplay.android`。它必须继续使用现有 DisplayWeave 证书，否则 Android 会拒绝覆盖。
 2. 应用回到前台时最多每 24 小时自动检查一次；“设置与帮助 → 检查更新”不受此限制。
-3. p6 客户端优先访问 `downloads.urlget.cyou`，只有连接失败、HTTP 不可用或传输中断时才回退到严格匹配的 GitHub Release。
+3. p6 及更新客户端优先访问 `downloads.urlget.cyou`，只有连接失败、HTTP 不可用或传输中断时才回退到严格匹配的 GitHub Release。
 4. 发现更新后，应用通过同一校验路径检查字节数、SHA-256、包名、版本号、最低 SDK 和签名证书；完整性或身份校验失败不会触发换源。
 5. 首次更新时，Android 可能要求允许此应用“安装未知应用”。授权后返回 DisplayWeave。最终始终由 Android 系统安装器显示确认界面，不支持静默安装。
 
@@ -48,13 +52,18 @@ GitHub Actions 必须配置且只需要以下 5 个仓库 secret：
 - `DISPLAYWEAVE_ANDROID_KEY_ALIAS`
 - `DISPLAYWEAVE_ANDROID_KEY_PASSWORD`
 
-手动运行 **Release** workflow。第一次运行可能只创建或更新 release-please PR；合并该 PR 后再次运行 **Release**。创建 Release 后，工作流以 tag 作为显示版本，以单调递增的 `github.run_number` 作为 Mac build number 和 Android version code，然后：
+发布指定版本时，先创建 tag 与 GitHub 草稿 Release，再运行 **Release**，指定 `release_tag` 和高于所有已公开 Mac／Android 构建的 `build_number`。未指定 tag 时，release-please 可能先创建版本 PR，合并后再运行。显示版本来自 tag；省略 `build_number` 时使用 `github.run_number`，仍须确认它保持单调递增。
+
+准备新镜像快照时设置 `deploy_feeds=false`（默认为 `true`）。工作流会：
 
 1. 构建并测试 ad-hoc Mac、无签名 iOS 兼容目标和已签名 Android；
-2. 生成 EdDSA 签名的 appcast 与固定证书指纹的 Android JSON；
+2. 生成包含 EdDSA 签名 ZIP 条目的 appcast 与固定证书指纹的 Android JSON；
 3. 校验版本、哈希、归档结构和 Android 签名；
-4. 上传不可变资产；
-5. 把两个签名更新源交给受保护的 Pages 部署 Job，不需要 Bot 向 `main` 提交。
+4. 向草稿 Release 上传七项不可变产物，保持在线更新源不变。
+
+下载并独立验证产物后，部署包含新文件和全部需要保留的历史版本的 Cloudflare 完整快照。确认在线镜像字节一致，再公开 GitHub Release。将生成的 `appcast.xml`、`android-update.json` 原样复制到 `public/`，更新发布链接和校验值，待审查与 CI 通过后合并发行 PR。main 分支的 Pages 部署随后一起发布网站与更新源。持久化原始更新源可以防止后续网站部署回退更新渠道。
+
+设置 `deploy_feeds=true` 时，工作流会直接把更新源交给受保护的 Pages Job。只有引用的下载都已可用时才使用这一方式，并仍须把相同更新源保存到 `public/`。
 
 已发布更新资产禁止替换，也禁止用 `--clobber` 覆盖。任何修正都必须发布更高 build number 的新版本。
 

@@ -63,7 +63,7 @@ Touch coordinates, drag state, cursor movement, and two-finger scroll are encode
 See [SECURITY.md](SECURITY.md) and [docs/README.md](docs/README.md).
 
 
-## Mac receive role (development build)
+## Mac receive role (experimental preview)
 
 The Mac app switches between sending and receiving. Receiving stops sender sessions
 and discovery, then uses an independent TCP listener, bounded deframing and
@@ -74,7 +74,7 @@ Android DWV2. See the [design](docs/mac-to-mac-design.md).
 
 ## Source ownership and bounded work (2026-10-16)
 
-The source app supports exclusive Mac send/receive roles over the same Wi-Fi or Ethernet LAN. This remains a development feature beyond the v0.2.1-p6 downloads. Mirroring captures an existing display; extending creates a virtual display.
+The source app supports exclusive Mac send/receive roles over the same Wi-Fi or Ethernet LAN. This is packaged as an experimental feature in v0.2.1-p7; physical acceptance remains pending. Mirroring captures an existing display; extending creates a virtual display.
 
 | Area | Ownership |
 | --- | --- |

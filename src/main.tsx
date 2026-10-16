@@ -1,10 +1,9 @@
 import { createRoot, hydrateRoot } from "react-dom/client"
-import App, { type Locale } from "./App"
+import App from "./App"
+import { localeForPathname } from "./locale"
 import "./index.css"
 
-const locale: Locale = window.location.pathname.endsWith("/zh.html")
-  ? "zh"
-  : "en"
+const locale = localeForPathname(window.location.pathname)
 
 document.documentElement.lang = locale === "zh" ? "zh-CN" : "en"
 const root = document.getElementById("root")!
