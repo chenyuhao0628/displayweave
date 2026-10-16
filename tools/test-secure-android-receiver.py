@@ -43,6 +43,7 @@ def wait_until(predicate, description, timeout=45):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--screenshots", type=pathlib.Path)
+    parser.add_argument("--mode-cycles", type=int, choices=range(1, 11), default=3)
     args = parser.parse_args()
     sdk = pathlib.Path(os.environ.get("ANDROID_SDK_ROOT", str(pathlib.Path.home() / "Library/Android/sdk")))
     image = "system-images;android-35;default;arm64-v8a"
@@ -60,6 +61,19 @@ def main():
                                                    'applicationId = "' + PACKAGE + '"'))
         manifest = project / "app/src/main/AndroidManifest.xml"
         manifest.write_text(manifest.read_text().replace("app.opendisplay.android.update-files", PACKAGE + ".update-files"))
+        # Diagnostic-only instrumentation in the disposable copy; production
+        # sources and release APKs have no test activity or listener tracing.
+        activity_source = project / "app/src/main/java/app/opendisplay/android/MainActivity.java"
+        activity_source.write_text(activity_source.read_text().replace(
+            "public void onStatus(String status) {",
+            'public void onStatus(String status) { android.util.Log.i("DisplayWeave", "Fixture listener status: " + status);'
+        ).replace(
+            "private boolean startServerIfReady() {",
+            'private boolean startServerIfReady() { android.util.Log.i("DisplayWeave", "Fixture start: legacy=" + AndroidSecuritySettings.legacyEnabled(this) + " surface=" + (activeSurface != null) + " server=" + (server != null));'
+        ).replace(
+            "private void stopServer() {",
+            'private void stopServer() { android.util.Log.i("DisplayWeave", "Fixture stop: server=" + (server != null));'
+        ))
         debug = project / "app/src/debug"
         source = debug / "java/app/opendisplay/android"
         source.mkdir(parents=True)
@@ -108,6 +122,7 @@ def main():
                                      "-gpu", "swiftshader_indirect"], env=env, stdout=emulator_log, stderr=subprocess.STDOUT)
         client_process = None
         forwarded = None
+        probe_diagnostics = []
         try:
             def booted():
                 if emulator.poll() is not None:
@@ -210,15 +225,24 @@ def main():
                         probe.settimeout(1)
                         header = probe.recv(4, socket.MSG_WAITALL)
                         if len(header) != 4:
+                            probe_diagnostics.append("header bytes=" + str(len(header)))
                             return False
                         size = struct.unpack("!I", header)[0]
                         if not 0 < size <= 65536:
+                            probe_diagnostics.append("invalid frame size=" + str(size))
                             return False
                         body = probe.recv(size, socket.MSG_WAITALL)
-                        return json.loads(body).get("type") == "hello"
-                except (OSError, ValueError):
+                        probe_diagnostics.append("body bytes=" + str(len(body)) + "/" + str(size))
+                        kind = json.loads(body).get("type")
+                        probe_diagnostics.append("control type=" + str(kind))
+                        return kind == "hello"
+                except (OSError, ValueError) as error:
+                    probe_diagnostics.append(type(error).__name__)
                     return False
+                finally:
+                    del probe_diagnostics[:-16]
             wait_until(legacy_hello, "explicit legacy listener restart", 10)
+            print("Legacy probe observations: " + repr(probe_diagnostics), flush=True)
             tap("允许旧版明文接收（不安全）")
             time.sleep(0.5)
             if legacy_hello():
@@ -236,13 +260,19 @@ def main():
                 device("shell", "input", "keyevent", "4")
                 tree()  # wait for dialog dismissal/animation before capturing idle UI
                 (args.screenshots / "android-idle-dark.png").write_bytes(device("exec-out", "screencap", "-p"))
+            else:
+                device("shell", "input", "keyevent", "4")
+                device("shell", "input", "keyevent", "4")
+            for cycle in range(args.mode_cycles):
                 tap("连接客户端：DisplayWeave 加密")
                 tap("OpenDisplay 兼容（未加密）")
                 tap("启用明文兼容")
                 wait_until(legacy_hello, "main-screen OpenDisplay entry", 10)
+                print("Main-screen probe observations: " + repr(probe_diagnostics), flush=True)
                 tap("允许旧版明文接收（不安全）")
                 wait_until(lambda: listening() and not legacy_hello(), "main-screen secure listener restoration", 10)
-                print("Android main-screen OpenDisplay mode and secure restoration PASS", flush=True)
+                print("Android main-screen OpenDisplay mode and secure restoration PASS (cycle " + str(cycle + 1) + ")", flush=True)
+                tap("完成")
 
             device("shell", "input", "keyevent", "3")
             def stopped():
@@ -257,6 +287,18 @@ def main():
             diagnostics = device("logcat", "-d", "-s", "DisplayWeave:W", "AndroidRuntime:E", "*:S", timeout=15).decode(errors="replace")
             if "Local security settings operation failed" in diagnostics or "FATAL EXCEPTION" in diagnostics:
                 raise RuntimeError("Runtime UI error: " + diagnostics[-5000:])
+        except Exception:
+            print("Protocol probe diagnostics: " + repr(probe_diagnostics), flush=True)
+            if forwarded:
+                try:
+                    visible = [node.get("text", "") for node in tree().iter("node")
+                               if not node.get("text", "").startswith("DW1.")]
+                    print("Failure UI: " + repr(visible)[-4000:], flush=True)
+                    print(device("logcat", "-d", "-s", "DisplayWeave:V", "AndroidRuntime:E", "*:S",
+                                 timeout=15).decode(errors="replace")[-12000:], flush=True)
+                except Exception as diagnostic_error:
+                    print("Diagnostic collection failed: " + type(diagnostic_error).__name__, flush=True)
+            raise
         finally:
             if client_process and client_process.poll() is None:
                 client_process.kill(); client_process.wait()
