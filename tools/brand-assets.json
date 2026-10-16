@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "master": "public/icon.png",
+  "sha256": "917e4590833db9cfb246887a39a43fbcabcfe798b7f81c0f0979303b9efb314f",
+  "status": "existing opaque raster derivative; not a final editable master",
+  "adaptiveCanvasDp": 108,
+  "adaptiveImageDp": 76,
+  "adaptiveRasterScale": 4,
+  "background": "#FFFFFF",
+  "palette": {"navy": "#103A60", "teal": "#00A5AF", "cyan": "#00A9DE"}
+}

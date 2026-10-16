@@ -26,6 +26,11 @@ public final class SecurityRuntimeTestActivity extends Activity {
         if (!started.compareAndSet(false, true)) return;
         new Thread(() -> {
             try {
+                android.graphics.drawable.Drawable launcher = getPackageManager().getApplicationIcon(getPackageName());
+                expect(launcher instanceof android.graphics.drawable.AdaptiveIconDrawable,
+                        "API 26+ package must resolve the adaptive launcher resource");
+                android.graphics.drawable.AdaptiveIconDrawable adaptive = (android.graphics.drawable.AdaptiveIconDrawable) launcher;
+                expect(adaptive.getForeground() != null && adaptive.getBackground() != null, "adaptive layers missing");
                 if ("reload".equals(getIntent().getStringExtra("mode"))) {
                     AndroidSecurityStore restored = AndroidSecurityStore.get(this);
                     expect(read("pin.txt").equals(restored.pairing.localFingerprint), "identity changed across process restart");

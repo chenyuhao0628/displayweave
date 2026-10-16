@@ -30,7 +30,7 @@ Feature completion means implemented behavior and passing automated acceptance, 
 ## Progress
 
 - Assessment: repository clean on baseline; twelve work items enumerated with acceptance and dependencies.
-- Remaining implementation: F11–F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
+- Remaining implementation: F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
 
 ## Official API references
 
@@ -93,3 +93,7 @@ All 52 Swift suites, Android six test groups plus Debug assembly/Lint, and actua
 ### F10 — tooling complete; production identities blocked
 
 Added a local manual-signing archive/export workflow, actual exported-bundle validation, strict identity/profile checks, Mac notarization/stapling/Gatekeeper and original Sparkle signing. Output is immutable and remains INCOMPLETE on failure. No upload or installed-app change. Twelve offline tests passed, including negative trust and failed-notary/stapler ordering. Both local preflights are blocked: zero Developer ID Application / Apple Distribution identities. Real production export/notarization remains externally blocked. See [workflow and evidence](apple-distribution.md).
+
+### F11 — source packaging complete; final artwork blocked
+
+Added API-26 adaptive launcher layers around the unchanged raster mark, a 36-asset reproducible exporter, source checksum, safe-area validation and bilingual palette/usage guidance. Inspected circle/rounded/square masks on light/dark backgrounds. Android tests/assembly/Lint and both Apple builds passed. The disposable Android runtime resolved a real AdaptiveIconDrawable and passed Keystore/TLS/UI regression on a serial retry; the first run encountered a system-UI ANR, not an application assertion. Approved editable/transparent/dark/monochrome masters and promotional captures remain externally pending. See [brand assets](brand-assets.md).

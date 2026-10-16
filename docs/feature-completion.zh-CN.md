@@ -30,7 +30,7 @@
 ## 进度
 
 - 评估：基线工作区干净；十二项已列明验收、依赖与边界。
-- 剩余待实现：F11–F12。后续各条记录提交、真实自动证据及剩余外部/实机条件。
+- 剩余待实现：F12。后续各条记录提交、真实自动证据及剩余外部/实机条件。
 
 ## 官方 API 参考
 
@@ -95,3 +95,7 @@ Mac 键鼠回传要求双方显式启用、加密认证和发送端辅助功能�
 ### F10 — 工具完成；正式身份仍阻塞
 
 新增本地手动签名 archive/export、实际导出物校验、严格身份/profile 检查、Mac 公证/staple/Gatekeeper 及原 Sparkle 签名流程。输出不可变，失败保留 INCOMPLETE；不上传、不改变已安装应用。12 项离线测试通过，包括身份拒绝和公证/stapler 失败阻断。两项本地预检均阻塞：Developer ID Application / Apple Distribution 身份为零。真实正式导出与公证等待外部条件，见[流程与证据](apple-distribution.zh-CN.md)。
+
+### F11 — 源码包装完成；最终素材仍阻塞
+
+围绕未改变的位图图形增加 API-26 adaptive layer、36 项可复现导出、源哈希、安全区验证和双语色彩/用法规范。已检查浅色/深色的圆/圆角/方形遮罩。Android 测试/assemble/Lint、两端 Apple 构建通过。独立 Android runtime 正确解析 AdaptiveIconDrawable，并在串行重跑时通过 Keystore/TLS/UI 回归；首次运行遇到系统 UI ANR，而非应用断言失败。批准的可编辑/透明/深色/monochrome master 和宣传截图仍等待外部条件，见[品牌资源](brand-assets.zh-CN.md)。
