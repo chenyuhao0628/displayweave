@@ -32,6 +32,8 @@ enum SenderTransport {
     case androidAdb(port: UInt16)          // localhost endpoint created by adb forward
 }
 
+enum SenderDisconnectReason { case connectionLost, receiverExit }
+
 @available(macOS 14.0, *)
 final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
 
@@ -44,7 +46,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // period — the controller ends the session (capture, virtual display,
     // recording indicator all torn down) instead of dialing forever or
     // silently coming back over a different transport.
-    @MainActor var onDisconnected: (() -> Void)?
+    @MainActor var onDisconnected: ((SenderDisconnectReason) -> Void)?
     // Fired on every hello — carries the receiver's install id so the
     // controller can deduplicate USB/WiFi sessions to the same device.
     @MainActor var onHello: ((PhoneInfo) -> Void)?
@@ -862,7 +864,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 if !disconnectCallbackPending {
                     disconnectCallbackPending = true
                     Log.info("device gone for >\(Int(disconnectGraceSeconds))s — ending session")
-                    Task { @MainActor in self.onDisconnected?() }
+                    Task { @MainActor in self.onDisconnected?(.connectionLost) }
                 }
                 return
             }
@@ -1322,7 +1324,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private func finishSessionAfterReceiverExit() {
         connectionReady = false
         invalidateConnection()
-        Task { @MainActor in self.onDisconnected?() }
+        Task { @MainActor in self.onDisconnected?(.receiverExit) }
     }
 
     private func handleReceiverProtocolProgress(type: String, object: [String: Any]) {

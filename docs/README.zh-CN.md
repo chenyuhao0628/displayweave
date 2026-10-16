@@ -4,6 +4,7 @@
 
 ## 当前用户指南
 
+- [Mac 有线／Wi-Fi 自动切换（源码）](mac-lan-handover.zh-CN.md)
 - [Apple 接收端 HEVC 与高刷新（源码）](apple-video.zh-CN.md)
 - [每台设备的桌面分辨率（源码）](desktop-resolution.zh-CN.md)
 - [当前功能补全方案与证据](feature-completion.zh-CN.md)

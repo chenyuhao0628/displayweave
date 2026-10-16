@@ -30,7 +30,7 @@ Feature completion means implemented behavior and passing automated acceptance, 
 ## Progress
 
 - Assessment: repository clean on baseline; twelve work items enumerated with acceptance and dependencies.
-- Remaining implementation: F03, F05–F07, F09–F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
+- Remaining implementation: F03, F05, F07, F09–F12. Individual entries below will record commits, actual automated evidence and remaining external/physical gates.
 
 ## Official API references
 
@@ -51,3 +51,7 @@ Shared bounded H.264/HEVC parser, iOS explicit Apple envelopes, hardware-gated H
 ### F08 — implemented in source
 
 Mac benchmarks now sample process CPU over monotonic intervals (100% = one core; reset/invalid intervals unavailable). Android transport, executor tasks, server queues and asynchronous decoder input now hold explicit pooled leases with bounded storage/waits and cancellation/rejection cleanup. Metrics distinguish actual array allocation from idle-pool reuse; historical p8 counters are not directly comparable. Tests cover malformed/truncated frames, stale/replacement connection ownership, saturation, shutdown, exceptions, concurrent holders and binary/legacy bucket tails. 1,000 synthetic frames used one allocation / 999 reuses. All 40 Swift suites, Mac universal Debug, Android six groups and Debug assembly passed. Physical allocation/GC/latency A/B remains pending; see [the allocation contract](android-binary-frame-header-v2.md) and [benchmark units](benchmark-guide.md).
+
+### F06 — implemented in source
+
+Default-off Mac LAN handover is active only in Auto mode and after a matching Mac hello. Stable wired arrival uses an owned stop-before-start replacement; failures use bounded same-ID, interface-pinned recovery with Wi-Fi fallback. Candidate debounce, cooldown, per-minute transition cap, bounded identities/tasks, manual cancellation, explicit receiver-exit handling and role/settings generation checks prevent duplicate or resurrected sessions. Added failing-then-passing policy/runner tests, including cleanup ordering and stale waits. All 41 Swift suites, Mac universal Debug and bilingual checks passed. UI compilation was verified; the installed app was not replaced or launched for this round. Two-Mac route/interrupt acceptance remains pending; see [usage and limits](mac-lan-handover.md).

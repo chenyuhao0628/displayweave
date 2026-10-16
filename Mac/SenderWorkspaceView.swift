@@ -24,6 +24,15 @@ struct SenderWorkspaceView: View {
                 if controller.replacingSessions {
                     ProgressView("正在应用设置，等待旧连接释放…")
                 }
+                if let status = controller.macLANStatus {
+                    HStack {
+                        Text(status).font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        if controller.macLANRecoveryActive {
+                            Button("取消恢复") { controller.cancelMacLANRecovery() }
+                        }
+                    }
+                }
                 if controller.deviceEntries.isEmpty && !controller.replacingSessions {
                     VStack(alignment: .leading, spacing: 12) {
                         Label("等待发现设备", systemImage: "antenna.radiowaves.left.and.right")
@@ -52,7 +61,7 @@ struct SenderWorkspaceView: View {
                             if let target = entry.preferredTarget(for: controller.settings.transportMode) {
                                 Button("连接") { controller.connect(to: target, userInitiated: true) }
                                     .accessibilityLabel("连接 \(entry.name)")
-                                    .disabled(controller.replacingSessions)
+                                    .disabled(controller.replacingSessions || controller.macLANRecoveryActive)
                             }
                         }.padding(.vertical, 4)
                     }
@@ -61,7 +70,7 @@ struct SenderWorkspaceView: View {
                 HStack {
                     Text("设备")
                     Spacer()
-                    if controller.running {
+                    if controller.running || controller.macLANRecoveryActive {
                         Button("全部断开") { controller.disconnectAll() }
                     }
                 }

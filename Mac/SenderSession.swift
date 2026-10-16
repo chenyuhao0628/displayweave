@@ -36,6 +36,8 @@ final class DeviceSession: ObservableObject, Identifiable {
     var lifetime: SessionLifetime!
     @Published var failed = false
     var androidForwardManager: AndroidAdbForwardManager?
+    // Route selected when this pipeline was created; discovery may change later.
+    var macLANRoute: MacLANRoute?
 
     @Published var status = "正在启动…"
     @Published var framesSent = 0
@@ -52,7 +54,11 @@ final class DeviceSession: ObservableObject, Identifiable {
     var transportLabel: String {
         switch target {
         case .usb, .androidAdb, .androidAdbDevice: return "USB"
-        case .wifi: return sender.directLinkInterfaceName.map { "有线 · \($0)" } ?? "局域网"
+        case .wifi:
+            if let route = macLANRoute, !route.interfaceName.isEmpty {
+                return "\(route.direct ? "有线" : "局域网") · \(route.interfaceName)"
+            }
+            return sender.directLinkInterfaceName.map { "有线 · \($0)" } ?? "局域网"
         }
     }
 
