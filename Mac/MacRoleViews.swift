@@ -94,7 +94,7 @@ private struct MacReceiverPanel: View {
                 Label(receiver.status, systemImage: receiver.connected ? "checkmark.circle.fill" : "antenna.radiowaves.left.and.right")
                     .font(.headline)
                 if receiver.connected {
-                    Text("送入显示层：\(receiver.fps) fps · H.264")
+                    Text("送入显示层：\(receiver.fps) fps · \(receiver.codecLabel) · \(receiver.encrypted ? "已加密" : "未加密兼容")")
                         .font(.caption.monospaced()).foregroundStyle(.secondary)
                 }
                 HStack {
@@ -124,8 +124,9 @@ private struct MacReceiverPanel: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section {
-                Text("仅在可信局域网开启：当前连接未加密，也无配对认证。开启后局域网内的发送端可以连接，每次仅接收一个发送端。")
+                Text("默认加密并验证配对。在“设置 → 安全与配对”生成本机邀请，复制到发送端后再连接。每次仅接收一个发送端。")
                     .font(.caption).foregroundStyle(.secondary)
+                Button("安全与配对设置…") { SettingsWindow.show(tab: "security") }
             }
         }.formStyle(.grouped)
     }

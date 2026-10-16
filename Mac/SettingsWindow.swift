@@ -6,7 +6,8 @@ import SwiftUI
 enum SettingsWindow {
     private static var window: NSWindow?
 
-    static func show() {
+    static func show(tab: String? = nil) {
+        if let tab { UserDefaults.standard.set(tab, forKey: "settingsTab") }
         if window == nil {
             let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 610),
                                  styleMask: [.titled, .closable, .resizable],

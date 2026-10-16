@@ -34,7 +34,8 @@ struct OnboardingView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Label("在 Mac 上安装 DisplayWeave Mac 端 app", systemImage: "1.circle.fill")
                         Label("用 USB 连接这台 \(deviceKind)，或加入同一局域网", systemImage: "2.circle.fill")
-                        Label("在 Mac 的设备列表中选择本机，并保持此 app 打开", systemImage: "3.circle.fill")
+                        Label("在本机设置生成配对邀请，复制到 Mac 的“安全与配对”", systemImage: "3.circle.fill")
+                        Label("在 Mac 的设备列表中选择本机，并保持此 app 打开", systemImage: "4.circle.fill")
                     }
                     .font(.subheadline)
                     .padding(20)

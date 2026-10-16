@@ -39,6 +39,11 @@ final class AppleSecureAdmission {
         self.completion = completion
     }
 
+    deinit {
+        timer?.cancel()
+        if completion != nil { connection.cancel() }
+    }
+
     func startServer(_ pairing: SecurePairingState) {
         start { [weak self] fingerprint in
             guard let self else { return }

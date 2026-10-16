@@ -21,6 +21,10 @@ struct SenderWorkspaceView: View {
             } header: { Text("连接选项") }
 
             Section {
+                if let status = controller.securityStatus {
+                    Text(status).font(.caption)
+                    Button("打开安全与配对设置…") { SettingsWindow.show(tab: "security") }
+                }
                 if controller.replacingSessions {
                     ProgressView("正在应用设置，等待旧连接释放…")
                 }

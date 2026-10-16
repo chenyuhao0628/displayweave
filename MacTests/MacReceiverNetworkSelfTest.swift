@@ -30,7 +30,7 @@ import VideoToolbox
             }.value
             return
         }
-        let receiver = StreamReceiver()
+        let receiver = StreamReceiver(securityProvider: { .legacy })
         receiver.configure(panel: PanelAnnouncement(pixelsWide: 1920, pixelsHigh: 1080, scale: 1),
                            name: "Test", maxFps: 120)
         receiver.start(port: 0, advertiseService: false)
@@ -99,7 +99,7 @@ import VideoToolbox
         await withCheckedContinuation { continuation in receiver.stop { continuation.resume() } }
         try await waitFor("stopped") { receiver.listeningPort == 0 }
         withExtendedLifetime((first, next, fresh)) {}
-        let legacy = StreamReceiver(hardwareHEVCDecode: false)
+        let legacy = StreamReceiver(hardwareHEVCDecode: false, securityProvider: { .legacy })
         legacy.start(port: 0, advertiseService: false)
         try await waitFor("legacy listen") { legacy.listeningPort != 0 }
         let legacyPort = legacy.listeningPort

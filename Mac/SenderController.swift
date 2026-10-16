@@ -44,6 +44,8 @@ final class SenderController: ObservableObject {
     }
 
     @Published var sessions: [DeviceSession] = []
+    @Published private(set) var securityStatus: String?
+    private var securityObserver: NSObjectProtocol?
     @Published var discovered: [NWBrowser.Result] = []
     @Published var usbDevices: [UsbmuxDevice] = []
     @Published var androidDevices: [AndroidAdbDevice] = []
@@ -144,6 +146,19 @@ final class SenderController: ObservableObject {
     @Published private(set) var replacingSessions = false
 
     init() {
+        securityObserver = NotificationCenter.default.addObserver(forName: TransportSecurityChange.notification,
+            object: nil, queue: .main) { [weak self] notification in
+            let kind = notification.userInfo?["kind"] as? String, peer = notification.userInfo?["peer"] as? String
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if kind == "identityReset" || kind == "senderMode" { self.disconnectAll() }
+                if kind == "revoked" {
+                    for session in self.sessions where session.deviceID == peer || session.sender.secureReceiverID == peer {
+                        self.disconnect(session)
+                    }
+                }
+            }
+        }
         setRoleEnabled(UserDefaults.standard.string(forKey: "macRole") != "receiver")
     }
 
@@ -558,10 +573,38 @@ final class SenderController: ObservableObject {
         }
 
         let name = label(for: target)
+        let securityPlan: AppleSenderSecurityPlan
+        var securityID: String?
+        var advertisedTLS = false
+        switch target {
+        case .wifi(let result):
+            securityID = txtID(of: result)
+            if case .bonjour(let txt) = result.metadata { advertisedTLS = txt["security"] == "tls-v1" }
+        case .usb(let udid): securityID = udid.flatMap { installIDByUDID[$0] }
+        case .androidAdb(let mapping): securityID = installIDByAndroidSerial[mapping.serial]
+        case .androidAdbDevice: return
+        }
+        do {
+            securityPlan = try AppleTransportSecurityModel.shared.plan(receiverID: securityID,
+                advertisedTLS: advertisedTLS, name: name)
+            securityStatus = nil
+        } catch {
+            securityStatus = "\(name)：\(error.localizedDescription)"
+            if case .androidAdb(let mapping) = target, let manager = androidForwardManager {
+                Task { await manager.remove(sessionID: mapping.sessionID) }
+            }
+            return
+        }
         let sender = MacSender(transport: transport, name: name, mode: mode,
+                               securityPlan: securityPlan,
                                settings: settings, displaySerial: Self.displaySerial(for: id))
         let session = DeviceSession(id: id, target: target, name: name, sender: sender)
         session.macLANRoute = selectedMacRoute
+        sender.onSecurityError = { [weak self, weak session] message in
+            guard let self, let session, self.sessions.contains(where: { $0 === session }) else { return }
+            self.securityStatus = "\(session.name)：\(message)"
+            self.disconnect(session)
+        }
         if case .androidAdb = target {
             session.androidForwardManager = androidForwardManager
         }
@@ -584,6 +627,10 @@ final class SenderController: ObservableObject {
                 return
             }
             session.deviceID = info.id
+            if session.sender.encrypted {
+                if AppleTransportSecurityModel.shared.importedID == info.id { AppleTransportSecurityModel.shared.clearImport() }
+                AppleTransportSecurityModel.shared.refresh()
+            }
             session.deviceKind = info.device
             if case .usb(let udid?) = session.target, let installID = info.id {
                 self.installIDByUDID[udid] = installID

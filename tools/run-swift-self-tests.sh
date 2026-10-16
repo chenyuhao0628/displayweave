@@ -23,6 +23,11 @@ settings=(
   Mac/StreamEncodingPolicy.swift
   Mac/StreamSettings.swift
 )
+security=(
+  Shared/AppleTransportIdentity.swift Shared/AppleTLS.swift
+  Shared/SecurePairingProtocol.swift Shared/SecurePairingState.swift
+  Shared/AppleSecurityStore.swift Shared/AppleSecureAdmission.swift Shared/AppleTransportSecurity.swift
+)
 
 run_test AdaptiveBitrateControllerSelfTest \
   "${settings[@]}" Mac/AdaptiveBitrateController.swift \
@@ -97,6 +102,7 @@ run_test MacReceiverPolicySelfTest \
   MacTests/MacReceiverPolicySelfTest.swift
 
 run_test MacReceiverNetworkSelfTest \
+  "${security[@]}" \
   Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
   Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverNetworkSelfTest.swift
 
@@ -144,6 +150,13 @@ run_test SecureAdmissionSelfTest \
   Shared/SecurePairingState.swift Shared/AppleSecureAdmission.swift MacTests/SecureAdmissionSelfTest.swift
 run_test UsbmuxTLSRelaySelfTest \
   Shared/AppleTransportIdentity.swift Mac/UsbmuxTLSRelay.swift MacTests/UsbmuxTLSRelaySelfTest.swift
+run_test SecureTransportPlanSelfTest \
+  "${security[@]}" MacTests/SecureTransportPlanSelfTest.swift
+run_test MacSecureReceiverSelfTest \
+  "${security[@]}" \
+  Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
+  Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift \
+  Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacSecureReceiverSelfTest.swift
 
 run_test PencilProtocolSelfTest \
   Shared/PencilProtocol.swift MacTests/PencilProtocolSelfTest.swift
@@ -153,4 +166,4 @@ run_test PencilInputInjectorSelfTest \
   Shared/PencilProtocol.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
   Mac/InputValidationPolicy.swift Mac/InputInjector.swift MacTests/PencilInputInjectorSelfTest.swift
 
-echo "Swift standalone self-tests PASS (46 suites)"
+echo "Swift standalone self-tests PASS (48 suites)"

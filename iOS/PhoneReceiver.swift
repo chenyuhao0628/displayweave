@@ -47,6 +47,7 @@ final class PhoneReceiver: ObservableObject {
     @Published var status = "正在启动…"
     @Published var fps = 0
     @Published var connected = false
+    @Published private(set) var encrypted = false
     @Published var videoSize = CGSize.zero   // for touch coordinate mapping
     @Published var perf = PerfStats()
     @Published private(set) var pencilAvailable = false
@@ -57,6 +58,10 @@ final class PhoneReceiver: ObservableObject {
     var inputGeneration: UInt64 { inputSendBudget.generation }
 
     private var listener: NWListener?
+    private lazy var admissionPool = AppleSecureAdmissionPool(queue: queue)
+    private var security: AppleReceiverSecurity = .legacy
+    private var peerID: String?
+    private var securityObserver: NSObjectProtocol?
     private var listenerHealthy = false
     private var connection: NWConnection?
     private let queue = DispatchQueue(label: "receiver.video")
@@ -164,18 +169,12 @@ final class PhoneReceiver: ObservableObject {
     // transport" — the service name can't serve that role since it's
     // user-editable, and iOS offers no public API for the hardware UDID
     // that usbmuxd reports.
-    static let installID: String = {
-        if let existing = UserDefaults.standard.string(forKey: "installID") {
-            return existing
-        }
-        let fresh = UUID().uuidString
-        UserDefaults.standard.set(fresh, forKey: "installID")
-        return fresh
-    }()
+    static let installID = TransportInstallIdentity.value
 
     private var advertisedService: NWListener.Service {
         var txt = NWTXTRecord()
         txt["id"] = Self.installID
+        if security.encrypted { txt["security"] = "tls-v1" }
         return NWListener.Service(name: serviceName, type: "_opensidecar._tcp",
                                   domain: nil, txtRecord: txt)
     }
@@ -220,6 +219,26 @@ final class PhoneReceiver: ObservableObject {
     init(displayLayer: AVSampleBufferDisplayLayer) {
         self.displayLayer = displayLayer
         displayLayer.videoGravity = .resizeAspect
+        securityObserver = NotificationCenter.default.addObserver(forName: TransportSecurityChange.notification,
+            object: nil, queue: nil) { [weak self] notification in
+            let kind = notification.userInfo?["kind"] as? String, peer = notification.userInfo?["peer"] as? String
+            self?.queue.async { [weak self] in self?.securityChanged(kind: kind, peer: peer) }
+        }
+    }
+
+    deinit { if let securityObserver { NotificationCenter.default.removeObserver(securityObserver) } }
+
+    private func securityChanged(kind: String?, peer: String?) {
+        guard kind != "senderMode" else { return }
+        admissionPool.cancelAll()
+        if (kind == "revoked" && peerID == peer) || kind == "listenerMode" || kind == "identityReset" {
+            connection?.cancel(); connection = nil; peerID = nil
+            resetStreamState(); setConnected(false)
+        }
+        if kind == "listenerMode" || kind == "identityReset" {
+            listenerGeneration &+= 1
+            if running { restartListener() }
+        }
     }
 
     func start(port: UInt16 = 9000) {
@@ -252,9 +271,12 @@ final class PhoneReceiver: ObservableObject {
             let oldListener = self.listener
             self.listener = nil
             oldListener?.cancel()
+            self.admissionPool.cancelAll()
+            if case .tls(_, let state) = self.security { state.stopPairing() }
             self.listenerHealthy = false
             let old = self.connection
             self.connection = nil
+            self.peerID = nil
             self.resetStreamState()
             self.setConnected(false)
             self.setStatus("已在后台断开")
@@ -270,6 +292,7 @@ final class PhoneReceiver: ObservableObject {
         guard running else { return }
         listener?.cancel()
         listener = nil
+        admissionPool.cancelAll()
         listenerHealthy = false
         startListener()
     }
@@ -278,12 +301,18 @@ final class PhoneReceiver: ObservableObject {
         guard running else { return }
         let generation = listenerGeneration
         do {
+            security = try .live(localID: Self.installID)
             // noDelay matters most in THIS direction: touch events are tiny
             // packets, and Nagle would hold each one until the previous is
             // ACKed — batched, late drags read as input lag.
             let tcp = NWProtocolTCP.Options()
             tcp.noDelay = true
-            let params = NWParameters(tls: nil, tcp: tcp)
+            let tls: NWProtocolTLS.Options?
+            if case .tls(let identity, let state) = security {
+                tls = try AppleTLS.options(identity: identity, peerIsServer: false, queue: queue,
+                                           acceptedFingerprint: { state.acceptsTLS($0) })
+            } else { tls = nil }
+            let params = NWParameters(tls: tls, tcp: tcp)
             params.allowLocalEndpointReuse = true
             params.serviceClass = .interactiveVideo
             listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
@@ -297,6 +326,41 @@ final class PhoneReceiver: ObservableObject {
         active.service = advertisedService
         active.newConnectionHandler = { [weak self, weak active] conn in
             guard let self, self.running, self.listener === active else { conn.cancel(); return }
+            if case .tls(_, let state) = self.security {
+                self.admissionPool.accept(conn, pairing: state) { [weak self, weak active] result in
+                    guard let self, self.running, self.listener === active,
+                          self.listenerGeneration == generation else { conn.cancel(); return }
+                    switch result {
+                    case .success(let peer): self.adopt(conn, authenticatedPeer: peer)
+                    case .failure(let error):
+                        if self.connection == nil { self.setStatus(error.localizedDescription) }
+                    }
+                }
+            } else { self.adopt(conn) }
+        }
+        active.stateUpdateHandler = { [weak self, weak active] state in
+            guard let self, self.running, self.listener === active else { return }
+            switch state {
+            case .ready:
+                self.listenerHealthy = true
+                self.setStatus(self.security.encrypted ? "正在安全监听 :\(self.port)" : "旧版兼容（未加密） :\(self.port)")
+            case .failed(let error):
+                Log.info("listener failed: \(error) — restarting in 1s")
+                self.listenerHealthy = false
+                self.setStatus("监听失败，正在重启…")
+                self.queue.asyncAfter(deadline: .now() + 1) { [weak self, weak active] in
+                    guard let self, self.running, self.listenerGeneration == generation,
+                          self.listener === active else { return }
+                    self.restartListener()
+                }
+            case .cancelled: self.listenerHealthy = false
+            default: break
+            }
+        }
+        active.start(queue: queue)
+    }
+
+    private func adopt(_ conn: NWConnection, authenticatedPeer: SecurePeerRecord? = nil) {
             Log.info("new connection from \(String(describing: conn.endpoint))")
             // usbmux-forwarded (cable) connections arrive from loopback;
             // anything else came over the network.
@@ -306,6 +370,7 @@ final class PhoneReceiver: ObservableObject {
             // Replace any existing connection and reset decoder state.
             self.connection?.cancel()
             self.connection = conn
+            self.peerID = authenticatedPeer?.installID
             self.resetStreamState()
             conn.stateUpdateHandler = { [weak self, weak conn] state in
                 guard let self, let conn, self.running, self.connection === conn else { return }
@@ -321,30 +386,14 @@ final class PhoneReceiver: ObservableObject {
                 default: break
                 }
             }
-            conn.start(queue: self.queue)
+            let encrypted = authenticatedPeer != nil
+            DispatchQueue.main.async { self.encrypted = encrypted }
+            if encrypted {
+                self.lastDataReceived = Date()
+                self.setConnected(true)
+                self.sendHello(on: conn)
+            } else { conn.start(queue: self.queue) }
             self.receive(on: conn)
-        }
-        active.stateUpdateHandler = { [weak self, weak active] state in
-            guard let self, self.running, self.listener === active else { return }
-            switch state {
-            case .ready:
-                self.listenerHealthy = true
-                self.setStatus("正在监听 :\(self.port)")
-            case .failed(let error):
-                Log.info("listener failed: \(error) — restarting in 1s")
-                self.listenerHealthy = false
-                self.setStatus("监听失败，正在重启…")
-                self.queue.asyncAfter(deadline: .now() + 1) { [weak self, weak active] in
-                    guard let self, self.running, self.listenerGeneration == generation,
-                          self.listener === active else { return }
-                    self.restartListener()
-                }
-            case .cancelled:
-                self.listenerHealthy = false
-            default: break
-            }
-        }
-        active.start(queue: queue)
     }
 
     // MARK: - Liveness (ping + watchdog)
@@ -952,10 +1001,10 @@ final class PhoneReceiver: ObservableObject {
     }
 
     private func setConnected(_ value: Bool) {
-        DispatchQueue.main.async { self.connected = value }
-        if !value { setStatus("正在监听 :9000") }
+        DispatchQueue.main.async { self.connected = value; if !value { self.encrypted = false } }
+        if !value { setStatus(security.encrypted ? "正在安全监听 :9000" : "旧版兼容（未加密） :9000") }
         else {
-            setStatus("已连接")
+            setStatus(peerID == nil ? "已连接（未加密兼容）" : "已加密连接")
             // Remember the first ever successful connection to a Mac so the
             // first-run onboarding hint never reappears (issue #49).
             if !UserDefaults.standard.bool(forKey: "hasConnectedBefore") {

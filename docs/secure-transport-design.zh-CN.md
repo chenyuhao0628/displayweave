@@ -2,13 +2,13 @@
 
 # 安全传输与配对设计
 
-F03 实施设计，2026-10-16。本文件是设计，不表示当前源码或已发布 p8 已加密。完成状态与实际验证记录见[活动清单](feature-completion.zh-CN.md)。
+F03 实施设计，2026-10-16。Apple 发送/接收端已完成源码接入，Android 应用集成仍在进行。已发布 p8 未改变。完成状态与实际验证记录见[活动清单](feature-completion.zh-CN.md)，用法见[Apple 源码指南](secure-transport.zh-CN.md)。
 
 ## 方案选择
 
 使用平台 TLS、双向证书持有证明和通过可信外部渠道传递的邀请。Apple 使用 Security / Network.framework，Android 使用 Android Keystore / JSSE。保留原 TCP 9000 端口、Bonjour `_opensidecar._tcp`、外层长度帧及应用消息。新增 `security=tls-v1` TXT 字段描述加密监听端。TLS 位于所有应用帧之前，不使用机会式 STARTTLS，也不在失败后静默重试明文。
 
-每次安装拥有独立的 P-256 传输密钥与自签名 X.509 证书，与应用签名、Sparkle、APK 更新及 ADB 身份分离。Apple 将私钥/证书保存在应用独立的 Keychain 项中，Android 使用 Android Keystore。固定完整 SHA-256 证书指纹，证书替换必须显式重新配对。Apple 的最小 DER 构造器只编码本地证书，Security 负责签名和 TLS；通过平台证书解析器和跨语言 TLS 测试验证输出。
+每次安装拥有独立的 P-256 传输密钥与自签名 X.509 证书，与应用签名、Sparkle、APK 更新及 ADB 身份分离。Apple 将私钥/证书保存在应用独立的 Keychain 项中，Android 使用 Android Keystore。macOS 显式使用登录钥匙串，因为临时签名预览版没有数据保护访问组；iOS 使用应用的数据保护钥匙串。存储错误不会启用文件回退。固定完整 SHA-256 证书指纹，证书替换必须显式重新配对。Apple 的最小 DER 构造器只编码本地证书，Security 负责签名和 TLS；通过平台证书解析器和跨语言 TLS 测试验证输出。
 
 ## 首次配对
 
@@ -48,4 +48,4 @@ Swift/Java 策略向量覆盖邀请长度、准确指纹、错误 ID/token、tok
 
 传输证书在创建后 365 天过期，起始日期提供一天时钟容差。Apple SSL 策略拒绝了十年有效期的原型，因此未保留。过期/密钥丢失必须显式重置身份并重新配对，不静默旋转指纹。该寿命与应用签名证书无关。
 
-底层测试使用临时身份和临时测试密钥库，不访问应用已保存的配对密钥。Apple→Apple 和 Apple↔Java 双向均运行真实 TLS。存储、UI 与发送/接收端准入集成仍是独立的完成门槛。
+底层测试使用临时身份和临时测试密钥库，不访问应用已保存的配对密钥。Apple→Apple 和 Apple↔Java 双向均运行真实 TLS。真实钥匙串测试使用随机命名空间，仅删除自己的记录；iOS 部分在一次性模拟器中采用 Xcode 生成的应用签名运行。源码 UI 与会话集成使用相同底层，剩余 Android 与实机证据单独跟踪。

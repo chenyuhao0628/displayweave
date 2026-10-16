@@ -37,6 +37,8 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
+                TransportSecuritySettings()
+
                 Section {
                     // Isolated from the receiver: the Status section above
                     // re-renders on every stream update, and a TextField that
@@ -72,7 +74,7 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Label("USB：插上线并运行 Mac 端 app，它会自动通过线缆连接，可减少无线网络干扰。",
+                    Label("USB：首次导入配对邀请后连接；之后可通过线缆自动重连，减少无线网络干扰。",
                           systemImage: "cable.connector")
                     Label("局域网：两台设备连接到同一网络，然后在 Mac 端连接菜单中选择这台 \(deviceKind)。",
                           systemImage: "wifi")

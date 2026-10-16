@@ -24,7 +24,7 @@ struct SessionRow: View {
                 .frame(width: 9, height: 9)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                Text("\(session.transportLabel) · \(session.status)")
+                Text("\(session.transportLabel) · \(session.sender.encrypted ? "TLS 配对" : "未加密兼容") · \(session.status)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)

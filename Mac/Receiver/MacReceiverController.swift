@@ -4,7 +4,7 @@ import Combine
 
 @MainActor
 final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate {
-    let receiver = StreamReceiver()
+    let receiver: StreamReceiver
     @Published private(set) var enabled = false
     @Published private(set) var screens: [NSScreen] = []
     @Published var selectedDisplayID: UInt32 = UserDefaults.standard.object(forKey: "receiverDisplayID") as? UInt32 ?? 0
@@ -21,7 +21,9 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
     private var closingWindow = false
     private var movingFullscreenWindow = false
 
-    init(port: UInt16 = 9000, advertiseService: Bool = true) {
+    init(port: UInt16 = 9000, advertiseService: Bool = true,
+         securityProvider: @escaping () throws -> AppleReceiverSecurity = { try .live(localID: StreamReceiver.installID) }) {
+        receiver = StreamReceiver(securityProvider: securityProvider)
         self.port = port
         self.advertiseService = advertiseService
         super.init()

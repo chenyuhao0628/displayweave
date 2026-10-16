@@ -2,13 +2,13 @@
 
 # Secure transport and pairing design
 
-F03 implementation design, 2026-10-16. This document is a design and does not claim that the current source or published p8 is encrypted. Completion and exercised evidence are tracked in [the active ledger](feature-completion.md).
+F03 implementation design, 2026-10-16. Apple sender/receiver integration is now implemented in source; Android application integration remains in progress. Published p8 is unchanged. Completion and exercised evidence are tracked in [the active ledger](feature-completion.md); see [Apple source usage](secure-transport.md).
 
 ## Decision
 
 Use platform TLS, mutual certificate possession and an out-of-band invitation. Apple uses Security / Network.framework; Android uses Android Keystore / JSSE. Retain the inherited TCP port 9000, Bonjour `_opensidecar._tcp`, outer length framing and application messages. A new `security=tls-v1` TXT field describes the encrypted listener. TLS precedes all application framing. No opportunistic STARTTLS or silent cleartext retry is permitted.
 
-Each installation has a separate P-256 transport key and self-signed X.509 certificate. It is unrelated to app signing, Sparkle, APK updates or ADB identities. Apple stores the private key/certificate in app-scoped Keychain items; Android uses Android Keystore. Pin the full SHA-256 certificate fingerprint. Certificate replacement requires explicit pairing again. The minimal Apple certificate DER builder only encodes the local certificate; Security performs signing and TLS. Platform certificate parsers and cross-language TLS tests validate its output.
+Each installation has a separate P-256 transport key and self-signed X.509 certificate. It is unrelated to app signing, Sparkle, APK updates or ADB identities. Apple stores the private key/certificate in app-scoped Keychain items; Android uses Android Keystore. macOS explicitly uses the login Keychain because the ad-hoc preview has no provisioned data-protection access group; iOS uses its application's data-protection Keychain. No storage error enables a file fallback. Pin the full SHA-256 certificate fingerprint. Certificate replacement requires explicit pairing again. The minimal Apple certificate DER builder only encodes the local certificate; Security performs signing and TLS. Platform certificate parsers and cross-language TLS tests validate its output.
 
 ## First pairing
 
@@ -48,4 +48,4 @@ The shared pre-application messages use strict bounded binary fields, avoiding d
 
 Transport certificates expire 365 days after creation (with one day of not-before clock tolerance). Apple SSL policy rejected a ten-year prototype, so it was not retained. Expiry/key loss requires an explicit identity reset and fresh pairing; no silent pin rotation. This transport identity lifetime is unrelated to application signing certificates.
 
-Core tests use ephemeral identities and temporary test keystores; they never access the application's saved pairing keys. Apple→Apple and both Apple↔Java directions exercised real TLS. Store, UI and receiver/sender admission integration remain a separate completion gate.
+Core tests use ephemeral identities and temporary test keystores; they never access the application's saved pairing keys. Apple→Apple and both Apple↔Java directions exercised real TLS. Real Keychain tests use a random scope, delete only their own records, and run the iOS part in a disposable simulator with Xcode-generated app signing. Source UI and session integration use the same core; remaining Android and hardware evidence are tracked separately.

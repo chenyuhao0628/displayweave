@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Presentation-only bindings; sender pipeline ownership stays in SenderController.
 struct SenderSettingsView: View {
+    @AppStorage("settingsTab") private var selectedTab = "stream"
     @ObservedObject var controller: SenderController
     @StateObject private var permissions = PermissionMonitor()
     @State private var benchmarkScene = BenchmarkScene.staticDesktop
@@ -14,13 +15,15 @@ struct SenderSettingsView: View {
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             Form { Section("画质与带宽") { streamControls } }
-                .tabItem { Label("串流", systemImage: "slider.horizontal.3") }
+                .tabItem { Label("串流", systemImage: "slider.horizontal.3") }.tag("stream")
             Form { connectionControls; generalControls }
-                .tabItem { Label("通用", systemImage: "gearshape") }
+                .tabItem { Label("通用", systemImage: "gearshape") }.tag("general")
             Form { permissionControls; Section("诊断") { diagnosticControls } }
-                .tabItem { Label("权限与诊断", systemImage: "checkmark.shield") }
+                .tabItem { Label("权限与诊断", systemImage: "checkmark.shield") }.tag("permissions")
+            Form { TransportSecuritySettings(permitsSending: true) }
+                .tabItem { Label("安全与配对", systemImage: "lock.shield") }.tag("security")
         }
         .formStyle(.grouped)
         .padding(12)

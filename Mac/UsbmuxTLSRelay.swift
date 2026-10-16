@@ -16,6 +16,8 @@ final class UsbmuxTLSRelay {
 
     init(tunnel: NWConnection, queue: DispatchQueue) { self.tunnel = tunnel; self.queue = queue }
 
+    deinit { timer?.cancel(); listener?.cancel(); local?.cancel(); tunnel.cancel() }
+
     func start(completion: @escaping (Result<UInt16, Error>) -> Void) {
         dispatchPrecondition(condition: .onQueue(queue))
         guard !stopped, listener == nil else {

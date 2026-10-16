@@ -19,6 +19,7 @@ final class SecurePairingState: @unchecked Sendable {
     private var records: [String: SecurePeerRecord]
     private var window: Window?
     private var trustRevision: UInt64 = 0
+    private var invalidated = false
     private let now: () -> Double
     private let persist: (Data) throws -> Void
 
@@ -52,12 +53,13 @@ final class SecurePairingState: @unchecked Sendable {
     var peers: [SecurePeerRecord] { lock.withLock { records.values.sorted { $0.installID < $1.installID } } }
     var revision: UInt64 { lock.withLock { trustRevision } }
     var pairingOpen: Bool { lock.withLock { openWindow() != nil } }
-    func hasPairingHistory(_ id: String) -> Bool { lock.withLock { records[id] != nil } }
+    func hasPairingHistory(_ id: String) -> Bool { lock.withLock { invalidated || records[id] != nil } }
     func trustedPeer(_ id: String) -> SecurePeerRecord? {
-        lock.withLock { records[id].flatMap { $0.revoked ? nil : $0 } }
+        lock.withLock { invalidated ? nil : records[id].flatMap { $0.revoked ? nil : $0 } }
     }
     func acceptsTLS(_ fingerprint: String) -> Bool {
         lock.withLock {
+            guard !invalidated else { return false }
             guard SecurePairingProtocol.fingerprintBytes(fingerprint) != nil else { return false }
             return records.values.contains { !$0.revoked && $0.certificateSHA256 == fingerprint } || openWindow() != nil
         }
@@ -65,6 +67,7 @@ final class SecurePairingState: @unchecked Sendable {
 
     func startPairing() throws -> PairingInvitation {
         try lock.withLock {
+            try requireValid()
             let time = now()
             guard time.isFinite, time >= 0 else { throw TransportSecurityError.failed("单调时钟不可用") }
             let token = try SecurePairingProtocol.randomToken()
@@ -76,6 +79,7 @@ final class SecurePairingState: @unchecked Sendable {
 
     func authenticate(_ request: SecureAuthRequest, fingerprint: String) throws -> SecurePeerRecord {
         try lock.withLock {
+            try requireValid()
             guard SecurePairingProtocol.validID(request.installID), request.installID != localID,
                   SecurePairingProtocol.validName(request.name),
                   SecurePairingProtocol.fingerprintBytes(fingerprint) != nil else {
@@ -105,6 +109,7 @@ final class SecurePairingState: @unchecked Sendable {
     func trustConfirmedReceiver(id: String, name: String, fingerprint: String,
                                 explicitInvitation: Bool, expectedRevision: UInt64? = nil) throws {
         try lock.withLock {
+            try requireValid()
             guard expectedRevision == nil || expectedRevision == trustRevision else {
                 throw TransportSecurityError.failed("配对设置已改变，请重新连接")
             }
@@ -119,12 +124,29 @@ final class SecurePairingState: @unchecked Sendable {
 
     func revoke(_ id: String) throws {
         try lock.withLock {
+            try requireValid()
             guard var peer = records[id] else { return }
             peer.revoked = true
             var next = records; next[id] = peer
             try commit(next)
             window = nil
         }
+    }
+
+    /// Called before deleting a local identity. Preserve downgrade tombstones
+    /// and invalidate all old references, even if a socket callback arrives late.
+    func revokeAllAndInvalidate() throws {
+        try lock.withLock {
+            try requireValid()
+            var next = records
+            for id in next.keys { next[id]?.revoked = true }
+            try commit(next)
+            window = nil; invalidated = true
+        }
+    }
+
+    private func requireValid() throws {
+        if invalidated { throw TransportSecurityError.failed("本机身份已重置，请重新连接和配对") }
     }
 
     private func storePeer(id: String, name: String, pin: String) throws -> SecurePeerRecord {
@@ -148,6 +170,7 @@ final class SecurePairingState: @unchecked Sendable {
         trustRevision &+= 1
     }
     private func openWindow() -> Window? {
+        guard !invalidated else { return nil }
         let time = now()
         guard let window, time.isFinite, time >= window.began, time < window.expires, window.failures < 5 else {
             self.window = nil

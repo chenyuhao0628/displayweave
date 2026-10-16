@@ -22,7 +22,8 @@ struct IdleView: View {
                     Text("从 Mac 开始连接").font(.headline)
                     Label("在 Mac 上打开 DisplayWeave，选择发送屏幕。", systemImage: "1.circle")
                     Label("连接 USB，或让两端加入同一局域网。", systemImage: "2.circle")
-                    Label("在 Mac 的设备列表中选择这台 \(deviceKind)，并保持此 app 打开。", systemImage: "3.circle")
+                    Label("打开本机设置生成配对邀请，复制到 Mac 的“安全与配对”。", systemImage: "3.circle")
+                    Label("在 Mac 的设备列表中选择本机，并保持此 app 打开。", systemImage: "4.circle")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(20)
@@ -31,7 +32,7 @@ struct IdleView: View {
                     Label("设置与帮助", systemImage: "gearshape")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }.buttonStyle(.borderedProminent)
-                Text("局域网连接未加密，请仅在可信网络使用。串流时可点右上角设置，也可摇动设备打开设置。")
+                Text("默认使用加密配对。旧版本需在设置中显式启用未加密兼容。串流时可点右上角设置，也可摇动设备打开设置。")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             .frame(maxWidth: 520)

@@ -50,10 +50,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     // Fired on every hello — carries the receiver's install id so the
     // controller can deduplicate USB/WiFi sessions to the same device.
     @MainActor var onHello: ((PhoneInfo) -> Void)?
+    @MainActor var onSecurityError: ((String) -> Void)?
 
     private var stream: SCStream?
     private var encoder: VTCompressionSession?
     private var connection: NWConnection?
+    private var admission: AppleSecureAdmission?
+    private var usbTLSRelay: UsbmuxTLSRelay?
+    private let securityPlan: AppleSenderSecurityPlan
+    var encrypted: Bool { securityPlan.encrypted }
+    var secureReceiverID: String? { securityPlan.receiverID }
     private var virtualDisplay: VirtualDisplay?
     private let queue = DispatchQueue(label: "sender.video")
     private let startCode: [UInt8] = [0, 0, 0, 1]
@@ -221,7 +227,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     private var lastCaptureAt = Date.distantPast
 
     init(transport: SenderTransport, name: String, mode: CaptureMode,
+         securityPlan: AppleSenderSecurityPlan,
          settings: StreamSettings = StreamSettings.load(), displaySerial: UInt32 = 0x0001) {
+        self.securityPlan = securityPlan
         self.transport = transport
         self.endpointName = name
         self.mode = mode
@@ -707,6 +715,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         connectionGeneration &+= 1
         let previous = connection
         connection = nil
+        let pending = admission; admission = nil
+        pending?.cancel()
+        let relay = usbTLSRelay; usbTLSRelay = nil
+        relay?.onClosed = nil; relay?.stop()
         previous?.stateUpdateHandler = nil
         previous?.cancel()
     }
@@ -723,6 +735,17 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             return
         }
         cancelPendingReconnect()
+        connectionReady = false
+        lastReceived = Date()
+        receiveControl(on: conn, generation: generation)
+        queue.asyncAfter(deadline: .now() + 5) { [weak self] in
+            guard let self, self.isCurrentConnection(conn, generation: generation), !self.connectionReady else { return }
+            self.failSecurity("未收到匹配的接收端确认，请更新对端应用并重新连接")
+        }
+        Task { await self.status("正在验证 \(self.endpointName) 的接收能力…") }
+    }
+
+    private func helloReady() {
         Log.info("connection ready to \(endpointName)")
         connectionReady = true
         wireConnectionGeneration &+= 1
@@ -747,17 +770,67 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
         lastCursorPNGHash = 0
         lastCursorSent = (-1, -1, false)
         lastReceived = Date()  // fresh grace period for the watchdog
-        receiveControl(on: conn, generation: generation)
-        Task { await self.status("正在连接到 \(self.endpointName)…") }
+    }
+
+    private func failSecurity(_ message: String) {
+        connectionReady = false
+        dialGeneration += 1
+        cancelPendingReconnect()
+        invalidateConnection()
+        Task { @MainActor in self.onSecurityError?(message) }
+    }
+
+    private func watchAuthenticatedConnection(_ conn: NWConnection, generation: UInt64) {
+        conn.stateUpdateHandler = { [weak self] state in
+            guard let self, self.isCurrentConnection(conn, generation: generation) else { return }
+            switch state {
+            case .failed, .waiting: self.scheduleReconnect()
+            case .cancelled: self.connectionReady = false
+            default: break
+            }
+        }
+        becomeReady(conn, generation: generation)
     }
 
     private func connectTCP(_ endpoint: NWEndpoint, interface: NWInterface? = nil) {
         let options = NWProtocolTCP.Options()
         options.noDelay = true   // latency matters more than throughput here
-        let params = NWParameters(tls: nil, tcp: options)
+        let tls: NWProtocolTLS.Options?
+        let clientPlan: SecureClientAdmission?
+        do {
+            if securityPlan.encrypted {
+                let plan = try securityPlan.admission(localName: Host.current().localizedName ?? "DisplayWeave Mac")
+                clientPlan = plan
+                tls = try AppleTLS.options(identity: securityPlan.identity, peerIsServer: true, queue: queue,
+                                           acceptedFingerprint: { $0 == plan.fingerprint })
+            } else { tls = nil; clientPlan = nil }
+        } catch { failSecurity(error.localizedDescription); return }
+        let params = NWParameters(tls: tls, tcp: options)
         params.requiredInterface = interface
         let conn = NWConnection(to: DirectCable.endpoint(endpoint, on: interface), using: params)
         let generation = adoptConnection(conn)
+        if let clientPlan {
+            let admission = AppleSecureAdmission(connection: conn, queue: queue) { [weak self] result in
+                guard let self, self.isCurrentConnection(conn, generation: generation) else { conn.cancel(); return }
+                self.admission = nil
+                switch result {
+                case .success:
+                    self.securityPlan.didAuthenticate()
+                    self.watchAuthenticatedConnection(conn, generation: generation)
+                case .failure(let error):
+                    if self.everConnected {
+                        // A lost LAN/USB route may fail during the new TLS
+                        // handshake. Keep the existing bounded recovery and
+                        // handover policy, always with this same frozen pin.
+                        Task { await self.status(error.localizedDescription + "；正在有限重试已配对连接") }
+                        self.scheduleReconnect()
+                    } else { self.failSecurity(error.localizedDescription) }
+                }
+            }
+            self.admission = admission
+            admission.startClient(clientPlan)
+            return
+        }
         conn.stateUpdateHandler = { [weak self] state in
             guard let self,
                   self.isCurrentConnection(conn, generation: generation) else {
@@ -799,6 +872,25 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 queue.async {
                     guard generation == self.dialGeneration, !self.stopped else {
                         conn.cancel()
+                        return
+                    }
+                    if self.securityPlan.encrypted {
+                        let relay = UsbmuxTLSRelay(tunnel: conn, queue: self.queue)
+                        self.usbTLSRelay = relay
+                        relay.onClosed = { [weak self, weak relay] in
+                            guard let self, let relay, self.usbTLSRelay === relay,
+                                  generation == self.dialGeneration, !self.stopped else { return }
+                            self.scheduleReconnect()
+                        }
+                        relay.start { [weak self, weak relay] result in
+                            guard let self, let relay, self.usbTLSRelay === relay,
+                                  generation == self.dialGeneration, !self.stopped else { return }
+                            switch result {
+                            case .success(let port):
+                                self.connectTCP(.hostPort(host: "127.0.0.1", port: .init(rawValue: port)!))
+                            case .failure(let error): self.failSecurity(error.localizedDescription)
+                            }
+                        }
                         return
                     }
                     let connectionGeneration = self.adoptConnection(conn)
@@ -1172,6 +1264,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             Log.info("unparseable control message (\(payload.count) bytes)")
             return
         }
+        // A new connection must identify itself before it can drive input,
+        // telemetry, decoder negotiation or re-use captured frames.
+        guard connectionReady || type == "hello" else { return }
         if let action = ReceiverControlPolicy.closureAction(
             messageType: type,
             peer: receiverPeerKind
@@ -1207,6 +1302,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
             }
         case "hello":
             if let info = try? JSONDecoder().decode(PhoneInfo.self, from: payload) {
+                guard securityPlan.permitsHello(id: info.id) else {
+                    failSecurity("接收端身份不匹配或曾经配对，已拒绝未认证连接；请重新配对")
+                    return
+                }
                 guard info.hasValidGeometry else {
                     Log.info("rejected invalid receiver geometry or video capabilities")
                     handleConnectionClosure(.endSession)
@@ -1218,6 +1317,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
                 }
                 let previous = lastHello
                 lastHello = info
+                if !connectionReady { helloReady() }
                 let supportsPencil = PencilProtocol.supports(info.inputCaps)
                 if pencilNegotiated && !supportsPencil { inputInjector?.cancelPress() }
                 pencilNegotiated = supportsPencil

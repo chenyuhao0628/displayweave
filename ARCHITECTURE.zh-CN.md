@@ -53,7 +53,7 @@ Android 接收端在 9000 端口提供 TCP Server，渲染 Surface 返回时会�
 
 ## 安全边界
 
-- WiFi TCP 尚未生产级加密，只应在可信局域网使用。
+- 已发布 p8 需在可信局域网使用明文 TCP。p8 之后的 Apple 源码新增固定指纹双向 TLS、邀请配对与显式旧版兼容；Android 接入待完成。详见[安全指南](docs/secure-transport.zh-CN.md)。
 - ADB RSA 授权会把 Mac 作为广泛调试主机信任，不只限 DisplayWeave。
 - macOS Preview 使用 ad-hoc 签名且未公证。
 - Android APK 使用保存在 Git 之外的项目离线密钥库。
