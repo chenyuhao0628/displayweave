@@ -16,7 +16,7 @@ Android 接收端可以通过本地 WiFi 或由 Mac 管理的 ADB-forward USB �
 
 2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；下载统一发布在[发行页面](https://github.com/chenyuhao0628/displayweave/releases)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。
 
-从 [`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。p5 需要手动覆盖安装一次 p6 或更新版；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/release-checklist.zh-CN.md)中的证书指纹。
+从 [`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。p5 需要手动覆盖安装一次 p6 或更新版；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/release-checklist.zh-CN.md)中的证书指纹。
 
 ## 首次安装后的更新
 

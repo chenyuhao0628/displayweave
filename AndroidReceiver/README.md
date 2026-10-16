@@ -16,7 +16,7 @@ The waiting screen follows the system light/dark theme. Settings scroll on small
 
 2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; downloads are published on the [releases page](https://github.com/chenyuhao0628/displayweave/releases). Mac/Android update checks still depend on the original Pages URLs; install manually until they recover.
 
-Download `DisplayWeave-Android.apk` from [`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/release-checklist.md).
+Download `DisplayWeave-Android.apk` from [`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/release-checklist.md).
 
 ## Updates after the first install
 

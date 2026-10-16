@@ -22,7 +22,7 @@
 
 ## 下载与更新
 
-[发行页面](https://github.com/chenyuhao0628/displayweave/releases) · [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)
+[发行页面](https://github.com/chenyuhao0628/displayweave/releases) · [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
 八项文件为 Mac DMG／Sparkle ZIP、Android APK、无签名 iOS 自签输入包、`appcast.xml`、`android-update.json`、`DisplayWeave-v0.2.1-p8-source.tar.gz` 及 `SHA256SUMS.txt`。源码包的 SHA-256 见校验和清单，该清单覆盖其余七项文件。
 

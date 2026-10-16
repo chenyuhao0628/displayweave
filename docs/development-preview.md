@@ -2,7 +2,7 @@
 
 # DisplayWeave `v0.2.1-p8` Development Distribution
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
 2026-10-16: GitHub Actions is unavailable, so this release is built locally. Public GitHub access and Pages feeds still return 404; downloads are published on the [releases page](https://github.com/chenyuhao0628/displayweave/releases). Mac/Android update checks still depend on the original Pages URLs; install manually until they recover.
 

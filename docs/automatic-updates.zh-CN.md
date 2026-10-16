@@ -11,7 +11,7 @@ DisplayWeave 把不可变的 Mac/Android 安装包发布到 GitHub Releases，�
 - Android 产物：`DisplayWeave-Android.apk`
 
 当前开发发行版本是
-[`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)。
+[`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases)。
 Android p5 尚不支持新的下载路径，因此需要手动安装一次 p6 或更新版；p6 及
 以后版本可自动使用双源更新渠道。
 本版本同时包含引导式 DMG 与 Sparkle ZIP 更新包。

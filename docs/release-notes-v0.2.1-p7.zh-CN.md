@@ -27,7 +27,7 @@
 
 Android p6 及以后从对应的 GitHub Release 下载；p5 及更早版本需手动安装一次。发布后，已支持更新渠道的 Mac／Android 安装可通过原渠道升级。
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p7)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
 ## 产物完整性
 

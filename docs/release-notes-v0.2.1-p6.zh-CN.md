@@ -33,4 +33,4 @@ iOS 自签输入包、已签名更新源和 `SHA256SUMS.txt`。
 | `appcast.xml` | `bf1429a9774c2a2661136832902bc4e032a32b0b83108ea3b567ff206dd7df0c` |
 | `android-update.json` | `4fc43c7606b40f786d21872ab3dd1243ecd79308237e75cb3aaff1e84acdb377` |
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p6) · [SHA256SUMS.txt](https://github.com/chenyuhao0628/displayweave/releases/download/v0.2.1-p6/SHA256SUMS.txt)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases) · [SHA256SUMS.txt](https://github.com/chenyuhao0628/displayweave/releases/download/v0.2.1-p6/SHA256SUMS.txt)

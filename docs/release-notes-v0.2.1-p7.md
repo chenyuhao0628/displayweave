@@ -27,7 +27,7 @@ The seven assets remain the Mac DMG and Sparkle ZIP, Android APK, unsigned iOS r
 
 Android p6 and later download from the matching GitHub Release. Android p5 and older require a manual install once. Existing supported Mac/Android installations can use their update channel after publication.
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p7)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
 ## Artifact integrity
 

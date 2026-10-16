@@ -2,7 +2,7 @@
 
 # DisplayWeave `v0.2.1-p8` 开发分发
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
 2026-10-16：GitHub Actions 暂不可用，本版改为本地构建。GitHub 公开访问和 Pages 更新源仍返回 404；下载统一发布在[发行页面](https://github.com/chenyuhao0628/displayweave/releases)。Mac／Android 应用内检查更新仍依赖原 Pages 地址，在恢复前请手动覆盖安装。
 

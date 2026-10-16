@@ -11,7 +11,7 @@ DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases an
 - Android artifact: `DisplayWeave-Android.apk`
 
 The current development release is
-[`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8).
+[`v0.2.1-p8`](https://github.com/chenyuhao0628/displayweave/releases).
 Install a current APK manually once; later builds use the in-app channel automatically.
 This release includes both the guided DMG and the Sparkle ZIP payload.
 

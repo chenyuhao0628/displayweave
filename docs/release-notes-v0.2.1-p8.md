@@ -22,7 +22,7 @@ Two-Mac physical routing/performance, real Pencil pressure/tilt/hover/palm rejec
 
 ## Downloads and updates
 
-[Release page](https://github.com/chenyuhao0628/displayweave/releases) · [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p8)
+[Release page](https://github.com/chenyuhao0628/displayweave/releases) · [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
 Eight files comprise the Mac DMG/Sparkle ZIP, Android APK, unsigned iOS re-signing input, `appcast.xml`, `android-update.json`, `DisplayWeave-v0.2.1-p8-source.tar.gz` and `SHA256SUMS.txt`. The source archive's SHA-256 is in the checksum manifest, which covers the other seven files.
 
