@@ -18,6 +18,7 @@ final class SecurePairingState: @unchecked Sendable {
     private let lock = NSLock()
     private var records: [String: SecurePeerRecord]
     private var window: Window?
+    private var trustRevision: UInt64 = 0
     private let now: () -> Double
     private let persist: (Data) throws -> Void
 
@@ -49,6 +50,7 @@ final class SecurePairingState: @unchecked Sendable {
     }
 
     var peers: [SecurePeerRecord] { lock.withLock { records.values.sorted { $0.installID < $1.installID } } }
+    var revision: UInt64 { lock.withLock { trustRevision } }
     var pairingOpen: Bool { lock.withLock { openWindow() != nil } }
     func hasPairingHistory(_ id: String) -> Bool { lock.withLock { records[id] != nil } }
     func trustedPeer(_ id: String) -> SecurePeerRecord? {
@@ -101,8 +103,11 @@ final class SecurePairingState: @unchecked Sendable {
 
     /// Called by a sender only after pinned TLS and a matching secureReady.
     func trustConfirmedReceiver(id: String, name: String, fingerprint: String,
-                                explicitInvitation: Bool) throws {
+                                explicitInvitation: Bool, expectedRevision: UInt64? = nil) throws {
         try lock.withLock {
+            guard expectedRevision == nil || expectedRevision == trustRevision else {
+                throw TransportSecurityError.failed("配对设置已改变，请重新连接")
+            }
             if let peer = records[id], !peer.revoked {
                 guard peer.certificateSHA256 == fingerprint else { throw TransportSecurityError.failed("已配对证书不匹配") }
                 return
@@ -140,6 +145,7 @@ final class SecurePairingState: @unchecked Sendable {
         guard data.count <= 128 * 1024 else { throw TransportSecurityError.failed("配对记录过大") }
         try persist(data)
         records = next
+        trustRevision &+= 1
     }
     private func openWindow() -> Window? {
         let time = now()

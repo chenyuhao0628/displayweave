@@ -139,6 +139,11 @@ run_test SecurePairingSelfTest \
   Shared/AppleSecurityStore.swift MacTests/SecurePairingSelfTest.swift
 run_test SecureTLSNetworkSelfTest \
   Shared/AppleTransportIdentity.swift Shared/AppleTLS.swift MacTests/SecureTLSNetworkSelfTest.swift
+run_test SecureAdmissionSelfTest \
+  Shared/AppleTransportIdentity.swift Shared/AppleTLS.swift Shared/SecurePairingProtocol.swift \
+  Shared/SecurePairingState.swift Shared/AppleSecureAdmission.swift MacTests/SecureAdmissionSelfTest.swift
+run_test UsbmuxTLSRelaySelfTest \
+  Shared/AppleTransportIdentity.swift Mac/UsbmuxTLSRelay.swift MacTests/UsbmuxTLSRelaySelfTest.swift
 
 run_test PencilProtocolSelfTest \
   Shared/PencilProtocol.swift MacTests/PencilProtocolSelfTest.swift
@@ -148,4 +153,4 @@ run_test PencilInputInjectorSelfTest \
   Shared/PencilProtocol.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
   Mac/InputValidationPolicy.swift Mac/InputInjector.swift MacTests/PencilInputInjectorSelfTest.swift
 
-echo "Swift standalone self-tests PASS (44 suites)"
+echo "Swift standalone self-tests PASS (46 suites)"

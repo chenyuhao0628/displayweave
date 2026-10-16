@@ -58,7 +58,10 @@ private enum FixtureFailure: Error { case write }
         precondition(reconnect == peer)
         rejects { _ = try state.authenticate(request, fingerprint: String(repeating: "cd", count: 32)) }
         rejects { _ = try state.authenticate(SecureAuthRequest(installID: "alias", name: "", pairingToken: invitation.token), fingerprint: clientPin) }
+        let beforeRevoke = state.revision
         try state.revoke("sender")
+        rejects { try state.trustConfirmedReceiver(id: "sender", name: "Test", fingerprint: clientPin,
+                                                   explicitInvitation: true, expectedRevision: beforeRevoke) }
         precondition(!state.acceptsTLS(clientPin) && state.hasPairingHistory("sender"), "revocation must retain downgrade tombstone")
         rejects { _ = try state.authenticate(request, fingerprint: clientPin) }
         let repair = try state.startPairing()
