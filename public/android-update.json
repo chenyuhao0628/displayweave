@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "packageName": "app.opendisplay.android",
-  "versionCode": 13,
-  "versionName": "0.2.1-p6",
+  "versionCode": 14,
+  "versionName": "0.2.1-p7",
   "minimumSdk": 26,
-  "apkUrl": "https://downloads.urlget.cyou/releases/v0.2.1-p6/DisplayWeave-Android.apk",
-  "apkSize": 224572,
-  "sha256": "123fea1468335f8412b0f8620623c3c9fa681b36ef5e9e3190e3b1ec2c812083",
+  "apkUrl": "https://downloads.urlget.cyou/releases/v0.2.1-p7/DisplayWeave-Android.apk",
+  "apkSize": 226420,
+  "sha256": "ac1b5081259647c248e8c5d69aff4f477f4ebc9044a70c4a4602f6c81d6c2381",
   "signingCertificateSha256": "89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d",
-  "publishedAt": "2026-07-18T16:41:56Z",
-  "releaseNotesUrl": "https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p6",
-  "apkFallbackUrl": "https://github.com/chenyuhao0628/displayweave/releases/download/v0.2.1-p6/DisplayWeave-Android.apk"
+  "publishedAt": "2026-10-16T02:15:06Z",
+  "releaseNotesUrl": "https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p7",
+  "apkFallbackUrl": "https://github.com/chenyuhao0628/displayweave/releases/download/v0.2.1-p7/DisplayWeave-Android.apk"
 }

@@ -2,7 +2,7 @@
 
 # HEVC, direct-link Macs and Apple Pencil
 
-Source development build, 2026-10-16. These features are not included in the published v0.2.1-p6 downloads. See the [design and upstream provenance](hevc-wired-pencil-plan.md).
+Packaged in the v0.2.1-p7 development preview on 2026-10-16. Hardware-dependent behavior remains experimental. See the [design and upstream provenance](hevc-wired-pencil-plan.md).
 
 ## Resolution switching
 
@@ -10,7 +10,7 @@ Settings → Stream → Quality rebuilds connections with 50% (Low), 75% (Balanc
 
 ## Mac HEVC
 
-Install the source build on both Macs. Set Codec to Auto or HEVC. HEVC is selected when the sender has a hardware encoder and the receiver explicitly offers hardware decoding. H.264 remains available for old receivers, unsupported hardware and explicit H.264 preference. iOS video remains H.264; Android retains its own codec/refresh negotiation.
+Install v0.2.1-p7 or a newer compatible build on both Macs. Set Codec to Auto or HEVC. HEVC is selected when the sender has a hardware encoder and the receiver explicitly offers hardware decoding. H.264 remains available for old receivers, unsupported hardware and explicit H.264 preference. iOS video remains H.264; Android retains its own codec/refresh negotiation.
 
 The receiver status names the actual codec. Both codecs stay within 4096×2304 landscape or 2304×4096 portrait and at most 60 fps. The sender also respects receiver pixel throughput and the H.264 fallback envelope. HEVC does not enable unrestricted 5K/120 fps.
 
@@ -32,7 +32,7 @@ Switching transport mode ends sessions excluded by the new mode before rebuildin
 
 ## Apple Pencil on iPad
 
-Install the current iOS/iPadOS source build and Mac source build. Connect as usual over USB or LAN, then grant the Mac Accessibility permission for input. The iOS settings show **压感与倾角** after capability confirmation, or **兼容触控** for an older sender. This status describes the negotiated protocol, not proof that an attached Pencil or drawing app supports every feature.
+Install the matching v0.2.1-p7 or newer iOS/iPadOS and Mac builds; the public IPA requires re-signing. Connect as usual over USB or LAN, then grant the Mac Accessibility permission for input. The iOS settings show **压感与倾角** after capability confirmation, or **兼容触控** for an older sender. This status describes the negotiated protocol, not proof that an attached Pencil or drawing app supports every feature.
 
 Pencil contact forwards pressure and tilt as native tablet events. Supported iPads/Pencils also send hover. Finger scrolling is separated from pen contact; direct touches are suppressed while the Pencil is drawing or hovering. At most 32 real coalesced samples are forwarded per event; predicted Pencil points are not committed as ink. Existing finger input remains available after the pen leaves.
 
@@ -62,7 +62,7 @@ Barrel roll, squeeze, Pencil double-tap mapping, eraser tooling and application-
 
 Compilation for Intel is not Intel runtime validation. Parsing real encoded samples is not a measured on-screen decode/performance result. The prior [Mac guide](mac-to-mac.md) records older H.264 UI smoke evidence separately.
 
-## Physical acceptance before release
+## Physical acceptance before verified status
 
 - Two Macs: both directions, mirror/extend, Auto/HEVC/H.264, quality switching, Intel/Apple silicon combinations, reconnect and sleep/wake. Record codec, raster, target/rendered fps and latency.
 - Thunderbolt Bridge and Ethernet: Wi-Fi enabled concurrently, verify the active interface, candidate appearance, unplug/replug, manual opt-out and no duplicate sessions. Include a normal routed/static-IP network and confirm it remains a normal LAN device.

@@ -17,7 +17,7 @@ Quality changes encoded scaling (50% / 75% / 100%, Smooth 75%) by rebuilding ses
 
 ## Verification and remaining acceptance
 
-The source passed 37 Swift suites, Mac arm64/x86_64 builds, iOS Simulator build, Android tests/build, website and bilingual-documentation checks. The release workflow separately builds and verifies the distributable packages, Android signer and update metadata. Exact release artifact hashes and workflow evidence are recorded after packaging.
+The source passed 37 Swift suites, Mac arm64/x86_64 builds, iOS Simulator build, Android tests/build, website and bilingual-documentation checks. The release workflow separately builds and verifies the distributable packages, Android signer and update metadata. Release run [38839071173](https://github.com/chenyuhao0628/displayweave/actions/runs/38839071173) succeeded at tag commit `e56250c4539dcd8449508265401b4f28dddf1ccd`. Its feed-deployment job was intentionally skipped while staging the mirror. Downloaded assets independently passed `verify-update-release.sh`: Mac DMG/ZIP identity and signature match, Android version/certificate and all six checksums. The Mac executable contains arm64 and x86_64, the iOS input is unsigned arm64, and both report `0.2.1-p7 (14)`. CryptoKit independently verified the ZIP Ed25519 signature against the embedded Sparkle public key.
 
 Two-Mac physical routing/performance, real Pencil pressure/tilt/hover/palm rejection, new UIKit gesture runtime, Intel runtime, and 30-minute/2-hour endurance acceptance remain pending. The host had no verified independent display, so virtual-display interaction was skipped. Automated checks and encoded-sample parsing do not establish measured on-screen performance. See the [feature guide](hevc-wired-pencil.md).
 
@@ -28,3 +28,14 @@ The seven assets remain the Mac DMG and Sparkle ZIP, Android APK, unsigned iOS r
 Android p6 and later use Cloudflare first with GitHub availability fallback. Android p5 and older require a manual install to trust the mirror. Existing supported Mac/Android installations can use their update channel after publication.
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p7)
+
+## Artifact integrity
+
+| Asset | SHA-256 |
+| --- | --- |
+| `DisplayWeave-Android.apk` | `ac1b5081259647c248e8c5d69aff4f477f4ebc9044a70c4a4602f6c81d6c2381` |
+| `DisplayWeave-macOS.zip` | `dae40c3df8f9bbdebdce0484621a7d7a6a4c99c1b1a8504e9096fc8863705aef` |
+| `DisplayWeave-macOS.dmg` | `26e9cf259410e731acfbe1a682444b71bf73d679298db6b00d82b3bef15ce0f6` |
+| `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `634305344f5cd7433a74a95166f781ea7313d5473ded88918528a3895e8eb1eb` |
+| `appcast.xml` | `6b56809092184de9bc4043667f4e6fc9e0b293e8689b1e9c1c67c9be2c30a8b1` |
+| `android-update.json` | `3486c40d0a72cb3fc4acdfedcbe2299d01f90bdd67432f8a32003e24d3091a50` |

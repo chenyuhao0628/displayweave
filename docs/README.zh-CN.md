@@ -9,7 +9,7 @@
 - [2026-10-16 源码升级验收与硬件边界](source-upgrade-audit-2026-10-16.zh-CN.md)与[上游集成取舍](upstream-integration-2026-10-16.zh-CN.md)
 - [UI 规范](ui-guidelines.zh-CN.md)与[源码升级计划](upgrade-plan.zh-CN.md)
 - [开发工作流与当前 Codex 官方依据](development.zh-CN.md)
-- [Mac 与 Mac 局域网互联（源码开发构建）](mac-to-mac.zh-CN.md)与[设计/上游评估](mac-to-mac-design.zh-CN.md)
+- [Mac 与 Mac 局域网互联（实验预览）](mac-to-mac.zh-CN.md)与[设计/上游评估](mac-to-mac-design.zh-CN.md)
 
 - [开发预览分发](development-preview.zh-CN.md)
 - [`v0.2.0-preview.2` 发布说明](release-notes-v0.2.0-preview.2.zh-CN.md)
@@ -23,6 +23,7 @@
 - [`v0.2.1-p4` 发布说明](release-notes-v0.2.1-p4.zh-CN.md)
 - [`v0.2.1-p5` 发布说明](release-notes-v0.2.1-p5.zh-CN.md)
 - [`v0.2.1-p6` 发布说明](release-notes-v0.2.1-p6.zh-CN.md)
+- [`v0.2.1-p7` 发布说明](release-notes-v0.2.1-p7.zh-CN.md)
 - [发布检查清单](release-checklist.zh-CN.md)
 - [Mac 与 Android 自动更新](automatic-updates.zh-CN.md)
 - [稳定性与真机证据](stability-test-report.zh-CN.md)

@@ -1,12 +1,18 @@
 [English](release-checklist.md) | [简体中文](release-checklist.zh-CN.md)
 
-# `v0.2.1-p2` 发布检查清单
+# 发布检查清单
 
-## 当前源码门禁
+## 当前发行：v0.2.1-p7（14）
 
-下方保留历史 v0.2.1-p2 发布证据。当前公开下载为 v0.2.1-p6，其结果以对应发布说明为准；2026-10-16 源码升级不是新发行版。合并源码前执行[开发门禁](development.zh-CN.md)：32 组 Swift、六组 Android 自测及构建、两个 Apple 构建、网站、双语文档与发行链接检查，并要求 PR 头提交的新 CI 通过。[源码验收报告](source-upgrade-audit-2026-10-16.zh-CN.md)记录本地结果。
+[p7 发布说明](release-notes-v0.2.1-p7.zh-CN.md)记录当前产物哈希、签名边界与发行工作流证据。发行 tag 指向 `e56250c4539dcd8449508265401b4f28dddf1ccd`；Release run `38839071173` 使用 `deploy_feeds=false` 构建并验证七项产物，先验证镜像再公开更新源。
 
-后续发布二进制还需完成真机矩阵、核对签名/版本/更新源身份并验证新产物。下方历史勾选项不代表未来版本获准发布。
+当前[开发门禁](development.zh-CN.md)涵盖 37 组 Swift、六组 Android 自测与构建、两个 Apple 构建、网站、双语文档与发布链接检查。发行 PR 头提交须通过新 CI。公开前独立验证下载包、应用身份、版本／构建号 14、固定 Android 证书、Sparkle ZIP 签名及 DMG／ZIP 一致性；保留历史镜像路径，并在部署当前网站前把生成的更新源原样保存到 `public/`。
+
+Mac 互联、HEVC、直连发现和 Pencil 以实验性预览功能打包。双 Mac／Pencil／Intel 运行与耐久验收仍待完成，自动检查不代表硬件性能；宣称已验证前需完成[真机矩阵](hevc-wired-pencil.zh-CN.md)。
+
+## 历史 v0.2.1-p2 证据
+
+以下条目只记录 p2，不能证明 p7 或未来版本已验证。
 
 ## 已发布身份
 

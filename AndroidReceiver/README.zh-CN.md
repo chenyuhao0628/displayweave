@@ -12,9 +12,9 @@ Android 接收端可以通过本地 WiFi 或由 Mac 管理的 ADB-forward USB �
 - WiFi：Mac 与 Android 位于同一可信局域网，并按系统要求授予附近 WiFi/本地网络发现权限。
 - USB：支持数据传输的线缆、开发者选项、USB 调试，以及允许 Mac 的 RSA 身份。
 
-## 安装 `v0.2.1-p6`
+## 安装 `v0.2.1-p7`
 
-从 [`v0.2.1-p6`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p6) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。由于 p5 尚不信任新的 Cloudflare 域名，p5 需要手动覆盖安装一次 p6；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/release-checklist.zh-CN.md)中的证书指纹。
+从 [`v0.2.1-p7`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p7) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。由于 p5 尚不信任新的 Cloudflare 域名，p5 需要手动覆盖安装一次 p6 或更新版；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/release-checklist.zh-CN.md)中的证书指纹。
 
 ## 首次安装后的更新
 

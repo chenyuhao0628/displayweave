@@ -2,8 +2,9 @@
 
 # Mac-to-Mac over a local network
 
-This feature is in the source development build. The published `v0.2.1-p6`
-assets do not include it. Both Macs need this build and macOS 14 or later.
+This feature is included experimentally in the `v0.2.1-p7` development preview.
+Two-Mac physical performance and endurance acceptance remain pending.
+Both Macs need this build and macOS 14 or later.
 Either Mac can send or receive; each runs one role at a time.
 
 The main window now focuses on devices and connection mode. Open the gear button or Command-comma for stream quality, application presentation, permissions and diagnostics. The main window is resizable; the menu-bar panel remains bounded.

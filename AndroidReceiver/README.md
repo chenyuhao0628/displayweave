@@ -12,9 +12,9 @@ The waiting screen follows the system light/dark theme. Settings scroll on small
 - WiFi: Mac and Android on the same trusted LAN with Nearby WiFi/Local Network discovery permission where required.
 - USB: a data-capable cable, Developer options, USB debugging, and approval of the Mac's RSA identity.
 
-## Install `v0.2.1-p6`
+## Install `v0.2.1-p7`
 
-Download `DisplayWeave-Android.apk` from [`v0.2.1-p6`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p6). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 manually once because p5 does not trust the new Cloudflare hostname. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/release-checklist.md).
+Download `DisplayWeave-Android.apk` from [`v0.2.1-p7`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p7). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once because p5 does not trust the new Cloudflare hostname. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/release-checklist.md).
 
 ## Updates after the first install
 

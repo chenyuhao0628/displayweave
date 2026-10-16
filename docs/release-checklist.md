@@ -1,12 +1,18 @@
 [English](release-checklist.md) | [简体中文](release-checklist.zh-CN.md)
 
-# `v0.2.1-p2` release checklist
+# Release checklist
 
-## Current source gate
+## Current release: v0.2.1-p7 (14)
 
-This file preserves the historical v0.2.1-p2 release evidence below. Current public downloads are v0.2.1-p6; see its release notes for that version. The 2026-10-16 source upgrade is not a new release. Before integrating source, run the [development gates](development.md): 32 Swift suites, six Android groups/build, both Apple builds, website, bilingual docs and release-link checks; require fresh CI on the PR head. The [source audit](source-upgrade-audit-2026-10-16.md) records local results.
+The [p7 release notes](release-notes-v0.2.1-p7.md) record the current artifact hashes, signing boundaries and release workflow evidence. The release tag targets `e56250c4539dcd8449508265401b4f28dddf1ccd`; Release run `38839071173` built and verified the seven assets with `deploy_feeds=false` so mirror verification precedes feed publication.
 
-Before a later binary release, additionally complete the physical acceptance matrix, review signing/version/feed identities and verify the newly produced assets. Historical checked boxes below do not approve a future release.
+The current [development gates](development.md) cover 37 Swift suites, six Android groups/build, both Apple builds, website, bilingual docs and release-link checks. Require fresh CI on the publication PR head. Independently verify downloaded packages, app identities, version/build 14, pinned Android certificate, Sparkle ZIP signature and matching DMG/ZIP before publication. Preserve historical mirror paths and persist the exact generated feeds in `public/` before deploying the current website.
+
+Mac-to-Mac, HEVC, direct-link discovery and Pencil are packaged as experimental preview features. Two-Mac/Pencil/Intel runtime and endurance acceptance remain pending; automated checks do not establish hardware performance. Complete the [physical matrix](hevc-wired-pencil.md) before claiming verified status.
+
+## Historical v0.2.1-p2 evidence
+
+The remaining entries record p2 only. They do not verify p7 or future releases.
 
 ## Published identity
 

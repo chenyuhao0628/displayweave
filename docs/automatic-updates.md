@@ -10,9 +10,9 @@ DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases an
 - Mac update artifact: `DisplayWeave-macOS.zip`
 - Android artifact: `DisplayWeave-Android.apk`
 
-The current migration release is
-[`v0.2.1-p6`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p6).
-Android p5 cannot trust the new Cloudflare hostname, so install p6 manually once.
+The current development release is
+[`v0.2.1-p7`](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p7).
+Android p5 cannot trust the new Cloudflare hostname, so install p6 or newer manually once.
 p6 and later can use the dual-source channel automatically.
 This release includes both the guided DMG and the Sparkle ZIP payload.
 
@@ -32,7 +32,7 @@ After this migration, Sparkle checks the signed appcast automatically and may in
 
 1. Manually install the first update-capable APK over the current `app.opendisplay.android` app. It must be signed with the existing DisplayWeave certificate; otherwise Android refuses replacement.
 2. The app checks at most once per 24 hours when it resumes. **设置与帮助 → 检查更新** bypasses that throttle.
-3. The p6 client tries `downloads.urlget.cyou` first and falls back to the exact matching GitHub Release only for connection, HTTP availability, or transport failures.
+3. The p6 and newer clients try `downloads.urlget.cyou` first and fall back to the exact matching GitHub Release only for connection, HTTP availability, or transport failures.
 4. When an update is found, the app downloads it and verifies its byte count, SHA-256, package name, version code, minimum SDK, and signing certificate through one shared verification path. Integrity or identity failures never trigger another mirror.
 5. On the first update, Android may ask to allow this app to install unknown apps. Return to DisplayWeave after granting it. The Android Package Installer always presents the final confirmation; silent installation is not supported.
 
@@ -48,14 +48,18 @@ GitHub Actions requires exactly these repository secrets:
 - `DISPLAYWEAVE_ANDROID_KEY_ALIAS`
 - `DISPLAYWEAVE_ANDROID_KEY_PASSWORD`
 
-Run the **Release** workflow. The first run may create or update the release-please PR; merge that PR and run **Release** again. For a created release, the workflow uses the tag as the display version and `github.run_number` as the monotonic build/version code. It then:
+For an explicit release, create its tag and draft GitHub Release, then run **Release** with `release_tag` and a `build_number` higher than every public Mac/Android build. Without an explicit tag, release-please may first create a version PR; merge it before rerunning. The tag determines the display version. If `build_number` is omitted, the workflow uses `github.run_number`; confirm that this is still monotonic.
+
+For a new mirror snapshot, set `deploy_feeds=false` (the default is `true`). The workflow:
 
 1. builds and tests the ad-hoc Mac app, unsigned iOS compatibility target, and signed Android APK;
-2. generates an EdDSA-signed appcast and a pinned-certificate Android JSON feed;
-3. verifies versions, hashes, archive structure, and Android signing;
-4. uploads immutable assets; and
-5. passes both signed feeds to a protected Pages deployment job without a bot
-   commit to `main`.
+2. generates an appcast with an EdDSA-signed ZIP enclosure and a pinned-certificate Android JSON feed;
+3. verifies versions, hashes, archive structure and Android signing; and
+4. uploads the seven immutable assets to the draft release while leaving the live feeds unchanged.
+
+Download and independently verify those assets. Deploy a complete Cloudflare snapshot containing the new files and every historical release that must remain accessible. Verify the live mirror bytes before publishing the GitHub Release. Copy the exact generated `appcast.xml` and `android-update.json` into `public/`, update the release links and checksums, and merge the reviewed publication PR after CI passes. The main-branch Pages deployment then publishes the website and feeds together. Persisting the generated feeds prevents a later site deployment from rolling the update channel back.
+
+With `deploy_feeds=true`, the workflow sends the feeds directly to the protected Pages job. Use this only when all referenced downloads are already accessible, and still persist those exact feeds in `public/`.
 
 Do not replace or use `--clobber` on a published update asset. Publish a new, higher build number for every correction.
 

@@ -63,7 +63,7 @@ Android 接收端在 9000 端口提供 TCP Server，渲染 Surface 返回时会�
 参见 [SECURITY.zh-CN.md](SECURITY.zh-CN.md) 与 [docs/README.zh-CN.md](docs/README.zh-CN.md)。
 
 
-## Mac 接收角色（开发构建）
+## Mac 接收角色（实验预览）
 
 Mac 应用可在发送和接收之间切换。接收角色先停止发送会话及发现任务，使用独立 TCP 监听、
 有界分帧和 AVSampleBufferDisplayLayer 渲染 H.264／经硬件能力确认的 HEVC。一次只接受一个发送端；旧连接回调
@@ -72,7 +72,7 @@ Mac 使用 Apple legacy 帧，不启用 Android DWV2。详见[设计](docs/mac-t
 
 ## 源码职责与有界任务（2026-10-16）
 
-源码应用在同一 Wi-Fi 或以太网局域网支持互斥的 Mac 发送/接收角色；这是 v0.2.1-p6 下载之外的开发功能。镜像捕获现有显示器，扩展创建虚拟显示器。
+源码应用在同一 Wi-Fi 或以太网局域网支持互斥的 Mac 发送/接收角色；v0.2.1-p7 将其作为实验功能打包，实机验收仍待完成。镜像捕获现有显示器，扩展创建虚拟显示器。
 
 | 区域 | 职责 |
 | --- | --- |

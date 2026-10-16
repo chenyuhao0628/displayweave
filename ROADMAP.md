@@ -2,7 +2,7 @@
 
 # DisplayWeave Roadmap
 
-## Completed in source — 2026-10-16
+## Packaged in v0.2.1-p7 — 2026-10-16
 
 - Exclusive Mac sender/receiver roles for one-way LAN mirror/extend.
 - Shared UI standard and Mac/iOS/Android/web refactor; accessible receiver settings and responsive bilingual navigation.
@@ -11,7 +11,7 @@
 - Hardware-gated Mac HEVC, interface-pinned direct-link candidates and negotiated Pencil pressure/tilt/proximity.
 - 37 Swift suites and platform compatibility builds. See the [current feature guide/evidence](docs/hevc-wired-pencil.md) and [prior source audit](docs/source-upgrade-audit-2026-10-16.md) for exact results and physical gaps.
 
-These source changes are beyond the published v0.2.1-p6 assets. Release readiness still requires the physical acceptance below.
+v0.2.1-p7 packages these changes as a development preview. The new hardware-dependent features remain experimental until the physical acceptance below is complete.
 
 ## Shipped and verified in Preview 2
 

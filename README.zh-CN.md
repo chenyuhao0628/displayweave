@@ -6,13 +6,13 @@
 
 DisplayWeave 是独立维护、使用 GPL-3.0、坚持本地优先的第二屏项目，源自 [OpenDisplay](https://github.com/peetzweg/opendisplay)。它可以把 iPhone、iPad 和 Android 设备变成 Mac 的扩展或镜像显示器。
 
-## Mac 与 Mac（源码开发构建）
+## Mac 与 Mac（v0.2.1-p7 实验功能）
 
 同一应用可选择发送或接收，通过 Wi-Fi/以太网单向扩展或镜像。双方需 macOS 14+，
-源码版协商硬件 HEVC，并可回退 H.264，最高 60fps；实体双 Mac 性能矩阵待验证。此功能尚不在下方 `v0.2.1-p6`
+应用协商硬件 HEVC，并可回退 H.264，最高 60fps；实体双 Mac 性能矩阵待验证。此功能已包含在下方 `v0.2.1-p7`
 发布包内。参见[使用指南](docs/mac-to-mac.zh-CN.md)及[设计与上游评估](docs/mac-to-mac-design.zh-CN.md)。
 
-当前源码还完成了四端 UI 规范化、上游恢复改进和网络/生命周期加固；该批基线见[源码升级报告](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。后续迭代增加了 [Mac HEVC、绑定接口的直连发现与经协商的 Apple Pencil 输入](docs/hevc-wired-pencil.zh-CN.md)，Swift 套件增至 37 组；实机验收仍待完成。
+本版本还包含四端 UI 规范化、上游恢复改进和网络/生命周期加固；该批基线见[源码升级报告](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。本版本增加了 [Mac HEVC、绑定接口的直连发现与经协商的 Apple Pencil 输入](docs/hevc-wired-pencil.zh-CN.md)，Swift 套件增至 37 组；实机验收仍待完成。
 
 ## 当前能力
 
@@ -29,9 +29,9 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 
 下述真机恢复与高刷新观察来自 Preview 2 验证，继续作为既有证据；本版本没有在第二台 Android 上重新执行这些项目。
 
-## 下载 `v0.2.1-p6`
+## 下载 `v0.2.1-p7`
 
-[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p6)
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p7)
 
 | 平台 | 产物 | 分发边界 |
 | --- | --- | --- |
@@ -61,7 +61,7 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
   验证，但应用仍为 ad-hoc 签名且未公证。
 - **Android：** 先把此 APK 覆盖安装到现有包。之后接收端最多每天自动
   检查一次，也可在“设置与帮助”手动检查。下载会校验大小、SHA-256、
-  包名、版本、最低 SDK 和固定签名证书，再打开 Android 系统安装器。p6
+  包名、版本、最低 SDK 和固定签名证书，再打开 Android 系统安装器。p6 及以后
   优先从 Cloudflare 下载，只在可用性或传输失败时回退到同一 GitHub Release。
 - **iOS/iPadOS：** 未签名自签输入包与现有 OpenDisplay 接收协议不受
   Mac/Android 更新渠道影响。

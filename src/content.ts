@@ -1,7 +1,7 @@
 export type Locale = "en" | "zh"
 export type EvidenceState = "verified" | "experimental" | "deferred"
 
-export const releaseTag = "v0.2.1-p6"
+export const releaseTag = "v0.2.1-p7"
 export const releaseBase = `https://downloads.urlget.cyou/releases/${releaseTag}`
 
 export type ReleaseAsset = {
@@ -88,7 +88,7 @@ export type SiteCopy = {
 const enAssets: ReleaseAsset[] = [
   {
     platform: "macOS",
-    role: "Sender",
+    role: "Sender / receiver",
     title: "Guided Mac first install",
     file: "DisplayWeave-macOS.dmg",
     description:
@@ -118,7 +118,7 @@ const enAssets: ReleaseAsset[] = [
 const zhAssets: ReleaseAsset[] = [
   {
     platform: "macOS",
-    role: "发送端",
+    role: "发送／接收",
     title: "带引导的 Mac 首次安装",
     file: "DisplayWeave-macOS.dmg",
     description:
@@ -178,7 +178,7 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} release`,
       title: "Install once, then update Mac and Android in place.",
       intro:
-        "Release packages are mirrored as immutable static files through Cloudflare. Android p6 uses Cloudflare first and falls back to the matching GitHub Release when the mirror is unavailable.",
+        "Release packages are mirrored as immutable static files through Cloudflare. Android p6 and later use Cloudflare first and fall back to the matching GitHub Release when the mirror is unavailable.",
       warning:
         "Development distribution — no App Store, Google Play, Developer ID notarization, or universal iOS signing.",
       checksum: "Verify all downloads with SHA256SUMS.txt",
@@ -394,7 +394,7 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} 发布`,
       title: "首次安装，之后原位更新 Mac 与 Android。",
       intro:
-        "发布文件通过 Cloudflare 不可变静态镜像分发。Android p6 优先使用 Cloudflare，镜像不可用时回退到同一 GitHub Release。",
+        "发布文件通过 Cloudflare 不可变静态镜像分发。Android p6 及以后优先使用 Cloudflare，镜像不可用时回退到同一 GitHub Release。",
       warning:
         "开发分发版——未通过 App Store、Google Play、Developer ID 公证或通用 iOS 签名分发。",
       checksum: "使用 SHA256SUMS.txt 验证全部下载",
