@@ -4,7 +4,9 @@
 
 ## 当前用户指南
 
-- [Mac 4K 延迟：未发布的源码改动与本机证据](mac-4k-latency.zh-CN.md)
+- [v0.3.0 正式版：4K 延迟与采集恢复](release-notes-v0.3.0.zh-CN.md)
+
+- [Mac 4K 延迟：v0.3.0 改动与本机证据](mac-4k-latency.zh-CN.md)
 - [上游 Mac 恢复机制集成与验证（2026-10-23）](upstream-integration-2026-10-23.zh-CN.md)
 
 - [`v0.3.0-preview.3` 固定签名与权限延续](release-notes-v0.3.0-preview.3.zh-CN.md)
@@ -31,9 +33,9 @@
 - [UI 审核与验收（2026-10-16）](ui-audit-2026-10-16.zh-CN.md)
 - [OpenDisplay 连接兼容](opendisplay-compatibility.zh-CN.md)
 - [开发工作流与当前 Codex 官方依据](development.zh-CN.md)
-- [Mac 与 Mac 局域网互联（实验预览）](mac-to-mac.zh-CN.md)与[设计/上游评估](mac-to-mac-design.zh-CN.md)
+- [Mac 与 Mac 局域网互联（实验性）](mac-to-mac.zh-CN.md)与[设计/上游评估](mac-to-mac-design.zh-CN.md)
 
-- [开发预览分发](development-preview.zh-CN.md)
+- [当前发行分发](development-preview.zh-CN.md)
 - [`v0.2.0-preview.2` 发布说明](release-notes-v0.2.0-preview.2.zh-CN.md)
 - [`v0.2.0-preview.3` 发布说明](release-notes-v0.2.0-preview.3.zh-CN.md)
 - [`v0.2.0-preview.4` 发布说明](release-notes-v0.2.0-preview.4.zh-CN.md)

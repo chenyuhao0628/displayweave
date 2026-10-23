@@ -2,7 +2,7 @@
 
 # Upstream Mac recovery integration — 2026-10-23
 
-This is **uncommitted, unreleased source work** on `codex/4k-wired-latency`, based on local `39f97a5`. It extends the [4K latency work](mac-4k-latency.md). It does not change any published DisplayWeave download or establish Intel 4K60 performance.
+Implemented in native source commit `929eb93` on `codex/4k-wired-latency`, based on `39f97a5`, and included in [v0.3.0 stable (19)](release-notes-v0.3.0.md). It extends the [4K latency work](mac-4k-latency.md). The evidence below does not establish Intel 4K60 performance.
 
 ## Verified upstream baseline
 
@@ -67,6 +67,6 @@ Local evidence is under ignored `build/diagnostics/upstream-review-2026-10-23/`:
 - `receiver-window-compile.log`, `virtual-display-compile.log`: both interactive fixtures compile with their updated source dependencies; neither binary was run.
 - Bilingual documentation (95 pairs), release-link checks and `git diff --check` pass. The new guide pairs are registered in the documentation gate.
 
-No app was installed, launched, signed or released. No screen capture, receiver window, virtual-display creation or WindowServer restart was used. **SKIP:** Intel/macOS 15 runtime, two-Mac Ethernet presentation/latency, actual sleep/wake, multiple virtual displays and sustained 4K60. The local host is arm64/macOS 26.5.2. Automated policies and a universal build cannot prove those hardware behaviors.
+During this source-audit round, no app was installed, launched, signed or released. Subsequent packaging and release checks are recorded in [v0.3.0 notes](release-notes-v0.3.0.md). No screen capture, receiver window, virtual-display creation or WindowServer restart was used. **SKIP:** Intel/macOS 15 runtime, two-Mac Ethernet presentation/latency, actual sleep/wake, multiple virtual displays and sustained 4K60. The local host is arm64/macOS 26.5.2. Automated policies and a universal build cannot prove those hardware behaviors.
 
 After packaging, a brief normal 4K workload check and one pair of logs can check selected encoder mode, first video, actual transport and capture/encode/send rates. Multi-display recovery additionally needs a deliberate sleep/wake/rebuild check on suitable hardware; it is not a claim made by the synthetic tests.

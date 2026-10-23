@@ -2,7 +2,21 @@
 
 # 发布检查清单
 
-## 当前发行：v0.3.0-preview.3（18）
+## 当前正式版：v0.3.0（19）
+
+[发布说明](release-notes-v0.3.0.zh-CN.md)记录 Mac 4K 延迟、100 Mbps H.264 局域网上限、逐项审查的上游恢复、产物哈希和实机边界。原生源码为 `929eb93`。
+
+- [x] 60 组 Swift、通用 Mac Debug、iOS 模拟器 Debug 和 Android 测试/Debug/Lint 通过。
+- [x] 真实 Apple↔Java TLS、隔离 Mac/iOS 钥匙串、iOS TLS/视频/Pencil/生命周期及 Android Keystore/TLS/撤销检查通过。
+- [x] 20 项签名回归、12 项分发检查、36 项品牌资产及真实双程序钥匙串/签名延续通过。
+- [x] 构建 19 的 Mac Release/DMG/ZIP 已与下载的实际构建 18 比较签名身份；无签名 arm64 iOS 与原证书 Android Release 验证通过。
+- [x] 独立验证 Sparkle Ed25519 签名、更新源/产物身份、版本、大小和哈希。
+
+发行要求：发行提交完整 CI 通过、八个远端文件验证、GitHub 正式版（非 prerelease）、merge commit 保留 tag 祖先关系，以及 Pages 在线更新源字节完全匹配。托管与在线结果单独记录在发布 PR 和 Release。本次未执行 18 → 19 交互式权限升级测试。
+
+实机 Intel/macOS 15、双 iMac 以太网 4K60、实际睡眠唤醒、多显示器恢复与耐久仍待验证。正式版沿用 Apple Development 签名且未公证；iOS 需要重签。
+
+## 历史 v0.3.0-preview.3（18）
 
 [发布说明](release-notes-v0.3.0-preview.3.zh-CN.md)记录固定 Mac 签名、哈希和验证边界。原生／签名基线 `92b5834` 保留 preview.2 的 UI、协议和应用标识。[文档检查](documentation-audit-2026-10-17.zh-CN.md)覆盖当前指南与历史引用清理。
 

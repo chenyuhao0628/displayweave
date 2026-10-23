@@ -2,7 +2,7 @@
 
 # Mac 4K latency: source changes and local evidence
 
-Date: 2026-10-23. **Unreleased source work**, not a claim about the published v0.3.0-preview.3 download or guaranteed Intel 4K60 performance.
+Date: 2026-10-23. Included in [v0.3.0 stable (19)](release-notes-v0.3.0.md), native source `929eb93`. This audit records local evidence; it does not guarantee Intel 4K60 performance.
 
 ## Scope and implementation
 
@@ -55,7 +55,7 @@ Apple API semantics were checked against the installed SDK headers `AVQueuedSamp
 The remaining limits and the requested bitrate change were reviewed as follows:
 
 - The Apple envelope of `4096 × 2304 × 60` pixels/second permits both reported 3840×2160/60 and 4096×2304/60 streams. HEVC's H.264 fallback envelope preserves a decodable same-resolution fallback.
-- TCP uses the legacy `wifi` bitrate-policy category for both Ethernet and Wi-Fi. At the user’s request, the unreleased H.264 LAN ceiling is raised from 60 to 100 Mbps, exposing Manual 80/100 Mbps and retaining a hard 100 Mbps bound outside Benchmark mode. This applies to all receivers on this LAN policy, not only Intel Macs. The automatic 4K60 high-quality estimates remain approximately 49.77 and 56.62 Mbps; raising the ceiling does not force those sessions to 100 Mbps or prove better cadence. The new preset/clamping regressions failed under the old 60 Mbps limit. See [bitrate modes](bitrate-modes.md).
+- TCP uses the legacy `wifi` bitrate-policy category for both Ethernet and Wi-Fi. At the user’s request, the v0.3.0 H.264 LAN ceiling is raised from 60 to 100 Mbps, exposing Manual 80/100 Mbps and retaining a hard 100 Mbps bound outside Benchmark mode. This applies to all receivers on this LAN policy, not only Intel Macs. The automatic 4K60 high-quality estimates remain approximately 49.77 and 56.62 Mbps; raising the ceiling does not force those sessions to 100 Mbps or prove better cadence. The new preset/clamping regressions failed under the old 60 Mbps limit. See [bitrate modes](bitrate-modes.md).
 - The one-second hard `DataRateLimits` cap equals the average bitrate target. The SDK notes that a target close to a hard cap can undershoot. Additional burst headroom is a candidate for measured encoder/quality testing; it has not been enabled without workload or link-rate evidence.
 - Capture queue depth eight, video send budgets, one cursor write plus latest pending position, frame-size checks, session generations and codec limits remain bounded. Increasing these limits without evidence can add retained work rather than improve responsiveness.
 

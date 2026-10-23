@@ -2,7 +2,9 @@
 
 # Mac 签名与权限延续
 
-从 `v0.3.0-preview.3`（18）开始，Mac 预览使用固定 Apple Development 身份。Run 和预览打包会强制验证身份并比较升级。早期 preview.2 资产仍为临时签名且保持不变；首次从临时签名迁移可能需要再授权一次，后续固定签名构建保持代码身份连续。
+从 `v0.3.0-preview.3`（18）开始，Mac 应用使用固定 Apple Development 身份。Run 和本地打包会强制验证身份并比较升级。早期 preview.2 资产仍为临时签名且保持不变；首次从临时签名迁移可能需要再授权一次，后续固定签名构建保持代码身份连续。
+
+v0.3.0（19）打包时与下载的实际构建 18 应用比较，验证了相同的代码身份要求、团队、bundle 身份和 arm64/x86_64 架构。本次未覆盖安装现有应用，未重测 18 → 19 的 TCC 权限；两个固定签名测试程序的钥匙串延续夹具再次通过。参见[发行证据](release-notes-v0.3.0.zh-CN.md)。
 
 ## 升级为什么会丢失权限
 
@@ -22,7 +24,7 @@ python3 tools/mac_signing.py xcode-settings
 
 公开签名元数据固定保存在 Git 外的 `~/Library/Application Support/DisplayWeave/Signing/mac-signing.json`，也可通过 `DISPLAYWEAVE_MAC_SIGNING_CONFIG` 指定位置。后续构建保留这份配置和相同钥匙串身份。证书缺失或过期时，在停止运行中的开发应用之前就会中止构建，不回退临时签名，也不自动选取其他证书。续期证书只有团队和两种构建的身份要求完全一致时才可更新指纹；其他变化需要单独验证迁移。
 
-本机已有的 Apple Development 身份支持本地未公证预览流程，它不等同于 Developer ID 分发或公证。取得发行凭据后使用[正式分发流程](apple-distribution.zh-CN.md)。GitHub 托管发行 runner 默认没有维护者身份，现会在签名预检处停止；在明确配置 runner 前使用[本地发行流程](local-release.zh-CN.md)。本次修改没有把签名凭据导出至 GitHub。
+本机已有的 Apple Development 身份支持本地未公证打包，包括 v0.3.0 正式版；它不等同于 Developer ID 分发或公证。取得发行凭据后使用[正式分发流程](apple-distribution.zh-CN.md)。GitHub 托管发行 runner 默认没有维护者身份，现会在签名预检处停止；在明确配置 runner 前使用[本地发行流程](local-release.zh-CN.md)。本次修改没有把签名凭据导出至 GitHub。
 
 ## 构建与升级比较
 

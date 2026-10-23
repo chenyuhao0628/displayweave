@@ -1,7 +1,7 @@
 export type Locale = "en" | "zh"
 export type EvidenceState = "verified" | "experimental" | "deferred"
 
-export const releaseTag = "v0.3.0-preview.3"
+export const releaseTag = "v0.3.0"
 export const releaseBase = `https://github.com/chenyuhao0628/displayweave/releases/download/${releaseTag}`
 
 export type ReleaseAsset = {
@@ -109,7 +109,7 @@ const enAssets: ReleaseAsset[] = [
     platform: "iOS / iPadOS",
     role: "Receiver input",
     title: "Unsigned re-signing input",
-    file: "DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa",
+    file: "DisplayWeave-iOS-unsigned-resigning-input.ipa",
     description:
       "Not directly installable. You must lawfully sign it with your own Apple identity before device installation.",
     action: "Download re-signing input",
@@ -139,7 +139,7 @@ const zhAssets: ReleaseAsset[] = [
     platform: "iOS / iPadOS",
     role: "接收端输入包",
     title: "未签名自签输入包",
-    file: "DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa",
+    file: "DisplayWeave-iOS-unsigned-resigning-input.ipa",
     description:
       "不能直接安装；需使用你自己的 Apple 身份依法签名后才能安装到设备。",
     action: "下载自签输入包",
@@ -155,7 +155,7 @@ export const copy: Record<Locale, SiteCopy> = {
       evidence: "Evidence",
       trust: "Trust",
       faq: "FAQ",
-      download: "Download Preview",
+      download: "Download",
     },
     hero: {
       titleLines: ["Weave every", "spare screen", "into your"],
@@ -177,9 +177,9 @@ export const copy: Record<Locale, SiteCopy> = {
     },
     release: {
       label: `${releaseTag} release`,
-      title: "Download the locally built preview.",
+      title: "Download the stable release.",
       intro:
-        "Stable Mac signing for permission continuity, with the refreshed UI and main-screen OpenDisplay compatibility, distributed through GitHub Releases. Android and macOS verify every download before installing it.",
+        "Mac 4K latency improvements, a 100 Mbps H.264 LAN ceiling, and reviewed capture recovery fixes. Get the stable release from GitHub; Android and macOS verify updates before installation.",
       warning:
         "Pair DisplayWeave devices or choose the main-screen OpenDisplay compatibility mode. Mac uses a fixed Apple Development signature and remains unnotarized; iOS requires re-signing.",
       checksum: "Verify all downloads with SHA256SUMS.txt",
@@ -207,7 +207,7 @@ export const copy: Record<Locale, SiteCopy> = {
           state: "verified",
           title: "Touch and mixed receivers",
           detail:
-            "Prior Preview 2 evidence covers tap, drag, cursor, two-finger scroll, and one iPhone WiFi receiver running beside one Android receiver; this physical matrix was not rerun for this preview.",
+            "Prior Preview 2 evidence covers tap, drag, cursor, two-finger scroll, and one iPhone WiFi receiver running beside one Android receiver; this physical matrix was not rerun for this release.",
         },
         {
           state: "verified",
@@ -341,7 +341,7 @@ export const copy: Record<Locale, SiteCopy> = {
         ],
         [
           "Why does macOS warn about the app?",
-          "The Preview uses Apple Development signing to keep its identity consistent across upgrades. It is not Developer ID signed or notarized, so macOS may still require approval. Verify the checksum and follow the documented first-install steps.",
+          "This release uses Apple Development signing to keep its identity consistent across upgrades. It is not Developer ID signed or notarized, so macOS may still require approval. Verify the checksum and follow the documented first-install steps.",
         ],
         [
           "Can I install the IPA directly?",
@@ -394,9 +394,9 @@ export const copy: Record<Locale, SiteCopy> = {
     },
     release: {
       label: `${releaseTag} 发布`,
-      title: "下载本地构建的开发预览版。",
+      title: "下载正式版。",
       intro:
-        "固定 Mac 签名改善升级后的权限延续，保留新版 UI 和主界面 OpenDisplay 兼容入口。发行文件来自 GitHub Releases，Android 与 macOS 在安装前校验下载。",
+        "包含 Mac 4K 延迟优化、100 Mbps H.264 局域网上限与逐项审查的采集恢复修复。正式版通过 GitHub Releases 分发，Android 与 macOS 在安装更新前校验下载。",
       warning:
         "DisplayWeave 使用邀请配对；OpenDisplay 可从主界面选择兼容连接。Mac 使用固定 Apple Development 签名且未公证；iOS 需自行签名。",
       checksum: "使用 SHA256SUMS.txt 验证全部下载",
@@ -420,7 +420,7 @@ export const copy: Record<Locale, SiteCopy> = {
           state: "verified",
           title: "触摸与混合接收端",
           detail:
-            "Preview 2 既有证据覆盖轻点、拖动、光标、双指滚动，以及 iPhone WiFi 与一台 Android 并发；本预览版未重新执行该实机矩阵。",
+            "Preview 2 既有证据覆盖轻点、拖动、光标、双指滚动，以及 iPhone WiFi 与一台 Android 并发；本版本未重新执行该实机矩阵。",
         },
         {
           state: "verified",
@@ -554,7 +554,7 @@ export const copy: Record<Locale, SiteCopy> = {
         ],
         [
           "为什么 macOS 会显示安全警告？",
-          "Preview 使用 Apple Development 签名保持升级身份一致，尚未使用 Developer ID 签名或公证，因此 macOS 仍可能要求确认。请核对校验和，并按首次安装说明操作。",
+          "本版本使用 Apple Development 签名保持升级身份一致，尚未使用 Developer ID 签名或公证，因此 macOS 仍可能要求确认。请核对校验和，并按首次安装说明操作。",
         ],
         [
           "IPA 可以直接安装吗？",

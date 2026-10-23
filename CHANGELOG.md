@@ -1,5 +1,9 @@
 # Changelog
 
+## DisplayWeave v0.3.0 (2026-10-23)
+
+Stable release, build 19: Mac 4K encoding/cursor latency improvements, a 100 Mbps H.264 LAN ceiling, and reviewed upstream encoder/capture/display recovery. See [English release notes](docs/release-notes-v0.3.0.md) / [简体中文发布说明](docs/release-notes-v0.3.0.zh-CN.md) for changes, checks and hardware limits. The Mac remains Apple Development signed and unnotarized; iOS requires re-signing.
+
 ## Fork changes
 
 ### Added

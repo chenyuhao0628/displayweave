@@ -10,16 +10,16 @@ DisplayWeave 把不可变的 Mac/Android 安装包发布到 GitHub Releases，�
 - Mac 更新产物：`DisplayWeave-macOS.zip`
 - Android 产物：`DisplayWeave-Android.apk`
 
-当前开发发行版本是
-[`v0.3.0-preview.3`](https://github.com/chenyuhao0628/displayweave/releases)。
+当前正式发行版本是
+[`v0.3.0`](https://github.com/chenyuhao0628/displayweave/releases)。
 未支持当前更新路径的旧 Android 版本需要手动安装一次当前 APK；后续版本使用应用内的 GitHub 单源更新渠道。
 本版本同时包含引导式 DMG 与 Sparkle ZIP 更新包。
 
-preview.3 的 Mac 使用固定 Apple Development 身份，仍未公证。Sparkle 通过不变的内置 EdDSA 公钥验证 ZIP。更新真实性与权限延续分别验证：打包流程检查 Mac 签名身份，Sparkle 验证更新签名；这些都不等同于 Developer ID 公证发行。
+v0.3.0 的 Mac 使用固定 Apple Development 身份，仍未公证。Sparkle 通过不变的内置 EdDSA 公钥验证 ZIP。更新真实性与权限延续分别验证：打包流程检查 Mac 签名身份，Sparkle 验证更新签名；这些都不等同于 Developer ID 公证发行。
 
-2026-10-17：构建 18 的 macOS 产物使用固定 Apple Development 签名。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。权限延续、保留的 OpenDisplay 兼容与构建证据见[发布说明](release-notes-v0.3.0-preview.3.zh-CN.md)。
+2026-10-23：正式版构建 19 加入 Mac 4K 延迟优化、100 Mbps H.264 局域网上限和逐项审查的上游恢复修复，沿用固定 Apple Development 签名。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](release-notes-v0.3.0.zh-CN.md)。
 
-源码流程现已要求固定 Apple 签名身份和升级比较，见[权限延续](mac-permissions.zh-CN.md)，旧发行资产保持不可变；preview.3 是新增的固定签名构建。本地发行的可复现命令与验收要求见[本地发行](local-release.zh-CN.md)。
+源码流程现已要求固定 Apple 签名身份和升级比较，见[权限延续](mac-permissions.zh-CN.md)，旧发行资产保持不可变；v0.3.0 延续构建 18 的签名身份。本地发行的可复现命令与验收要求见[本地发行](local-release.zh-CN.md)。
 
 ## 用户一次性迁移
 
@@ -43,7 +43,7 @@ preview.3 的 Mac 使用固定 Apple Development 身份，仍未公证。Sparkle
 
 ## 发布操作
 
-当前预览采用[本地发行](local-release.zh-CN.md)。流程使用固定 Mac 钥匙串身份、现有 Sparkle 钥匙串密钥和 Android keystore，不导出私钥。明确设置新版本／构建号，并通过 `DISPLAYWEAVE_MAC_BASELINE_APP` 与上一份已发布应用比较。只有首次从临时签名迁移到固定签名时使用 `DISPLAYWEAVE_ALLOW_ADHOC_MIGRATION=1`。
+当前正式版采用[本地发行](local-release.zh-CN.md)。流程使用固定 Mac 钥匙串身份、现有 Sparkle 钥匙串密钥和 Android keystore，不导出私钥。明确设置新版本／构建号，并通过 `DISPLAYWEAVE_MAC_BASELINE_APP` 与上一份已发布应用比较。只有首次从临时签名迁移到固定签名时使用 `DISPLAYWEAVE_ALLOW_ADHOC_MIGRATION=1`。
 
 1. 构建 Mac DMG／ZIP、已签名 Android APK、无签名 iOS 重签输入包，并生成两个更新源。
 2. 验证版本、哈希、归档内容、Mac 全部架构及签名连续性、Sparkle Ed25519 签名与 Android 固定证书。

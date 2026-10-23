@@ -2,10 +2,11 @@
 
 # DisplayWeave roadmap
 
-Updated 2026-10-17. The [feature ledger](docs/feature-completion.md) records each implementation. The current release is v0.3.0-preview.3 (18), adding fixed Mac signing and upgrade identity checks. See [release notes](docs/release-notes-v0.3.0-preview.3.md) for artifacts and verification boundaries.
+Updated 2026-10-23. The [feature ledger](docs/feature-completion.md) records each implementation. The current release is v0.3.0 (19), adding Mac 4K latency improvements, a 100 Mbps H.264 LAN ceiling and reviewed upstream recovery fixes. See [release notes](docs/release-notes-v0.3.0.md) for artifacts and verification boundaries.
 
-## Included in the current v0.3.0 preview
+## Included in the current v0.3.0 stable release
 
+- Mac 4K encoding/cursor latency policies, bounded receiver pressure, 100 Mbps H.264 LAN presets and upstream capture/display recovery; see [the release notes](docs/release-notes-v0.3.0.md).
 - Fixed Apple Development signing and upgrade comparisons; local permission continuity verified.
 - Shared UI standards and main-screen OpenDisplay compatibility in both connection directions.
 - Per-device Native/1080p/1440p/4K extension resolution.

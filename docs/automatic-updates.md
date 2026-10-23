@@ -10,16 +10,16 @@ DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases an
 - Mac update artifact: `DisplayWeave-macOS.zip`
 - Android artifact: `DisplayWeave-Android.apk`
 
-The current development release is
-[`v0.3.0-preview.3`](https://github.com/chenyuhao0628/displayweave/releases).
+The current stable release is
+[`v0.3.0`](https://github.com/chenyuhao0628/displayweave/releases).
 Install a current APK manually once; later builds use the in-app channel automatically.
 This release includes both the guided DMG and the Sparkle ZIP payload.
 
-The preview.3 Mac build uses a pinned Apple Development identity and is not notarized. Sparkle authenticates the ZIP with the unchanged embedded EdDSA key. Update authenticity and permission continuity are separate: packaging checks the Mac signing identity, while Sparkle verifies the update signature. Neither makes this a Developer ID notarized release.
+The v0.3.0 Mac build uses a pinned Apple Development identity and is not notarized. Sparkle authenticates the ZIP with the unchanged embedded EdDSA key. Update authenticity and permission continuity are separate: packaging checks the Mac signing identity, while Sparkle verifies the update signature. Neither makes this a Developer ID notarized release.
 
-2026-10-17: build 18 uses a pinned Apple Development identity for macOS. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](release-notes-v0.3.0-preview.3.md) for permission continuity, retained OpenDisplay compatibility and build evidence.
+2026-10-23: stable build 19 includes Mac 4K latency improvements, the 100 Mbps H.264 LAN ceiling and reviewed upstream recovery fixes, retaining the pinned Apple Development identity. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](release-notes-v0.3.0.md) for changes, permission continuity and verification limits.
 
-The source workflow now requires a pinned Apple signing identity and an upgrade comparison; see [permission continuity](mac-permissions.md). Previous release assets remain immutable; preview.3 is a new signed build. See [local releases](local-release.md) for reproducible commands and validation requirements.
+The source workflow now requires a pinned Apple signing identity and an upgrade comparison; see [permission continuity](mac-permissions.md). Previous release assets remain immutable; v0.3.0 retains the build 18 signing identity. See [local releases](local-release.md) for reproducible commands and validation requirements.
 
 ## One-time user migration
 
@@ -43,7 +43,7 @@ Declining the permission or installation leaves the receiver usable and does not
 
 ## Release operation
 
-Use [local publication](local-release.md) for the current preview. It uses the pinned Mac Keychain identity, the existing Sparkle Keychain key and Android keystore without exporting private keys. Set a new version/build and compare the Mac app with the previous published app using `DISPLAYWEAVE_MAC_BASELINE_APP`. Only the first ad-hoc → fixed-signature migration uses `DISPLAYWEAVE_ALLOW_ADHOC_MIGRATION=1`.
+Use [local publication](local-release.md) for the current stable release. It uses the pinned Mac Keychain identity, the existing Sparkle Keychain key and Android keystore without exporting private keys. Set a new version/build and compare the Mac app with the previous published app using `DISPLAYWEAVE_MAC_BASELINE_APP`. Only the first ad-hoc → fixed-signature migration uses `DISPLAYWEAVE_ALLOW_ADHOC_MIGRATION=1`.
 
 1. Build the Mac DMG/ZIP, signed Android APK and unsigned iOS re-signing input; generate the two update feeds.
 2. Verify versions, hashes, archive contents, all Mac architectures and signing continuity, the Sparkle Ed25519 signature and the pinned Android certificate.

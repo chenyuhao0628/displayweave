@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Existing tag/prerelease to build (for example v0.2.0-preview.2)"
+        description: "Existing release tag to build (for example v0.3.0)"
         required: false
         type: string
       build_number:
@@ -139,7 +139,7 @@ jobs:
             DisplayWeave-macOS.zip \
             DisplayWeave-macOS.dmg \
             DisplayWeave-Android.apk \
-            DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa \
+            DisplayWeave-iOS-unsigned-resigning-input.ipa \
             appcast.xml android-update.json > SHA256SUMS.txt
 
       - name: Verify the complete update release
@@ -156,7 +156,7 @@ jobs:
             "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-macOS.zip" \
             "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-macOS.dmg" \
             "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-Android.apk" \
-            "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa" \
+            "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-iOS-unsigned-resigning-input.ipa" \
             "$DISPLAYWEAVE_OUTPUT_DIR/appcast.xml" \
             "$DISPLAYWEAVE_OUTPUT_DIR/android-update.json" \
             "$DISPLAYWEAVE_OUTPUT_DIR/SHA256SUMS.txt"

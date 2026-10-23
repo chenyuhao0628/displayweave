@@ -4,7 +4,9 @@
 
 ## Current user guides
 
-- [Mac 4K latency: unreleased source changes and local evidence](mac-4k-latency.md)
+- [v0.3.0 stable release: 4K latency and capture recovery](release-notes-v0.3.0.md)
+
+- [Mac 4K latency: v0.3.0 changes and local evidence](mac-4k-latency.md)
 - [Upstream Mac recovery integration and verification (2026-10-23)](upstream-integration-2026-10-23.md)
 
 - [`v0.3.0-preview.3` fixed signing and permission continuity](release-notes-v0.3.0-preview.3.md)
@@ -31,9 +33,9 @@
 - [UI audit and acceptance (2026-10-16)](ui-audit-2026-10-16.md)
 - [OpenDisplay connection compatibility](opendisplay-compatibility.md)
 - [Development workflow and current Codex guidance](development.md)
-- [Mac-to-Mac LAN (experimental preview)](mac-to-mac.md) and [design/upstream assessment](mac-to-mac-design.md)
+- [Mac-to-Mac LAN (experimental)](mac-to-mac.md) and [design/upstream assessment](mac-to-mac-design.md)
 
-- [Development preview distribution](development-preview.md)
+- [Current release distribution](development-preview.md)
 - [`v0.2.0-preview.2` release notes](release-notes-v0.2.0-preview.2.md)
 - [`v0.2.0-preview.3` release notes](release-notes-v0.2.0-preview.3.md)
 - [`v0.2.0-preview.4` release notes](release-notes-v0.2.0-preview.4.md)

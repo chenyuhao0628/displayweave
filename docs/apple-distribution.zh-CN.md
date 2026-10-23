@@ -6,9 +6,9 @@
 
 ## 就绪状态与边界
 
-2026-10-16 本机 **Developer ID Application** 与 **Apple Distribution** 可用身份均为零；Apple Development 身份不足以完成这些导出。正式签名、公证仍**阻塞于外部凭据**。离线测试只证明校验与失败流程，不能代替已公证产物。v0.3.0-preview.3 预览采用 Mac Apple Development 签名，仍未公证；iOS 保持无签名，见[预览分发](development-preview.zh-CN.md)。
+2026-10-16 本机 **Developer ID Application** 与 **Apple Distribution** 可用身份均为零；Apple Development 身份不足以完成这些导出。正式签名、公证仍**阻塞于外部凭据**。离线测试只证明校验与失败流程，不能代替已公证产物。v0.3.0 正式版（19）采用 Mac Apple Development 签名，仍未公证；iOS 保持无签名。正式版渠道与 Developer ID 公证分别记录，见[发行分发](development-preview.zh-CN.md)。
 
-原预览脚本继续可用。正式工作流不会使用预览的关闭库验证 entitlement，Mac 使用空的 `Mac/OpenSidecarMac.entitlements` 与 hardened runtime。不会生成/导出密钥、自动申请 provisioning 或上传开发者门户。
+原本地打包脚本也支持未公证的正式版发行。正式工作流不会使用预览的关闭库验证 entitlement，Mac 使用空的 `Mac/OpenSidecarMac.entitlements` 与 hardened runtime。不会生成/导出密钥、自动申请 provisioning 或上传开发者门户。
 
 ## 前提与预检
 
@@ -40,7 +40,7 @@ python3 tools/apple-distribution.py preflight ios \
 将 `preflight` 换成 `build`，保留其余参数并追加：
 
 ```text
---version 0.3.0 --build-number 16 --output build/apple-production-candidate-001
+--version 0.3.1 --build-number 20 --output build/apple-production-candidate-001
 ```
 
 以上数字仅为示例，不代表预约或发行版本。输出必须是 `build/` 下的新目录，以私有权限创建并写入 `INCOMPLETE`。不会覆盖或删除既有目录。失败时保留日志和 archive，下次构建使用新目录。日志/profile 可能包含本地标识，整个目录不得提交 Git 或公开上传。
@@ -49,7 +49,7 @@ python3 tools/apple-distribution.py preflight ios \
 
 Mac 同时归档 arm64 与 x86_64。提交 ZIP 到 Apple 公证服务，服务器等待上限 30 分钟，本地进程也有超时。仅 `Accepted` 可继续 staple、验证 staple 和 Gatekeeper。最终 ZIP 从已 staple 的应用生成，使用原 Sparkle 账户签名并验证。iOS 导出 arm64 并解包校验 IPA。全部成功后才删除 `INCOMPLETE`，生成 `receipt.json` 与 `SHA256SUMS.txt`。
 
-超时后 Apple 任务可能仍运行。先查看保留的提交输出并查询状态，再决定是否重新提交；超时不等于通过。本地成功回执也不代表实机表现或已公开发行。正式工具目前为 Mac 生成 ZIP；引导式 DMG 仍属于预览工作流，不宣称已有公证生产 DMG。
+超时后 Apple 任务可能仍运行。先查看保留的提交输出并查询状态，再决定是否重新提交；超时不等于通过。本地成功回执也不代表实机表现或已公开发行。正式工具目前为 Mac 生成 ZIP；引导式 DMG 仍属于未公证本地工作流，不宣称已有公证生产 DMG。
 
 ## 自动验证
 

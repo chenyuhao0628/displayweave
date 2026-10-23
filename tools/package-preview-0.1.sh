@@ -14,7 +14,8 @@ APKSIGNER="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}/build
 KEYSTORE_PATH="${DISPLAYWEAVE_ANDROID_KEYSTORE:-$HOME/Library/Application Support/DisplayWeave/Signing/android-preview.jks}"
 KEY_ALIAS="${DISPLAYWEAVE_ANDROID_KEY_ALIAS:-displayweave-preview}"
 KEYCHAIN_SERVICE="app.displayweave.android-preview-signing"
-# Keep the same Apple signing identity across every preview. No certificate
+# Historical entry-point name; UPDATE_RELEASE also packages stable versions.
+# Keep the same Apple signing identity across releases. No certificate
 # auto-selection, key export, or silent ad-hoc fallback is allowed.
 signing_output="$(python3 "$ROOT_DIR/tools/mac_signing.py" xcode-settings)"
 signing_options=()
@@ -32,9 +33,11 @@ STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/displayweave-preview-0.1.XXXXXX")"
 if [[ "$UPDATE_RELEASE" == "1" ]]; then
   MAC_ARCHIVE_NAME="DisplayWeave-macOS.zip"
   ANDROID_ARCHIVE_NAME="DisplayWeave-Android.apk"
+  IOS_ARCHIVE_NAME="DisplayWeave-iOS-unsigned-resigning-input.ipa"
 else
   MAC_ARCHIVE_NAME="DisplayWeave-Preview-0.1-macOS.zip"
   ANDROID_ARCHIVE_NAME="DisplayWeave-Preview-0.1-Android.apk"
+  IOS_ARCHIVE_NAME="DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa"
 fi
 
 cleanup() {
@@ -48,8 +51,8 @@ mkdir -p "$OUT_DIR"
 cd "$ROOT_DIR"
 ./generate.sh
 
-# Apple Development is usable for a local, unnotarized preview. Developer ID
-# production distribution remains a separate notarized workflow. Both use the
+# This path preserves the pinned Apple identity and is not notarized. Developer
+# ID notarization remains a separate credential-dependent workflow. Both use the
 # normal entitlement set; Xcode signs embedded Sparkle with the same identity.
 xcodebuild -quiet \
   -project OpenSidecar.xcodeproj \
@@ -78,7 +81,6 @@ ditto -c -k --sequesterRsrc --keepParent \
 "$ROOT_DIR/tools/create-guided-dmg.sh" \
   "$MAC_APP" "$OUT_DIR/$MAC_DMG_NAME"
 
-IOS_ARCHIVE_NAME="DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa"
 xcodebuild -quiet \
   -project OpenSidecar.xcodeproj \
   -scheme OpenSidecariOS \
@@ -149,5 +151,5 @@ shasum -a 256 \
   "$ANDROID_ARCHIVE_NAME" \
   "$IOS_ARCHIVE_NAME" > SHA256SUMS.txt
 
-echo "DisplayWeave Preview 0.1 artifacts:"
+echo "DisplayWeave $VERSION_NAME artifacts:"
 ls -lh "$OUT_DIR"

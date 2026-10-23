@@ -2,7 +2,21 @@
 
 # Release checklist
 
-## Current release: v0.3.0-preview.3 (18)
+## Current stable release: v0.3.0 (19)
+
+The [release notes](release-notes-v0.3.0.md) record Mac 4K latency, the 100 Mbps H.264 LAN ceiling, reviewed upstream recovery, artifact hashes and physical limits. Native source is `929eb93`.
+
+- [x] 60 Swift suites, universal Mac Debug, iOS Simulator Debug and Android tests/Debug/Lint passed.
+- [x] Actual Apple↔Java TLS, isolated Mac/iOS Keychain, iOS TLS/video/Pencil/lifecycle and Android Keystore/TLS/revocation checks passed.
+- [x] 20 signing regressions, 12 distribution checks, 36 brand assets and real two-binary Keychain/signing continuity passed.
+- [x] Build 19 Mac Release/DMG/ZIP verified against the exact downloaded build 18 signing identity; unsigned arm64 iOS and original-certificate Android Release verified.
+- [x] Independent Sparkle Ed25519 signature, feed/artifact identities, versions, sizes and hashes verified.
+
+Publication requires full CI on the release commit, eight verified remote files, a stable (non-prerelease) GitHub Release, merge-commit ancestry and exact live Pages feed bytes. The publication PR and Release record hosted and online results separately. No build 18 → 19 interactive permission-upgrade test was performed.
+
+Physical Intel/macOS 15, two-iMac Ethernet 4K60, real sleep/wake, multi-display recovery and endurance remain pending. This stable release retains Apple Development signing and is unnotarized; iOS requires re-signing.
+
+## Historical v0.3.0-preview.3 (18)
 
 The [release notes](release-notes-v0.3.0-preview.3.md) record fixed Mac signing, hashes and verification limits. Native/signing baseline `92b5834` retains preview.2's UI, protocol and application identifiers. The [documentation audit](documentation-audit-2026-10-17.md) covers current guides and historical-reference cleanup.
 
