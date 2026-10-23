@@ -244,6 +244,54 @@ struct AdaptiveBitrateControllerSelfTest {
         expect(growingAge.currentBitrate == afterLocal,
                "local fast path never increases bitrate")
 
+        // Mac peers do not send the phone's `stats` message. Their local
+        // controller must be able to undo a temporary decrease on its own.
+        let mac = AdaptiveBitrateController(initialBitrate: 50_000_000,
+            bounds: 8_000_000...60_000_000, localRecovery: true)
+        _ = mac.evaluateLocal(fullQueue, mode: .auto)
+        expect(mac.evaluateLocal(secondQueue, mode: .auto)?.newBitrate == 44_000_000,
+            "Mac link pressure still reduces bitrate")
+        func healthy(_ time: Double, fps: Double = 60) -> LocalCongestionMetrics {
+            LocalCongestionMetrics(timestamp: time, pendingSends: 0, queueBudget: 3,
+                oldestPendingSendAgeMs: 0, encodedFps: fps, sentFps: fps, sendCompletionDelayMs: 2)
+        }
+        for index in 1...150 {
+            _ = mac.evaluateLocal(healthy(0.2 + Double(index) * 0.2), mode: .auto)
+        }
+        expect(mac.currentBitrate == 50_000_000,
+            "Mac bitrate remained permanently reduced after a recovered local link")
+        // Local recovery restores the configured target; it must not probe
+        // beyond that target without receiver-side throughput evidence.
+        expect(mac.decisionEpoch == 3, "one decrease and two bounded recovery steps")
+
+        let idleMac = AdaptiveBitrateController(initialBitrate: 50_000_000,
+            bounds: 8_000_000...60_000_000, localRecovery: true)
+        _ = idleMac.evaluateLocal(fullQueue, mode: .auto)
+        _ = idleMac.evaluateLocal(secondQueue, mode: .auto)
+        for index in 1...150 {
+            _ = idleMac.evaluateLocal(healthy(0.2 + Double(index) * 0.2, fps: 0), mode: .auto)
+        }
+        expect(idleMac.currentBitrate == 44_000_000, "idle desktop is not proof of recovered throughput")
+
+        let interruptedMac = AdaptiveBitrateController(initialBitrate: 50_000_000,
+            bounds: 8_000_000...60_000_000, localRecovery: true)
+        _ = interruptedMac.evaluateLocal(fullQueue, mode: .auto)
+        _ = interruptedMac.evaluateLocal(secondQueue, mode: .auto)
+        for index in 2...20 {
+            _ = interruptedMac.evaluateLocal(healthy(Double(index) * 0.2), mode: .auto)
+        }
+        _ = interruptedMac.evaluateLocal(healthy(10), mode: .auto)
+        expect(interruptedMac.currentBitrate == 44_000_000,
+            "a long gap cannot count as healthy observations")
+        for index in 51...70 {
+            _ = interruptedMac.evaluateLocal(healthy(Double(index) * 0.2), mode: .auto)
+        }
+        expect(interruptedMac.currentBitrate == 44_000_000, "gap restarts the stable window")
+        for index in 71...110 {
+            _ = interruptedMac.evaluateLocal(healthy(Double(index) * 0.2), mode: .manual)
+        }
+        expect(interruptedMac.currentBitrate == 44_000_000, "manual mode never recovers automatically")
+
         let localDisabled = AdaptiveBitrateController(
             initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
         _ = localDisabled.evaluateLocal(fullQueue, mode: .manual)

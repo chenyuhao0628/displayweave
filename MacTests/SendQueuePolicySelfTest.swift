@@ -2,11 +2,54 @@ import Foundation
 
 @main
 enum SendQueuePolicySelfTest {
+    /// Deterministic capture/async-completion schedule, not a hardware benchmark.
+    static func admittedFrames(fps: Int, latencyMs: Double, frames: Int = 600,
+                               modelSynchronousReturn: Bool = false) -> Int {
+        var completions: [Double] = []
+        var admitted = 0
+        var submissionBusyUntil = 0.0
+        for frame in 0..<frames {
+            let now = Double(frame) * 1_000 / Double(fps)
+            completions.removeAll { $0 <= now }
+            if now < submissionBusyUntil { continue }
+            if !SendQueuePolicy.shouldDrop(pendingSends: 0, pendingEncodes: completions.count,
+                    sendBudget: 3, encodeBudget: SendQueuePolicy.encodeBudget(fps: fps)) {
+                completions.append(now + latencyMs)
+                admitted += 1
+                // VideoToolbox's documented contract: frame N-M must have
+                // been emitted before encode(N) returns for delay limit M.
+                if modelSynchronousReturn,
+                   completions.count > SendQueuePolicy.frameDelayLimit(fps: fps) {
+                    submissionBusyUntil = completions[completions.count - 1
+                        - SendQueuePolicy.frameDelayLimit(fps: fps)]
+                }
+            }
+            precondition(completions.count <= 2, "encoder work must remain bounded")
+        }
+        return admitted
+    }
+
     static func main() {
+        for latency in [19.0, 23.0, 28.0] {
+            let admitted = admittedFrames(fps: 60, latencyMs: latency)
+            precondition(admitted == 600,
+                         "60 Hz / \(latency) ms callback: admitted \(admitted)/600 frames; avoid artificial half-rate cadence")
+            let pipelined = admittedFrames(fps: 60, latencyMs: latency, modelSynchronousReturn: true)
+            precondition(pipelined == 600,
+                "MaxFrameDelayCount serializes capture submission: \(pipelined)/600 frames at \(latency) ms")
+        }
+        precondition(admittedFrames(fps: 60, latencyMs: 100) < 600,
+                     "a slow encoder must still exert bounded backpressure")
+        precondition(admittedFrames(fps: 60, latencyMs: 100, modelSynchronousReturn: true) < 600,
+                     "allowing a pipeline must not bypass sustained encoder overload")
+        precondition(SendQueuePolicy.frameDelayLimit(fps: 30) == 0)
+        precondition(SendQueuePolicy.frameDelayLimit(fps: 60) == 1)
+        precondition(SendQueuePolicy.frameDelayLimit(fps: 120) == 1)
         precondition(SendQueuePolicy.budget(quality: .gaming) == 1)
         precondition(SendQueuePolicy.budget(quality: .balanced) == 2)
         precondition(SendQueuePolicy.budget(quality: .high) == 3)
-        precondition(SendQueuePolicy.encodeBudget(fps: 60) == 1)
+        precondition(SendQueuePolicy.encodeBudget(fps: 30) == 1)
+        precondition(SendQueuePolicy.encodeBudget(fps: 60) == 2)
         precondition(SendQueuePolicy.encodeBudget(fps: 90) == 2)
         precondition(SendQueuePolicy.encodeBudget(fps: 120) == 2)
         precondition(!SendQueuePolicy.shouldDrop(

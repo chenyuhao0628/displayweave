@@ -4,6 +4,9 @@
 
 ## 当前用户指南
 
+- [Mac 4K 延迟：未发布的源码改动与本机证据](mac-4k-latency.zh-CN.md)
+- [上游 Mac 恢复机制集成与验证（2026-10-23）](upstream-integration-2026-10-23.zh-CN.md)
+
 - [`v0.3.0-preview.3` 固定签名与权限延续](release-notes-v0.3.0-preview.3.zh-CN.md)
 - [文档完整性检查（2026-10-17）](documentation-audit-2026-10-17.zh-CN.md)
 

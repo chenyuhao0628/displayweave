@@ -26,13 +26,22 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     private let inputBudget: InputSendBudget
     private var wireInputGrant: String? // receiver queue only
     let displayLayer: AVSampleBufferDisplayLayer
+    private let videoRenderer: any MacVideoRendering
+    private let monotonicTime: () -> TimeInterval
     var onReset: (() -> Void)?
     var onCursor: ((Double, Double, Bool) -> Void)?
     var onCursorImage: ((CGImage, CGPoint, CGSize) -> Void)?
 
     static let installID = TransportInstallIdentity.value
 
-    private let queue = DispatchQueue(label: "displayweave.receiver")
+    private let queue = DispatchQueue(label: "displayweave.receiver", qos: .userInteractive)
+    private let cursorDelivery = LatestValueRelay<(x: Double, y: Double, visible: Bool)>()
+    private let diagnostic: ((String) -> Void)?
+    private var diagnosticsStart = ProcessInfo.processInfo.systemUptime
+    private var enqueuedFrames = 0
+    private var backpressureFlushes = 0
+    private var backpressureToleratedFrames = 0
+    private var videoBackpressure = MacVideoBackpressurePolicy()
     private var listener: NWListener?
     private lazy var admissionPool = AppleSecureAdmissionPool(queue: queue)
     private let securityProvider: () throws -> AppleReceiverSecurity
@@ -56,6 +65,8 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     private var configuredSize: CGSize?
     private var hevcFailureSent = false
     private var fallbackDeadline: Date?
+    private var firstVideoDeadline: TimeInterval?
+    private var hasVideoFrame = false
     private var waitingForKeyframe = true
     private var lastKeyframeRequest = Date.distantPast
     private var lastReceived = Date()
@@ -66,11 +77,17 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     init(displayLayer: AVSampleBufferDisplayLayer = AVSampleBufferDisplayLayer(),
          hardwareHEVCDecode: Bool? = nil,
          inputBudget: InputSendBudget = InputSendBudget(),
+         diagnostic: ((String) -> Void)? = nil,
+         videoRenderer: (any MacVideoRendering)? = nil,
+         monotonicTime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          securityProvider: @escaping () throws -> AppleReceiverSecurity = { try .live(localID: StreamReceiver.installID) }) {
+        self.diagnostic = diagnostic
         self.inputBudget = inputBudget
         self.securityProvider = securityProvider
         self.supportsHEVC = hardwareHEVCDecode ?? VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
         self.displayLayer = displayLayer
+        self.videoRenderer = videoRenderer ?? MacSampleBufferVideoRenderer(renderer: displayLayer.sampleBufferRenderer)
+        self.monotonicTime = monotonicTime
         displayLayer.videoGravity = .resizeAspect
         securityObserver = NotificationCenter.default.addObserver(forName: TransportSecurityChange.notification,
             object: nil, queue: nil) { [weak self] notification in
@@ -240,6 +257,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             guard let self, let conn, self.connection === conn else { return }
             switch state {
             case .ready:
+                self.expectFirstVideo()
                 self.publish(connected: true, status: "已连接，等待画面")
                 self.sendHello(on: conn)
             case .failed, .cancelled:
@@ -250,17 +268,24 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         let encrypted = authenticatedPeer != nil
         DispatchQueue.main.async { self.encrypted = encrypted }
         if encrypted {
+            expectFirstVideo()
             publish(connected: true, status: "已加密连接，等待画面")
             sendHello(on: conn)
         } else { conn.start(queue: queue) }
         receive(on: conn)
     }
 
-    private func drop(_ conn: NWConnection, status: String) {
+    private func drop(_ conn: NWConnection, status: String, announcing: String? = nil) {
         guard connection === conn else { return }
         connection = nil
         peerID = nil
-        conn.cancel()
+        if let announcing {
+            // End a video-less session explicitly so a healthy TCP link does
+            // not start an endless reconnect/black-screen cycle. Both callbacks
+            // own only the retired socket and have a bounded lifetime.
+            send(["type": announcing], on: conn) { conn.cancel() }
+            queue.asyncAfter(deadline: .now() + 0.25) { conn.cancel() }
+        } else { conn.cancel() }
         resetStream()
         publish(connected: false, status: status)
     }
@@ -381,8 +406,14 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             if let deadline = self.fallbackDeadline, Date() >= deadline {
                 self.drop(conn, status: "编码回退超时，请重新连接"); return
             }
-            if self.videoCodec == .hevc, self.displayLayer.sampleBufferRenderer.status == .failed {
+            if self.videoRenderer.status == .failed {
                 self.failVideo(on: conn)
+                guard self.connection === conn else { return }
+            }
+            if let deadline = self.firstVideoDeadline, self.monotonicTime() >= deadline {
+                self.diagnostic?("FIRST-VIDEO-TIMEOUT codec=\(self.videoCodec.rawValue) waitingForKeyframe=\(self.waitingForKeyframe)")
+                self.drop(conn, status: "15 秒内未收到可用首帧。请检查发送端屏幕录制权限、编码设置和日志后重新连接。", announcing: "closing")
+                return
             }
             self.send(["type": "ping", "t": Date().timeIntervalSince1970 * 1000])
             let elapsed = max(0.001, Date().timeIntervalSince(self.statsStart))
@@ -390,6 +421,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             self.sampleCount = 0
             self.statsStart = Date()
             DispatchQueue.main.async { self.fps = fps }
+            self.reportDiagnostics()
         }
         timer.resume()
         self.timer = timer
@@ -420,6 +452,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                     videoCodec = codec
                     DispatchQueue.main.async { self.codecLabel = codec == .hevc ? "HEVC" : "H.264" }
                     resetVideo()
+                    expectFirstVideo()
                 }
                 configuredSize = size
                 if codec == .hevc, !supportsHEVC { failVideo(on: conn); return }
@@ -431,7 +464,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                 let x = obj["x"] as? Double ?? 0, y = obj["y"] as? Double ?? 0
                 guard x.isFinite, y.isFinite else { return }
                 let visible = (obj["v"] as? Int ?? 0) == 1
-                DispatchQueue.main.async { self.onCursor?(x, y, visible) }
+                if let token = cursorDelivery.offer((x, y, visible)) { deliverCursor(token) }
             case "cursorImg", "cursorImage":
                 handleCursorImage(obj)
             default: break
@@ -443,9 +476,42 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
 
     private func handleCursorImage(_ obj: [String: Any]) {
         guard let cursor = ReceiverCursorImage.decode(obj) else { return }
+        let epoch = cursorDelivery.generation
         DispatchQueue.main.async {
+            guard self.cursorDelivery.generation == epoch else { return }
             self.onCursorImage?(cursor.image, cursor.anchor, cursor.normalizedSize)
         }
+    }
+
+    private func deliverCursor(_ token: LatestValueRelay<(x: Double, y: Double, visible: Bool)>.Token) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let cursor = self.cursorDelivery.take(token) else { return }
+            self.onCursor?(cursor.x, cursor.y, cursor.visible)
+            if let next = self.cursorDelivery.complete(token) { self.deliverCursor(next) }
+        }
+    }
+
+    private func reportDiagnostics() {
+        let now = ProcessInfo.processInfo.systemUptime
+        let elapsed = now - diagnosticsStart
+        guard elapsed >= 2 else { return }
+        let cursor = cursorDelivery.takeMetrics()
+        // Optional control type: older peers ignore it. Do not call enqueue FPS
+        // "rendered FPS", or use unrelated machine clocks for cursor latency.
+        let object: [String: Any] = ["type": "macReceiverStats",
+            "videoEnqueuedFps": Double(enqueuedFrames) / elapsed,
+            "backpressureFlushes": backpressureFlushes,
+            "backpressureToleratedFrames": backpressureToleratedFrames,
+            "waitingForKeyframe": waitingForKeyframe,
+            "cursorReceived": cursor.offered, "cursorApplied": cursor.completed,
+            "cursorCoalesced": cursor.coalesced, "cursorDispatchMaxMs": cursor.maxWaitMs]
+        send(object)
+        if let data = try? JSONSerialization.data(withJSONObject: object, options: .sortedKeys),
+           let text = String(data: data, encoding: .utf8) { diagnostic?("MAC-RECEIVER-STATS \(text)") }
+        diagnosticsStart = now
+        enqueuedFrames = 0
+        backpressureFlushes = 0
+        backpressureToleratedFrames = 0
     }
 
     private func handleAnnexB(_ data: Data, on conn: NWConnection) {
@@ -462,21 +528,39 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                   configuredSize == nil || configuredSize == size else {
                 drop(conn, status: "视频尺寸与配置不符，请重新连接"); return
             }
-            displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
+            videoRenderer.flush(removingDisplayedImage: true)
+            videoBackpressure = MacVideoBackpressurePolicy()
+        }
+        guard !packet.slices.isEmpty else { return }
+        if videoRenderer.status == .failed {
+            failVideo(on: conn); return
+        }
+        if waitingForKeyframe && !packet.keyframe { requestKeyframe(); return }
+        let isReady = videoRenderer.isReadyForMoreMediaData
+        switch videoBackpressure.action(isReady: isReady, now: monotonicTime()) {
+        case .enqueue:
+            if !isReady { backpressureToleratedFrames += 1 }
+        case .flushAndWait:
+            backpressureFlushes += 1
+            videoRenderer.flush(removingDisplayedImage: false)
+            waitingForKeyframe = true
+            requestKeyframe()
+            return
+        case .wait:
+            requestKeyframe()
+            return
+        }
+        guard enqueue(packet.slices, format: format) else { requestKeyframe(); return }
+        if videoRenderer.status == .failed { failVideo(on: conn); return }
+        if !hasVideoFrame || packet.formatChanged {
+            let dims = CMVideoFormatDescriptionGetDimensions(format)
+            let size = CGSize(width: Int(dims.width), height: Int(dims.height))
             DispatchQueue.main.async { self.videoSize = size }
             publish(status: "正在接收 \(dims.width) × \(dims.height) · \(videoCodec == .hevc ? "HEVC" : "H.264")")
         }
-        guard !packet.slices.isEmpty else { return }
-        if displayLayer.sampleBufferRenderer.status == .failed {
-            failVideo(on: conn); return
-        }
-        if !displayLayer.sampleBufferRenderer.isReadyForMoreMediaData {
-            displayLayer.sampleBufferRenderer.flush()
-            waitingForKeyframe = true
-        }
-        if waitingForKeyframe && !packet.keyframe { requestKeyframe(); return }
         waitingForKeyframe = false
-        enqueue(packet.slices, format: format)
+        hasVideoFrame = true
+        firstVideoDeadline = nil
     }
 
     private func failVideo(on conn: NWConnection) {
@@ -486,6 +570,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         guard !hevcFailureSent else { return }
         hevcFailureSent = true
         resetVideo()
+        expectFirstVideo()
         fallbackDeadline = Date().addingTimeInterval(3)
         send(["type": "codecFailure", "codec": "hevc", "message": "Mac HEVC decode failed"], on: conn)
         publish(status: "HEVC 不可用，正在回退 H.264")
@@ -497,45 +582,63 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         send(["type": "kf"])
     }
 
-    private func enqueue(_ nalus: [Data], format: CMVideoFormatDescription) {
+    private func enqueue(_ nalus: [Data], format: CMVideoFormatDescription) -> Bool {
         var avcc = Data()
         for nalu in nalus { avcc.append(ReceiverFrameDecoder.frame(nalu)) }
         var block: CMBlockBuffer?
         guard CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil,
             blockLength: avcc.count, blockAllocator: kCFAllocatorDefault, customBlockSource: nil,
             offsetToData: 0, dataLength: avcc.count, flags: 0, blockBufferOut: &block) == noErr,
-              let block else { return }
+              let block else { return false }
         let result = avcc.withUnsafeBytes { bytes in
             CMBlockBufferReplaceDataBytes(with: bytes.baseAddress!, blockBuffer: block,
                                           offsetIntoDestination: 0, dataLength: avcc.count)
         }
-        guard result == noErr else { return }
+        guard result == noErr else { return false }
         var sample: CMSampleBuffer?
         var size = avcc.count
         guard CMSampleBufferCreateReady(allocator: kCFAllocatorDefault, dataBuffer: block,
             formatDescription: format, sampleCount: 1, sampleTimingEntryCount: 0, sampleTimingArray: nil,
             sampleSizeEntryCount: 1, sampleSizeArray: &size, sampleBufferOut: &sample) == noErr,
-              let sample else { return }
+              let sample else { return false }
         if let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: true),
            CFArrayGetCount(attachments) > 0 {
             let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
             CFDictionarySetValue(dict, Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
                                   Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
         }
-        displayLayer.sampleBufferRenderer.enqueue(sample)
+        videoRenderer.enqueue(sample)
         sampleCount += 1
+        enqueuedFrames += 1
+        return true
+    }
+
+    private func expectFirstVideo() {
+        // Heartbeats, parameter sets and repeated configuration must never
+        // restart an unfulfilled deadline. Once a frame is submitted, a static
+        // desktop may legitimately emit no more frames until it changes.
+        guard !hasVideoFrame, firstVideoDeadline == nil else { return }
+        firstVideoDeadline = monotonicTime() + 15
+        publish(status: peerID == nil ? "已连接，等待画面" : "已加密连接，等待画面")
     }
 
     private func resetVideo() {
+        hasVideoFrame = false
+        videoBackpressure = MacVideoBackpressurePolicy()
         bitstream = ReceiverVideoBitstream(codec: videoCodec)
         configuredSize = nil
         waitingForKeyframe = true
         lastKeyframeRequest = .distantPast
-        displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
+        videoRenderer.flush(removingDisplayedImage: true)
         DispatchQueue.main.async { self.videoSize = .zero }
     }
 
     private func resetStream() {
+        cursorDelivery.reset()
+        diagnosticsStart = ProcessInfo.processInfo.systemUptime
+        enqueuedFrames = 0
+        backpressureFlushes = 0
+        backpressureToleratedFrames = 0
         wireInputGrant = nil
         let epoch = inputBudget.reset(accepting: false)
         DispatchQueue.main.async {
@@ -545,6 +648,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         videoCodec = .h264
         hevcFailureSent = false
         fallbackDeadline = nil
+        firstVideoDeadline = nil
         resetVideo()
         lastCursorSequence = 0
         sampleCount = 0

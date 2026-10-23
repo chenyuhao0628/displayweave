@@ -65,7 +65,7 @@ final class ReceiverTestPeer: @unchecked Sendable {
 }
 
 private final class EncodedSample {
-    var data: Data?
+    var samples: [Data] = []
     func accept(_ sample: CMSampleBuffer) {
         guard let format = CMSampleBufferGetFormatDescription(sample),
               let block = CMSampleBufferGetDataBuffer(sample) else { return }
@@ -95,11 +95,16 @@ private final class EncodedSample {
             result.append(contentsOf: [0,0,0,1]); result.append(avcc[offset..<(offset+count)])
             offset += count
         }
-        data = result
+        samples.append(result)
     }
 }
 
 func receiverTestH264Frame(codec: CMVideoCodecType = kCMVideoCodecType_H264) throws -> Data {
+    try receiverTestVideoFrames(codec: codec, count: 1)[0]
+}
+
+func receiverTestVideoFrames(codec: CMVideoCodecType = kCMVideoCodecType_H264, count: Int) throws -> [Data] {
+    precondition((1...120).contains(count))
     let box = EncodedSample()
     var session: VTCompressionSession?
     let status = VTCompressionSessionCreate(allocator: kCFAllocatorDefault, width: 64, height: 64,
@@ -125,10 +130,14 @@ func receiverTestH264Frame(codec: CMVideoCodecType = kCMVideoCodecType_H264) thr
         for c in 0..<4 { base[y * stride + x * 4 + c] = color[c] }
     } }
     CVPixelBufferUnlockBaseAddress(pixel, [])
-    guard VTCompressionSessionEncodeFrame(session, imageBuffer: pixel, presentationTimeStamp: .zero,
-        duration: CMTime(value: 1, timescale: 60), frameProperties: [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary,
-        sourceFrameRefcon: nil, infoFlagsOut: nil) == noErr else { throw ReceiverTestFailure(message: "encode") }
+    for index in 0..<count {
+        guard VTCompressionSessionEncodeFrame(session, imageBuffer: pixel,
+            presentationTimeStamp: CMTime(value: Int64(index), timescale: 60),
+            duration: CMTime(value: 1, timescale: 60),
+            frameProperties: index == 0 ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary : nil,
+            sourceFrameRefcon: nil, infoFlagsOut: nil) == noErr else { throw ReceiverTestFailure(message: "encode") }
+    }
     VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
-    guard let data = box.data else { throw ReceiverTestFailure(message: "no encoded frame") }
-    return data
+    guard box.samples.count == count else { throw ReceiverTestFailure(message: "missing encoded frames") }
+    return box.samples
 }

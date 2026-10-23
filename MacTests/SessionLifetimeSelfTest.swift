@@ -42,6 +42,39 @@ private enum StartFailure: Error { case refused }
         await spin { finished }
         active.start() // cannot resurrect the stopped pipeline
         precondition(cleaned)
-        print("Session lifetime: startup failure cleanup, idempotent stop and suspended-start barrier PASS")
+        let failureGate = Gate()
+        var runtimeStarted = false, runtimeStops = 0, runtimeErrors = 0
+        let runtime = SessionLifetime(start: { runtimeStarted = true }, stop: {
+            runtimeStops += 1
+            return Task { await failureGate.wait() }
+        }) { _ in runtimeErrors += 1 }
+        runtime.start()
+        await spin { runtimeStarted }
+        let failure = runtime.fail(StartFailure.refused)
+        _ = runtime.fail(StartFailure.refused)
+        await spin { failureGate.continuation != nil }
+        precondition(runtimeErrors == 0 && runtimeStops == 1, "failure must wait for owned cleanup")
+        failureGate.open()
+        await failure.value
+        precondition(runtimeErrors == 1, "a runtime failure must be reported once")
+        await runtime.stop().value
+        await runtime.fail(StartFailure.refused).value
+        precondition(runtimeStops == 1 && runtimeErrors == 1, "a stopped session cannot be failed again")
+
+        let retiringGate = Gate()
+        var retiringStops = 0, staleErrors = 0
+        let retiring = SessionLifetime(start: {}, stop: {
+            retiringStops += 1
+            return Task { await retiringGate.wait() }
+        }) { _ in staleErrors += 1 }
+        retiring.start()
+        let retiringFailure = retiring.fail(StartFailure.refused)
+        await spin { retiringGate.continuation != nil }
+        let retired = retiring.stop()
+        retiringGate.open()
+        await retired.value
+        await retiringFailure.value
+        precondition(retiringStops == 1 && staleErrors == 0, "replacement must suppress a retiring session's late failure")
+        print("Session lifetime: startup/runtime failure cleanup, idempotence, cancellation and suspended-start barrier PASS")
     }
 }

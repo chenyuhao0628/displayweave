@@ -41,7 +41,7 @@ def main():
             "Shared/AppleTransportSecurity.swift", "Shared/ReceiverFrameDecoder.swift", "Shared/ReceiverCursorImage.swift",
             "Shared/ReceiverVideoBitstream.swift", "Shared/AppleVideoPolicy.swift", "Mac/EncoderHardwareCapabilities.swift",
             "Shared/DesktopInputProtocol.swift", "Shared/InputSendBudget.swift", "Shared/PencilProtocol.swift", "Shared/PencilActions.swift",
-            "Mac/Receiver/ReceiverWireProtocol.swift", "Mac/Receiver/StreamReceiver.swift", "MacTests/ReceiverTestSupport.swift",
+            "Mac/Receiver/ReceiverWireProtocol.swift", "Mac/LatestValueRelay.swift", "Mac/Receiver/MacVideoRenderer.swift", "Mac/Receiver/StreamReceiver.swift", "MacTests/ReceiverTestSupport.swift",
             "MacTests/MacSecureReceiverSelfTest.swift"]
         run(["xcrun", "swiftc", *client_sources, "-o", str(client)])
         runtimes = json.loads(run(["xcrun", "simctl", "list", "runtimes", "-j"]))["runtimes"]

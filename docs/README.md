@@ -4,6 +4,9 @@
 
 ## Current user guides
 
+- [Mac 4K latency: unreleased source changes and local evidence](mac-4k-latency.md)
+- [Upstream Mac recovery integration and verification (2026-10-23)](upstream-integration-2026-10-23.md)
+
 - [`v0.3.0-preview.3` fixed signing and permission continuity](release-notes-v0.3.0-preview.3.md)
 - [Documentation audit (2026-10-17)](documentation-audit-2026-10-17.md)
 

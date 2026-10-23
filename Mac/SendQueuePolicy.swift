@@ -16,12 +16,17 @@ enum SendQueuePolicy {
         }
     }
 
-    /// VideoToolbox is asynchronous. At 90/120 fps one frame can still be in
-    /// flight when the next capture arrives, so a depth of one deterministically
-    /// halves cadence whenever encode latency exceeds one frame interval.
+    /// VideoToolbox is asynchronous. At 60/90/120 fps one frame can still be in
+    /// flight when the next capture arrives. A depth of one skips alternate
+    /// captures when completion takes between one and two frame intervals.
     static func encodeBudget(fps: Int) -> Int {
-        fps >= 90 ? 2 : 1
+        fps >= 60 ? 2 : 1
     }
+
+    /// With M = 0, VideoToolbox must emit frame N before encode(N) returns.
+    /// Permit the one-frame pipeline already budgeted above, without allowing
+    /// unbounded lookahead or adding a separate queue of captured frames.
+    static func frameDelayLimit(fps: Int) -> Int { encodeBudget(fps: fps) - 1 }
 
     static func shouldDrop(pendingSends: Int, pendingEncodes: Int = 0,
                            sendBudget: Int, encodeBudget: Int) -> Bool {

@@ -3,6 +3,15 @@ import Darwin
 import AVFoundation
 import VideoToolbox
 
+private final class ReceiverLogProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded = false
+    func accept(_ line: String) {
+        if line.hasPrefix("MAC-RECEIVER-STATS ") { lock.withLock { recorded = true } }
+    }
+    var observed: Bool { lock.withLock { recorded } }
+}
+
 @main struct MacReceiverNetworkSelfTest {
     @MainActor static func waitFor(_ description: String, _ condition: () -> Bool) async throws {
         for _ in 0..<100 {
@@ -30,7 +39,8 @@ import VideoToolbox
             }.value
             return
         }
-        let receiver = StreamReceiver(securityProvider: { .legacy })
+        let logProbe = ReceiverLogProbe()
+        let receiver = StreamReceiver(diagnostic: { logProbe.accept($0) }, securityProvider: { .legacy })
         receiver.configure(panel: PanelAnnouncement(pixelsWide: 1920, pixelsHigh: 1080, scale: 1),
                            name: "Test", maxFps: 120)
         receiver.start(port: 0, advertiseService: false)
@@ -46,6 +56,47 @@ import VideoToolbox
             return peer
         }.value
         try await waitFor("connected") { receiver.connected }
+        try await Task.detached {
+            for _ in 0..<8 {
+                let message = try first.hello()
+                if message["type"] as? String == "macReceiverStats" {
+                    precondition(message["videoEnqueuedFps"] != nil && message["cursorDispatchMaxMs"] != nil
+                        && message["backpressureToleratedFrames"] != nil)
+                    return
+                }
+            }
+            throw ReceiverTestFailure(message: "receiver diagnostics were not sent to sender")
+        }.value
+        try await waitFor("receiver diagnostics log") { logProbe.observed }
+        // Simulate a busy UI while cursor controls continue arriving. When the
+        // UI becomes available it should draw the newest point, not replay a
+        // trail of obsolete points. Pong fences processing on the receive queue.
+        var cursorUpdates = 0
+        var cursorX = -1.0
+        receiver.onCursor = { x, _, _ in cursorUpdates += 1; cursorX = x }
+        let cursorFence = DispatchSemaphore(value: 0)
+        let cursorBurst = Task.detached {
+            defer { cursorFence.signal() }
+            var batch = Data()
+            for index in 1...240 {
+                let cursor = try JSONSerialization.data(withJSONObject:
+                    ["type": "cursor", "x": Double(index) / 240, "y": 0.5, "v": 1, "s": index])
+                batch.append(ReceiverFrameDecoder.frame(cursor))
+            }
+            batch.append(ReceiverFrameDecoder.frame(try JSONSerialization.data(withJSONObject:
+                ["type": "ping", "t": 424242])))
+            try first.write(batch)
+            for _ in 0..<8 {
+                let reply = try first.hello()
+                if reply["type"] as? String == "pong", reply["t"] as? Int == 424242 { return }
+            }
+            throw ReceiverTestFailure(message: "cursor burst fence missing")
+        }
+        precondition(cursorFence.wait(timeout: .now() + 5) == .success, "cursor processing stalled with busy main thread")
+        try await cursorBurst.value
+        try await waitFor("newest cursor") { cursorX == 1 }
+        precondition(cursorUpdates == 1, "busy main thread replayed \(cursorUpdates) stale cursor positions")
+        receiver.onCursor = nil
         try await Task.detached {
             let busy = try ReceiverTestPeer(port: port)
             precondition(busy.isClosed(), "second sender displaced active sender")
@@ -117,6 +168,6 @@ import VideoToolbox
         try await waitFor("fallback timeout closes peer") { !legacy.connected && legacy.status.contains("回退超时") }
         await withCheckedContinuation { continuation in legacy.stop { continuation.resume() } }
         withExtendedLifetime(unsupported) {}
-        print("Mac receiver loopback: hello, busy rejection, H264, invalid framing, reconnect, stop/restart PASS")
+        print("Mac receiver loopback: hello, cursor coalescing, diagnostics, busy rejection, H264, invalid framing, reconnect, stop/restart PASS")
     }
 }
