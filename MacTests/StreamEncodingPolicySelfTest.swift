@@ -21,6 +21,13 @@ func assertTrue(_ value: Bool, _ message: String) {
 @main
 struct StreamEncodingPolicySelfTest {
     static func main() {
+        for status: Int32 in [0, -12902] {
+            for hasSample in [true, false] {
+                assertTrue(EncoderCallbackPolicy.disposition(status: status, hasSampleBuffer: hasSample,
+                    isCurrentSession: false) == .stale,
+                    "retired encoder callbacks must not report failure, change keyframes or stop a replacement session")
+            }
+        }
         assertTrue(
             EncoderCallbackPolicy.disposition(status: 0, hasSampleBuffer: true) == .output,
             "successful callbacks with a sample buffer produce output")
@@ -89,17 +96,34 @@ struct StreamEncodingPolicySelfTest {
         assertEqual(160_000_000,
                     StreamEncodingPolicy.bitrateBounds(codec: .hevc, transport: .usb).upperBound,
                     "HEVC USB upper bound")
-        assertEqual(60_000_000,
+        assertEqual(100_000_000,
                     StreamEncodingPolicy.bitrateBounds(codec: .h264, transport: .wifi).upperBound,
-                    "H.264 WiFi upper bound")
+                    "H.264 LAN upper bound includes Ethernet and WiFi")
         assertEqual(100_000_000,
                     StreamEncodingPolicy.bitrateBounds(codec: .h264, transport: .usb).upperBound,
                     "H.264 USB upper bound")
-        assertEqual(60_000_000,
+        assertEqual(80_000_000,
                     StreamEncodingPolicy.selectedBitrate(
                         mode: .manual, preset: .mbps80, automatic: 20_000_000,
                         codec: .h264, transport: .wifi),
-                    "manual values clamp to codec/transport bounds")
+                    "LAN H.264 accepts the 80 Mbps manual preset")
+        assertEqual(100_000_000,
+                    StreamEncodingPolicy.selectedBitrate(
+                        mode: .manual, preset: .mbps100, automatic: 20_000_000,
+                        codec: .h264, transport: .wifi),
+                    "LAN H.264 must not silently clamp a 100 Mbps selection to 60")
+        assertEqual(100_000_000,
+                    StreamEncodingPolicy.selectedBitrate(
+                        mode: .manual, preset: .mbps120, automatic: 20_000_000,
+                        codec: .h264, transport: .wifi),
+                    "manual H.264 remains bounded at 100 Mbps")
+        let lanPresets = StreamEncodingPolicy.availablePresets(mode: .manual,
+            codec: .h264, transport: .wifi)
+        assertTrue(lanPresets.contains(.mbps80) && lanPresets.contains(.mbps100)
+            && !lanPresets.contains(.mbps120), "settings expose the supported 80/100 Mbps choices")
+        assertEqual(49_766_400, StreamEncodingPolicy.bitrate(width: 3840,
+            height: 2160, fps: 60, codec: .h264, quality: .high, transport: .wifi),
+            "raising the ceiling must not force every 4K60 session to 100 Mbps")
         assertEqual(200_000_000,
                     StreamEncodingPolicy.selectedBitrate(
                         mode: .benchmark, preset: .mbps200, automatic: 20_000_000,
@@ -171,6 +195,15 @@ struct StreamEncodingPolicySelfTest {
                    "legacy stream config must not gain protocol-v2 fields")
         assertTrue(!fallbackConfig.contains("maxFrameBytes"),
                    "legacy stream config must not negotiate a larger frame")
+
+        for fps in [24, 60, 90, 120] {
+            let appleConfig = StreamConfigMessage(codec: .h264, fps: fps,
+                width: 1920, height: 1080, bitrate: 20_000_000,
+                transport: "lan", exactFrameRate: true).json
+            assertTrue(appleConfig.contains("\"fps\":\(fps),")
+                && appleConfig.contains("\"framesPerSecond\":\(fps),"),
+                "Apple configuration must preserve its already negotiated \(fps) FPS")
+        }
 
         var identity = StreamProtocolIdentity()
         identity.beginConnection()

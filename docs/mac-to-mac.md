@@ -2,7 +2,7 @@
 
 # Mac-to-Mac over a local network
 
-v0.3.0-preview.1 lets either Mac send or receive one-way extended or mirrored video. Both require macOS 14+. Two-Mac physical performance and endurance acceptance remain pending.
+v0.3.0 lets either Mac send or receive one-way extended or mirrored video. Both require macOS 14+. Two-Mac physical performance and endurance acceptance remain pending.
 
 ## Connect
 
@@ -27,7 +27,7 @@ Thunderbolt Bridge or link-local Ethernet can provide interface-pinned candidate
 
 ## Verification
 
-The complete [development gate](development.md) passed; see [release evidence](release-notes-v0.3.0-preview.1.md). Automated checks exercise policies, real TLS, synthetic video, input consent and stale-session isolation, but do not prove two-Mac latency or sustained high refresh. Physical acceptance still covers both directions, extend/mirror, Wi-Fi/Ethernet, Retina, sleep/wake, input and 30-minute/2-hour endurance. Interactive virtual-display tests require a verified independent online display; otherwise SKIP.
+The complete [development gate](development.md) passed; see [release evidence](release-notes-v0.3.0.md). Automated checks exercise policies, real TLS, synthetic video, input consent and stale-session isolation, but do not prove two-Mac latency or sustained high refresh. Physical acceptance still covers both directions, extend/mirror, Wi-Fi/Ethernet, Retina, sleep/wake, input and 30-minute/2-hour endurance. Interactive virtual-display tests require a verified independent online display; otherwise SKIP.
 
 ## Historical validation of the earlier implementation (2026-10-16)
 

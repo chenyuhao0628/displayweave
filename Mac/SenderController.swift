@@ -6,6 +6,7 @@ import Sparkle
 @MainActor
 final class SenderController: ObservableObject {
     static let shared = SenderController()
+    private let displayCoordinator = DisplayUnitCoordinator()
 
     @Published var presentation = AppPresentation(
         rawValue: UserDefaults.standard.string(forKey: "presentation") ?? "") ?? .dock {
@@ -597,8 +598,13 @@ final class SenderController: ObservableObject {
         }
         let sender = MacSender(transport: transport, name: name, mode: mode,
                                securityPlan: securityPlan,
+                               displayCoordinator: displayCoordinator,
                                settings: settings, displaySerial: Self.displaySerial(for: id))
         let session = DeviceSession(id: id, target: target, name: name, sender: sender)
+        sender.onCaptureStoppedByUser = { [weak self, weak session] in
+            guard let self, let session, self.sessions.contains(where: { $0 === session }) else { return }
+            self.disconnect(session)
+        }
         session.macLANRoute = selectedMacRoute
         sender.onSecurityError = { [weak self, weak session] message in
             guard let self, let session, self.sessions.contains(where: { $0 === session }) else { return }
@@ -691,10 +697,15 @@ final class SenderController: ObservableObject {
             }
         }) { [weak self, weak session] error in
             guard let self, let session, self.sessions.contains(where: { $0 === session }) else { return }
-            Log.info("sender failed to start: \(error)")
+            Log.info("sender pipeline failed: \(error)")
             session.failed = true
             session.status = "失败：\(error.localizedDescription)"
             if case .androidAdb = session.target { self.androidAdbStatus = session.status }
+        }
+        sender.onPipelineFailure = { [weak self, weak session] error in
+            guard let self, let session, !session.failed,
+                  self.sessions.contains(where: { $0 === session }) else { return }
+            session.lifetime.fail(error)
         }
         sessions.append(session)
         session.lifetime.start()

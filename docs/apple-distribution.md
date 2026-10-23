@@ -6,9 +6,9 @@ The source now includes `tools/apple-distribution.py` for local signed archives 
 
 ## Readiness and limits
 
-On 2026-10-16 this Mac had zero **Developer ID Application** identities and zero **Apple Distribution** identities; an Apple Development identity is insufficient for these exports. Production signing and notarization are therefore **blocked by external credentials**. Offline tests prove validation and workflow failure behavior, not a notarized artifact. The v0.3.0-preview.3 preview uses Apple Development for Mac and remains unnotarized; iOS stays unsigned; see [preview distribution](development-preview.md).
+On 2026-10-16 this Mac had zero **Developer ID Application** identities and zero **Apple Distribution** identities; an Apple Development identity is insufficient for these exports. Production signing and notarization are therefore **blocked by external credentials**. Offline tests prove validation and workflow failure behavior, not a notarized artifact. The v0.3.0 stable release (19) uses Apple Development for Mac and remains unnotarized; iOS stays unsigned. Stable release status and Developer ID notarization are separate; see [release distribution](development-preview.md).
 
-The existing preview script remains available. The new workflow never substitutes its relaxed library-validation entitlement for production signing. Production Mac uses the empty `Mac/OpenSidecarMac.entitlements` and hardened runtime. No key generation, key export, automatic provisioning or developer-portal upload occurs.
+The existing local packaging script supports unnotarized stable releases too. The new workflow never substitutes its relaxed library-validation entitlement for production signing. Production Mac uses the empty `Mac/OpenSidecarMac.entitlements` and hardened runtime. No key generation, key export, automatic provisioning or developer-portal upload occurs.
 
 ## Prerequisites and preflight
 
@@ -40,7 +40,7 @@ python3 tools/apple-distribution.py preflight ios \
 Replace `preflight` with `build`, keeping all other arguments, and add:
 
 ```text
---version 0.3.0 --build-number 16 --output build/apple-production-candidate-001
+--version 0.3.1 --build-number 20 --output build/apple-production-candidate-001
 ```
 
 These are example numbers, not a reserved or released version. The output must be new and below `build/`. It is created with private directory permissions and an `INCOMPLETE` marker. Existing output is never overwritten or removed. Failed candidates retain logs and archives; choose a new directory for a new build. Logs and profiles can contain local identifiers; keep the whole directory out of Git and public uploads.
@@ -49,7 +49,7 @@ The workflow generates the Xcode project from `project.yml`, manually signs a Re
 
 Mac archives contain arm64 and x86_64. A submission ZIP goes to Apple's notarization service with a 30-minute server wait and a bounded local timeout. Only `Accepted` can proceed to stapling, staple validation and Gatekeeper assessment. The final ZIP is created from the stapled app, signed using the existing Sparkle account and verified. iOS exports arm64 and verifies the extracted IPA. Only successful completion removes `INCOMPLETE` and writes `receipt.json` and `SHA256SUMS.txt`.
 
-A timeout may leave an active Apple submission. Inspect the retained submission output and query its status before resubmitting; a timeout never means acceptance. A successful local receipt does not prove physical performance or publication. The production script emits a ZIP for Mac; the guided DMG remains in the preview workflow and is not claimed to be a notarized production DMG.
+A timeout may leave an active Apple submission. Inspect the retained submission output and query its status before resubmitting; a timeout never means acceptance. A successful local receipt does not prove physical performance or publication. The production script emits a ZIP for Mac; the guided DMG remains in the unnotarized local workflow and is not claimed to be a notarized production DMG.
 
 ## Automated evidence
 

@@ -55,7 +55,7 @@ Android 接收端在 9000 端口提供 TCP Server，渲染 Surface 返回时会�
 
 - v0.3.0-preview.1 的 Apple 与 Android 默认使用固定证书指纹的双向 TLS 和显式邀请配对；旧版兼容需主动启用且仅限可信网络。详见[配对指南](docs/secure-transport.zh-CN.md)。
 - ADB RSA 授权会把 Mac 作为广泛调试主机信任，不只限 DisplayWeave。
-- macOS v0.3.0-preview.3 使用固定 Apple Development 身份，仍未公证；首次从临时签名迁移可能需要再授权，后续构建检查签名连续性。
+- macOS v0.3.0 使用固定 Apple Development 身份，仍未公证；首次从临时签名迁移可能需要再授权，后续构建检查签名连续性。
 - Android APK 使用保存在 Git 之外的项目离线密钥库。
 - iOS 公开产物是未签名自签输入包。
 - `CGVirtualDisplay` 是私有 API，可能随 macOS 版本变化。
@@ -63,7 +63,7 @@ Android 接收端在 9000 端口提供 TCP Server，渲染 Surface 返回时会�
 参见 [SECURITY.zh-CN.md](SECURITY.zh-CN.md) 与 [docs/README.zh-CN.md](docs/README.zh-CN.md)。
 
 
-## Mac 接收角色（实验预览）
+## Mac 接收角色（实验性）
 
 Mac 应用可在发送和接收之间切换。接收角色先停止发送会话及发现任务，使用独立 TCP 监听、
 有界分帧和 AVSampleBufferDisplayLayer 渲染 H.264／经硬件能力确认的 HEVC。一次只接受一个发送端；旧连接回调

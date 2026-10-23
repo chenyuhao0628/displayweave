@@ -17,13 +17,16 @@ enum BitrateTransport {
 }
 
 enum EncoderCallbackDisposition: Equatable {
+    case stale
     case output
     case dropped
     case failed
 }
 
 enum EncoderCallbackPolicy {
-    static func disposition(status: Int32, hasSampleBuffer: Bool) -> EncoderCallbackDisposition {
+    static func disposition(status: Int32, hasSampleBuffer: Bool,
+                            isCurrentSession: Bool = true) -> EncoderCallbackDisposition {
+        guard isCurrentSession else { return .stale }
         guard status == 0 else { return .failed }
         return hasSampleBuffer ? .output : .dropped
     }
@@ -35,7 +38,8 @@ enum StreamEncodingPolicy {
         switch (codec, transport) {
         case (.hevc, .wifi): return 12_000_000...100_000_000
         case (.hevc, .usb): return 20_000_000...160_000_000
-        case (.h264, .wifi): return 8_000_000...60_000_000
+        // The legacy `wifi` category also covers Ethernet TCP sessions.
+        case (.h264, .wifi): return 8_000_000...100_000_000
         case (.h264, .usb): return 10_000_000...100_000_000
         }
     }
@@ -162,7 +166,7 @@ struct StreamConfigMessage {
     }
 
     var json: String {
-        let frameRate = exactFrameRate ? max(1, min(60, fps)) : RefreshRatePolicy.sanitize(fps)
+        let frameRate = exactFrameRate ? max(1, min(120, fps)) : RefreshRatePolicy.sanitize(fps)
         let legacy = "{\"type\":\"streamConfig\","
             + "\"codec\":\"\(codec.rawValue)\","
             + "\"fps\":\(frameRate),"

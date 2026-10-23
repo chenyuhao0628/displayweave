@@ -95,7 +95,11 @@ Apple 旧版及未启用二进制头的 Android 保留 `{"cap":1000,"snd":1010}`
 
 通用 JSON 控制包含 `ping`/`pong`、`stats`、`kf`、`codecFailure`、`cursor`/`cursorImg`、触摸/滚动以及接收端 closing/sleeping/goodbye 消息。Ping 时间戳/往返估计时钟偏移及存活，不能证明单向显示延迟。光标图片单独限制和校验。`kf` 请求关键帧；Android V2 恢复可附加 `streamConfigRequired`，保证新配置先于 IDR。
 
+v0.3.0 Mac 4K 延迟迭代还会约每两秒发送可选 `macReceiverStats`，包含 `videoEnqueuedFps`、`backpressureFlushes`、`backpressureToleratedFrames`、`waitingForKeyframe`、`cursorReceived`、`cursorApplied`、`cursorCoalesced` 和 `cursorDispatchMaxMs`。旧发送端忽略此类型。不改变分帧，也不提供物理屏幕实测 FPS 或同步单向延迟；与 Android/iOS 的 `stats` 及自适应码率反馈分开处理。参见[本机证据](mac-4k-latency.zh-CN.md)。
+
 Mac 发送端每两秒检查存活，超过五秒无数据判为失联，恢复有界。iOS 同样检查五秒无数据，Mac 接收端为八秒。认证准入使用独立绝对截止时间。停止、角色切换、后台/睡眠或连接失败使所属 generation 失效，取消输入且只关闭自身资源。同一 Mac 收发角色互斥。重连重新执行认证、hello 及适用的配置/就绪流程。同 ID 接口切换见 [Mac 切换指南](mac-lan-handover.zh-CN.md)；Android ADB 恢复独立处理。
+
+[v0.3.0 Mac 恢复迭代](upstream-integration-2026-10-23.zh-CN.md)在连接就绪后，以单调时钟设置 15 秒首帧截止时间。心跳、参数集、重复配置不能满足或延长它；成功构造并提交给渲染器的样本才满足条件，此后静止桌面不受影响。编码/像素尺寸改变会开始新的等待，但不会延长已有等待。超时发送既有 `closing` 控制，最迟 250 ms 内仅取消该套接字；监听器继续可用。分帧和必选控制字段不变。
 
 ## 输入扩展
 

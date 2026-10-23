@@ -2,10 +2,11 @@
 
 # DisplayWeave 路线图
 
-更新于 2026-10-17。[功能台账](docs/feature-completion.zh-CN.md)记录逐项实现；当前版本为 v0.3.0-preview.3（18），增加固定 Mac 签名与升级身份检查。下载内容及验证边界见[发布说明](docs/release-notes-v0.3.0-preview.3.zh-CN.md)。
+更新于 2026-10-23。[功能台账](docs/feature-completion.zh-CN.md)记录逐项实现；当前版本为 v0.3.0（19），增加 Mac 4K 延迟优化、100 Mbps H.264 局域网上限和逐项审查的上游恢复修复。下载内容及验证边界见[发布说明](docs/release-notes-v0.3.0.zh-CN.md)。
 
-## 当前 v0.3.0 预览内容
+## 当前 v0.3.0 正式版内容
 
+- Mac 4K 编码/光标延迟策略、有界接收背压、100 Mbps H.264 局域网预设和上游采集/显示器恢复，见[发布说明](docs/release-notes-v0.3.0.zh-CN.md)。
 - 固定 Apple Development 签名与升级比较，本机已验证权限延续。
 - 统一 UI 规范与主界面双向 OpenDisplay 兼容连接。
 - 按设备 Native/1080p/1440p/4K 扩展桌面分辨率。

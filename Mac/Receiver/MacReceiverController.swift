@@ -23,7 +23,10 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
 
     init(port: UInt16 = 9000, advertiseService: Bool = true,
          securityProvider: @escaping () throws -> AppleReceiverSecurity = { try .live(localID: StreamReceiver.installID) }) {
-        receiver = StreamReceiver(securityProvider: securityProvider)
+        let debugStats = UserDefaults.standard.object(forKey: "debugStats") == nil
+            || UserDefaults.standard.bool(forKey: "debugStats")
+        receiver = StreamReceiver(diagnostic: debugStats ? { Log.info($0) } : nil,
+                                  securityProvider: securityProvider)
         self.port = port
         self.advertiseService = advertiseService
         super.init()

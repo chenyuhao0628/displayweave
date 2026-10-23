@@ -6,17 +6,17 @@
 
 DisplayWeave is an independently maintained, GPL-3.0, local-first second-display project derived from [OpenDisplay](https://github.com/peetzweg/opendisplay). It turns iPhone, iPad, and Android devices into extended or mirrored displays for a Mac.
 
-## Mac-to-Mac (experimental in v0.3.0-preview.3)
+## Mac-to-Mac (experimental in v0.3.0)
 
 The same app can send or receive a one-way extended/mirrored desktop over Wi-Fi
 or Ethernet. Both Macs require macOS 14+; the app negotiates hardware HEVC with H.264 fallback, with targets up to 120fps within screen/codec limits.
-This feature is included in the `v0.3.0-preview.3` downloads below.
+This feature is included in the `v0.3.0` downloads below.
 The two-Mac physical performance matrix remains unverified. See the [user guide](docs/mac-to-mac.md) and
 [design/upstream assessment](docs/mac-to-mac-design.md).
 
-This release also includes the four-surface UI refactor, selected upstream recovery improvements and network/lifecycle hardening. The [source upgrade report](docs/source-upgrade-audit-2026-10-16.md) records that baseline. This release includes the p7 [Mac HEVC, pinned direct-link discovery and negotiated Apple Pencil input](docs/hevc-wired-pencil.md), with 52 Swift suites; physical acceptance remains pending.
+This release also includes the four-surface UI refactor, selected upstream recovery improvements and network/lifecycle hardening. The [source upgrade report](docs/source-upgrade-audit-2026-10-16.md) records that baseline. This release includes the p7 [Mac HEVC, pinned direct-link discovery and negotiated Apple Pencil input](docs/hevc-wired-pencil.md), with 60 Swift suites; physical acceptance remains pending.
 
-This preview also adds [per-device resolution](docs/desktop-resolution.md), [secure pairing](docs/secure-transport.md), [consented Mac keyboard/mouse input](docs/mac-receiver-input.md), [wired/Wi-Fi handover](docs/mac-lan-handover.md), and [advanced Pencil](docs/pencil-advanced.md). Pair DisplayWeave devices using a receiving invitation; connect older OpenDisplay clients through the main-screen compatibility choice. See [interoperability](docs/opendisplay-compatibility.md).
+This release also includes [per-device resolution](docs/desktop-resolution.md), [secure pairing](docs/secure-transport.md), [consented Mac keyboard/mouse input](docs/mac-receiver-input.md), [wired/Wi-Fi handover](docs/mac-lan-handover.md), and [advanced Pencil](docs/pencil-advanced.md). Pair DisplayWeave devices using a receiving invitation; connect older OpenDisplay clients through the main-screen compatibility choice. See [interoperability](docs/opendisplay-compatibility.md).
 
 ## Current capabilities
 
@@ -35,24 +35,24 @@ The physical-device recovery and high-refresh observations below were recorded
 during Preview 2 validation and remain prior evidence; they were not rerun on a
 second Android device for this release.
 
-## Download `v0.3.0-preview.3`
+## Download `v0.3.0`
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-17: build 18 uses a pinned Apple Development identity for macOS. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](docs/release-notes-v0.3.0-preview.3.md) for permission continuity, retained OpenDisplay compatibility and build evidence.
+2026-10-23: stable build 19 includes Mac 4K latency improvements, the 100 Mbps H.264 LAN ceiling and reviewed upstream recovery fixes, retaining the pinned Apple Development identity. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](docs/release-notes-v0.3.0.md) for changes, permission continuity and verification limits.
 
 | Platform | Asset | Distribution boundary |
 | --- | --- | --- |
 | macOS | `DisplayWeave-macOS.dmg` | Recommended guided first-install package; pinned Apple Development signature, not notarized |
 | macOS update | `DisplayWeave-macOS.zip` | Sparkle update payload and equivalent manual install option |
 | Android | `DisplayWeave-Android.apk` | Offline v2-signed APK; future in-app downloads are verified before system confirmation |
-| iOS/iPadOS | `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | Unsigned re-signing input; cannot be installed directly |
+| iOS/iPadOS | `DisplayWeave-iOS-unsigned-resigning-input.ipa` | Unsigned re-signing input; cannot be installed directly |
 | Mac feed | `appcast.xml` | Sparkle feed authenticated by the public key embedded in the Mac app |
 | Android feed | `android-update.json` | HTTPS metadata with size, hash, version, package, and pinned certificate |
-| Source | `DisplayWeave-v0.3.0-preview.3-source.tar.gz` | Tracked source at the release tag, including GPL-3.0 and build scripts |
+| Source | `DisplayWeave-v0.3.0-source.tar.gz` | Tracked source at the release tag, including GPL-3.0 and build scripts |
 | Verification | `SHA256SUMS.txt` | SHA-256 for all Release files |
 
-This is a development preview, not a production-signed store release. Verify the checksum before use. Android users should also compare the certificate fingerprint in the [release checklist](docs/release-checklist.md).
+This is the stable release. The Mac uses Apple Development signing and remains unnotarized; iOS requires re-signing. Verify the checksum before use. Android users should also compare the certificate fingerprint in the [release checklist](docs/release-checklist.md).
 
 The guided Mac packaging flow produces `DisplayWeave-macOS.dmg` beside the ZIP.
 The DMG is the recommended first-install package: drag
@@ -107,7 +107,7 @@ cd AndroidReceiver
 ./gradlew clean test assembleDebug
 ```
 
-Create the complete offline Preview package set:
+Create the offline package set (the historical script name is retained; set an explicit version/build for publication as described in [local publication](docs/local-release.md)):
 
 ```bash
 python3 -m pip install -r tools/dmg-requirements.txt

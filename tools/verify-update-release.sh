@@ -51,11 +51,12 @@ build="${DISPLAYWEAVE_BUILD_NUMBER:?DISPLAYWEAVE_BUILD_NUMBER is required}"
 mac_zip="$directory/DisplayWeave-macOS.zip"
 mac_dmg="$directory/DisplayWeave-macOS.dmg"
 android_apk="$directory/DisplayWeave-Android.apk"
+ios_ipa="$directory/DisplayWeave-iOS-unsigned-resigning-input.ipa"
 appcast="$directory/appcast.xml"
 android_feed="$directory/android-update.json"
 checksums="$directory/SHA256SUMS.txt"
 
-for file in "$mac_zip" "$mac_dmg" "$android_apk" "$appcast" "$android_feed" "$checksums"; do
+for file in "$mac_zip" "$mac_dmg" "$android_apk" "$ios_ipa" "$appcast" "$android_feed" "$checksums"; do
   [[ -f "$file" ]] || { echo "Missing release artifact: $file" >&2; exit 2; }
 done
 unzip -tq "$mac_zip" >/dev/null
@@ -78,6 +79,20 @@ cleanup() {
 }
 trap cleanup EXIT
 unzip -q "$mac_zip" -d "$temporary"
+unzip -tq "$ios_ipa" >/dev/null
+unzip -q "$ios_ipa" -d "$temporary/ios"
+ios_app="$temporary/ios/Payload/DisplayWeave.app"
+ios_plist="$ios_app/Info.plist"
+[[ "$(plutil -extract CFBundleIdentifier raw "$ios_plist")" == "com.cyh.opendisplay.receiver" ]] \
+  || { echo "iOS bundle identifier mismatch." >&2; exit 3; }
+[[ "$(plutil -extract CFBundleShortVersionString raw "$ios_plist")" == "$version" ]] \
+  || { echo "iOS version name mismatch." >&2; exit 3; }
+[[ "$(plutil -extract CFBundleVersion raw "$ios_plist")" == "$build" ]] \
+  || { echo "iOS build number mismatch." >&2; exit 3; }
+[[ ! -e "$ios_app/_CodeSignature" ]] || { echo "iOS re-signing input must be unsigned." >&2; exit 3; }
+ios_executable="$(plutil -extract CFBundleExecutable raw "$ios_plist")"
+[[ "$(lipo -archs "$ios_app/$ios_executable")" == "arm64" ]] \
+  || { echo "iOS re-signing input must contain the arm64 device executable." >&2; exit 3; }
 mac_plist="$(find "$temporary" -maxdepth 3 -path '*/DisplayWeave.app/Contents/Info.plist' -print -quit)"
 [[ -n "$mac_plist" ]] || { echo "Mac archive has no app Info.plist." >&2; exit 3; }
 [[ "$(plutil -extract CFBundleShortVersionString raw "$mac_plist")" == "$version" ]] \

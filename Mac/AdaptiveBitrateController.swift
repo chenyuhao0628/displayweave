@@ -43,6 +43,8 @@ final class AdaptiveBitrateController {
     private let decreaseHoldSeconds: TimeInterval
     private let stableIncreaseSeconds: TimeInterval
     private let increaseCooldownSeconds: TimeInterval
+    private let localRecovery: Bool
+    private let localRecoveryCeiling: Int
     private(set) var currentBitrate: Int
     private var previousMetrics: AdaptiveBitrateMetrics?
     private var normalSince: TimeInterval?
@@ -52,6 +54,7 @@ final class AdaptiveBitrateController {
     private var consecutiveAndroidCongestionWindows = 0
     private var previousLocalMetrics: LocalCongestionMetrics?
     private var consecutiveLocalCongestionSamples = 0
+    private var localNormalSince: TimeInterval?
     private(set) var decisionEpoch = 0
     private(set) var lastDecreaseReason: String?
     private(set) var lastDecreaseAt: TimeInterval?
@@ -59,11 +62,14 @@ final class AdaptiveBitrateController {
     init(initialBitrate: Int, bounds: ClosedRange<Int>,
          decreaseHoldSeconds: TimeInterval = 1,
          stableIncreaseSeconds: TimeInterval = 5,
-         increaseCooldownSeconds: TimeInterval = 5) {
+         increaseCooldownSeconds: TimeInterval = 5,
+         localRecovery: Bool = false) {
         self.bounds = bounds
         self.decreaseHoldSeconds = decreaseHoldSeconds
         self.stableIncreaseSeconds = stableIncreaseSeconds
         self.increaseCooldownSeconds = increaseCooldownSeconds
+        self.localRecovery = localRecovery
+        self.localRecoveryCeiling = Self.clamp(initialBitrate, to: bounds)
         currentBitrate = Self.clamp(initialBitrate, to: bounds)
     }
 
@@ -175,10 +181,17 @@ final class AdaptiveBitrateController {
         let congested = queueAtBudget || ageRising
         if congested {
             consecutiveLocalCongestionSamples += 1
+            localNormalSince = nil
         } else {
             consecutiveLocalCongestionSamples = 0
         }
+        if let previousLocalMetrics, metrics.timestamp - previousLocalMetrics.timestamp > 1 {
+            // Missing samples are not evidence of a continuously healthy link.
+            localNormalSince = nil
+        }
         previousLocalMetrics = metrics
+
+        if !congested, let recovery = recoverLocally(metrics) { return recovery }
 
         guard consecutiveLocalCongestionSamples >= 2,
               metrics.timestamp - (lastDecreaseAt ?? -Double.greatestFiniteMagnitude)
@@ -199,6 +212,32 @@ final class AdaptiveBitrateController {
             reason: "localFastDecrease",
             trigger: queueAtBudget
                 ? "pending-budget" : "oldest-pending-age-rising")
+    }
+
+    /// Mac receivers do not publish the phone's `stats` messages. Restore a
+    /// local decrease using active, drained send windows, but never probe above
+    /// the original target without receiver throughput measurements.
+    private func recoverLocally(_ metrics: LocalCongestionMetrics) -> AdaptiveBitrateDecision? {
+        guard localRecovery, currentBitrate < localRecoveryCeiling,
+              metrics.pendingSends == 0, metrics.encodedFps > 0,
+              metrics.sentFps / metrics.encodedFps >= 0.95 else {
+            localNormalSince = nil
+            return nil
+        }
+        if localNormalSince == nil { localNormalSince = metrics.timestamp }
+        guard let localNormalSince,
+              metrics.timestamp - localNormalSince >= stableIncreaseSeconds,
+              metrics.timestamp - lastChangeAt >= increaseCooldownSeconds else { return nil }
+        let previous = currentBitrate
+        let increased = min(localRecoveryCeiling, Int((Double(previous) * 1.07).rounded()))
+        guard increased > previous else { return nil }
+        currentBitrate = increased
+        self.localNormalSince = metrics.timestamp
+        lastChangeAt = metrics.timestamp
+        decisionEpoch += 1
+        return AdaptiveBitrateDecision(previousBitrate: previous, newBitrate: increased,
+            reason: "localRecoveryIncrease", trigger: stableReason,
+            networkState: .recovering, decisionEpoch: decisionEpoch)
     }
 
     private func congestionReason(_ metrics: AdaptiveBitrateMetrics) -> String? {
@@ -274,6 +313,7 @@ final class AdaptiveBitrateController {
         -> AdaptiveBitrateDecision {
         lastDecreaseReason = reason
         lastDecreaseAt = timestamp
+        localNormalSince = nil
         decisionEpoch += 1
         return AdaptiveBitrateDecision(
             previousBitrate: previous, newBitrate: currentBitrate,
@@ -299,6 +339,7 @@ final class AdaptiveBitrateController {
     private func resetLocalBaseline() {
         previousLocalMetrics = nil
         consecutiveLocalCongestionSamples = 0
+        localNormalSince = nil
     }
 
     private static func clamp(_ value: Int, to bounds: ClosedRange<Int>) -> Int {

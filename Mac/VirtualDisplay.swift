@@ -15,6 +15,8 @@ final class VirtualDisplay {
     let requestedRefreshRate: Int
     private(set) var actualRefreshRate: Int
     private(set) var refreshRateFallbackReason: String?
+    private var originRestore: OriginRestore
+    private let onOriginChange: ((CGPoint, CGSize) -> Void)?
 
     var displayID: CGDirectDisplayID { display.displayID }
 
@@ -29,12 +31,15 @@ final class VirtualDisplay {
     /// arrangement on vendor/product/serial, so a stable serial means each
     /// device keeps its position in System Settings across sessions.
     init?(name: String, pointsWide: Int, pointsHigh: Int, sizeInMillimeters: CGSize,
-          serialNum: UInt32 = 0x0001, requestedRefreshRate: Int = 60, backingScale: Int = 2) {
+          serialNum: UInt32 = 0x0001, requestedRefreshRate: Int = 60, backingScale: Int = 2,
+          restoreOrigin: CGPoint? = nil, onOriginChange: ((CGPoint, CGSize) -> Void)? = nil) {
         self.backingScale = backingScale == 1 ? 1 : 2
         self.pointsWide = pointsWide
         self.pointsHigh = pointsHigh
         self.requestedRefreshRate = RefreshRatePolicy.sanitize(requestedRefreshRate)
         self.actualRefreshRate = self.requestedRefreshRate
+        self.originRestore = OriginRestore(target: restoreOrigin)
+        self.onOriginChange = onOriginChange
 
         let descriptor = CGVirtualDisplayDescriptor()
         descriptor.setDispatchQueue(DispatchQueue.main)
@@ -90,9 +95,12 @@ final class VirtualDisplay {
                 // removing the display — never hold it across the sleep.
                 do {
                     guard let self else { return }
-                    self.ensureNotMirrored()
-                    if self.selectHiDPIMode(recover: settled) { settled = true }
-                    _ = self.refreshActualRefreshRate()
+                    if DisplayTopology.isOnline(self.displayID) {
+                        self.ensureNotMirrored()
+                        if self.selectHiDPIMode(recover: settled) { settled = true }
+                        _ = self.refreshActualRefreshRate()
+                        self.manageOrigin()
+                    }
                 }
                 try? await Task.sleep(for: .milliseconds(settled ? 2000 : 200))
             }
@@ -127,7 +135,8 @@ final class VirtualDisplay {
             return false
         }
         if let current = CGDisplayCopyDisplayMode(display.displayID),
-           current.width == hidpi.width, current.pixelWidth == hidpi.pixelWidth {
+           current.width == hidpi.width, current.height == hidpi.height,
+           current.pixelWidth == hidpi.pixelWidth, current.pixelHeight == hidpi.pixelHeight {
             return true
         }
         var config: CGDisplayConfigRef?
@@ -136,6 +145,32 @@ final class VirtualDisplay {
         let err = CGCompleteDisplayConfiguration(config, .permanently)
         Log.info("display mode (re)selected: \(hidpi.width)x\(hidpi.height)@\(backingScale)x (result \(err.rawValue))")
         return err == .success
+    }
+
+    /// Upstream 1522cd2: the restore window begins at the first usable tick,
+    /// so a slow WindowServer cannot turn a default placement into a user drag.
+    private func manageOrigin() {
+        let bounds = CGDisplayBounds(displayID)
+        guard !bounds.isEmpty else { return }
+        switch originRestore.tick(origin: bounds.origin) {
+        case .none: break
+        case .report(let origin):
+            onOriginChange?(origin, CGSize(width: pointsWide, height: pointsHigh))
+        case .apply(let target):
+            guard target.x.isFinite, target.y.isFinite,
+                  target.x >= CGFloat(Int32.min), target.x <= CGFloat(Int32.max),
+                  target.y >= CGFloat(Int32.min), target.y <= CGFloat(Int32.max) else { return }
+            var config: CGDisplayConfigRef?
+            guard CGBeginDisplayConfiguration(&config) == .success else { return }
+            guard CGConfigureDisplayOrigin(config, displayID, Int32(target.x), Int32(target.y)) == .success else {
+                CGCancelDisplayConfiguration(config); return
+            }
+            let result = CGCompleteDisplayConfiguration(config, .permanently)
+            if result == .success {
+                originRestore.settled(at: CGDisplayBounds(displayID).origin)
+            }
+            Log.info("display origin restore result=\(result.rawValue)")
+        }
     }
 
     /// An extend-mode virtual display must never sit in a system mirror set.
@@ -149,7 +184,8 @@ final class VirtualDisplay {
     /// VirtualDisplay in a mirror set is always wrong — safe to always undo.
     private func ensureNotMirrored() {
         let id = display.displayID
-        guard CGDisplayIsInMirrorSet(id) != 0 else { return }
+        // -1 means unknown, not mirrored (upstream issue #142).
+        guard CGDisplayIsInMirrorSet(id) == 1 else { return }
 
         var config: CGDisplayConfigRef?
         guard CGBeginDisplayConfiguration(&config) == .success else { return }

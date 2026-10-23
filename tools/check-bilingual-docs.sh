@@ -5,6 +5,9 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
 pairs=(
+  "docs/release-notes-v0.3.0.md:docs/release-notes-v0.3.0.zh-CN.md"
+  "docs/mac-4k-latency.md:docs/mac-4k-latency.zh-CN.md"
+  "docs/upstream-integration-2026-10-23.md:docs/upstream-integration-2026-10-23.zh-CN.md"
   "docs/adaptive-bitrate.md:docs/adaptive-bitrate.zh-CN.md"
   "docs/android-decoder-throughput-recovery.md:docs/android-decoder-throughput-recovery.zh-CN.md"
   "docs/bitrate-modes.md:docs/bitrate-modes.zh-CN.md"

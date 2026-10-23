@@ -4,14 +4,14 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 temporary="$(mktemp -d "${TMPDIR:-/tmp}/displayweave-window-test.XXXXXX")"
 trap 'rm -rf "$temporary"' EXIT
-swiftc Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
+swiftc Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
   Shared/AppleTransportIdentity.swift Shared/AppleTLS.swift Shared/SecurePairingProtocol.swift \
   Shared/SecurePairingState.swift Shared/AppleSecurityStore.swift Shared/AppleSecureAdmission.swift Shared/AppleTransportSecurity.swift \
-  Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift Mac/Receiver/StreamReceiver.swift Mac/Receiver/ReceiverVideoView.swift \
+  Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift Mac/LatestValueRelay.swift Shared/BoundedLogWriter.swift Mac/Log.swift Shared/DesktopInputProtocol.swift Shared/InputSendBudget.swift Mac/Receiver/ReceiverDesktopInputCapture.swift Mac/Receiver/MacVideoRenderer.swift Mac/Receiver/StreamReceiver.swift Mac/Receiver/ReceiverVideoView.swift \
   Mac/Receiver/MacReceiverController.swift MacTests/ReceiverTestSupport.swift \
   MacTests/MacReceiverWindowSelfTest.swift -o "$temporary/ReceiverWindowTest"
 "$temporary/ReceiverWindowTest"
 swiftc -import-objc-header Mac/OpenSidecarMac-Bridging-Header.h \
-  Mac/VirtualDisplay.swift Mac/RefreshRatePolicy.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
+  Mac/VirtualDisplay.swift Mac/RefreshRatePolicy.swift Mac/OriginRestore.swift Mac/DisplayTopology.swift Mac/DisplayUnitCoordinator.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
   MacTests/MacVirtualDisplaySelfTest.swift -o "$temporary/VirtualDisplayTest"
 "$temporary/VirtualDisplayTest"
