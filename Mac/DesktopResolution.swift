@@ -60,6 +60,15 @@ struct DesktopGeometry: Equatable {
 }
 
 enum DesktopResolutionPolicy {
+    /// Android's FPS envelope describes the announced receiver raster. A mirror
+    /// must fit that raster too; source display size is not decoder capability.
+    static func mirrorRaster(sourceWidth: Int, sourceHeight: Int, qualityScale: Double,
+                             maxWidth: Int, maxHeight: Int) -> (width: Int, height: Int) {
+        raster(DesktopGeometry(pointsWide: max(2, min(16384, sourceWidth)),
+                               pointsHigh: max(2, min(16384, sourceHeight)), scale: 1),
+               qualityScale: qualityScale, maxWidth: maxWidth, maxHeight: maxHeight)
+    }
+
     static func geometry(_ selection: DesktopResolution, nativeWidth: Int, nativeHeight: Int,
                          nativePointsWide: Int? = nil, nativePointsHigh: Int? = nil,
                          backingScale: Int) -> DesktopGeometry {

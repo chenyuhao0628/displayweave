@@ -41,6 +41,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     @MainActor var onStatus: ((String) -> Void)?
     @MainActor var onStats: ((Int, Double) -> Void)?   // framesSent, mbps
     @MainActor var onTargetBitrate: ((Double) -> Void)?
+    @MainActor var onStreamDescription: ((String, String?) -> Void)?
     @MainActor var onBenchmarkStatus: ((String) -> Void)?
     // Fired when a previously connected device stays gone past the grace
     // period — the controller ends the session (capture, virtual display,
@@ -334,8 +335,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         }
         // SCDisplay reports points; capture at point resolution for M1.
         let macPlan = info.usesAppleVideoCapabilities ? MacReceiverPolicy.plan(info: info, settings: settings, sourceWidth: display.width, sourceHeight: display.height, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
-        let captureW = macPlan?.width ?? ((Int(Double(display.width) * quality.scale)) & ~1)
-        let captureH = macPlan?.height ?? ((Int(Double(display.height) * quality.scale)) & ~1)
+        let mobileRaster = DesktopResolutionPolicy.mirrorRaster(sourceWidth: display.width,
+            sourceHeight: display.height, qualityScale: quality.scale,
+            maxWidth: info.maxEncodeWide ?? info.pixelsWide,
+            maxHeight: info.maxEncodeHigh ?? info.pixelsHigh)
+        let captureW = macPlan?.width ?? mobileRaster.width
+        let captureH = macPlan?.height ?? mobileRaster.height
         let captureFps = macPlan?.fps ?? settings.selectedFps(deviceMaxFps: info.negotiatedMaxFps)
         let codec = macPlan?.codec ?? (info.isAndroidReceiver ? settings.selectedCodec(
             supportedCodecs: info.negotiatedSupportedCodecs, preferredCodec: info.negotiatedPreferredCodec) : .h264)
@@ -2557,6 +2562,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             maxFrameBytes: lastHello?.negotiatedMaxFrameBytes,
             exactFrameRate: lastHello?.usesAppleVideoCapabilities == true)
         sendJSONFrame(message.json)
+        let description = "编码 \(width)×\(height) · \(streamCodec.label) · 目标 \(requestedCaptureFps) fps"
+        var limits: [String] = []
+        if settings.bitrateMode == .manual, settings.bitratePreset.bitsPerSecond != streamBitrate {
+            limits.append("请求 \(settings.bitratePreset.megabits) Mbps，按 \(streamCodec.label)／\(bitrateTransport == .usb ? "USB" : "局域网") 范围以 \(streamBitrate / 1_000_000) Mbps 生效")
+        }
+        if let requested = settings.fpsMode.userSelectedFps, requested > requestedCaptureFps {
+            limits.append("请求 \(requested) fps，受屏幕或解码能力限制；Apple 接收端可尝试“帧率优先”")
+        }
+        let explanation = limits.isEmpty ? nil : limits.joined(separator: "。")
+        Task { @MainActor in onStreamDescription?(description, explanation) }
         if let identity {
             scheduleProtocolTimeout(identity: identity, phase: .awaitingStreamConfigAck)
         }

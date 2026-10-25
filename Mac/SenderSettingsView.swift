@@ -8,11 +8,17 @@ struct SenderSettingsView: View {
     @StateObject private var permissions = PermissionMonitor()
     @State private var benchmarkScene = BenchmarkScene.staticDesktop
     @State private var benchmarkDuration = BenchmarkDuration.standard
-    private var bitratePresets: [BitratePreset] {
-        let codec: StreamCodec = controller.settings.codecMode == .h264 ? .h264 : .hevc
-        let transport: BitrateTransport = controller.settings.transportMode == .wifi ? .wifi : .usb
-        return StreamEncodingPolicy.availablePresets(
-            mode: controller.settings.bitrateMode, codec: codec, transport: transport)
+    private var bitratePresets: [BitratePreset] { controller.settings.availableBitratePresets }
+
+    private func setting<Value>(_ key: WritableKeyPath<StreamSettings, Value>) -> Binding<Value> {
+        Binding(get: { controller.settings[keyPath: key] }, set: { value in
+            var updated = controller.settings
+            updated[keyPath: key] = value
+            updated.normalizeBitratePreset()
+            guard updated != controller.settings else { return }
+            controller.settings = updated
+            controller.restartAll()
+        })
     }
 
     var body: some View {
@@ -37,76 +43,77 @@ struct SenderSettingsView: View {
 
     @ViewBuilder private var streamControls: some View {
     VStack(alignment: .leading, spacing: 4) {
-        Picker("帧率", selection: $controller.settings.fpsMode) {
+        Picker("帧率上限", selection: setting(\.fpsMode)) {
             ForEach(StreamFpsMode.allCases, id: \.self) { mode in
                 Text(mode.label).tag(mode)
             }
         }
         .pickerStyle(.segmented)
-        .onChange(of: controller.settings.fpsMode) { _, _ in controller.restartAll() }
-        Text("自动在接收屏幕和解码上限内选择，最高请求 120 fps。实际帧率取决于设备、分辨率与网络。")
+        Text("30 fps 适合静态办公；60 fps 兼顾日常使用；90／120 fps 需要接收屏幕与解码器支持。实际生效值显示在设备卡片中。")
             .font(.caption)
             .foregroundStyle(.secondary)
     }
 
     VStack(alignment: .leading, spacing: 4) {
-        Picker("编码", selection: $controller.settings.codecMode) {
+        Picker("能力不足时", selection: setting(\.priority)) {
+            ForEach(StreamPriority.allCases, id: \.self) { Text($0.label).tag($0) }
+        }.pickerStyle(.segmented)
+        Text(controller.settings.priority == .resolution
+             ? "Apple 接收端优先保留文字细节，必要时降低帧率。例如 4K 可能以 60 fps 生效。"
+             : "Apple 接收端优先达到所选帧率上限，必要时降低编码分辨率；桌面布局保持不变。")
+            .font(.caption).foregroundStyle(.secondary)
+    }
+
+    VStack(alignment: .leading, spacing: 4) {
+        Picker("编码", selection: setting(\.codecMode)) {
             ForEach(StreamCodecMode.allCases, id: \.self) { mode in
                 Text(mode.label).tag(mode)
             }
         }
         .pickerStyle(.segmented)
-        .onChange(of: controller.settings.codecMode) { _, _ in controller.restartAll() }
         Text("自动选择双方支持的编码；HEVC 初始化失败时回退 H.264。")
             .font(.caption)
             .foregroundStyle(.secondary)
     }
 
     VStack(alignment: .leading, spacing: 4) {
-        Picker("画质", selection: $controller.settings.quality) {
+        Picker("画质", selection: setting(\.quality)) {
             ForEach(StreamQuality.allCases, id: \.self) { q in
                 Text(q.label).tag(q)
             }
         }
-        .onChange(of: controller.settings.quality) { _, _ in controller.restartAll() }
         Text(controller.settings.quality.explanation)
             .font(.caption)
             .foregroundStyle(.secondary)
-        Text("每台设备的桌面分辨率在连接列表单独选择；这里的画质只缩放编码，不改变桌面布局。镜像沿用发送端实体显示器尺寸。")
+        Text("每台设备的桌面分辨率在连接列表单独选择；这里的画质只缩放编码，不改变桌面布局。镜像保留发送端画面比例，并适配接收端解码尺寸。")
             .font(.caption)
             .foregroundStyle(.secondary)
     }
 
     VStack(alignment: .leading, spacing: 4) {
-        Picker("码率", selection: $controller.settings.bitrateMode) {
+        Picker("码率", selection: setting(\.bitrateMode)) {
             ForEach(BitrateMode.allCases, id: \.self) { mode in
                 Text(mode.label).tag(mode)
             }
         }
         .pickerStyle(.segmented)
-        .onChange(of: controller.settings.bitrateMode) { _, _ in
-            if let first = bitratePresets.first,
-               !bitratePresets.contains(controller.settings.bitratePreset) {
-                controller.settings.bitratePreset = first
-            }
-            controller.restartAll()
-        }
         if controller.settings.bitrateMode != .auto {
-            Picker("目标码率", selection: $controller.settings.bitratePreset) {
+            Picker("请求码率", selection: setting(\.bitratePreset)) {
                 ForEach(bitratePresets, id: \.self) { preset in
                     Text(preset.label).tag(preset)
                 }
             }
-            .onChange(of: controller.settings.bitratePreset) { _, _ in
-                controller.restartAll()
-            }
+        }
+        if controller.settings.bitrateMode == .manual {
+            Text("这是请求值，最终按每台设备协商：H.264 最高 100 Mbps；HEVC 局域网最高 100、USB 最高 160 Mbps。自动连接或编码回退时，以设备卡片的生效目标为准。")
+                .font(.caption).foregroundStyle(.secondary)
         }
         if controller.settings.bitrateMode == .benchmark {
             Text("实验模式：可能增加延迟和排队，仅用于本地测试。")
                 .font(.caption)
                 .foregroundStyle(.orange)
         } else if controller.settings.bitrateMode == .auto {
-            Text("自动根据排队、丢帧、往返时延和帧龄调整目标码率。")
+            Text("根据发送排队、接收端压力和时延调整；链路恢复后逐步恢复清晰度。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -115,15 +122,12 @@ struct SenderSettingsView: View {
     }
     @ViewBuilder private var connectionControls: some View {
     VStack(alignment: .leading, spacing: 4) {
-        Picker("连接方式", selection: $controller.settings.transportMode) {
+        Picker("连接方式", selection: setting(\.transportMode)) {
             ForEach(StreamTransportMode.allCases, id: \.self) { mode in
                 Text(mode.label).tag(mode)
             }
         }
         .pickerStyle(.segmented)
-        .onChange(of: controller.settings.transportMode) { _, _ in
-            controller.restartAll()
-        }
         Text("自动模式优先 USB；Android USB 不可用时尝试同一设备的局域网连接。")
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -209,8 +213,7 @@ struct SenderSettingsView: View {
     }
     }
     @ViewBuilder private var diagnosticControls: some View {
-    Toggle("发送诊断统计", isOn: $controller.settings.enableDebugStats)
-        .onChange(of: controller.settings.enableDebugStats) { _, _ in controller.restartAll() }
+    Toggle("发送诊断统计", isOn: setting(\.enableDebugStats))
 
 #if DEBUG
     DisclosureGroup("短时测试（实验性）") {

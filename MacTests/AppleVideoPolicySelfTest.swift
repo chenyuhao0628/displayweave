@@ -23,6 +23,27 @@ import Foundation
         let large = MacReceiverPolicy.plan(info: info, settings: settings,
             sourceWidth: 4096, sourceHeight: 2304, hardwareHEVCEncode: true)
         precondition(large.fps == 60)
+        var motion = settings
+        motion.priority = .frameRate
+        let fast = MacReceiverPolicy.plan(info: info, settings: motion,
+            sourceWidth: 3840, sourceHeight: 2160, hardwareHEVCEncode: true)
+        precondition(fast.fps == 120 && fast.width < 3840 && fast.width * fast.height * fast.fps <= 566231040,
+                     "frame-rate priority fits raster to the receiver throughput envelope")
+        motion.fpsMode = .fps30
+        let office = MacReceiverPolicy.plan(info: info, settings: motion,
+            sourceWidth: 3840, sourceHeight: 2160, hardwareHEVCEncode: true)
+        precondition(office.fps == 30 && office.width == 3840, "30 fps retains native detail when supported")
+        let alternatives = #"{"pixelsWide":3840,"pixelsHigh":2160,"scale":1,"device":"Mac","displayMaxFrameRate":120,"videoCaps":[{"codec":"h264","maxWidth":3840,"maxHeight":2160,"maxFrameRate":30},{"codec":"h264","maxWidth":2560,"maxHeight":1440,"maxFrameRate":120}]}"#
+        let alternativeInfo = try JSONDecoder().decode(PhoneInfo.self, from: Data(alternatives.utf8))
+        let detailed = MacReceiverPolicy.plan(info: alternativeInfo, settings: settings)
+        precondition(detailed.width == 3840 && detailed.fps == 30,
+                     "resolution priority compares raster before aggregate pixel throughput")
+        motion.fpsMode = .auto
+        let fasterInfo = try JSONDecoder().decode(PhoneInfo.self,
+            from: Data(alternatives.replacingOccurrences(of: "\"maxFrameRate\":30", with: "\"maxFrameRate\":60").utf8))
+        let faster = MacReceiverPolicy.plan(info: fasterInfo, settings: motion)
+        precondition(faster.width == 2560 && faster.fps == 120,
+                     "frame-rate priority compares FPS before aggregate pixel throughput")
         let legacy = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":1920,"pixelsHigh":1080,"scale":2,"device":"iPad"}"#.utf8))
         precondition(!legacy.usesAppleVideoCapabilities)
         // OpenDisplay v1.25.0 / b9eec1f, Shared/StreamReceiver.swift::sendHello.

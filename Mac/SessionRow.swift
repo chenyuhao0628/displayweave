@@ -19,9 +19,17 @@ struct SessionRow: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
+            if !session.streamDescription.isEmpty {
+                Text(session.streamDescription).font(.caption).monospacedDigit()
+            }
             if session.targetMbps > 0 || session.mbps > 0 {
-                Text("目标 \(String(format: "%.1f", session.targetMbps)) · 实际 \(String(format: "%.1f", session.mbps)) Mbps")
+                Text("生效目标 \(String(format: "%.1f", session.targetMbps)) · 实际发送 \(String(format: "%.1f", session.mbps)) Mbps")
                     .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+            }
+            if let explanation = session.streamLimitDescription {
+                Label(explanation, systemImage: "info.circle")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if controller.mode == .extend {
                 Picker("桌面像素", selection: Binding(

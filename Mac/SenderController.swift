@@ -655,6 +655,10 @@ final class SenderController: ObservableObject {
         sender.onTargetBitrate = { [weak session] mbps in
             session?.targetMbps = mbps
         }
+        sender.onStreamDescription = { [weak session] description, explanation in
+            session?.streamDescription = description
+            session?.streamLimitDescription = explanation
+        }
         sender.onBenchmarkStatus = { [weak session] status in
             session?.benchmarkStatus = status
         }

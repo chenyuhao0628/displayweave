@@ -807,7 +807,7 @@ final class PhoneReceiver: ObservableObject {
                 waitingForKeyframe = true
                 requestKeyframeIfNeeded()
                 return
-            case .wait: return
+            case .wait: requestKeyframeIfNeeded(); return
             }
         }
         waitingForKeyframe = false

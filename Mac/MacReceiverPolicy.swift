@@ -65,8 +65,12 @@ enum MacReceiverPolicy {
             let maxW = min(fallbackW, max(2, cap.maxWidth ?? fallbackW), max(2, info.maxEncodeWide ?? fallbackW))
             let maxH = min(fallbackH, max(2, cap.maxHeight ?? fallbackH), max(2, info.maxEncodeHigh ?? fallbackH))
             let pixelBudget = cap.maxPixelsPerSecond.map { max(4, $0) } ?? Int.max
+            let requestedFps = min(120, max(1, info.displayMaxFrameRate ?? info.maxFps ?? 60),
+                                   max(1, cap.maxFrameRate ?? 60), settings.fpsMode.userSelectedFps ?? 120)
+            let preferredFps = [120, 90, 60, 30].first(where: { $0 <= requestedFps }) ?? requestedFps
+            let rasterBudget = settings.priority == .frameRate ? max(4, pixelBudget / preferredFps) : pixelBudget
             let ratio = min(settings.quality.scale, Double(maxW) / Double(nativeW), Double(maxH) / Double(nativeH),
-                            sqrt(Double(pixelBudget) / Double(nativeW * nativeH)))
+                            sqrt(Double(rasterBudget) / Double(nativeW * nativeH)))
             var width = max(2, Int(Double(nativeW) * ratio) & ~1)
             var height = max(2, Int(Double(nativeH) * ratio) & ~1)
             // Rounding a very narrow raster up to two pixels must not exceed
@@ -83,6 +87,12 @@ enum MacReceiverPolicy {
             return MacStreamPlan(pointsWide: pointsWide, pointsHigh: pointsHigh, scale: scale,
                                  width: width, height: height, fps: fps, codec: hevc ? .hevc : .h264)
         }
-        return plans.max { $0.width * $0.height * $0.fps < $1.width * $1.height * $1.fps }!
+        return plans.max { left, right in
+            let leftPixels = left.width * left.height
+            let rightPixels = right.width * right.height
+            if settings.priority == .frameRate, left.fps != right.fps { return left.fps < right.fps }
+            if leftPixels != rightPixels { return leftPixels < rightPixels }
+            return left.fps < right.fps
+        }!
     }
 }

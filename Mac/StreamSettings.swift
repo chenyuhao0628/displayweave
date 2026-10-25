@@ -54,6 +54,7 @@ enum StreamQuality: String, CaseIterable {
 
 enum StreamFpsMode: String, CaseIterable {
     case auto
+    case fps30
     case fps60
     case fps90
     case fps120
@@ -61,6 +62,7 @@ enum StreamFpsMode: String, CaseIterable {
     var label: String {
         switch self {
         case .auto: return "自动"
+        case .fps30: return "30"
         case .fps60: return "60"
         case .fps90: return "90"
         case .fps120: return "120"
@@ -70,11 +72,17 @@ enum StreamFpsMode: String, CaseIterable {
     var userSelectedFps: Int? {
         switch self {
         case .auto: return nil
+        case .fps30: return 30
         case .fps60: return 60
         case .fps90: return 90
         case .fps120: return 120
         }
     }
+}
+
+enum StreamPriority: String, CaseIterable {
+    case resolution, frameRate
+    var label: String { self == .resolution ? "分辨率优先" : "帧率优先" }
 }
 
 enum StreamCodecMode: String, CaseIterable {
@@ -149,6 +157,25 @@ struct StreamSettings: Equatable {
     var bitrateMode: BitrateMode = .auto
     var bitratePreset: BitratePreset = .mbps40
     var desktopResolutions = DesktopResolutionPreferences()
+    var priority: StreamPriority = .resolution
+
+    var availableBitratePresets: [BitratePreset] {
+        guard bitrateMode != .auto else { return [] }
+        if bitrateMode == .benchmark { return BitratePreset.benchmarkCases }
+        let codecs: [StreamCodec] = codecMode.codecOverride.map { [$0] } ?? [.h264, .hevc]
+        let transports: [BitrateTransport] = transportMode == .auto ? [.wifi, .usb] : [transportMode == .usb ? .usb : .wifi]
+        return BitratePreset.manualCases.filter { preset in
+            codecs.contains { codec in transports.contains { transport in
+                StreamEncodingPolicy.bitrateBounds(codec: codec, transport: transport).contains(preset.bitsPerSecond)
+            } }
+        }
+    }
+
+    mutating func normalizeBitratePreset() {
+        let available = availableBitratePresets
+        guard !available.isEmpty, !available.contains(bitratePreset) else { return }
+        bitratePreset = available.min { abs($0.rawValue - bitratePreset.rawValue) < abs($1.rawValue - bitratePreset.rawValue) }!
+    }
 
     static func load(from defaults: UserDefaults = .standard) -> StreamSettings {
         let fpsMode = StreamFpsMode(rawValue: defaults.string(forKey: "fpsMode") ?? "") ?? legacyFpsMode(defaults)
@@ -159,7 +186,7 @@ struct StreamSettings: Equatable {
         let storedBitrateMode = defaults.string(forKey: "bitrateMode")
         let bitrateMode = BitrateMode(rawValue: storedBitrateMode ?? "") ?? .auto
         let bitratePreset = BitratePreset(rawValue: defaults.integer(forKey: "bitrateMbps")) ?? .mbps40
-        return StreamSettings(
+        var settings = StreamSettings(
             fpsMode: fpsMode,
             codecMode: codecMode,
             quality: quality,
@@ -168,7 +195,10 @@ struct StreamSettings: Equatable {
             bitrateMode: bitrateMode,
             bitratePreset: bitratePreset,
             desktopResolutions: DesktopResolutionPreferences(
-                stored: defaults.dictionary(forKey: "desktopResolutions.v1") as? [String: String] ?? [:]))
+                stored: defaults.dictionary(forKey: "desktopResolutions.v1") as? [String: String] ?? [:]),
+            priority: StreamPriority(rawValue: defaults.string(forKey: "streamPriority") ?? "") ?? .resolution)
+        settings.normalizeBitratePreset()
+        return settings
     }
 
     func save(to defaults: UserDefaults = .standard) {
@@ -180,6 +210,7 @@ struct StreamSettings: Equatable {
         defaults.set(bitrateMode.rawValue, forKey: "bitrateMode")
         defaults.set(bitratePreset.rawValue, forKey: "bitrateMbps")
         defaults.set(desktopResolutions.stored, forKey: "desktopResolutions.v1")
+        defaults.set(priority.rawValue, forKey: "streamPriority")
     }
 
     func selectedFps(deviceMaxFps: Int) -> Int {
@@ -199,6 +230,7 @@ struct StreamSettings: Equatable {
         case 120: return .fps120
         case 90: return .fps90
         case 60: return .fps60
+        case 30: return defaults.integer(forKey: "fps") == 30 ? .fps30 : .auto
         default: return .auto
         }
     }

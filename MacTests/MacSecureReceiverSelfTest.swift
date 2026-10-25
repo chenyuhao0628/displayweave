@@ -7,7 +7,7 @@ private final class SecureReceiverPeer {
     let connection: NWConnection
     var admission: AppleSecureAdmission?
     init(port: UInt16, identity: AppleTransportIdentity, state: SecurePairingState,
-         invitation: PairingInvitation) throws {
+         invitation: PairingInvitation, alreadyPaired: Bool = false) throws {
         let tls = try AppleTLS.options(identity: identity, peerIsServer: true, queue: queue,
                                        acceptedFingerprint: { $0 == invitation.certificateSHA256 })
         connection = NWConnection(host: "127.0.0.1", port: .init(rawValue: port)!, using: NWParameters(tls: tls, tcp: .init()))
@@ -17,7 +17,7 @@ private final class SecureReceiverPeer {
             if case .success = result { accepted = true }; done.signal()
         }
         let plan = SecureClientAdmission(pairing: state, receiverID: invitation.receiverID, receiverName: "Receiver",
-                                         fingerprint: invitation.certificateSHA256, token: invitation.token, localName: "Sender")
+                                         fingerprint: invitation.certificateSHA256, token: alreadyPaired ? nil : invitation.token, localName: "Sender")
         queue.async { self.admission?.startClient(plan) }
         precondition(done.wait(timeout: .now() + 5) == .success && accepted)
     }
@@ -155,7 +155,7 @@ private final class SecureReceiverPeer {
         let sender = try AppleTransportIdentity.ephemeral()
         let pairing = try SecurePairingState(localID: "test-sender", localFingerprint: sender.fingerprint,
                                              persisted: nil, persist: { _ in })
-        let client = try await Task.detached {
+        var client = try await Task.detached {
             let client = try SecureReceiverPeer(port: port, identity: sender, state: pairing, invitation: invitation)
             let hello = try client.hello()
             precondition(hello["id"] as? String == invitation.receiverID)
@@ -165,10 +165,32 @@ private final class SecureReceiverPeer {
         }.value
         defer { client.connection.cancel() }
         try await wait("iOS encrypted connection", seconds: 15) { state()["connected"] as? Bool == true && state()["encrypted"] as? Bool == true }
+        let heartbeat = ReceiverFrameDecoder.frame(Data(#"{"type":"ping","t":1}"#.utf8))
+        for second in 0..<18 {
+            client.connection.send(content: heartbeat, completion: .contentProcessed { _ in })
+            try await Task.sleep(for: .seconds(1))
+            if second == 10 { precondition(state()["connected"] as? Bool == true, "heartbeats keep the liveness watchdog satisfied") }
+        }
+        precondition(state()["connected"] as? Bool == false && state()["width"] as? Int == 0,
+                     "heartbeats must not bypass the independent first-video deadline")
+        client.connection.cancel()
+        client = try await Task.detached {
+            let replacement = try SecureReceiverPeer(port: port, identity: sender, state: pairing,
+                invitation: invitation, alreadyPaired: true)
+            _ = try replacement.hello()
+            return replacement
+        }.value
         let frame = try await Task.detached { try receiverTestH264Frame() }.value
         let config = try JSONSerialization.data(withJSONObject: ["type": "streamConfig", "codec": "h264", "width": 64, "height": 64, "fps": 30])
         client.connection.send(content: ReceiverFrameDecoder.frame(config) + ReceiverFrameDecoder.frame(frame), completion: .contentProcessed { _ in })
         try await wait("iOS synthetic video", seconds: 15) { state()["width"] as? Int == 64 }
+        for _ in 0..<16 {
+            client.connection.send(content: heartbeat, completion: .contentProcessed { _ in })
+            try await Task.sleep(for: .seconds(1))
+        }
+        precondition(state()["connected"] as? Bool == true && state()["width"] as? Int == 64,
+                     "a static desktop after its first video must remain connected")
+        print("iOS first-video deadline, heartbeat-only timeout, replacement and static-desktop exemption PASS")
         let actionGrant = UUID().uuidString
         func pencilConfiguration(extended: Bool) throws {
             var object: [String: Any] = ["type": "inputConfig", "inputCaps": extended
