@@ -1,0 +1,28 @@
+{
+  "revision": "01613ef9d118c16992156a8786c0f8d143dea73d",
+  "files": {
+    "Mac/MacSender.swift": "8e656efc10e827adf36b77c5b8313832e2350f03dcaf97fc8c622f7b6ff39527",
+    "Mac/FrameDropPolicy.swift": "acc7a3c49ad8fe5b16a179a20acf94091cf103648e6f0cff421f296421c5d569",
+    "Mac/GenerationWorkCounter.swift": "8fa3c95f54e7f5991a31568eadd4da1da85e4f8d3c6fd2d91ddfb16a09dd6656",
+    "Mac/StreamEncodingPolicy.swift": "233f2f6a3a281dac8318304d9f4e40905acb5fee52eb6b69df9bfc359b699d09",
+    "Mac/CaptureRecovery.swift": "c74e1769b42656fbb23c5457525a1fab22cf6c364708de092bd41cef85c3b5b7",
+    "Mac/DeviceCapabilities.swift": "3d3c792d8c70915522cea4e76df33e5534333da8ed44bd7333e7b8a126593888",
+    "Mac/DisplayArrangement.swift": "ef609c36a6f6745491122a3775b58beb89d21bbbf8bc6c40242dfc47401897bd",
+    "Mac/StreamSettings.swift": "5bc7d1d53637de4342add0a6582727ec2c3e96318ed9c54dece8033ea4d5c28a",
+    "Mac/DesktopResolution.swift": "62bb36715be427d1b35f038fbc07757dd4a8e8fd7eb05455b520e357baeb42a7",
+    "Mac/AdaptiveBitrateController.swift": "b13cc596d4a4147c311baa6ea2ef6d61788693afe7281a682222ddfe31cca17c",
+    "Mac/MacReceiverPolicy.swift": "c0ae78e37392e0402da136a029562da77083a72b5468b055ed62a6a99db17479",
+    "iOS/PhoneReceiver.swift": "05d4324e771b622a3cd2c70bcee3a9c1417f6ca58aebbad2fe96e41ee9cbc92e",
+    "AndroidReceiver/app/src/main/java/app/opendisplay/android/TouchGestureCoordinator.java": "78adb3d7f9dcd7e0bd7b362b7fa1752c340c3f10e0f131bb82e8864ed0cfd2da",
+    "AndroidReceiver/app/src/main/java/app/opendisplay/android/FrameQueuePolicy.java": "3cd5840be0100468ad25bc2637c80ddf6b1280e62c659f93d742d96fb1bf0488",
+    "AndroidReceiver/app/src/main/java/app/opendisplay/android/MainActivity.java": "f4a2b1c51fb1c38a1a9409b83103e1af9b375cdb2d513933a154e1e3e0c836e8",
+    "tools/test-secure-android-receiver.py": "16c99de509b6941119be81b5391b8e3d46ace9aa5b8b00b760503edee1d9168b",
+    "Mac/FrameSizePolicy.swift": "080a392eee6e04a81d7732c59bf92c6a3d9cafc522873e00fcd38c0da7579d3f",
+    "Mac/RefreshRatePolicy.swift": "d736457c6a2210ed029fe5926794cc67973f7aea43dc4e2c010e1fd85630a35e",
+    "Mac/Receiver/ReceiverWireProtocol.swift": "50aa5c017da7557ea5a393df27ce4422a00ed5a64f0f0005842f6f98686fbd8c",
+    "Mac/DisplayUnitCoordinator.swift": "a87d5ba42bf9723764b2a7010e04856df5079491fb197d32e15546ab9210a92b",
+    "Mac/EncoderSessionFactory.swift": "21e6d2cf70679f2e908d4f1e42fa6cdac4463bab8ecf653516982f1e9411eaf9",
+    "Mac/SenderSettingsView.swift": "f3d0bc225dc75d0fb3de3ae954e2dcb936c07073d41bbf7c9cfbb743ed32f6e2",
+    "AndroidReceiver/app/src/main/java/app/opendisplay/android/H264SurfaceDecoder.java": "877888a1fcadc44177f626decee793b71aa2c6a9910b5439241255f25db48db0"
+  }
+}
