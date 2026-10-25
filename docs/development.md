@@ -2,7 +2,7 @@
 
 # Development workflow
 
-Reviewed: 2026-10-16. This guide applies to source development, not a new public release.
+Reviewed: 2026-10-26. This guide applies to source development, not a new public release.
 
 ## Project instructions and official reference
 
@@ -56,7 +56,7 @@ Keep screenshots and full logs outside Git. Record reproducible commands and san
 
 ## Current verification coverage
 
-`tools/run-swift-self-tests.sh` runs 60 standalone suites. Android `test` includes six plain-Java groups. `pnpm build` runs TypeScript, client/SSR production builds, bilingual prerendering and generated-site assertions. Run both Apple target builds after adding shared source files.
+`tools/run-swift-self-tests.sh` runs 61 standalone suites plus current-method capture recovery and iOS admission fixtures. Android `test` includes seven plain-Java groups, using the configured compile SDK boot classpath. `pnpm build` runs TypeScript, client/SSR production builds, bilingual prerendering and generated-site assertions. Run both Apple target builds after adding shared source files.
 
 `python3 tools/test-apple-keychain.py --ios-simulator` exercises real Mac/iOS Keychain identity persistence, missing-key recovery and explicit reset in random test namespaces. `python3 tools/test-secure-ios-receiver.py` builds an isolated app from the production PhoneReceiver/security code, sends synthetic video over authenticated TLS, checks revocation and backgrounds the app. Both create/delete their own simulator and leave installed applications untouched. Use `--screenshots build/security-ui` on the latter for light/dark settings evidence after its test invitation has been consumed. Run simulator suites sequentially to avoid competing cold boots; no desktop capture or virtual display is involved.
 
@@ -65,6 +65,8 @@ For the older opt-in plaintext iOS network smoke test, launch an isolated Simula
 See [the 2026-10-16 audit](source-upgrade-audit-2026-10-16.md) for actual local UI/build evidence and pending hardware work.
 
 `python3 tools/test-secure-android-receiver.py --screenshots build/security-ui` requires SDK command-line tools and `system-images;android-35;default;arm64-v8a`. It creates/deletes its own AVD and builds a separate test package from production sources. Real Keystore keys exercise TLS; a Mac client then uses the production pairing/revocation/legacy UI over an owned ADB forward. Test identities and invitations are confined to the disposable app/container; screenshots are taken after invitation consumption.
+
+The extended Android runtime command is `python3 tools/test-android-experience.py --screenshots build/diagnostics/receiver-experience`. It reuses the disposable security fixture and additionally checks synthetic video aspect ratio, concise default status, immediate metrics toggles, letterbox touch rejection, normalized center input and stationary holds. It also needs ffmpeg. The iOS secure fixture now verifies the heartbeat-only first-video timeout and the static-desktop exemption after first video. See the [2026-10-26 upgrade ledger](reliability-experience-upgrade.md).
 
 ## Final source regression
 

@@ -1,6 +1,8 @@
 [English](code-and-experience-audit-2026-10-26.md) | [简体中文](code-and-experience-audit-2026-10-26.zh-CN.md)
 
 # 代码与使用体验审查 — 2026-10-26
+**历史快照：** 下文的 OPEN／未修复状态和“生产代码未改动”均指审查基线。修复进度与当前验收见[可靠性与体验升级](reliability-experience-upgrade.zh-CN.md)。
+
 
 ## 范围与证据口径
 

@@ -2,7 +2,7 @@
 
 # 开发工作流
 
-核对日期：2026-10-16。本指南针对源码开发，不代表发布新版本。
+核对日期：2026-10-26。本指南针对源码开发，不代表发布新版本。
 
 ## 项目规则与官方依据
 
@@ -56,7 +56,7 @@ xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecariOS -configuration 
 
 ## 当前验证覆盖
 
-`tools/run-swift-self-tests.sh` 执行 60 组独立测试；Android `test` 包含六组纯 Java 自测；`pnpm build` 执行 TypeScript、client/SSR 生产构建、双语预渲染与生成页面断言。添加共用源码后需构建两个 Apple 目标。
+`tools/run-swift-self-tests.sh` 执行 61 组独立测试，以及抽取当前生产方法的捕获恢复／iOS 视频准入测试；Android `test` 包含七组纯 Java 自测，并使用实际编译 SDK 的 boot classpath；`pnpm build` 执行 TypeScript、client/SSR 生产构建、双语预渲染与生成页面断言。添加共用源码后需构建两个 Apple 目标。
 
 `python3 tools/test-apple-keychain.py --ios-simulator` 在随机测试命名空间验证真实 Mac/iOS 钥匙串身份持久化、密钥丢失恢复与显式重置。`python3 tools/test-secure-ios-receiver.py` 使用生产 PhoneReceiver/安全代码构建隔离应用，以认证 TLS 发送合成视频、检查撤销并切至后台。两者均创建/删除自己的模拟器，不改动已安装应用。后者可加 `--screenshots build/security-ui`，在测试邀请消耗后记录浅色/深色设置界面。模拟器测试需顺序运行，避免多个冷启动互相争用；不捕获用户桌面，不创建虚拟显示器。
 
@@ -65,6 +65,8 @@ xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecariOS -configuration 
 实际本地 UI/构建证据及待完成硬件项见 [2026-10-16 验收报告](source-upgrade-audit-2026-10-16.zh-CN.md)。
 
 `python3 tools/test-secure-android-receiver.py --screenshots build/security-ui` 需要 SDK 命令行工具和 `system-images;android-35;default;arm64-v8a`。脚本创建/删除自己的 AVD，并用生产源码构建独立测试包。真实 Keystore 密钥参与 TLS 测试，再通过独立 ADB 转发，用 Mac 客户端检查正式配对/撤销/兼容 UI。测试身份与邀请仅留在一次性应用/容器中；截图在邀请使用后进行。
+
+扩展 Android runtime 命令为 `python3 tools/test-android-experience.py --screenshots build/diagnostics/receiver-experience`。它复用一次性安全测试环境，额外检查合成视频比例、默认简洁状态、即时指标切换、黑边拒绝触控、中心坐标归一和静止长按，还需要 ffmpeg。iOS 安全测试现已覆盖只有心跳的首帧超时，以及首帧后的静态桌面豁免。见 [2026-10-26 升级记录](reliability-experience-upgrade.zh-CN.md)。
 
 ## 最终源码回归
 

@@ -1,87 +1,25 @@
 [English](mac-local-fast-congestion-decrease.md) | [简体中文](mac-local-fast-congestion-decrease.zh-CN.md)
 
-# Mac local fast congestion decrease
+# Mac local congestion and recovery
 
-## Modified files
+This guide describes the 2026-10-26 source iteration, not a new published release. PR 8 introduced the local decrease path; subsequent work added Mac receiver recovery. Current implementation and verification are recorded in the [upgrade ledger](reliability-experience-upgrade.md).
 
-- `Mac/AdaptiveBitrateController.swift`: local 200 ms input, shared hold/state, and unified decision identity;
-- `Mac/MacSender.swift`: pending-send age/completion tracking, local sampling, and serialized encoder-output state;
-- `Mac/BenchmarkSample.swift`: local metrics and decision evidence in CSV/JSONL;
-- standalone tests and bilingual documentation/indexes.
+## Sampling and ownership
 
-## Purpose
+In Auto mode, the sender samples pending-send count/budget, oldest send age, encoded/sent FPS and completion delay every 200 ms. Each send owns its monotonic timestamp and identity. A completion removes only its own entry; a late completion from an old connection cannot decrement the replacement connection's count. Encoder output handling is serialized on the sender queue.
 
-PR 8 adds a bounded Mac-local congestion path so an already-growing send queue does not need to wait for the roughly one-second receiver-stat loop. It preserves that receiver loop for RTT, Frame Age, Android queue/drop evidence, and slow recovery.
+Two consecutive samples at the send budget, or with a pending send whose oldest age grows by more than 1 ms, lower the target by 12% within codec/transport bounds. Local and receiver decreases share a one-second hold and decision epoch. Receiver pressure can separately lower the target by 20%; it cannot immediately duplicate a local decrease inside that hold. Manual and Benchmark never adapt.
 
-The new path is active only in Auto bitrate mode. It can decrease bitrate but can never increase it.
+## Recovery
 
-## Local sampling and state
+Mac receivers do not send the mobile `stats` message. Their local recovery accepts active queues below the configured budget when oldest age and completion delay are each at most `max(8 ms, one encoded-frame interval)`, and successfully sent FPS is at least 95% of encoded FPS. A nonzero queue alone no longer blocks restoration. Missing samples for more than one second reset the healthy interval.
 
-The sender samples every 200 ms (within the requested 100–250 ms range) and records:
+After three healthy seconds, the target rises 20%, with a default three-second increase cooldown. It never exceeds the original Auto target without receiver measurements. For mobile receivers, restoration below the initial target follows the same 20% / 3-second policy; probing above it remains 7% / 5 seconds. Actual receiver sampling can extend those intervals.
 
-- `pendingSends` and the configured queue budget;
-- age of the oldest current pending send;
-- local encoded and successfully sent FPS for the sample;
-- the latest send-completion delay.
+Mac capture skips and encoder output drops are diagnostic; they do not independently imply network congestion. Local queue/age pressure and receiver-specific signals still do. See [adaptive bitrate](adaptive-bitrate.md).
 
-Each send owns a monotonic start timestamp and identity. A completion removes only its own identity; a late completion from a cleared/replaced connection cannot decrement a newer connection's pending count. VideoToolbox output handling is serialized onto the sender queue before it mutates these metrics.
+## Verification and limits
 
-## Decision policy
+Production controller regressions cover queue/age confirmation, bounded decreases, shared hold, late/invalid samples, healthy active queue recovery, Manual/Benchmark stability, and the original-target ceiling. Synthetic receiver-driven recovery from 8 to 40 Mbps completes within 38 seconds. This is policy execution, not a measured network result. Benchmark serialization retains the decision source/trigger/epoch, queue age and completion delay.
 
-A local sample is congested when either:
-
-- `pendingSends >= queueBudget`; or
-- at least one send is pending and the oldest pending age grows by more than 1 ms from the previous sample.
-
-Two consecutive congested samples are required. The fast path then lowers the current target by 12%, clamped to the existing codec/transport bounds. It resets its consecutive counter after a decision and never performs an increase.
-
-The local and receiver paths use the same controller and expose:
-
-- `localFastDecrease`;
-- `receiverCongestionDecrease`;
-- `stableRecoveryIncrease`;
-- `decisionEpoch`, `lastDecreaseReason`, and monotonic `lastDecreaseAt`.
-
-All decreases share the existing one-second decrease hold. Therefore a receiver-stat sample cannot lower bitrate again immediately after a local decrease for the same congestion episode. Stable recovery still requires the existing five-second healthy window and increase cooldown.
-
-## Tests
-
-- failure-first controller tests cover two-sample queue confirmation, 12% bounded decrease, two rising-age samples, Auto-only behavior, and the decrease-only invariant;
-- shared-state tests prove a receiver decision cannot double-decrease inside the hold and verify decision epoch/reason/time;
-- Benchmark tests cover source, trigger, epoch, last-decrease state, local queue age, completion delay, and stable/unique CSV columns;
-- the macOS target build exercises the real sender integration and serialized encoder callback path.
-
-## Build result
-
-- Focused controller and Benchmark standalone tests: passed.
-- Android clean test/Debug build: `61 actionable tasks: 61 executed`; all six Android self-test groups passed.
-- All 21 Mac standalone self-tests passed.
-- `xcodegen generate` completed successfully.
-- macOS Debug and generic iOS Simulator Debug builds with signing disabled: `BUILD SUCCEEDED`.
-- Production website build and prerender passed; bilingual documentation check passed for 31 pairs; release-link and `git diff --check` checks passed.
-- `adb devices -l` reported no attached device, so no physical result is claimed.
-
-## Before/after metrics
-
-No physical congestion A/B has been collected. This PR does not claim faster recovery or lower Frame Age; it adds a measurable, bounded response path and records the evidence needed to evaluate it.
-
-## Known risks
-
-- A full send queue may reflect a short scheduler stall rather than sustained network congestion; two-sample confirmation limits but does not eliminate false positives.
-- The 12% step and 200 ms interval are initial bounded values and require same-condition validation.
-- Send-completion delay is recorded but is not an independent trigger in this first policy; queue occupancy and oldest-age growth make the decision.
-- Repeated long congestion can still produce later decreases after the shared hold expires; PR 8 prevents immediate duplicate reaction, not all multi-step convergence.
-
-## Pending physical validation
-
-- induce controlled WiFi and ADB USB backpressure and verify the first local decision occurs after two 200 ms samples;
-- confirm the next receiver window does not duplicate the local decrease inside the shared hold;
-- compare target/actual bitrate, oldest pending age, completion delay, sent/encoded FPS, Frame Age P50/P95/P99, and rendered FPS;
-- verify Manual and Benchmark modes never change target bitrate through the local path;
-- repeat reconnect and transport-switch checks to confirm late completions do not alter the new connection's queue.
-
-No physical receiver was attached during implementation.
-
-## Next step
-
-PR 9 is implemented in [Android binary framing/allocation](android-binary-frame-header-v2.md). Next, complete the final compatibility/recovery evidence audit.
+A full queue can still reflect scheduler pressure, and two-sample confirmation cannot eliminate all false positives. The 12% decrease, 200 ms sampling and recovery thresholds require physical A/B validation. Compare target/actual bitrate, send age, frame-age p50/p95/p99, rendered FPS, visual clarity and oscillation under the same scene. Include reconnect and transport changes to verify ownership. Physical LAN/USB congestion and endurance evidence remain pending.

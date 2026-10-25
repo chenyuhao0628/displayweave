@@ -1,6 +1,8 @@
 [English](code-and-experience-audit-2026-10-26.md) | [简体中文](code-and-experience-audit-2026-10-26.zh-CN.md)
 
 # Code and experience audit — 2026-10-26
+**Historical snapshot:** OPEN statuses and unchanged-source statements below describe the audited baseline only. For repairs and current acceptance, see the [reliability and experience upgrade](reliability-experience-upgrade.md).
+
 
 ## Scope and evidence contract
 
