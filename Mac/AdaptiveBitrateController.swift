@@ -62,7 +62,7 @@ final class AdaptiveBitrateController {
     init(initialBitrate: Int, bounds: ClosedRange<Int>,
          decreaseHoldSeconds: TimeInterval = 1,
          stableIncreaseSeconds: TimeInterval = 5,
-         increaseCooldownSeconds: TimeInterval = 5,
+         increaseCooldownSeconds: TimeInterval = 3,
          localRecovery: Bool = false) {
         self.bounds = bounds
         self.decreaseHoldSeconds = decreaseHoldSeconds
@@ -127,11 +127,11 @@ final class AdaptiveBitrateController {
         if isNormal(metrics) {
             if normalSince == nil { normalSince = metrics.timestamp }
             if let normalSince,
-               metrics.timestamp - normalSince >= stableIncreaseSeconds,
-               metrics.timestamp - lastChangeAt >= increaseCooldownSeconds {
+               metrics.timestamp - normalSince >= recoveryInterval,
+               metrics.timestamp - lastChangeAt >= recoveryCooldown {
                 let previous = currentBitrate
-                currentBitrate = Self.clamp(
-                    Int((Double(previous) * 1.07).rounded()), to: bounds)
+                let trigger = stableReason
+                currentBitrate = nextRecoveryBitrate
                 self.normalSince = metrics.timestamp
                 lastChangeAt = metrics.timestamp
                 previousMetrics = metrics
@@ -141,7 +141,7 @@ final class AdaptiveBitrateController {
                 decisionEpoch += 1
                 return AdaptiveBitrateDecision(
                     previousBitrate: previous, newBitrate: currentBitrate,
-                    reason: "stableRecoveryIncrease", trigger: stableReason,
+                    reason: "stableRecoveryIncrease", trigger: trigger,
                     networkState: state, decisionEpoch: decisionEpoch)
             }
         } else {
@@ -215,39 +215,39 @@ final class AdaptiveBitrateController {
     }
 
     /// Mac receivers do not publish the phone's `stats` messages. Restore a
-    /// local decrease using active, drained send windows, but never probe above
+    /// local decrease using active, promptly completing send windows, but never probe above
     /// the original target without receiver throughput measurements.
     private func recoverLocally(_ metrics: LocalCongestionMetrics) -> AdaptiveBitrateDecision? {
         guard localRecovery, currentBitrate < localRecoveryCeiling,
-              metrics.pendingSends == 0, metrics.encodedFps > 0,
+              metrics.pendingSends < metrics.queueBudget, metrics.encodedFps > 0,
+              metrics.oldestPendingSendAgeMs <= max(8, 1_000 / metrics.encodedFps),
+              metrics.sendCompletionDelayMs <= max(8, 1_000 / metrics.encodedFps),
               metrics.sentFps / metrics.encodedFps >= 0.95 else {
             localNormalSince = nil
             return nil
         }
         if localNormalSince == nil { localNormalSince = metrics.timestamp }
         guard let localNormalSince,
-              metrics.timestamp - localNormalSince >= stableIncreaseSeconds,
-              metrics.timestamp - lastChangeAt >= increaseCooldownSeconds else { return nil }
+              metrics.timestamp - localNormalSince >= recoveryInterval,
+              metrics.timestamp - lastChangeAt >= recoveryCooldown else { return nil }
         let previous = currentBitrate
-        let increased = min(localRecoveryCeiling, Int((Double(previous) * 1.07).rounded()))
+        let trigger = stableReason
+        let increased = min(localRecoveryCeiling, nextRecoveryBitrate)
         guard increased > previous else { return nil }
         currentBitrate = increased
         self.localNormalSince = metrics.timestamp
         lastChangeAt = metrics.timestamp
         decisionEpoch += 1
         return AdaptiveBitrateDecision(previousBitrate: previous, newBitrate: increased,
-            reason: "localRecoveryIncrease", trigger: stableReason,
+            reason: "localRecoveryIncrease", trigger: trigger,
             networkState: .recovering, decisionEpoch: decisionEpoch)
     }
 
     private func congestionReason(_ metrics: AdaptiveBitrateMetrics) -> String? {
         if metrics.pendingSends >= 2 { return "pending-sends" }
-        // USB capture skips usually mean VideoToolbox is busy, not that the
-        // physical link is congested. Pending sends and receiver pressure are
-        // still authoritative for both transports.
-        if metrics.transport == .wifi && metrics.macDrops > 0 {
-            return "mac-drops"
-        }
+        // Mac drop totals include pre-encode skips and encoder output drops.
+        // They describe local pressure, not loss on the USB/LAN transport.
+        // Send backlog, throughput and receiver pressure supply causal evidence.
         if consecutiveAndroidCongestionWindows >= 2 {
             return "android-decoder-throughput"
         }
@@ -273,7 +273,6 @@ final class AdaptiveBitrateController {
         metrics.encodedFps > 0
             && metrics.sentFps >= 0
             && metrics.pendingSends == 0
-            && (metrics.transport == .usb || metrics.macDrops == 0)
             && metrics.androidCongestionDrops == 0
             && metrics.androidQueueDepth <= 1
             && metrics.sentFps / metrics.encodedFps >= 0.95
@@ -321,12 +320,14 @@ final class AdaptiveBitrateController {
             decisionEpoch: decisionEpoch)
     }
 
-    private var stableReason: String {
-        if stableIncreaseSeconds.rounded() == stableIncreaseSeconds {
-            return "stable-\(Int(stableIncreaseSeconds))s"
-        }
-        return "stable-\(stableIncreaseSeconds)s"
+    private var restoringTarget: Bool { currentBitrate < localRecoveryCeiling }
+    private var recoveryInterval: TimeInterval { restoringTarget ? min(3, stableIncreaseSeconds) : stableIncreaseSeconds }
+    private var recoveryCooldown: TimeInterval { increaseCooldownSeconds }
+    private var nextRecoveryBitrate: Int {
+        let candidate = Int((Double(currentBitrate) * (restoringTarget ? 1.20 : 1.07)).rounded())
+        return Self.clamp(restoringTarget ? min(localRecoveryCeiling, candidate) : candidate, to: bounds)
     }
+    private var stableReason: String { "stable-\(String(format: "%g", recoveryInterval))s" }
 
     private func resetTemporalBaseline(keepLastChange: Bool = false) {
         previousMetrics = nil

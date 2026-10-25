@@ -42,14 +42,14 @@ struct AdaptiveBitrateControllerSelfTest {
                "minimum hold prevents rapid repeated decreases")
 
         expect(controller.evaluate(metrics(7), mode: .auto) == nil, "normal period restarts")
-        expect(controller.evaluate(metrics(11.9), mode: .auto) == nil, "cooldown delays increase")
-        let recovered = controller.evaluate(metrics(12), mode: .auto)
+        expect(controller.evaluate(metrics(9.9), mode: .auto) == nil, "cooldown delays increase")
+        let recovered = controller.evaluate(metrics(10), mode: .auto)
         expect(recovered?.networkState == .recovering, "first increase after congestion is recovering")
 
         let deficit = controller.evaluate(metrics(14, encoded: 60, sent: 40), mode: .auto)
         expect(deficit?.trigger == "send-deficit", "sent/encoded deficit decreases")
         let drop = controller.evaluate(metrics(16, macDrops: 1), mode: .auto)
-        expect(drop?.trigger == "mac-drops", "new Mac drops decrease")
+        expect(drop == nil, "encoder-side skips alone are not network congestion")
         let usbDrops = AdaptiveBitrateController(
             initialBitrate: 112_000_000, bounds: 20_000_000...160_000_000)
         expect(usbDrops.evaluate(
@@ -72,6 +72,15 @@ struct AdaptiveBitrateControllerSelfTest {
         expect(usbTrends.evaluate(
             metrics(2, encoded: 80, sent: 40, transport: .usb), mode: .auto) == nil,
             "misaligned USB FPS windows alone do not lower bitrate")
+        let healthyLAN = AdaptiveBitrateController(initialBitrate: 40_000_000, bounds: 8_000_000...100_000_000)
+        for index in 0..<30 {
+            _ = healthyLAN.evaluate(metrics(Double(index * 2), rtt: 2, age: 8, macDrops: 1), mode: .auto)
+            expect(healthyLAN.currentBitrate >= 40_000_000, "60 seconds of local drops cannot degrade a healthy LAN")
+        }
+        let recoverySpeed = AdaptiveBitrateController(initialBitrate: 40_000_000, bounds: 8_000_000...100_000_000)
+        for index in 0..<8 { _ = recoverySpeed.evaluate(metrics(Double(index), pending: 3), mode: .auto) }
+        for index in 8...45 { _ = recoverySpeed.evaluate(metrics(Double(index)), mode: .auto) }
+        expect(recoverySpeed.currentBitrate >= 40_000_000, "healthy receiver evidence restores clarity within 38 seconds")
         let receiverQueue = AdaptiveBitrateController(
             initialBitrate: 40_000_000, bounds: 20_000_000...100_000_000)
         expect(receiverQueue.evaluate(metrics(18, androidQueue: 2), mode: .auto) == nil,
@@ -252,8 +261,8 @@ struct AdaptiveBitrateControllerSelfTest {
         expect(mac.evaluateLocal(secondQueue, mode: .auto)?.newBitrate == 44_000_000,
             "Mac link pressure still reduces bitrate")
         func healthy(_ time: Double, fps: Double = 60) -> LocalCongestionMetrics {
-            LocalCongestionMetrics(timestamp: time, pendingSends: 0, queueBudget: 3,
-                oldestPendingSendAgeMs: 0, encodedFps: fps, sentFps: fps, sendCompletionDelayMs: 2)
+            LocalCongestionMetrics(timestamp: time, pendingSends: 1, queueBudget: 3,
+                oldestPendingSendAgeMs: 2, encodedFps: fps, sentFps: fps, sendCompletionDelayMs: 2)
         }
         for index in 1...150 {
             _ = mac.evaluateLocal(healthy(0.2 + Double(index) * 0.2), mode: .auto)
@@ -262,7 +271,7 @@ struct AdaptiveBitrateControllerSelfTest {
             "Mac bitrate remained permanently reduced after a recovered local link")
         // Local recovery restores the configured target; it must not probe
         // beyond that target without receiver-side throughput evidence.
-        expect(mac.decisionEpoch == 3, "one decrease and two bounded recovery steps")
+        expect(mac.decisionEpoch == 2, "one decrease and one bounded recovery to the original target")
 
         let idleMac = AdaptiveBitrateController(initialBitrate: 50_000_000,
             bounds: 8_000_000...60_000_000, localRecovery: true)
@@ -277,13 +286,13 @@ struct AdaptiveBitrateControllerSelfTest {
             bounds: 8_000_000...60_000_000, localRecovery: true)
         _ = interruptedMac.evaluateLocal(fullQueue, mode: .auto)
         _ = interruptedMac.evaluateLocal(secondQueue, mode: .auto)
-        for index in 2...20 {
+        for index in 2...14 {
             _ = interruptedMac.evaluateLocal(healthy(Double(index) * 0.2), mode: .auto)
         }
         _ = interruptedMac.evaluateLocal(healthy(10), mode: .auto)
         expect(interruptedMac.currentBitrate == 44_000_000,
             "a long gap cannot count as healthy observations")
-        for index in 51...70 {
+        for index in 51...64 {
             _ = interruptedMac.evaluateLocal(healthy(Double(index) * 0.2), mode: .auto)
         }
         expect(interruptedMac.currentBitrate == 44_000_000, "gap restarts the stable window")

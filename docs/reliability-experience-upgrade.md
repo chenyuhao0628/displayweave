@@ -20,6 +20,10 @@ Round 1 implements A01–A04: immutable keyframe leases with retirement, capture
 
 Verified: keyframe replacement/duplicate callbacks; persistent/transient encoder failure exhaustion; geometry regression fails on the baseline and passes after repair; current-method capture fixture fails against `01613ef` and passes for changed/unchanged/locked recovery. Universal arm64/x86_64 unsigned Mac Debug build passes. No physical capture/recovery claim.
 
+Round 2 implements A05, A06, A10, B03, T02 and T03. Mac drops remain diagnostic, while network decisions require send/receiver evidence. Healthy active send queues can recover. Below the original target, Auto restores 20% after 3 healthy seconds (receiver sampling may extend this); above it, probing remains 7% / 5 seconds. Mac local recovery never exceeds its original target. Apple receivers share the two-frame / 50 ms backpressure policy. iOS reads current and legacy ping keys and drops video-less connections after a separate 15-second deadline; static desktops after first video are exempt.
+
+Verified: all 61 Swift suites, actual loopback receiver pressure/reconnect checks, current iOS admission fixture, telemetry serialization, and both Apple target builds. Synthetic policy recovery from 8 to 40 Mbps now completes within 38 seconds in the test. This is not a measured network result.
+
 ## Physical acceptance
 
 Pending: real Mac capture/virtual-display recovery and rotation, two-device LAN/USB latency and endurance, high-refresh decoder envelopes, Intel runtime, energy consumption, VoiceOver/TalkBack and real touch/Pencil interaction. Verify an independent online display before interactive virtual-display tests. Never restart WindowServer or remote access to clean up tests.
