@@ -6,6 +6,7 @@ import app.opendisplay.android.protocol.BinaryFrameHeaderV2;
 /** Owns one transport buffer and a zero-copy view of its Annex-B payload. */
 public final class VideoFramePacket implements AutoCloseable {
     private FrameBufferPool.Lease lease;
+    private long receivedMonotonicNanos = System.nanoTime();
     public final byte[] bytes;
     public final int payloadOffset;
     public final int payloadLength;
@@ -49,6 +50,7 @@ public final class VideoFramePacket implements AutoCloseable {
         VideoFramePacket copy = new VideoFramePacket(bytes, payloadOffset, payloadLength, telemetry,
                 binaryHeaderV2, keyframe, codecConfig, binaryHevc, nalSummary);
         if (lease != null) copy.lease = lease.retain();
+        copy.receivedMonotonicNanos = receivedMonotonicNanos;
         return copy;
     }
 
@@ -75,6 +77,10 @@ public final class VideoFramePacket implements AutoCloseable {
                 VideoFrameTelemetry.fromWirePayload(wirePayload, wireLength, receivedAndroidMs),
                 false, summary.isKeyframe, summary.hasCodecConfig(),
                 false, summary);
+    }
+
+    boolean queueDeadlineExpired() {
+        return FrameQueuePolicy.expired(receivedMonotonicNanos, System.nanoTime());
     }
 
     public boolean isImportant() {

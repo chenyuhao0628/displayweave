@@ -446,6 +446,11 @@ public final class H264SurfaceDecoder {
                     AndroidDropReason.CODEC_RECONFIGURE_DROP, frame.telemetry);
             return;
         }
+        if (frame.queueDeadlineExpired()) {
+            listener.onDecoderFrameDropped(AndroidDropReason.FRAME_AGE_EXPIRED, frame.telemetry);
+            breakReferenceChain(frame.telemetry);
+            return;
+        }
         boolean wasAwaitingKeyframe = referenceChainRecovery.isAwaitingKeyframe();
         if (referenceChainRecovery.shouldReject(
                 frame.keyframe, System.currentTimeMillis())) {
@@ -512,6 +517,12 @@ public final class H264SurfaceDecoder {
     }
 
     private void submitFrame(MediaCodec activeCodec, int input, VideoFramePacket frame) {
+        if (frame.queueDeadlineExpired()) {
+            listener.onDecoderFrameDropped(AndroidDropReason.FRAME_AGE_EXPIRED, frame.telemetry);
+            returnInputBuffer(activeCodec, input);
+            breakReferenceChain(frame.telemetry);
+            return;
+        }
         try {
             java.nio.ByteBuffer buffer = activeCodec.getInputBuffer(input);
             if (buffer == null) {

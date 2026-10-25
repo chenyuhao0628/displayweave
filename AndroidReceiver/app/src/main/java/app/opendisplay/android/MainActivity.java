@@ -50,7 +50,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private AndroidSecuritySettings securitySettings;
     private Button streamSettingsButton;
     private FrameLayout root;
-    private SurfaceView surfaceView;
+    private ReceiverSurfaceView surfaceView;
     private CursorOverlayView cursorOverlay;
     private TextView statusView;
     private TextView idleStatusView;
@@ -71,6 +71,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private String currentTransport = "unknown";
     private final ScrollGestureTracker scrollGesture = new ScrollGestureTracker();
     private TouchGestureCoordinator touchGesture;
+    private Runnable pendingTouchHold;
     private StreamMetrics lastMetrics = new StreamMetrics(0, 0, 0, 0);
     private VideoStreamConfig lastStreamConfig = VideoStreamConfig.DEFAULT;
     private volatile float requestedSurfaceRefreshRate = 60f;
@@ -141,6 +142,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
 
     @Override
     protected void onPause() {
+        cancelTouchGesture();
         foreground = false;
         securitySettings.dismiss();
         updateWifiLowLatencyState();
@@ -232,10 +234,14 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     @Override
     public void onCursorImage(byte[] png, double anchorX, double anchorY,
                               double normalizedWidth, double normalizedHeight) {
+        if (png == null || png.length == 0 || png.length > CursorImagePolicy.MAX_BYTES) return;
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(png, 0, png.length, bounds);
+        if (!CursorImagePolicy.accepts(png.length, bounds.outWidth, bounds.outHeight,
+                anchorX, anchorY, normalizedWidth, normalizedHeight)) return;
         Bitmap bitmap = BitmapFactory.decodeByteArray(png, 0, png.length);
-        if (bitmap == null) {
-            return;
-        }
+        if (bitmap == null) return;
         runOnUiThread(() -> cursorOverlay.setCursorImage(
                 bitmap, anchorX, anchorY, normalizedWidth, normalizedHeight));
     }
@@ -254,6 +260,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     public void onStreamConfig(VideoStreamConfig config) {
         runOnUiThread(() -> {
             lastStreamConfig = config;
+            updateVideoViewport();
             surfaceFrameRateLifecycle.onStreamConfig(config.fps);
             refreshStreamingStatus();
         });
@@ -303,7 +310,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private void buildUi() {
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
-        surfaceView = new SurfaceView(this);
+        surfaceView = new ReceiverSurfaceView(this);
         root.addView(surfaceView, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
@@ -312,6 +319,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         root.addView(cursorOverlay, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
+        root.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) updateVideoViewport();
+        });
 
         idlePanel = buildIdlePanel();
         root.addView(idlePanel, new FrameLayout.LayoutParams(
@@ -325,7 +335,6 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         statusView.setPadding(dp(16), dp(12), dp(16), dp(12));
         statusView.setMinHeight(dp(48));
         statusView.setFocusable(true);
-        statusView.setContentDescription("连接状态，点按打开设置");
         statusView.setBackgroundColor(0x99000000);
         statusView.setOnClickListener(v -> showSettingsDialog());
         FrameLayout.LayoutParams statusParams = new FrameLayout.LayoutParams(
@@ -370,7 +379,43 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             }
         });
 
+        surfaceView.setContentDescription("远程画面，单指点击或拖动，双指滚动");
         surfaceView.setOnTouchListener(this::handleTouch);
+    }
+
+    private void updateVideoViewport() {
+        if (root == null || surfaceView == null || cursorOverlay == null) return;
+        VideoViewport rect = VideoViewport.fit(root.getWidth(), root.getHeight(), lastStreamConfig.width, lastStreamConfig.height);
+        if (rect.width == 0 || rect.height == 0) return;
+        FrameLayout.LayoutParams old = (FrameLayout.LayoutParams) surfaceView.getLayoutParams();
+        if (old.width == rect.width && old.height == rect.height && old.gravity == Gravity.CENTER) return;
+        cancelTouchGesture();
+        for (View child : new View[] {surfaceView, cursorOverlay}) {
+            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(rect.width, rect.height, Gravity.CENTER);
+            child.setLayoutParams(params);
+        }
+    }
+
+    private void cancelPendingHold() {
+        if (pendingTouchHold != null && surfaceView != null) surfaceView.removeCallbacks(pendingTouchHold);
+        pendingTouchHold = null;
+    }
+
+    private void cancelTouchGesture() {
+        cancelPendingHold();
+        if (touchGesture != null) sendTouchEvents(touchGesture.cancel());
+        touchGesture = null;
+        scrollGesture.end();
+    }
+
+    private void scheduleTouchHold() {
+        OpenDisplayServer owner = server;
+        TouchGestureCoordinator gesture = touchGesture;
+        pendingTouchHold = () -> {
+            pendingTouchHold = null;
+            if (server == owner && touchGesture == gesture && streaming && foreground) sendTouchEvents(gesture.commitHold());
+        };
+        surfaceView.postDelayed(pendingTouchHold, TouchGestureCoordinator.HOLD_DELAY_MS);
     }
 
     private View buildIdlePanel() {
@@ -483,17 +528,24 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
 
         CheckBox showMetrics = new CheckBox(this);
         showMetrics.setText("显示延迟和帧率");
-        showMetrics.setChecked(prefs.getBoolean(KEY_SHOW_METRICS, true));
+        showMetrics.setChecked(prefs.getBoolean(KEY_SHOW_METRICS, false));
         showMetrics.setOnCheckedChangeListener((button, checked) -> {
             prefs.edit().putBoolean(KEY_SHOW_METRICS, checked).apply();
             refreshStreamingStatus();
         });
         content.addView(showMetrics, matchWrap());
 
+        if (streaming) {
+            content.addView(ui.heading("当前画面"), matchWrap());
+            TextView diagnostics = text(detailedMetricsText(), 13, ui.secondary, false);
+            diagnostics.setTextIsSelectable(true);
+            content.addView(diagnostics, matchWrap());
+        }
         content.addView(ui.heading("画质与延迟"), matchWrap());
-        Button quality = ui.button("画质/分辨率：" + currentDisplayProfile().label);
+        Button quality = ui.button("接收分辨率：" + currentDisplayProfile().label);
         quality.setOnClickListener(v -> showDisplayProfileDialog());
         content.addView(quality, matchWrap());
+        content.addView(text("Mac 的画质设置还会影响最终分辨率。文字不清晰时，先选原生分辨率，并在 Mac 选择高画质。", 13, ui.secondary, false), matchWrap());
 
         Button decoderLowLatency = ui.button("");
         decoderLowLatency.setText("解码器低延迟："
@@ -804,7 +856,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     private boolean handleTouch(View view, MotionEvent event) {
-        if (server == null || view.getWidth() <= 0 || view.getHeight() <= 0) {
+        if (!streaming || server == null || view.getWidth() <= 0 || view.getHeight() <= 0) {
             return true;
         }
         if (event.getPointerCount() >= 2 || scrollGesture.isActive()) {
@@ -817,24 +869,28 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         if (index < 0) {
             return true;
         }
-        double x = event.getX(index) / Math.max(1.0, view.getWidth());
-        double y = event.getY(index) / Math.max(1.0, view.getHeight());
+        double x = Math.max(0, Math.min(1, event.getX(index) / Math.max(1.0, view.getWidth())));
+        double y = Math.max(0, Math.min(1, event.getY(index) / Math.max(1.0, view.getHeight())));
         if (touchGesture == null) {
-            touchGesture = new TouchGestureCoordinator(10.0 / Math.max(view.getWidth(), view.getHeight()));
+            touchGesture = new TouchGestureCoordinator(dp(10), view.getWidth(), view.getHeight());
         }
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
+                cancelPendingHold();
                 sendTouchEvents(touchGesture.begin(x, y));
+                scheduleTouchHold();
                 break;
             case MotionEvent.ACTION_MOVE:
                 sendTouchEvents(touchGesture.move(x, y));
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_POINTER_UP:
+                cancelPendingHold();
                 sendTouchEvents(touchGesture.end(x, y));
+                view.performClick();
                 break;
             case MotionEvent.ACTION_CANCEL:
-                sendTouchEvents(touchGesture.cancel());
+                cancelTouchGesture();
                 break;
             default:
                 break;
@@ -843,6 +899,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     private void handleScrollGesture(View view, MotionEvent event) {
+        cancelPendingHold();
         if (touchGesture != null) {
             sendTouchEvents(touchGesture.cancel());
         }
@@ -869,15 +926,15 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     private void sendTouchEvents(java.util.List<TouchGestureCoordinator.Event> events) {
+        if (server == null) return;
         for (TouchGestureCoordinator.Event event : events) {
             server.sendTouch(event.phase, event.x, event.y);
         }
     }
 
     private double videoScaleInView(View view) {
-        DisplaySpec spec = currentDisplaySpec();
-        double xScale = view.getWidth() / Math.max(1.0, spec.pixelsWide);
-        double yScale = view.getHeight() / Math.max(1.0, spec.pixelsHigh);
+        double xScale = view.getWidth() / Math.max(1.0, lastStreamConfig.width);
+        double yScale = view.getHeight() / Math.max(1.0, lastStreamConfig.height);
         return Math.max(0.001, Math.min(xScale, yScale));
     }
 
@@ -896,17 +953,28 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         if (streaming) {
             surfaceFrameRateLifecycle.onStreamingStarted();
         } else {
+            cancelTouchGesture();
+            lastMetrics = new StreamMetrics(0, 0, 0, 0);
             surfaceFrameRateLifecycle.onStreamingStopped();
         }
+        refreshStreamingStatus();
         updateWifiLowLatencyState();
         idlePanel.setVisibility(streaming ? View.GONE : View.VISIBLE);
         updateStatusOverlayVisibility();
     }
 
     private void refreshStreamingStatus() {
-        if (!streaming || !prefs.getBoolean(KEY_SHOW_METRICS, true)) {
-            return;
+        if (!streaming) return;
+        String value = "正在接收 · " + lastStreamConfig.width + "×" + lastStreamConfig.height;
+        if (prefs.getBoolean(KEY_SHOW_METRICS, false)) {
+            value += " · " + lastStreamConfig.codec.toUpperCase(Locale.US) + " · 目标 " + lastStreamConfig.fps + " FPS";
+            value += "\n呈现 " + lastMetrics.renderedFps + " FPS · RTT " + Math.round(lastMetrics.rttMs) + " ms";
+            if (lastMetrics.bitrate > 0) value += " · " + lastMetrics.bitrate / 1_000_000 + " Mbps";
         }
+        setStatus(value);
+    }
+
+    private String detailedMetricsText() {
         StringBuilder value = new StringBuilder("正在接收");
         value.append(" · ").append(lastStreamConfig.codec.toUpperCase(Locale.US));
         value.append(" · 请求 ").append(lastStreamConfig.fps).append(" FPS");
@@ -924,7 +992,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             value.append(" · 渲 ").append(lastMetrics.renderedFps).append(" FPS");
         }
         if (lastMetrics.androidDisplayRefreshRate > 0) {
-            value.append(" · 屏幕实际 ")
+            value.append(" · 屏幕模式 ")
                     .append(Math.round(lastMetrics.androidDisplayRefreshRate)).append("Hz");
         }
         if (lastMetrics.droppedFramesAndroid > 0) {
@@ -978,7 +1046,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         if (lastMetrics.transport != null && lastMetrics.transport.length() > 0) {
             value.append(" · ").append(lastMetrics.transport.toUpperCase(Locale.US));
         }
-        setStatus(value.toString());
+        return value.toString();
     }
 
     private void applyStreamRefreshRate(int fps, String reason) {

@@ -39,6 +39,14 @@ v0.3.0 包含[加密配对](../docs/secure-transport.zh-CN.md)与[仅 GitHub 更
 
 USB 模式不会静默变成 WiFi，WiFi 模式不会创建 ADB forward。
 
+## 当前源码体验改进
+
+2026-10-26 源码迭代尚未包含在 v0.3.0 下载中。视频、光标与触控共用一个保持比例的显示矩形，镜像不再被拉伸，黑边不响应远程触控。手指静止按住 120 ms 后发送按下；提前移动可更早开始拖动，第二根手指取消待发按下并进入滚动。Android 尊重系统旋转偏好。
+
+新安装默认关闭详细指标，已有显式选择保持不变。关闭详情会立即恢复简洁状态；设置页提供可选择复制的完整诊断，“屏幕模式”与视频呈现 FPS 分开表述。文字模糊时，可先选接收端原生分辨率和 Mac 高画质；两端均选 75% 会叠加缩小。Mac 设备卡片展示最终编码尺寸。
+
+两级解码 FIFO 共享提交解码器前的 150 ms 帧龄上限；光标在分配位图前校验压缩大小、解码尺寸和有限几何值。见[实现与验证](../docs/reliability-experience-upgrade.zh-CN.md)。
+
 ## Decoder 低延迟
 
 “**设置与帮助 → 解码器低延迟**”默认使用“自动”。Auto/On 只会在 API 30+ 的实际 Decoder 明确声明支持时请求 MediaCodec Low Latency；若参数被拒绝，会在同一 Decoder 上关闭 Low Latency 重试。Off 不会设置该参数。修改此设置会重建一次 Receiver Session。参见 [Decoder 低延迟策略](../docs/android-decoder-low-latency.zh-CN.md)。

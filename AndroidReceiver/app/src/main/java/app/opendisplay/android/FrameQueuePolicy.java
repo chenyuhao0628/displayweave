@@ -7,6 +7,11 @@ final class FrameQueuePolicy {
     // latency. Real-device testing showed occasional scheduler stalls longer
     // than the previous six-frame (100 ms) ceiling.
     static final int MAX_PENDING_FRAMES = 12;
+    // One receive-to-codec budget shared across both FIFOs; no clock sync needed.
+    static final long MAX_QUEUE_AGE_NANOS = 150_000_000L;
+    static boolean expired(long receivedNanos, long nowNanos) {
+        return nowNanos - receivedNanos >= MAX_QUEUE_AGE_NANOS;
+    }
 
     private FrameQueuePolicy() {
     }
