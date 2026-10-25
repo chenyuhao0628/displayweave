@@ -4,6 +4,8 @@
 
 ## 当前用户指南
 
+- [可靠性与使用体验升级：实现与验收](reliability-experience-upgrade.zh-CN.md)
+
 - [代码与使用体验审查（2026-10-26）：问题、证据和覆盖范围](code-and-experience-audit-2026-10-26.zh-CN.md)
 
 - [v0.3.0 正式版：4K 延迟与采集恢复](release-notes-v0.3.0.zh-CN.md)

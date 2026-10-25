@@ -204,4 +204,6 @@ run_test WireContractSelfTest \
   "${settings[@]}" Mac/BinaryFrameHeaderV2.swift Shared/ReceiverFrameDecoder.swift \
   Shared/DesktopInputProtocol.swift Shared/PencilProtocol.swift Shared/PencilActions.swift MacTests/WireContractSelfTest.swift
 
+python3 tools/test-capture-configuration.py
+
 echo "Swift standalone self-tests PASS (60 suites)"

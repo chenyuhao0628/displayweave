@@ -50,7 +50,7 @@ enum DisplayArrangement {
         // Records from before #203 did not store a side. If one already
         // touches the main display, infer it now so an otherwise clean
         // existing arrangement also gains the stable behavior on rotation.
-        if let side = placement.side ?? side(of: placement.rect, relativeTo: main, preferring: nil) {
+        if let side = side(of: placement.rect, relativeTo: main, preferring: placement.side) {
             return origin(for: size, from: placement.rect, side: side,
                           relativeTo: main)
         }
@@ -145,10 +145,14 @@ enum DisplayArrangement {
     private static func side(of rect: CGRect, relativeTo main: CGRect,
                              preferring preferred: Side?) -> Side? {
         var candidates: [Side] = []
-        if rect.maxX == main.minX { candidates.append(.left) }
-        if rect.minX == main.maxX { candidates.append(.right) }
-        if rect.maxY == main.minY { candidates.append(.above) }
-        if rect.minY == main.maxY { candidates.append(.below) }
+        if overlap(of: rect.minY...rect.maxY, and: main.minY...main.maxY) != nil {
+            if rect.maxX == main.minX { candidates.append(.left) }
+            if rect.minX == main.maxX { candidates.append(.right) }
+        }
+        if overlap(of: rect.minX...rect.maxX, and: main.minX...main.maxX) != nil {
+            if rect.maxY == main.minY { candidates.append(.above) }
+            if rect.minY == main.maxY { candidates.append(.below) }
+        }
         if let preferred, candidates.contains(preferred) { return preferred }
         return candidates.max { $0.priority < $1.priority }
     }

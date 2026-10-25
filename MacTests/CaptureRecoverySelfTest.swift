@@ -47,6 +47,21 @@ import CoreGraphics
         precondition(CaptureRecoveryPolicy.honorsSystemStop(userStopped: true, consoleInteractive: true))
         precondition(!CaptureRecoveryPolicy.honorsSystemStop(userStopped: true, consoleInteractive: false))
 
+        var encoder = EncoderFailureRecovery()
+        precondition(encoder.failed(transient: false) == .rebuild)
+        encoder.producedOutput(at: 0)
+        precondition(encoder.failed(transient: false) == .rebuild, "one good frame does not refill the budget")
+        precondition(encoder.failed(transient: false) == .exhausted)
+        encoder.producedOutput(at: 1)
+        encoder.producedOutput(at: 5.9)
+        precondition(encoder.rebuilds == 2)
+        encoder.producedOutput(at: 6)
+        precondition(encoder.failed(transient: false) == .rebuild, "healthy output restores recovery budget")
+        var busy = EncoderFailureRecovery()
+        var attempts = 0
+        while busy.failed(transient: true) != .exhausted { attempts += 1; precondition(attempts < 12) }
+        precondition(attempts == 11, "persistent busy/output drops must also terminate")
+
         var check = CaptureSourceCheck()
         let own = CGRect(x: 0, y: 0, width: 1920, height: 1080)
         let other = CGRect(x: -1920, y: 0, width: 1920, height: 1080)

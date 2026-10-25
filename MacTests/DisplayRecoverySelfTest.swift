@@ -61,6 +61,17 @@ import Foundation
         DisplayArrangement.save(origin: CGPoint(x: CGFloat.infinity, y: 0), size: size, device: "invalid", defaults: defaults)
         precondition(defaults.object(forKey: "displayOrigin.invalid") == nil)
 
+        // Aligned edges without perpendicular contact belong to another neighbour.
+        let lower = CGRect(x: 0, y: 1080, width: 1920, height: 1080)
+        let detached = CGRect(x: 1920, y: 1580, width: 1080, height: 1920)
+        precondition(DisplayArrangement.inferredMainDisplaySide(of: detached, relativeTo: main) == nil)
+        DisplayArrangement.save(origin: detached.origin, size: detached.size, device: "lower-neighbour", defaults: defaults, mainBounds: main)
+        precondition(DisplayArrangement.origin(for: CGSize(width: 1920, height: 1080), device: "lower-neighbour", defaults: defaults, mainBounds: main, displays: [main, lower]) == CGPoint(x: 1920, y: 1580))
+        // Repair a side stored by the old edge-only check too.
+        defaults.set([1920, 1580, 1080, 1920, DisplayArrangement.Side.right.rawValue], forKey: "displayOrigin.old-side")
+        precondition(DisplayArrangement.origin(for: CGSize(width: 1920, height: 1080), device: "old-side", defaults: defaults, mainBounds: main, displays: [main, lower]) == CGPoint(x: 1920, y: 1580))
+        precondition(DisplayArrangement.inferredMainDisplaySide(of: CGRect(x: 1920, y: 1080, width: 1080, height: 1920), relativeTo: main) == .right, "corner contact remains valid")
+
         let created = DisplayUnitIdentity(displayID: 30, unit: 2)
         let first = DisplayUnitIdentity(displayID: 10, unit: 2), later = DisplayUnitIdentity(displayID: 20, unit: 3)
         precondition(DisplayUnitCollisionPolicy.plan(created: created, online: [created, first, later], owned: [later, first]) == .rebuild([10, 20]))

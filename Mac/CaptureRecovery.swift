@@ -1,5 +1,33 @@
 import Foundation
 
+/// A successful submission is not a successful output. Keep the failure budget
+/// across encoder replacements until five seconds of healthy output occur.
+struct EncoderFailureRecovery {
+    enum Action: Equatable { case retry, rebuild, exhausted }
+    private(set) var rebuilds = 0
+    private var transientFailures = 0
+    private var healthySince: TimeInterval?
+
+    mutating func failed(transient: Bool) -> Action {
+        healthySince = nil
+        transientFailures += 1
+        if transient && transientFailures <= 3 { return .retry }
+        guard rebuilds < 2 else { return .exhausted }
+        rebuilds += 1
+        transientFailures = 0
+        return .rebuild
+    }
+
+    mutating func producedOutput(at now: TimeInterval) {
+        guard now.isFinite else { return }
+        if healthySince == nil || now < healthySince! { healthySince = now }
+        if now - healthySince! >= 5 {
+            rebuilds = 0
+            transientFailures = 0
+        }
+    }
+}
+
 /// Latest-frame replay after pre-encode drops, adapted from upstream c8b2417
 /// (GPL-3.0). One cached frame and one deadline, owned by the capture generation.
 struct CaptureFrameReplay<Frame> {
