@@ -102,3 +102,7 @@ Mac HEVC 同时要求硬件编码器与接收端明确声明的硬件解码能�
 ## 已完成源码扩展
 
 [功能台账](docs/archive/plans/feature-completion.zh-CN.md)记录桌面分辨率、默认认证传输、同意后的 Mac 键鼠回传、同身份 Mac 切换、Pencil v2 与具名快捷操作、进程 CPU 采样、Android 池化租借和共用协议样例。iOS 展示回调按视图身份归属：替换时先释放旧输入，旧视图延迟销毁不能清除新回调或移除借用图层。解码/展示回调带连接代次，跨线程帧回调加锁。真实正式签名与最终素材仍有外部前提。
+
+## 桌面几何与实际编码负载（v0.3.2）
+
+桌面逻辑点／底层像素与编码尺寸分别管理。iMac 档位与跟随接收端的几何保持所选布局，视频画质可独立适配。`EncoderWorkQueue` 把 VideoToolbox 所有权串行化并移出采集／控制队列，最多保留两次提交。`EncoderLoadController` 根据持续活动画面的编码压力判断，排除静止／网络受限窗口，遵循用户的分辨率／帧率优先选择。采集重配置清理缓存帧、拒绝过期代次并限制为五秒。详见[实施与证据](docs/verification/imac-resolution-performance.zh-CN.md)；5K 桌面不扩展 Apple 视频解码范围。

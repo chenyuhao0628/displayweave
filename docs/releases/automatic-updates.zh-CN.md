@@ -11,15 +11,15 @@ DisplayWeave 把不可变的 Mac/Android 安装包发布到 GitHub Releases，�
 - Android 产物：`DisplayWeave-Android.apk`
 
 当前正式发行版本是
-[`v0.3.1`](https://github.com/chenyuhao0628/displayweave/releases)。
+[`v0.3.2`](https://github.com/chenyuhao0628/displayweave/releases)。
 未支持当前更新路径的旧 Android 版本需要手动安装一次当前 APK；后续版本使用应用内的 GitHub 单源更新渠道。
 本版本同时包含引导式 DMG 与 Sparkle ZIP 更新包。
 
-v0.3.1 的 Mac 使用固定 Apple Development 身份，仍未公证。Sparkle 通过不变的内置 EdDSA 公钥验证 ZIP。更新真实性与权限延续分别验证：打包流程检查 Mac 签名身份，Sparkle 验证更新签名；这些都不等同于 Developer ID 公证发行。
+v0.3.2 的 Mac 使用固定 Apple Development 身份，仍未公证。Sparkle 通过不变的内置 EdDSA 公钥验证 ZIP。更新真实性与权限延续分别验证：打包流程检查 Mac 签名身份，Sparkle 验证更新签名；这些都不等同于 Developer ID 公证发行。
 
-2026-10-26：正式版构建 20 修复采集／编码恢复、拥塞后画质恢复和 Android 视频／触控比例，新增更清晰的分辨率／帧率设置，沿用固定 Apple Development 签名。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](v0.3.1.zh-CN.md)。
+2026-10-26：正式版构建 21 增加 iMac 4K/4.5K/5K 桌面档位与明确的逻辑尺寸标签，隔离可能阻塞的编码提交，并在不改变桌面布局的前提下适配持续编码压力。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](v0.3.2.zh-CN.md)。
 
-源码流程现已要求固定 Apple 签名身份和升级比较，见[权限延续](../guides/mac-permissions.zh-CN.md)，旧发行资产保持不可变；v0.3.1 与下载的构建 19 比较并延续其签名身份。本地发行的可复现命令与验收要求见[本地发行](local-release.zh-CN.md)。
+源码流程现已要求固定 Apple 签名身份和升级比较，见[权限延续](../guides/mac-permissions.zh-CN.md)，旧发行资产保持不可变；v0.3.2 与下载的构建 20 比较并延续其签名身份。本地发行的可复现命令与验收要求见[本地发行](local-release.zh-CN.md)。
 
 ## 用户一次性迁移
 

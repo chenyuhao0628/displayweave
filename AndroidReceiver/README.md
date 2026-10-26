@@ -6,7 +6,7 @@ The Android receiver accepts DisplayWeave video over local WiFi or a Mac-managed
 
 The waiting screen follows the system light/dark theme. Settings scroll on small displays; the top-right Settings button remains available while streaming even when the status overlay is hidden.
 
-v0.3.1 includes [encrypted pairing](../docs/guides/secure-transport.md) and [GitHub-only updates](../docs/releases/automatic-updates.md). First generate an invitation under **Settings & Help → Security and pairing**, import it on the Mac, then select the device. LAN and ADB-forwarded USB use the same authenticated stream.
+v0.3.2 includes [encrypted pairing](../docs/guides/secure-transport.md) and [GitHub-only updates](../docs/releases/automatic-updates.md). First generate an invitation under **Settings & Help → Security and pairing**, import it on the Mac, then select the device. LAN and ADB-forwarded USB use the same authenticated stream.
 
 ## Requirements
 
@@ -14,11 +14,11 @@ v0.3.1 includes [encrypted pairing](../docs/guides/secure-transport.md) and [Git
 - WiFi: Mac and Android on the same trusted LAN with Nearby WiFi/Local Network discovery permission where required.
 - USB: a data-capable cable, Developer options, USB debugging, and approval of the Mac's RSA identity.
 
-## Install `v0.3.1`
+## Install `v0.3.2`
 
-2026-10-26: stable build 20 fixes capture/encoder recovery, restores quality after congestion, corrects Android video and touch geometry, and adds clearer resolution/frame-rate controls, retaining the pinned Apple Development identity. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](../docs/releases/v0.3.1.md) for changes, permission continuity and verification limits.
+2026-10-26: build 21 accompanies the Mac iMac scaling and encoder-load fixes. Android retains the v0.3.1 behavior and original signing certificate. See the [release notes](../docs/releases/v0.3.2.md).
 
-Download `DisplayWeave-Android.apk` from [`v0.3.1`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/releases/release-checklist.md).
+Download `DisplayWeave-Android.apk` from [`v0.3.2`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/releases/release-checklist.md).
 
 ## Updates after the first install
 
@@ -41,6 +41,7 @@ Download `DisplayWeave-Android.apk` from [`v0.3.1`](https://github.com/chenyuhao
 5. Returning to the receiver after the Android desktop recreates the surface and restarts the listener idempotently; the Mac resends `streamConfig` before requesting a keyframe.
 
 USB mode never silently becomes WiFi. WiFi mode never creates an ADB forward.
+
 
 ## Experience improvements in v0.3.1
 

@@ -36,8 +36,8 @@ python3 tools/clean-workspace.py --apply
 附加 `--dependencies` 可移除网站依赖，之后用 `pnpm install --frozen-lockfile` 恢复。要清理旧的本地**正式版**目录，先用 `gh release view --repo chenyuhao0628/displayweave --json tagName,isDraft,isPrerelease` 核对公开版本，再运行：
 
 ```bash
-python3 tools/clean-workspace.py --keep-release v0.3.1
-python3 tools/clean-workspace.py --keep-release v0.3.1 --apply
+python3 tools/clean-workspace.py --keep-release v0.3.2
+python3 tools/clean-workspace.py --keep-release v0.3.2 --apply
 ```
 
 保留版本必须包含完整 8 个文件；清理前核验清单中全部 7 个哈希。缺失或损坏会停止清理。未知目录、预览版和更新的暂存版本不会被自动判断为过期。公开状态需独立对照 GitHub，本地校验和本身不证明已发布。在新正式版核验前保留上一版比较基线。本次先盘点再移除了历史预览产物，此单次判断不等同于通配符删除规则。

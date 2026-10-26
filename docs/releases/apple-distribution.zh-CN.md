@@ -6,7 +6,7 @@
 
 ## 就绪状态与边界
 
-2026-10-16 本机 **Developer ID Application** 与 **Apple Distribution** 可用身份均为零；Apple Development 身份不足以完成这些导出。正式签名、公证仍**阻塞于外部凭据**。离线测试只证明校验与失败流程，不能代替已公证产物。v0.3.1 正式版（20）采用 Mac Apple Development 签名，仍未公证；iOS 保持无签名。正式版渠道与 Developer ID 公证分别记录，见[发行分发](current.zh-CN.md)。
+2026-10-16 本机 **Developer ID Application** 与 **Apple Distribution** 可用身份均为零；Apple Development 身份不足以完成这些导出。正式签名、公证仍**阻塞于外部凭据**。离线测试只证明校验与失败流程，不能代替已公证产物。v0.3.2 正式版（21）采用 Mac Apple Development 签名，仍未公证；iOS 保持无签名。正式版渠道与 Developer ID 公证分别记录，见[发行分发](current.zh-CN.md)。
 
 原本地打包脚本也支持未公证的正式版发行。正式工作流不会使用预览的关闭库验证 entitlement，Mac 使用空的 `Mac/OpenSidecarMac.entitlements` 与 hardened runtime。不会生成/导出密钥、自动申请 provisioning 或上传开发者门户。
 

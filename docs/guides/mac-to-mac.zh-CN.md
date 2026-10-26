@@ -2,7 +2,7 @@
 
 # Mac 与 Mac 局域网互联
 
-v0.3.1 支持任一 Mac 发送或接收，每次单向扩展/镜像。两端均需 macOS 14+。双 Mac 实机性能与耐久仍待验收。
+v0.3.2 支持任一 Mac 发送或接收，每次单向扩展/镜像。两端均需 macOS 14+。双 Mac 实机性能与耐久仍待验收。
 
 ## 连接步骤
 
@@ -27,7 +27,7 @@ Thunderbolt Bridge 或 link-local 以太网可作为绑定接口的候选，[有
 
 ## 验证
 
-完整[开发门禁](../development/workflow.zh-CN.md)已通过，见[本版证据](../releases/v0.3.1.zh-CN.md)。自动测试覆盖策略、真实 TLS、合成视频、输入授权和过期会话隔离；不会证明两机延迟或持续高刷。实机仍需双向、扩展/镜像、Wi-Fi/以太网、Retina、睡眠/唤醒、输入及 30 分钟/2 小时耐久。交互虚拟显示测试必须先确认独立在线显示器，否则 SKIP。
+完整[开发门禁](../development/workflow.zh-CN.md)已通过，见[本版证据](../releases/v0.3.2.zh-CN.md)。自动测试覆盖策略、真实 TLS、合成视频、输入授权和过期会话隔离；不会证明两机延迟或持续高刷。实机仍需双向、扩展/镜像、Wi-Fi/以太网、Retina、睡眠/唤醒、输入及 30 分钟/2 小时耐久。交互虚拟显示测试必须先确认独立在线显示器，否则 SKIP。
 
 ## 早期实现的历史验证（2026-10-16）
 
@@ -57,4 +57,4 @@ Thunderbolt Bridge 或 link-local 以太网可作为绑定接口的候选，[有
 
 ## iMac 缩放与持续编码负载（源码更新）
 
-v0.3.1 之后的源码增加 iMac 4K/4.5K/5K 桌面档位、接收端逻辑尺寸标签及基于实际编码负载的适配。使用“跟随接收屏幕”与接收端全屏对齐桌面大小；选择帧率优先可降低传输负载而不重新排列窗口。这些修改尚未发布。参见[桌面分辨率](desktop-resolution.zh-CN.md)和[iMac 验证证据](../verification/imac-resolution-performance.zh-CN.md)。
+v0.3.2 增加 iMac 4K/4.5K/5K 桌面档位、接收端逻辑尺寸标签及基于实际编码负载的适配。使用“跟随接收屏幕”与接收端全屏对齐桌面大小；选择帧率优先可降低传输负载而不重新排列窗口。参见[桌面分辨率](desktop-resolution.zh-CN.md)和[iMac 验证证据](../verification/imac-resolution-performance.zh-CN.md)。

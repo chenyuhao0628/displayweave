@@ -84,7 +84,7 @@
   <div class="wrap">
     <p class="eyebrow">Privacy policy</p>
     <h1>Privacy and local data</h1>
-    <p class="updated">Updated October 26, 2026 · describes DisplayWeave v0.3.1 for Mac, iOS/iPadOS, Android and this website</p>
+    <p class="updated">Updated October 26, 2026 · describes DisplayWeave v0.3.2 for Mac, iOS/iPadOS, Android and this website</p>
   </div>
   <div class="wrap"><p><a href="privacy.html" lang="en">English</a> | <a href="privacy.zh-CN.html" lang="zh-CN">简体中文</a></p></div>
 </header>
@@ -96,7 +96,7 @@
 <p>The Mac captures the selected physical or virtual display, encodes video and sends it to the connected receiver. Touch, keyboard, pointer and performance messages return over the session where supported and enabled. DisplayWeave does not provide a cloud relay or automatically upload screen video.</p>
 <ul><li>Apple USB uses macOS usbmuxd; Android USB uses an authorized ADB forward. These are local cable/tunnel paths.</li><li>LAN streaming goes directly between devices over Wi-Fi or Ethernet. Bonjour/NSD discovery advertises local service metadata, including names, capabilities and installation identifiers where used. Nearby devices on that network may observe discovery metadata.</li><li>Each connected receiver has its own session. Video buffers are transient; diagnostic logs and benchmark records are separate local data.</li></ul>
 <h2>Encryption and pairing</h2>
-<p>v0.3.1 uses certificate-pinned mutual TLS and invitation pairing by default on Apple and Android, including USB tunnels. Peer trust is saved locally for reconnection. Invitations are short-lived, single-use and kept in memory; do not share them publicly. See <a href="https://github.com/chenyuhao0628/displayweave/blob/main/docs/guides/secure-transport.md">pairing and revocation</a>.</p>
+<p>v0.3.2 uses certificate-pinned mutual TLS and invitation pairing by default on Apple and Android, including USB tunnels. Peer trust is saved locally for reconnection. Invitations are short-lived, single-use and kept in memory; do not share them publicly. See <a href="https://github.com/chenyuhao0628/displayweave/blob/main/docs/guides/secure-transport.md">pairing and revocation</a>.</p>
 <div class="note"><p>Explicit legacy OpenDisplay compatibility is unencrypted. Enable it only for a peer and network you trust. ADB authorization separately grants the Mac debugging access to the Android device; revoke it in Android Developer options when no longer needed.</p></div>
 <h2>Local storage</h2>
 <table><tr><th>Data</th><th>Purpose and location</th></tr>

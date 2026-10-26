@@ -1,7 +1,7 @@
 export type Locale = "en" | "zh"
 export type EvidenceState = "verified" | "experimental" | "deferred"
 
-export const releaseTag = "v0.3.1"
+export const releaseTag = "v0.3.2"
 export const releaseBase = `https://github.com/chenyuhao0628/displayweave/releases/download/${releaseTag}`
 
 export type ReleaseAsset = {
@@ -179,7 +179,7 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} release`,
       title: "Download the stable release.",
       intro:
-        "More reliable capture recovery, faster quality restoration, aspect-correct Android video and touch, and clearer resolution/frame-rate controls. Android and macOS verify updates before installation.",
+        "iMac desktop presets and clearer scaling, with bounded encoder work and automatic load adaptation that preserves window layout. Android and macOS verify updates before installation.",
       warning:
         "Pair DisplayWeave devices or choose the main-screen OpenDisplay compatibility mode. Mac uses a fixed Apple Development signature and remains unnotarized; iOS requires re-signing.",
       checksum: "Verify all downloads with SHA256SUMS.txt",
@@ -396,7 +396,7 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} 发布`,
       title: "下载正式版。",
       intro:
-        "改进采集恢复与拥塞后的画质恢复，修正 Android 视频和触控比例，并提供更清晰的分辨率／帧率设置。正式版通过 GitHub Releases 分发，Android 与 macOS 在安装更新前校验下载。",
+        "新增 iMac 桌面档位与清晰的缩放提示，优化编码队列，自动适配负载且不改变窗口布局。正式版通过 GitHub Releases 分发，Android 与 macOS 在安装更新前校验下载。",
       warning:
         "DisplayWeave 使用邀请配对；OpenDisplay 可从主界面选择兼容连接。Mac 使用固定 Apple Development 签名且未公证；iOS 需自行签名。",
       checksum: "使用 SHA256SUMS.txt 验证全部下载",

@@ -6,7 +6,7 @@ Android 接收端可以通过本地 WiFi 或由 Mac 管理的 ADB-forward USB �
 
 等待页面跟随系统明暗主题。设置在小屏上可滚动；串流时右上角设置按钮始终可用，即使已隐藏状态浮层。
 
-v0.3.1 包含[加密配对](../docs/guides/secure-transport.zh-CN.md)与[仅 GitHub 更新](../docs/releases/automatic-updates.zh-CN.md)。首次连接时，在**设置与帮助 → 安全与配对**生成邀请，导入 Mac 后再选择设备。局域网和 ADB 转发 USB 使用相同认证流。
+v0.3.2 包含[加密配对](../docs/guides/secure-transport.zh-CN.md)与[仅 GitHub 更新](../docs/releases/automatic-updates.zh-CN.md)。首次连接时，在**设置与帮助 → 安全与配对**生成邀请，导入 Mac 后再选择设备。局域网和 ADB 转发 USB 使用相同认证流。
 
 ## 要求
 
@@ -14,11 +14,11 @@ v0.3.1 包含[加密配对](../docs/guides/secure-transport.zh-CN.md)与[仅 Git
 - WiFi：Mac 与 Android 位于同一可信局域网，并按系统要求授予附近 WiFi/本地网络发现权限。
 - USB：支持数据传输的线缆、开发者选项、USB 调试，以及允许 Mac 的 RSA 身份。
 
-## 安装 `v0.3.1`
+## 安装 `v0.3.2`
 
-2026-10-26：正式版构建 20 修复采集／编码恢复、拥塞后画质恢复和 Android 视频／触控比例，新增更清晰的分辨率／帧率设置，沿用固定 Apple Development 签名。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](../docs/releases/v0.3.1.zh-CN.md)。
+2026-10-26：构建 21 配套 Mac 的 iMac 缩放与编码负载修复。Android 保留 v0.3.1 行为和原签名证书，见[发布说明](../docs/releases/v0.3.2.zh-CN.md)。
 
-从 [`v0.3.1`](https://github.com/chenyuhao0628/displayweave/releases) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。p5 需要手动覆盖安装一次 p6 或更新版；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/releases/release-checklist.zh-CN.md)中的证书指纹。
+从 [`v0.3.2`](https://github.com/chenyuhao0628/displayweave/releases) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。p5 需要手动覆盖安装一次 p6 或更新版；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/releases/release-checklist.zh-CN.md)中的证书指纹。
 
 ## 首次安装后的更新
 
@@ -38,6 +38,7 @@ v0.3.1 包含[加密配对](../docs/guides/secure-transport.zh-CN.md)与[仅 Git
 5. 从 Android 桌面返回接收端时，Surface 会重建、listener 会幂等重启；Mac 先重发 `streamConfig`，再请求关键帧。
 
 USB 模式不会静默变成 WiFi，WiFi 模式不会创建 ADB forward。
+
 
 ## v0.3.1 体验改进
 
