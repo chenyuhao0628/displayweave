@@ -2,7 +2,7 @@
 
 # Mac-to-Mac over a local network
 
-v0.3.1 lets either Mac send or receive one-way extended or mirrored video. Both require macOS 14+. Two-Mac physical performance and endurance acceptance remain pending.
+v0.3.2 lets either Mac send or receive one-way extended or mirrored video. Both require macOS 14+. Two-Mac physical performance and endurance acceptance remain pending.
 
 ## Connect
 
@@ -27,7 +27,7 @@ Thunderbolt Bridge or link-local Ethernet can provide interface-pinned candidate
 
 ## Verification
 
-The complete [development gate](../development/workflow.md) passed; see [release evidence](../releases/v0.3.1.md). Automated checks exercise policies, real TLS, synthetic video, input consent and stale-session isolation, but do not prove two-Mac latency or sustained high refresh. Physical acceptance still covers both directions, extend/mirror, Wi-Fi/Ethernet, Retina, sleep/wake, input and 30-minute/2-hour endurance. Interactive virtual-display tests require a verified independent online display; otherwise SKIP.
+The complete [development gate](../development/workflow.md) passed; see [release evidence](../releases/v0.3.2.md). Automated checks exercise policies, real TLS, synthetic video, input consent and stale-session isolation, but do not prove two-Mac latency or sustained high refresh. Physical acceptance still covers both directions, extend/mirror, Wi-Fi/Ethernet, Retina, sleep/wake, input and 30-minute/2-hour endurance. Interactive virtual-display tests require a verified independent online display; otherwise SKIP.
 
 ## Historical validation of the earlier implementation (2026-10-16)
 
@@ -62,4 +62,4 @@ as successful release validation.
 
 ## iMac scaling and sustained encoder load (source update)
 
-After v0.3.1, source adds explicit iMac 4K/4.5K/5K desktop presets, a receiver-derived logical-size label and measured encoder-load adaptation. Use **Match receiving screen** plus fullscreen reception to align desktop size; use frame-rate priority to lower transmission load without rearranging windows. These changes are not yet published. See [desktop resolution](desktop-resolution.md) and [the iMac evidence](../verification/imac-resolution-performance.md).
+v0.3.2 adds explicit iMac 4K/4.5K/5K desktop presets, a receiver-derived logical-size label and measured encoder-load adaptation. Use **Match receiving screen** plus fullscreen reception to align desktop size; use frame-rate priority to lower transmission load without rearranging windows. See [desktop resolution](desktop-resolution.md) and [the iMac evidence](../verification/imac-resolution-performance.md).

@@ -8,8 +8,9 @@ Current downloads and the stable-only build, signing and publication workflow.
 
 - [Production Apple distribution](apple-distribution.md)
 - [Automatic update authenticity and signing](automatic-updates.md)
-- [DisplayWeave `v0.3.1` Stable Release Distribution](current.md)
+- [DisplayWeave `v0.3.2` Stable Release Distribution](current.md)
 - [Local build and publication](local-release.md)
 - [Stable release checklist](release-checklist.md)
 - [Release downloads](release-downloads.md)
+- [DisplayWeave v0.3.2](v0.3.2.md)
 - [DisplayWeave v0.3.1](v0.3.1.md)

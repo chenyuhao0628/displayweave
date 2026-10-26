@@ -2,7 +2,7 @@
 
 # iMac desktop scaling and encoder load
 
-Date: 2026-10-26. Source changes after v0.3.1; these changes are not yet in a published download.
+Date: 2026-10-26. Included in the v0.3.2 release package (21). Reviewed native source: `b01e132`; source PR #22 merged as `1bfa1ca`. See [release notes](../releases/v0.3.2.md) for publication evidence.
 
 ## Report and evidence
 
@@ -33,6 +33,8 @@ The desktop preset regression failed before implementation. The intermediate-FPS
 Verified locally: 63 Swift suites plus capture/load/admission production-method fixtures; universal arm64/x86_64 Mac Debug and iOS Simulator builds; Android tests/Debug/Lint; web build, 116 bilingual documentation pairs, release-link checks and whitespace; 12 distribution, 20 signing, 15 cleanup, 9 documentation-check and 5 packaging checks; 36 brand assets. The worker concurrency test also passed Thread Sanitizer. Native settings were visually inspected and the adaptation toggle verified off/on, restoring its original value.
 
 With an independent built-in display online, real AppKit window/fullscreen/lifecycle and three cycles of 1×/2× virtual-display creation/removal passed. The standalone 4K probe on arm64/macOS 26.5.2 encoded 180/180 frames in each of its three isolated runs (one-slot baseline, two-slot baseline, new worker), with no skips or failures and approximately 60 FPS. The new worker measured about 13.99 ms median / 14.71 ms p95 encoding callback latency. Hardware query, frame-delay and speed-priority properties returned unsupported on this host. An earlier probe overlapped display lifecycle testing and its worker run dropped 84/180 frames; that contended run is retained as non-comparable evidence, not silently discarded. Neither synthetic run proves Intel or two-device performance.
+
+Final source CI `40263716075` passed all three jobs. Actual Apple↔Java TLS, Mac/iOS Keychain and secure Android runtime checks passed. The secure iOS fixture passed on an isolated rerun; the first background-listener check failed and its log is retained. No iOS source changed. The load-update integration fixture covers the five-second timeout and late completion.
 
 Local evidence is retained under ignored `artifacts/verification/imac-resolution-2026-10-26/`.
 

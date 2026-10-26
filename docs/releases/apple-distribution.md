@@ -6,7 +6,7 @@ The source now includes `tools/apple-distribution.py` for local signed archives 
 
 ## Readiness and limits
 
-On 2026-10-16 this Mac had zero **Developer ID Application** identities and zero **Apple Distribution** identities; an Apple Development identity is insufficient for these exports. Production signing and notarization are therefore **blocked by external credentials**. Offline tests prove validation and workflow failure behavior, not a notarized artifact. The v0.3.1 stable release (20) uses Apple Development for Mac and remains unnotarized; iOS stays unsigned. Stable release status and Developer ID notarization are separate; see [release distribution](current.md).
+On 2026-10-16 this Mac had zero **Developer ID Application** identities and zero **Apple Distribution** identities; an Apple Development identity is insufficient for these exports. Production signing and notarization are therefore **blocked by external credentials**. Offline tests prove validation and workflow failure behavior, not a notarized artifact. The v0.3.2 stable release (21) uses Apple Development for Mac and remains unnotarized; iOS stays unsigned. Stable release status and Developer ID notarization are separate; see [release distribution](current.md).
 
 The existing local packaging script supports unnotarized stable releases too. The new workflow never substitutes its relaxed library-validation entitlement for production signing. Production Mac uses the empty `Mac/OpenSidecarMac.entitlements` and hardened runtime. No key generation, key export, automatic provisioning or developer-portal upload occurs.
 

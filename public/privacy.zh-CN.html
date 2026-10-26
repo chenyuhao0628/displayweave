@@ -84,7 +84,7 @@
   <div class="wrap">
     <p class="eyebrow">隐私说明</p>
     <h1>隐私与本地数据</h1>
-    <p class="updated">2026-10-26 更新 · 适用于 DisplayWeave v0.3.1 的 Mac、iOS/iPadOS、Android 应用与本网站</p>
+    <p class="updated">2026-10-26 更新 · 适用于 DisplayWeave v0.3.2 的 Mac、iOS/iPadOS、Android 应用与本网站</p>
   </div>
   <div class="wrap"><p><a href="privacy.html" lang="en">English</a> | <a href="privacy.zh-CN.html" lang="zh-CN">简体中文</a></p></div>
 </header>
@@ -96,7 +96,7 @@
 <p>Mac 采集选定的物理或虚拟显示器，编码后发送给已连接的接收端。受支持且已启用的触控、键盘、指针与性能消息通过会话回传。DisplayWeave 不提供云端串流中继，也不会自动上传屏幕视频。</p>
 <ul><li>Apple USB 使用 macOS usbmuxd；Android USB 使用已授权的 ADB 转发，均为本地线缆／隧道路径。</li><li>局域网串流通过 Wi-Fi 或以太网在设备之间直连。Bonjour／NSD 发现会广播本地服务元数据，包括所使用的名称、能力和安装标识；同网络中的附近设备可能看到发现信息。</li><li>每个接收端拥有独立会话。视频缓冲是临时数据；诊断日志和基准记录属于另外保存的本地数据。</li></ul>
 <h2>加密与配对</h2>
-<p>v0.3.1 的 Apple 与 Android 默认使用固定证书指纹的双向 TLS 和邀请配对，USB 隧道也相同。信任记录保存在本地供重连使用。邀请短时有效、只能使用一次并仅存于内存，请勿公开分享。参见<a href="https://github.com/chenyuhao0628/displayweave/blob/main/docs/guides/secure-transport.zh-CN.md">配对与撤销</a>。</p>
+<p>v0.3.2 的 Apple 与 Android 默认使用固定证书指纹的双向 TLS 和邀请配对，USB 隧道也相同。信任记录保存在本地供重连使用。邀请短时有效、只能使用一次并仅存于内存，请勿公开分享。参见<a href="https://github.com/chenyuhao0628/displayweave/blob/main/docs/guides/secure-transport.zh-CN.md">配对与撤销</a>。</p>
 <div class="note"><p>显式启用的旧版 OpenDisplay 兼容连接不加密，仅在可信设备与网络中使用。ADB 授权还会单独授予 Mac 对 Android 设备的调试权限，不再需要时可在 Android 开发者选项中撤销。</p></div>
 <h2>本地存储</h2>
 <table><tr><th>数据</th><th>用途与位置</th></tr>

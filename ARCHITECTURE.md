@@ -104,3 +104,7 @@ Both Apple targets share `Shared/ReceiverVideoBitstream`. iOS advertises `appleV
 ## Completed source extensions
 
 The [feature ledger](docs/archive/plans/feature-completion.md) records desktop resolution, default authenticated transport, consented Mac keyboard/mouse input, same-ID Mac handover, Pencil v2 and named shortcuts, process CPU sampling, Android pooled leases and shared protocol vectors. The iOS presentation owns callbacks by view identity: replacement retires old input before attachment, and late old-view teardown cannot clear new callbacks or remove a borrowed video layer. Decoder/presentation callbacks carry connection generations; cross-thread frame callbacks use locks. Actual production signing and final artwork remain external requirements.
+
+## Desktop geometry and measured encoder load (v0.3.2)
+
+Desktop points/backing pixels are separate from the encoded raster. iMac presets and receiver-matched geometry preserve the selected layout while video quality adapts. `EncoderWorkQueue` serializes VideoToolbox ownership away from capture/control, with at most two retained submissions. `EncoderLoadController` uses sustained active encoder pressure, excludes idle/network-limited windows, and follows the user's resolution/frame-rate priority. Capture reconfiguration clears cached frames, rejects stale generations and has a five-second deadline. See [the implementation and evidence](docs/verification/imac-resolution-performance.md); a 5K desktop does not expand the Apple video decoder envelope.

@@ -2,15 +2,15 @@
 
 # DisplayWeave 路线图
 
-更新于 2026-10-26。当前版本为 **v0.3.1（20）**。采集／编码恢复、拥塞后画质恢复、Android 视频／触控比例和更清晰的设置已完成，见[发布说明](docs/releases/v0.3.1.zh-CN.md)与[实施／验收台账](docs/verification/reliability-experience-upgrade.zh-CN.md)。目录和文档整理属于源码维护，不改变已发布二进制。
+更新于 2026-10-26。当前版本为 **v0.3.2（21）**。已包含 iMac 桌面缩放与基于实际编码负载的适配，见[发布说明](docs/releases/v0.3.2.zh-CN.md)与[实施／验收台账](docs/verification/imac-resolution-performance.zh-CN.md)。
 
-## 当前 v0.3.1 正式版内容
+## 当前 v0.3.2 正式版内容
 
 - 按会话隔离采集／编码恢复、健康队列码率恢复、有界 Apple／Android 解码背压、正确 Android 视频／输入比例和分辨率／帧率优先设置。
 - Mac 4K 编码/光标延迟策略、有界接收背压、100 Mbps H.264 局域网预设和上游采集/显示器恢复，见[发布说明](docs/archive/releases/release-notes-v0.3.0.zh-CN.md)。
 - 固定 Apple Development 签名与升级比较，本机已验证权限延续。
 - 统一 UI 规范与主界面双向 OpenDisplay 兼容连接。
-- 按设备 Native/1080p/1440p/4K 扩展桌面分辨率。
+- 按设备跟随接收屏幕/1080p/1440p/4K/iMac 4K/4.5K/5K 桌面档位；有界编码队列与默认开启的实际负载适配保持窗口布局。
 - Apple/Android 默认双向 TLS、邀请配对、撤销和显式旧版兼容。
 - Apple HEVC/H.264 回退及有界 30–120fps 协商。
 - 双端同意的 Mac 接收键鼠回传，焦点、角色和会话变化释放输入。

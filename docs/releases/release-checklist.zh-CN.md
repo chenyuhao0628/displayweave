@@ -2,19 +2,21 @@
 
 # 正式版发布检查清单
 
-当前公开版本：**v0.3.1 / 构建 20**，2026-10-26 发布。[发布说明](v0.3.1.zh-CN.md)记录行为，[分发指南](current.zh-CN.md)列出准确文件与哈希，[本地发行](local-release.zh-CN.md)提供命令。
+当前公开版本：**v0.3.2 / 构建 21**，于 2026-10-26 03:45:55 UTC 发布为正式版／Latest。[发布说明](v0.3.2.zh-CN.md)、[准确文件与哈希](current.zh-CN.md)、[本地命令](local-release.zh-CN.md)。
 
-## 已完成的发行记录
+## 发行记录
 
-- [x] 源码 PR #19 和发行 PR #20 已审核合并；`v0.3.1` 指向 `3255e9e1020ae3e90b73f65e16687c67d741e76a`，属于 main 祖先。
-- [x] 发行 CI `40251555053` 与合并后 CI `40252277449` 通过，Pages 部署 `40252277411` 成功。
-- [x] 独立下载并校验 8 个 GitHub 附件；2026-10-26 核对已发布、正式版与 Latest 状态。两个在线 Pages 更新源与发行副本逐字节一致。
-- [x] 验证 Mac 通用架构、签名、hardened runtime、对比构建 19 的身份、Sparkle Ed25519、原 Android 证书及无签名 arm64 iOS 内容。
-- [x] 源码／运行验收与实机缺口分别记录于[升级台账](../verification/reliability-experience-upgrade.zh-CN.md)。
+- [x] 经维护者授权自审原生源码 `b01e132`，源码 PR #22 合并为 `1bfa1ca`。未宣称独立审批；使用现有所有者 bypass，未修改仓库规则。
+- [x] 源码 CI `40263716075` 三项任务通过；本地运行结果与实机缺口见[iMac 证据](../verification/imac-resolution-performance.zh-CN.md)。
+- [x] 构建 21 的 Mac universal 签名、加固运行时、与准确下载构建 20 的身份连续性、独立 Sparkle Ed25519、原 Android 证书和无签名 arm64 iOS 均已验证。
+- [x] 发行 CI `40265167436` 在 tag `v0.3.2`／提交 `1a6221c182d141c21b14f2bdeabca87809d2283f` 上通过，源码归档与该提交跟踪源码完全一致。
+- [x] 发布前独立下载核验八项 GitHub 文件，发布后再次匿名下载全部文件且哈希一致，确认正式版／Latest。公开 API 元数据首次遇到共享 IP 限流；认证 API 元数据和全部匿名附件下载通过。
 
-Android 签名证书 SHA-256：`89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d`。Mac 仍为 Apple Development 签名且未公证；iOS 需要重签名。未交互重测 19 → 20 的隐私权限延续；采集／旋转／睡眠恢复、Intel、实机高刷／Pencil、辅助功能和耐久仍待验证。
+[发行 PR #23](https://github.com/chenyuhao0628/displayweave/pull/23)记录最终合并／main 祖先关系、最终提交 CI、Pages 部署与更新源核验回执。发行证据与清理日志保存在下列本地目录。
 
-本地产物位于 `artifacts/releases/v0.3.1/`，必要证据位于 `artifacts/verification/v0.3.1/`。[历史清单](../archive/releases/release-checklist-through-v0.3.1.zh-CN.md)保留原日期与验证范围。
+Android 签名证书 SHA-256：`89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d`。Mac 沿用 Apple Development 签名且未公证，iOS 需要重签。未交互重测 20 → 21 隐私权限；双 2019 Intel iMac 缩放、延迟、适配和耐久仍待验收。
+
+本地安装包：`artifacts/releases/v0.3.2/`；证据：`artifacts/verification/v0.3.2/` 与 `artifacts/verification/imac-resolution-2026-10-26/`。[v0.3.1 说明](v0.3.1.zh-CN.md)与[早期清单](../archive/releases/release-checklist-through-v0.3.1.zh-CN.md)保留历史验证范围。
 
 ## 后续每次发行
 

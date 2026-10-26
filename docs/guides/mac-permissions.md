@@ -4,7 +4,7 @@
 
 Starting with `v0.3.0-preview.3` (18), the Mac app uses a pinned Apple Development identity. Run and local packaging enforce that identity and compare upgrades. Earlier preview.2 assets remain ad-hoc signed and unchanged. The first migration from an ad-hoc copy may require authorization once more; subsequent fixed-signature builds preserve their code identity.
 
-For v0.3.1 (20), packaging compared the exact downloaded build 19 app and verified the same designated requirement, team, bundle identity and arm64/x86_64 architectures. Build 19 → 20 privacy permissions were not interactively retested; older signed-overwrite observations below retain their original scope. See [release evidence](../releases/v0.3.1.md).
+For v0.3.2 (21), packaging compared the exact downloaded build 20 app and verified the same designated requirement, team, bundle identity and arm64/x86_64 architectures. Build 20 → 21 privacy permissions were not interactively retested; older signed-overwrite observations below retain their original scope. See [release evidence](../releases/v0.3.2.md).
 
 ## Why upgrades lost permissions
 
@@ -24,7 +24,7 @@ Replace the placeholder with an existing **Apple Development** or **Developer ID
 
 The public signing metadata is pinned outside Git at `~/Library/Application Support/DisplayWeave/Signing/mac-signing.json`, or at `DISPLAYWEAVE_MAC_SIGNING_CONFIG`. Keep this policy and the same Keychain identity for future builds. An absent/expired identity stops the build before any running development app is stopped. There is no ad-hoc fallback or automatic certificate selection. A renewed certificate can replace the fingerprint only if its team and both designated requirements remain identical; other changes require a separately tested migration.
 
-The currently available Apple Development identity supports local unnotarized packaging, including the v0.3.1 stable release. It is not Developer ID distribution or notarization. Use [the production workflow](../releases/apple-distribution.md) when the required distribution credentials exist. GitHub-hosted release runners have no maintainer identity by default and now stop at signing preflight. Use the [local release workflow](../releases/local-release.md) until a runner is explicitly provisioned; this change does not export signing credentials to GitHub.
+The currently available Apple Development identity supports local unnotarized packaging, including the v0.3.2 stable release. It is not Developer ID distribution or notarization. Use [the production workflow](../releases/apple-distribution.md) when the required distribution credentials exist. GitHub-hosted release runners have no maintainer identity by default and now stop at signing preflight. Use the [local release workflow](../releases/local-release.md) until a runner is explicitly provisioned; this change does not export signing credentials to GitHub.
 
 ## Build and compare
 

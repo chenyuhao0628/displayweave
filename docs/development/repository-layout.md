@@ -36,8 +36,8 @@ The first command previews exact paths and logical file bytes. Stop this project
 To also remove website dependencies, add `--dependencies`; restore them with `pnpm install --frozen-lockfile`. To prune older **stable** local release folders, first confirm the published tag with `gh release view --repo chenyuhao0628/displayweave --json tagName,isDraft,isPrerelease`, then:
 
 ```bash
-python3 tools/clean-workspace.py --keep-release v0.3.1
-python3 tools/clean-workspace.py --keep-release v0.3.1 --apply
+python3 tools/clean-workspace.py --keep-release v0.3.2
+python3 tools/clean-workspace.py --keep-release v0.3.2 --apply
 ```
 
 Retention requires a complete eight-file release and checks all seven manifest hashes before any deletion. Corrupt/missing retained files stop cleanup. Unknown folders, previews and newer staging versions are not inferred obsolete. Publication is independently verified against GitHub; a local checksum alone is not proof of publication. Never delete the previous baseline until the next stable release is verified. The dated cleanup removed legacy preview output folders after inventory; that one-time classification is not a wildcard deletion policy.
