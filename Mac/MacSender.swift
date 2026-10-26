@@ -1433,6 +1433,14 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         let target = decision.configuration
         let id = UUID()
         encoderLoadAdjustmentID = id
+        queue.asyncAfter(deadline: .now() + 5) { [weak self, weak activeStream] in
+            guard let self, let activeStream, !self.stopped, !self.pipelineFailureReported,
+                  self.stream === activeStream, self.encoderLoadAdjustmentID == id else { return }
+            self.encoderLoadAdjustmentTask?.cancel()
+            self.encoderLoadAdjustmentTask = nil
+            self.encoderLoadAdjustmentID = nil
+            self.failPipeline(DisplayUnitCoordinator.failure("自动调整编码负载超时，请重新连接；也可在串流设置中关闭自动适配。"))
+        }
         cancelDropReplay()
         _ = captureFrames.begin() // no old-size cached frame can reach the new encoder
         let config = makeCaptureConfiguration(width: target.width, height: target.height, fps: target.fps)

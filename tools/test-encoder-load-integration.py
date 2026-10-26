@@ -20,7 +20,7 @@ final class MockStream: @unchecked Sendable {
     var failure = false
     func updateConfiguration(_ config: EncoderLoadController.Configuration) async throws {
         entered.signal()
-        precondition(release.wait(timeout: .now() + 3) == .success)
+        precondition(release.wait(timeout: .now() + 8) == .success)
         if failure { throw NSError(domain: "fixture", code: 1) }
     }
 }
@@ -121,7 +121,19 @@ final class Probe: @unchecked Sendable {
         stoppedCapture.release.signal()
         await finish(stopped)
         stopped.queue.sync { precondition(stopped.setups.isEmpty && stopped.failures == 0) }
-        print("Encoder load integration PASS: current method, fallback, replacement, stop, SCK/encoder failures")
+        let stalled = Probe(), stalledCapture = stalled.begin()
+        let stalledTask = stalled.queue.sync { stalled.encoderLoadAdjustmentTask }
+        precondition(stalledCapture.entered.wait(timeout: .now() + 3) == .success)
+        let timeout = DispatchSemaphore(value: 0)
+        stalled.queue.asyncAfter(deadline: .now() + 5.2) {
+            precondition(stalled.failures == 1 && stalled.encoderLoadAdjustmentID == nil)
+            timeout.signal()
+        }
+        precondition(timeout.wait(timeout: .now() + 7) == .success)
+        stalledCapture.release.signal()
+        await stalledTask?.value
+        stalled.queue.sync { precondition(stalled.setups.isEmpty && stalled.failures == 1) }
+        print("Encoder load integration PASS: current method, fallback, replacement, stop, SCK/encoder failures and timeout")
     }
 }
 '''
