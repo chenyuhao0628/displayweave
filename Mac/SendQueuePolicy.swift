@@ -16,11 +16,11 @@ enum SendQueuePolicy {
         }
     }
 
-    /// VideoToolbox is asynchronous. At 60/90/120 fps one frame can still be in
+    /// VideoToolbox is asynchronous. Above 30 fps one frame can still be in
     /// flight when the next capture arrives. A depth of one skips alternate
     /// captures when completion takes between one and two frame intervals.
     static func encodeBudget(fps: Int) -> Int {
-        fps >= 60 ? 2 : 1
+        fps > 30 ? 2 : 1
     }
 
     /// With M = 0, VideoToolbox must emit frame N before encode(N) returns.

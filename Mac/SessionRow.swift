@@ -32,13 +32,22 @@ struct SessionRow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if controller.mode == .extend {
-                Picker("桌面像素", selection: Binding(
+                Picker("桌面大小", selection: Binding(
                     get: { controller.desktopResolution(for: session) },
                     set: { controller.setDesktopResolution($0, for: session) })) {
-                    ForEach(DesktopResolution.allCases, id: \.self) { Text($0.label).tag($0) }
+                    ForEach(DesktopResolution.allCases, id: \.self) {
+                        Text($0.label(native: session.nativeDesktop)).tag($0)
+                    }
                 }
                 .disabled(controller.replacingSessions || !DesktopResolutionPreferences.validIdentity(session.deviceID))
-                .help("按设备保存；更改仅重连这台设备。Retina 逻辑点为像素的一半；竖屏自动交换宽高。")
+                .help("跟随接收屏幕可匹配接收端当前的桌面大小。更改仅重连这台设备；编码画质不会改变窗口大小。")
+                if let desktop = session.desktopGeometry(controller.desktopResolution(for: session)) {
+                    Text(desktop.summary).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                }
+                if session.receiverInfo?.isMacReceiver == true {
+                    Text("跨屏窗口大小不一致时，选“跟随接收屏幕”，并在接收端全屏显示。想降低负载，请调画质或选帧率优先；窗口模式会把整个桌面缩放进接收窗口。")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
             }
             HStack {
                 if session.failed {

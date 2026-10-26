@@ -2,14 +2,17 @@ import Foundation
 
 /// These are framebuffer pixels. HiDPI logical points remain a separate value.
 enum DesktopResolution: String, CaseIterable {
-    case native, fullHD, quadHD, ultraHD
+    case native, fullHD, quadHD, ultraHD, iMac4K, iMac4_5K, iMac5K
 
     var label: String {
         switch self {
-        case .native: return "原生"
+        case .native: return "跟随接收屏幕"
         case .fullHD: return "1080p · 1920×1080"
         case .quadHD: return "1440p · 2560×1440"
         case .ultraHD: return "4K · 3840×2160"
+        case .iMac4K: return "iMac 4K · 4096×2304"
+        case .iMac4_5K: return "iMac 4.5K · 4480×2520"
+        case .iMac5K: return "iMac 5K · 5120×2880"
         }
     }
     var landscapePixels: (Int, Int)? {
@@ -18,7 +21,15 @@ enum DesktopResolution: String, CaseIterable {
         case .fullHD: return (1920, 1080)
         case .quadHD: return (2560, 1440)
         case .ultraHD: return (3840, 2160)
+        case .iMac4K: return (4096, 2304)
+        case .iMac4_5K: return (4480, 2520)
+        case .iMac5K: return (5120, 2880)
         }
+    }
+
+    func label(native: DesktopGeometry?) -> String {
+        guard self == .native, let native else { return label }
+        return "跟随接收屏幕 · \(native.pointsWide)×\(native.pointsHigh) 点"
     }
 }
 
@@ -57,6 +68,9 @@ struct DesktopGeometry: Equatable {
     let scale: Int
     var pixelsWide: Int { pointsWide * scale }
     var pixelsHigh: Int { pointsHigh * scale }
+    var summary: String {
+        "桌面 \(pointsWide)×\(pointsHigh) 点 · \(scale == 2 ? "Retina 2×" : "1×") · \(pixelsWide)×\(pixelsHigh) 像素"
+    }
 }
 
 enum DesktopResolutionPolicy {

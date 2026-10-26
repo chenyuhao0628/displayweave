@@ -49,6 +49,25 @@ final class DeviceSession: ObservableObject, Identifiable {
     // Receiver's per-install identity (from hello) — the key for recognizing
     // the same physical device across USB and WiFi.
     @Published var deviceID: String?
+    @Published var receiverInfo: PhoneInfo?
+
+    var nativeDesktop: DesktopGeometry? {
+        guard let info = receiverInfo else { return nil }
+        return desktopGeometry(.native, info: info)
+    }
+
+    func desktopGeometry(_ selection: DesktopResolution) -> DesktopGeometry? {
+        receiverInfo.map { desktopGeometry(selection, info: $0) }
+    }
+
+    private func desktopGeometry(_ selection: DesktopResolution, info: PhoneInfo) -> DesktopGeometry {
+        let scale = info.isMacReceiver && (info.panel?.scale ?? info.scale) < 1.5 ? 1 : 2
+        return DesktopResolutionPolicy.geometry(selection,
+            nativeWidth: info.panel?.pixelsWide ?? info.pixelsWide,
+            nativeHeight: info.panel?.pixelsHigh ?? info.pixelsHigh,
+            nativePointsWide: info.panel?.pointsWide, nativePointsHigh: info.panel?.pointsHigh,
+            backingScale: scale)
+    }
     // "iPhone" / "iPad" from hello — naming fallback while (or in case)
     // lockdown hasn't resolved the device's real name.
     var deviceKind: String?

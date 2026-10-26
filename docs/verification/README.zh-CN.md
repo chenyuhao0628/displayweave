@@ -13,3 +13,4 @@
 - [可靠性与使用体验升级](reliability-experience-upgrade.zh-CN.md)
 - [Android USB 与 WiFi Benchmark 规程](usb-vs-wifi-benchmark.zh-CN.md)
 - [项目目录与文档整理 — 2026-10-26](workspace-cleanup-2026-10-26.zh-CN.md)
+- [iMac 桌面缩放与编码负载](imac-resolution-performance.zh-CN.md)

@@ -633,6 +633,7 @@ final class SenderController: ObservableObject {
                 return
             }
             session.deviceID = info.id
+            session.receiverInfo = info
             if session.sender.encrypted {
                 if AppleTransportSecurityModel.shared.importedID == info.id { AppleTransportSecurityModel.shared.clearImport() }
                 AppleTransportSecurityModel.shared.refresh()

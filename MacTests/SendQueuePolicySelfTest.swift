@@ -30,6 +30,10 @@ enum SendQueuePolicySelfTest {
     }
 
     static func main() {
+        for fps in [40, 50] {
+            precondition(admittedFrames(fps: fps, latencyMs: 28) == 600,
+                         "adapted intermediate FPS must retain the asynchronous two-frame pipeline")
+        }
         for latency in [19.0, 23.0, 28.0] {
             let admitted = admittedFrames(fps: 60, latencyMs: latency)
             precondition(admitted == 600,
