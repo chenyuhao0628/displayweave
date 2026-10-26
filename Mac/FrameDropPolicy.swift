@@ -40,8 +40,14 @@ enum KeyframeRequestDisposition: Equatable {
 }
 
 struct KeyframeRequestTracker {
+    struct Request: Equatable {
+        let id: UInt64
+        let reason: FrameDropReason
+    }
     private(set) var pendingReason: FrameDropReason?
-    private(set) var inFlightReason: FrameDropReason?
+    private(set) var inFlightRequest: Request?
+    var inFlightReason: FrameDropReason? { inFlightRequest?.reason }
+    private var nextID: UInt64 = 0
     private(set) var requestCount = 0
     private(set) var coalescedCount = 0
     private(set) var emittedRequestCount = 0
@@ -78,20 +84,28 @@ struct KeyframeRequestTracker {
         return .scheduled
     }
 
-    mutating func consumePendingRequest() -> FrameDropReason? {
+    mutating func consumePendingRequest() -> Request? {
         guard inFlightReason == nil, let reason = pendingReason else { return nil }
         pendingReason = nil
-        inFlightReason = reason
+        nextID &+= 1
+        let request = Request(id: nextID, reason: reason)
+        inFlightRequest = request
         emittedRequestCount += 1
-        return reason
+        return request
     }
 
-    mutating func completeInFlightRequest(encodedKeyframe: Bool) {
-        guard let reason = inFlightReason else { return }
-        inFlightReason = nil
+    mutating func complete(_ request: Request?, encodedKeyframe: Bool) {
+        guard let request, inFlightRequest == request else { return }
+        inFlightRequest = nil
         if !encodedKeyframe, pendingReason == nil {
-            pendingReason = reason
+            pendingReason = request.reason
         }
+    }
+
+    /// Call when either the encoder or wire owner retires, even if no callback
+    /// will ever arrive. A late completion cannot consume a replacement lease.
+    mutating func retireInFlightRequest() {
+        complete(inFlightRequest, encodedKeyframe: false)
     }
 
     func count(for reason: FrameDropReason) -> Int {

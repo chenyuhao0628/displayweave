@@ -84,6 +84,8 @@ final class PhoneReceiver: ObservableObject {
     private var configuredVideo: AppleVideoConfiguration?
     private var videoFallback = AppleVideoFallbackPolicy()
     private var waitingForKeyframe = true
+    private var videoBackpressure = ReceiverVideoBackpressurePolicy()
+    private var firstVideoDeadline = ReceiverFirstVideoDeadline()
     private var displayMaxFps = 60
     @Published private(set) var requestedFps = 60
     @Published private(set) var codecLabel = "H.264"
@@ -419,6 +421,8 @@ final class PhoneReceiver: ObservableObject {
                 switch state {
                 case .ready:
                     self.lastDataReceived = Date()
+                    self.firstVideoDeadline.begin(at: ProcessInfo.processInfo.systemUptime)
+                    self.setStatus("已连接，正在等待 Mac 画面…")
                     self.setConnected(true)
                     self.sendHello(on: conn)
                 case .failed, .cancelled:
@@ -436,6 +440,8 @@ final class PhoneReceiver: ObservableObject {
             }
             if encrypted {
                 self.lastDataReceived = Date()
+                self.firstVideoDeadline.begin(at: ProcessInfo.processInfo.systemUptime)
+                self.setStatus("安全连接已建立，正在等待 Mac 画面…")
                 self.setConnected(true)
                 self.sendHello(on: conn)
             } else { conn.start(queue: self.queue) }
@@ -499,8 +505,9 @@ final class PhoneReceiver: ObservableObject {
             lastRttMs = rtt
         case "ping":
             // The Mac piggybacks its send-side health on liveness pings.
-            macDrops = obj["drops"] as? Int ?? macDrops
-            macPending = obj["pending"] as? Int ?? macPending
+            let health = SenderHealthTelemetry(obj)
+            macDrops = health.droppedFrames ?? macDrops
+            macPending = health.queueDepth ?? macPending
             macInputP50 = obj["inp50"] as? Double ?? macInputP50
             macInputP95 = obj["inp95"] as? Double ?? macInputP95
             macCapFps = obj["capFps"] as? Int ?? macCapFps
@@ -538,6 +545,9 @@ final class PhoneReceiver: ObservableObject {
                 self.resetStreamState()
                 self.setConnected(false)
             }
+            if self.connection != nil, self.firstVideoDeadline.expired(at: ProcessInfo.processInfo.systemUptime) {
+                self.rejectVideo("连接已建立但未收到画面，请在 Mac 检查屏幕录制权限后重新连接")
+            }
             self.scheduleWatchdog()
         }
     }
@@ -556,6 +566,8 @@ final class PhoneReceiver: ObservableObject {
             self.pencilActionStatus = "等待高级 Pencil 协商"
             self.onInputReset?()
         }
+        firstVideoDeadline = ReceiverFirstVideoDeadline()
+        macDrops = 0; macPending = 0; macInputP50 = 0; macInputP95 = 0; macCapFps = 0
         frameDecoder = ReceiverFrameDecoder()
         videoCodec = .h264
         videoFallback = AppleVideoFallbackPolicy()
@@ -773,6 +785,7 @@ final class PhoneReceiver: ObservableObject {
                 rejectVideo("视频尺寸与配置不符，请重新连接"); return
             }
             displayLayer.flush()
+            videoBackpressure = ReceiverVideoBackpressurePolicy()
             formatDesc = format
             let generation = inputSendBudget.generation
             DispatchQueue.main.async {
@@ -783,11 +796,20 @@ final class PhoneReceiver: ObservableObject {
         }
         guard !packet.slices.isEmpty else { return }
         if displayLayer.status == .failed { failVideo(); return }
-        if !useMetalPath, !displayLayer.isReadyForMoreMediaData {
-            displayLayer.flush()
-            waitingForKeyframe = true
-        }
         if waitingForKeyframe, !packet.keyframe { requestKeyframeIfNeeded(); return }
+        if !(useMetalPath && onDecodedFrame != nil) {
+            switch videoBackpressure.action(isReady: displayLayer.isReadyForMoreMediaData,
+                                            now: ProcessInfo.processInfo.systemUptime) {
+            case .enqueue: break
+            case .flushAndWait:
+                decodeFlushes += 1
+                displayLayer.flush()
+                waitingForKeyframe = true
+                requestKeyframeIfNeeded()
+                return
+            case .wait: requestKeyframeIfNeeded(); return
+            }
+        }
         waitingForKeyframe = false
         let metadata = packet.metadata.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
         enqueueFrame(packet.slices, captureMs: metadata?["cap"] as? Double,
@@ -795,6 +817,7 @@ final class PhoneReceiver: ObservableObject {
     }
 
     private func resetVideoDecoder() {
+        videoBackpressure = ReceiverVideoBackpressurePolicy()
         formatDesc = nil
         bitstream = ReceiverVideoBitstream(codec: videoCodec)
         waitingForKeyframe = true
@@ -913,6 +936,8 @@ final class PhoneReceiver: ObservableObject {
             }
             displayLayer.enqueue(sample)
         }
+
+        firstVideoDeadline.receivedFrame()
 
         // Per-frame timing for the performance overlay.
         let now = Date()

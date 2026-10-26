@@ -54,19 +54,13 @@ android {
     }
 }
 
-val sdkRoot = providers.environmentVariable("ANDROID_SDK_ROOT")
-    .orElse(providers.environmentVariable("ANDROID_HOME"))
-    .orElse(providers.provider { "${System.getProperty("user.home")}/Library/Android/sdk" })
-
 val selfTestClasses = layout.buildDirectory.dir("selfTest/classes")
 val selfTestSourceRoots = files("src/main/java", "../tests/java")
-
-fun androidJarFile() = file("${sdkRoot.get()}/platforms/android-36.1/android.jar")
 
 val compileSelfTests by tasks.registering(JavaCompile::class) {
     description = "Compiles DisplayWeave Android plain Java self-tests."
     source(selfTestSourceRoots.asFileTree.matching { include("**/*.java") })
-    classpath = files(androidJarFile())
+    classpath = files(android.bootClasspath)
     destinationDirectory.set(selfTestClasses)
     sourceCompatibility = JavaVersion.VERSION_17.toString()
     targetCompatibility = JavaVersion.VERSION_17.toString()
@@ -78,13 +72,18 @@ fun registerSelfTest(name: String, mainClassName: String) =
         group = "verification"
         description = "Runs $mainClassName."
         dependsOn(compileSelfTests)
-        classpath(selfTestClasses, files(androidJarFile()))
+        classpath(selfTestClasses, files(android.bootClasspath))
         mainClass.set(mainClassName)
     }
 
 val runProtocolSelfTest = registerSelfTest(
     "runProtocolSelfTest",
     "app.opendisplay.android.protocol.ProtocolSelfTest"
+)
+
+val runReceiverExperienceSelfTest = registerSelfTest(
+    "runReceiverExperienceSelfTest",
+    "app.opendisplay.android.ReceiverExperienceSelfTest"
 )
 
 val runVideoStreamPolicySelfTest = registerSelfTest(
@@ -121,6 +120,7 @@ tasks.withType<Test>().configureEach {
 tasks.matching { it.name == "test" }.configureEach {
     dependsOn(
         runProtocolSelfTest,
+        runReceiverExperienceSelfTest,
         runVideoStreamPolicySelfTest,
         runReceiverLifecycleSelfTest,
         runReceiverConnectionSelfTest,

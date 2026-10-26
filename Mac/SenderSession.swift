@@ -43,6 +43,8 @@ final class DeviceSession: ObservableObject, Identifiable {
     @Published var framesSent = 0
     @Published var mbps = 0.0
     @Published var targetMbps = 0.0
+    @Published var streamDescription = ""
+    @Published var streamLimitDescription: String?
     @Published var benchmarkStatus = "Idle"
     // Receiver's per-install identity (from hello) — the key for recognizing
     // the same physical device across USB and WiFi.

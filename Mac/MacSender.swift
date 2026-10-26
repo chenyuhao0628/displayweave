@@ -41,6 +41,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     @MainActor var onStatus: ((String) -> Void)?
     @MainActor var onStats: ((Int, Double) -> Void)?   // framesSent, mbps
     @MainActor var onTargetBitrate: ((Double) -> Void)?
+    @MainActor var onStreamDescription: ((String, String?) -> Void)?
     @MainActor var onBenchmarkStatus: ((String) -> Void)?
     // Fired when a previously connected device stays gone past the grace
     // period — the controller ends the session (capture, virtual display,
@@ -252,6 +253,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private var captureRecovery = CaptureRecoveryPolicy()
     private var captureSourceCheck = CaptureSourceCheck()
     private var captureNeedsRebuild = false
+    private var appliedCaptureInfo: PhoneInfo? // queue-owned configuration actually installed
+    private var encoderFailureRecovery = EncoderFailureRecovery()
     private var releasedForRenumbering = false
     private var waitingForConsole = false
     private var encodeFailureLog = ThrottledLogPolicy<String>()
@@ -332,8 +335,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         }
         // SCDisplay reports points; capture at point resolution for M1.
         let macPlan = info.usesAppleVideoCapabilities ? MacReceiverPolicy.plan(info: info, settings: settings, sourceWidth: display.width, sourceHeight: display.height, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
-        let captureW = macPlan?.width ?? ((Int(Double(display.width) * quality.scale)) & ~1)
-        let captureH = macPlan?.height ?? ((Int(Double(display.height) * quality.scale)) & ~1)
+        let mobileRaster = DesktopResolutionPolicy.mirrorRaster(sourceWidth: display.width,
+            sourceHeight: display.height, qualityScale: quality.scale,
+            maxWidth: info.maxEncodeWide ?? info.pixelsWide,
+            maxHeight: info.maxEncodeHigh ?? info.pixelsHigh)
+        let captureW = macPlan?.width ?? mobileRaster.width
+        let captureH = macPlan?.height ?? mobileRaster.height
         let captureFps = macPlan?.fps ?? settings.selectedFps(deviceMaxFps: info.negotiatedMaxFps)
         let codec = macPlan?.codec ?? (info.isAndroidReceiver ? settings.selectedCodec(
             supportedCodecs: info.negotiatedSupportedCodecs, preferredCodec: info.negotiatedPreferredCodec) : .h264)
@@ -341,6 +348,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                            fps: captureFps, virtualDisplayRefreshRate: captureFps,
                            codec: codec)
         queue.sync {
+            appliedCaptureInfo = info
             inputInjector?.cancelPress()
             if !stopped {
                 inputInjector = InputInjector(displayID: display.displayID)
@@ -445,6 +453,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                                fps: macPlan.map { min($0.fps, vd.actualRefreshRate) } ?? vd.actualRefreshRate,
                                virtualDisplayRefreshRate: vd.actualRefreshRate,
                                codec: codec)
+        queue.sync { appliedCaptureInfo = info }
 
         // Debug aid (`defaults write app.displayweave.mac.debug testPattern -bool true`):
         // an animated window on the virtual display generates a constant frame
@@ -620,6 +629,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         dropReplayID = nil
         captureRecoveryWork?.cancel(); captureRecoveryWork = nil; captureRecoveryID = nil
         pendingEncodeWork.discard(generation: encoderGeneration)
+        keyframeRequests.retireInFlightRequest()
         encoderGeneration &+= 1
         if let encoder { VTCompressionSessionInvalidate(encoder) }
         encoder = nil
@@ -906,7 +916,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 guard self.consoleCanCapture else { return nil }
                 self.queue.sync { self.captureRecovery.beginAttempt() }
                 let existing = self.queue.sync { () -> (VirtualDisplay, Int, Int, Int, StreamCodec)? in
-                    guard !self.captureNeedsRebuild, let vd = self.virtualDisplay, DisplayTopology.isOnline(vd.displayID),
+                    guard !self.captureNeedsRebuild,
+                          self.appliedCaptureInfo?.sameDisplayConfiguration(as: info) == true,
+                          let vd = self.virtualDisplay, DisplayTopology.isOnline(vd.displayID),
                           self.activeStreamWidth > 0, self.activeStreamHeight > 0 else { return nil }
                     return (vd, self.activeStreamWidth, self.activeStreamHeight, self.requestedCaptureFps, self.streamCodec)
                 }
@@ -1006,6 +1018,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     }
 
     private func invalidateConnection() {
+        keyframeRequests.retireInFlightRequest()
         stopCursorEcho()
         desktopInput.reset()
         pencilActions.reset(); pencilExtendedNegotiated = false
@@ -1047,6 +1060,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private func helloReady() {
         Log.info("connection ready to \(endpointName)")
         connectionReady = true
+        keyframeRequests.retireInFlightRequest()
         wireConnectionGeneration &+= 1
         protocolIdentity.beginConnection()
         everConnected = true
@@ -1968,6 +1982,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         if encoderGeneration != 0 {
             pendingEncodeWork.discard(generation: encoderGeneration)
         }
+        keyframeRequests.retireInFlightRequest()
         encoderGeneration &+= 1
         let finalFps = lastHello?.usesAppleVideoCapabilities == true ? max(1, min(120, fps)) : RefreshRatePolicy.sanitize(fps)
         streamCodec = preferredCodec
@@ -2171,11 +2186,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             ? protocolIdentity.nextFrame()
             : nil
         var frameProperties: CFDictionary?
-        let forcedKeyframeReason = keyframeRequests.consumePendingRequest()
-        if let forcedKeyframeReason {
+        let forcedKeyframeRequest = keyframeRequests.consumePendingRequest()
+        if let forcedKeyframeRequest {
             frameProperties = [kVTEncodeFrameOptionKey_ForceKeyFrame: kCFBooleanTrue!] as CFDictionary
-            decoderRecoveryEvent = forcedKeyframeReason.rawValue
-            Log.info("forcing keyframe reason=\(forcedKeyframeReason.rawValue) requests=\(keyframeRequests.requestCount) coalesced=\(keyframeRequests.coalescedCount)")
+            decoderRecoveryEvent = forcedKeyframeRequest.reason.rawValue
+            Log.info("forcing keyframe reason=\(forcedKeyframeRequest.reason.rawValue) requests=\(keyframeRequests.requestCount) coalesced=\(keyframeRequests.coalescedCount)")
         }
         let encodeStart = Date()
         let duration = CMTime(
@@ -2195,7 +2210,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 self.handleEncodedFrame(
                     status: status,
                     buffer: buffer,
-                    forcedKeyframeReason: forcedKeyframeReason,
+                    forcedKeyframeRequest: forcedKeyframeRequest,
                     capturedAtMs: capturedAtMs,
                     encodedForWireGeneration: encodedForWireGeneration,
                     encodedForEncoderGeneration: encodedForEncoderGeneration,
@@ -2212,8 +2227,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             pendingEncodeWork.complete(
                 generation: encodedForEncoderGeneration,
                 workID: encodeWorkID)
-            if forcedKeyframeReason != nil {
-                keyframeRequests.completeInFlightRequest(encodedKeyframe: false)
+            if forcedKeyframeRequest != nil {
+                keyframeRequests.complete(forcedKeyframeRequest, encodedKeyframe: false)
             }
             handleEncodeFailure(status: status)
         }
@@ -2256,7 +2271,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private func handleEncodedFrame(
         status: OSStatus,
         buffer: CMSampleBuffer?,
-        forcedKeyframeReason: FrameDropReason?,
+        forcedKeyframeRequest: KeyframeRequestTracker.Request?,
         capturedAtMs: Int64,
         encodedForWireGeneration: UInt64,
         encodedForEncoderGeneration: UInt64,
@@ -2283,27 +2298,28 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             Log.info("dropping encoded frame from stale wire/encoder generation")
             return
         case .failed:
-            if forcedKeyframeReason != nil {
-                keyframeRequests.completeInFlightRequest(encodedKeyframe: false)
+            if forcedKeyframeRequest != nil {
+                keyframeRequests.complete(forcedKeyframeRequest, encodedKeyframe: false)
             }
             handleEncodeFailure(status: status)
             return
         case .dropped:
-            if forcedKeyframeReason != nil {
-                keyframeRequests.completeInFlightRequest(encodedKeyframe: false)
+            if forcedKeyframeRequest != nil {
+                keyframeRequests.complete(forcedKeyframeRequest, encodedKeyframe: false)
             }
             dropsThisWindow += 1
             dropsTotal += 1
             recordEncodeFailure("encoder dropped frame without output status=\(status) codec=\(streamCodec.label)")
-            scheduleDropReplay()
+            recoverEncoderAfterFailure(transient: true)
             return
         case .output:
             break
         }
         guard let buffer else { return }
+        encoderFailureRecovery.producedOutput(at: ProcessInfo.processInfo.systemUptime)
         let isKeyframe = Self.isKeyframe(buffer)
-        if forcedKeyframeReason != nil {
-            keyframeRequests.completeInFlightRequest(encodedKeyframe: isKeyframe)
+        if forcedKeyframeRequest != nil {
+            keyframeRequests.complete(forcedKeyframeRequest, encodedKeyframe: isKeyframe)
         }
         guard let data = annexB(from: buffer) else {
             requestKeyframe(.encodedFrameDiscarded)
@@ -2336,19 +2352,32 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
 
     private func handleEncodeFailure(status: OSStatus) {
         recordEncodeFailure("encode failed for \(streamCodec.label): \(status)")
-        guard streamCodec == .hevc else { scheduleDropReplay(); return }
-        macCodecFallback.recordFailure(.hevc)
-        Log.info("falling back to H.264 after HEVC encode failure")
-        if let encoder { VTCompressionSessionInvalidate(encoder) }
-        encoder = nil
-        do {
-            try setupEncoder(width: max(activeStreamWidth, 2),
-                             height: max(activeStreamHeight, 2),
-                             fps: requestedCaptureFps,
-                             preferredCodec: .h264)
-            sendStreamConfig(width: max(activeStreamWidth, 2), height: max(activeStreamHeight, 2))
-            requestKeyframe(.codecFallback)
-        } catch { failPipeline(error) }
+        recoverEncoderAfterFailure(transient: status == kVTVideoEncoderNotAvailableNowErr)
+    }
+
+    private func recoverEncoderAfterFailure(transient: Bool) {
+        switch encoderFailureRecovery.failed(transient: transient) {
+        case .retry:
+            requestKeyframe(.encodedFrameDiscarded)
+            scheduleDropReplay()
+        case .exhausted:
+            cancelDropReplay()
+            failPipeline(DisplayUnitCoordinator.failure("视频编码连续失败，已停止会话。请重新连接；若仍失败，请降低分辨率或帧率。"))
+        case .rebuild:
+            let fallback = streamCodec == .hevc
+            if fallback { macCodecFallback.recordFailure(.hevc) }
+            Log.info("rebuilding encoder after failure attempt=\(encoderFailureRecovery.rebuilds) fallback=\(fallback)")
+            if let encoder { VTCompressionSessionInvalidate(encoder) }
+            encoder = nil
+            do {
+                try setupEncoder(width: max(activeStreamWidth, 2),
+                                 height: max(activeStreamHeight, 2),
+                                 fps: requestedCaptureFps, preferredCodec: .h264)
+                sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
+                requestKeyframe(fallback ? .codecFallback : .decoderReset)
+                scheduleDropReplay()
+            } catch { failPipeline(error) }
+        }
     }
 
     private func recordEncodeFailure(_ detail: String) {
@@ -2533,6 +2562,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             maxFrameBytes: lastHello?.negotiatedMaxFrameBytes,
             exactFrameRate: lastHello?.usesAppleVideoCapabilities == true)
         sendJSONFrame(message.json)
+        let description = "编码 \(width)×\(height) · \(streamCodec.label) · 目标 \(requestedCaptureFps) fps"
+        var limits: [String] = []
+        if settings.bitrateMode == .manual, settings.bitratePreset.bitsPerSecond != streamBitrate {
+            limits.append("请求 \(settings.bitratePreset.megabits) Mbps，按 \(streamCodec.label)／\(bitrateTransport == .usb ? "USB" : "局域网") 范围以 \(streamBitrate / 1_000_000) Mbps 生效")
+        }
+        if let requested = settings.fpsMode.userSelectedFps, requested > requestedCaptureFps {
+            limits.append("请求 \(requested) fps，受屏幕或解码能力限制；Apple 接收端可尝试“帧率优先”")
+        }
+        let explanation = limits.isEmpty ? nil : limits.joined(separator: "。")
+        Task { @MainActor in onStreamDescription?(description, explanation) }
         if let identity {
             scheduleProtocolTimeout(identity: identity, phase: .awaitingStreamConfigAck)
         }

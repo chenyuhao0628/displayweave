@@ -42,6 +42,14 @@ Download `DisplayWeave-Android.apk` from [`v0.3.0`](https://github.com/chenyuhao
 
 USB mode never silently becomes WiFi. WiFi mode never creates an ADB forward.
 
+## Current source experience changes
+
+The 2026-10-26 source iteration is not yet in the v0.3.0 download. Video, cursor and touch share one aspect-fit rectangle, so mirrors retain their proportions; black bars ignore touches. A stationary finger sends a press after 120 ms, while movement starts a drag sooner and a second finger cancels the pending press for scrolling. Android respects the system rotation preference.
+
+Detailed metrics now default off for a new installation; an explicit saved choice is retained. Turning details off immediately restores the concise status. Settings provide selectable detailed diagnostics, and “screen mode” is distinguished from video presentation FPS. If text looks soft, choose Native receiver resolution and High quality on the Mac; applying 75% scaling at both ends multiplies the reductions. The Mac device card reports the final encoded raster.
+
+Both decode FIFOs share a 150 ms packet age limit before codec submission. Cursor images are checked for compressed size, decoded dimensions and finite geometry before bitmap allocation. See [implementation and validation](../docs/reliability-experience-upgrade.md).
+
 ## Decoder low latency
 
 **Settings & Help → Decoder Low Latency** defaults to Auto. Auto/On requests MediaCodec low latency only when the actual API 30+ decoder advertises support; a rejected parameter is retried on the same decoder without low latency. Off never sets the parameter. Changing this setting rebuilds the receiver session once. See [the decoder low-latency policy](../docs/android-decoder-low-latency.md).

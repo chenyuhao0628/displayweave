@@ -613,6 +613,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 listener.onCursor(cursor.x, cursor.y, cursor.visible);
             } else if ("cursorImg".equals(type)) {
                 MacControlMessage cursor = MacControlMessage.parse(json);
+                if (cursor.pngBase64 == null || cursor.pngBase64.length() > (CursorImagePolicy.MAX_BYTES + 2) / 3 * 4) return;
                 byte[] png = Base64.decode(cursor.pngBase64, Base64.DEFAULT);
                 listener.onCursorImage(png, cursor.anchorX, cursor.anchorY,
                         cursor.normalizedWidth, cursor.normalizedHeight);

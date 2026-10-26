@@ -4,6 +4,10 @@
 
 ## Current user guides
 
+- [Reliability and experience upgrade — implementation and acceptance](reliability-experience-upgrade.md)
+
+- [Code and experience audit (2026-10-26): findings, evidence and coverage](code-and-experience-audit-2026-10-26.md)
+
 - [v0.3.0 stable release: 4K latency and capture recovery](release-notes-v0.3.0.md)
 
 - [Mac 4K latency: v0.3.0 changes and local evidence](mac-4k-latency.md)

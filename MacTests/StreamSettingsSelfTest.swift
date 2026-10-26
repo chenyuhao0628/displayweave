@@ -97,8 +97,26 @@ struct StreamSettingsSelfTest {
         persisted.bitratePreset = .mbps120
         persisted.save(to: emptyDefaults)
         let loadedManual = StreamSettings.load(from: emptyDefaults)
-        assertTrue(loadedManual.bitrateMode == .manual && loadedManual.bitratePreset == .mbps120,
-                   "manual bitrate mode and preset persist")
+        assertTrue(loadedManual.bitrateMode == .manual && loadedManual.bitratePreset == .mbps100,
+                   "obsolete H.264 manual request normalizes to the nearest supported preset")
+        var flexible = auto
+        flexible.bitrateMode = .manual
+        flexible.transportMode = .auto
+        flexible.bitratePreset = .mbps160
+        precondition(flexible.availableBitratePresets.contains(.mbps160))
+        flexible.transportMode = .wifi
+        flexible.normalizeBitratePreset()
+        precondition(flexible.bitratePreset == .mbps100)
+        flexible.bitrateMode = .benchmark
+        flexible.bitratePreset = .mbps200
+        flexible.bitrateMode = .manual
+        flexible.normalizeBitratePreset()
+        precondition(flexible.bitratePreset == .mbps100, "switching mode must not jump to the lowest bitrate")
+        flexible.fpsMode = .fps30
+        flexible.priority = .frameRate
+        flexible.save(to: emptyDefaults)
+        let energy = StreamSettings.load(from: emptyDefaults)
+        precondition(energy.selectedFps(deviceMaxFps: 120) == 30 && energy.priority == .frameRate)
         emptyDefaults.set("invalid", forKey: "bitrateMode")
         emptyDefaults.set(999, forKey: "bitrateMbps")
         let invalid = StreamSettings.load(from: emptyDefaults)

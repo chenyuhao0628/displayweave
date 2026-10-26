@@ -9,6 +9,7 @@ import android.view.View;
 
 public final class CursorOverlayView extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final RectF destination = new RectF();
     private Bitmap bitmap;
     private double x = 0.5;
     private double y = 0.5;
@@ -23,6 +24,7 @@ public final class CursorOverlayView extends View {
         setWillNotDraw(false);
         setClickable(false);
         setFocusable(false);
+        setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     }
 
     public void moveCursor(double x, double y, boolean visible) {
@@ -57,7 +59,8 @@ public final class CursorOverlayView extends View {
         float height = (float) (normalizedHeight * getHeight());
         float left = (float) (x * getWidth() - anchorX * width);
         float top = (float) (y * getHeight() - anchorY * height);
-        canvas.drawBitmap(bitmap, null, new RectF(left, top, left + width, top + height), paint);
+        destination.set(left, top, left + width, top + height);
+        canvas.drawBitmap(bitmap, null, destination, paint);
     }
 
     private static double clamp01(double value) {

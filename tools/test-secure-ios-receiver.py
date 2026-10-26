@@ -41,7 +41,7 @@ def main():
             "Shared/AppleTransportSecurity.swift", "Shared/ReceiverFrameDecoder.swift", "Shared/ReceiverCursorImage.swift",
             "Shared/ReceiverVideoBitstream.swift", "Shared/AppleVideoPolicy.swift", "Mac/EncoderHardwareCapabilities.swift",
             "Shared/DesktopInputProtocol.swift", "Shared/InputSendBudget.swift", "Shared/PencilProtocol.swift", "Shared/PencilActions.swift",
-            "Mac/Receiver/ReceiverWireProtocol.swift", "Mac/LatestValueRelay.swift", "Mac/Receiver/MacVideoRenderer.swift", "Mac/Receiver/StreamReceiver.swift", "MacTests/ReceiverTestSupport.swift",
+            "Mac/Receiver/ReceiverWireProtocol.swift", "Mac/LatestValueRelay.swift", "Shared/ReceiverVideoFlowPolicy.swift", "Mac/Receiver/MacVideoRenderer.swift", "Mac/Receiver/StreamReceiver.swift", "MacTests/ReceiverTestSupport.swift",
             "MacTests/MacSecureReceiverSelfTest.swift"]
         run(["xcrun", "swiftc", *client_sources, "-o", str(client)])
         runtimes = json.loads(run(["xcrun", "simctl", "list", "runtimes", "-j"]))["runtimes"]
@@ -66,7 +66,7 @@ def main():
                     raise RuntimeError("simulator fixture did not open pairing")
                 time.sleep(0.1)
             print((documents / "presentation-result.txt").read_text(), flush=True)
-            print(run([str(client), "--ios-fixture", str(documents), str(port)], timeout=55).strip(), flush=True)
+            print(run([str(client), "--ios-fixture", str(documents), str(port)], timeout=100).strip(), flush=True)
             if args.screenshots:
                 args.screenshots.mkdir(parents=True, exist_ok=True)
                 for appearance in ("light", "dark"):

@@ -2,6 +2,18 @@ import Foundation
 
 @main enum WireContractSelfTest {
     static func main() throws {
+        let sent = StreamDebugStats(droppedFramesMac: 9, queueDepthMac: 2, pendingEncodesMac: 1,
+            totalPendingWorkMac: 3, pendingEncodePeak: 2, captureFps: 60, requestedFps: 60,
+            actualVirtualDisplayRefreshRate: 60, encodedFps: 60, sentFps: 60,
+            averageFrameSize: 1000, encodeLatencyMs: 2, bitrate: 40_000_000,
+            inputP50Ms: 0, inputP95Ms: 0)
+        let ping = try JSONSerialization.jsonObject(with: Data(sent.pingJson(nowMs: 1).utf8)) as! [String: Any]
+        let health = SenderHealthTelemetry(ping)
+        precondition(health.droppedFrames == 9 && health.queueDepth == 2)
+        let legacyHealth = SenderHealthTelemetry(["drops": 4, "pending": 1])
+        precondition(legacyHealth.droppedFrames == 4 && legacyHealth.queueDepth == 1)
+        precondition(SenderHealthTelemetry(["droppedFramesMac": 0, "drops": 4]).droppedFrames == 0)
+        precondition(SenderHealthTelemetry(["pending": -1]).queueDepth == nil)
         let text = try String(contentsOfFile: "tools/fixtures/wire-contract-v1.properties", encoding: .utf8)
         let fixtures = Dictionary(uniqueKeysWithValues: text.split(separator: "\n").compactMap { line -> (String, String)? in
             guard !line.hasPrefix("#") else { return nil }

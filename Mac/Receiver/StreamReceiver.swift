@@ -41,7 +41,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     private var enqueuedFrames = 0
     private var backpressureFlushes = 0
     private var backpressureToleratedFrames = 0
-    private var videoBackpressure = MacVideoBackpressurePolicy()
+    private var videoBackpressure = ReceiverVideoBackpressurePolicy()
     private var listener: NWListener?
     private lazy var admissionPool = AppleSecureAdmissionPool(queue: queue)
     private let securityProvider: () throws -> AppleReceiverSecurity
@@ -529,7 +529,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                 drop(conn, status: "视频尺寸与配置不符，请重新连接"); return
             }
             videoRenderer.flush(removingDisplayedImage: true)
-            videoBackpressure = MacVideoBackpressurePolicy()
+            videoBackpressure = ReceiverVideoBackpressurePolicy()
         }
         guard !packet.slices.isEmpty else { return }
         if videoRenderer.status == .failed {
@@ -624,7 +624,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
 
     private func resetVideo() {
         hasVideoFrame = false
-        videoBackpressure = MacVideoBackpressurePolicy()
+        videoBackpressure = ReceiverVideoBackpressurePolicy()
         bitstream = ReceiverVideoBitstream(codec: videoCodec)
         configuredSize = nil
         waitingForKeyframe = true

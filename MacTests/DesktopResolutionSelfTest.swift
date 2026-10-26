@@ -2,6 +2,12 @@ import Foundation
 
 @main enum DesktopResolutionSelfTest {
     static func main() throws {
+        let androidMirror = DesktopResolutionPolicy.mirrorRaster(sourceWidth: 5120, sourceHeight: 2880,
+            qualityScale: 1, maxWidth: 1920, maxHeight: 1200)
+        precondition(androidMirror.width == 1920 && androidMirror.height == 1080)
+        let portraitMirror = DesktopResolutionPolicy.mirrorRaster(sourceWidth: 3840, sourceHeight: 2160,
+            qualityScale: 1, maxWidth: 1080, maxHeight: 2340)
+        precondition(portraitMirror.width <= 1080 && portraitMirror.height <= 2340)
         let retina = DesktopResolutionPolicy.geometry(.native, nativeWidth: 5120,
             nativeHeight: 2880, nativePointsWide: 2560, nativePointsHigh: 1440, backingScale: 2)
         precondition(retina.pointsWide == 2560 && retina.pixelsWide == 5120)

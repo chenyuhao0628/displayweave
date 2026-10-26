@@ -2,7 +2,7 @@
 
 # DisplayWeave UI design standard
 
-Revision 2 · 2026-10-16. This is the implementation contract for macOS, iOS and Android application UI. Website branding and download accuracy follow the same vocabulary; this iteration changes native applications and release information. Evidence belongs in the [UI audit](ui-audit-2026-10-16.md), separately from this specification.
+Revision 3 · 2026-10-26. This is the implementation contract for macOS, iOS and Android application UI. Website branding and download accuracy follow the same vocabulary; this iteration changes native applications and release information. Evidence belongs in the [UI audit](ui-audit-2026-10-16.md), separately from this specification.
 
 ## Product and information architecture
 
@@ -13,7 +13,7 @@ Help a person turn another device into a display. The first screen must answer: 
 | Mac sender | Role → display mode/transport → devices → first-connection help; Connect on a selected device | Pairing and permission recovery; quality in Settings |
 | Mac receiver | Role → live receive status + pairing → display options → optional input | Connection steps and network recovery |
 | Mac settings | Stream / General / Permissions & diagnostics / Security & pairing | Group settings by outcome, with explanations beneath their control |
-| iOS / Android waiting | Brand → device/status → three steps → Pairing & connection settings | General settings/help; download Mac app in onboarding/help |
+| iOS / Android waiting | Brand → device/status → connection mode → setup steps; iOS pins connection settings to the bottom safe area | General settings/help; download Mac app in onboarding/help |
 | Streaming receiver | Aspect-correct black-backed video with a persistent accessible Settings button | Optional measured diagnostics; no idle cards over video |
 
 Mac working window starts at 680 × 720 points and supports 480 × 440. The menu panel is 480 × 640, scrolls its body, and offers Open window. Header and footer remain reachable. Receiver settings and pairing must not be buried below long setup instructions. Mobile content is centered, at most 520 points/dp wide excluding page insets, and scrolls in both orientations. No fixed-height text containers.
@@ -54,6 +54,8 @@ Use Send/Receive (发送屏幕/接收屏幕), Extend/Mirror (扩展/镜像), LAN
 All statuses have readable text and an icon. Decorative art is hidden from accessibility. Icon-only actions have accessible names. Long device names and failures wrap. Label form fields even if their visual labels are hidden. Keep keyboard focus visible, use native tab traversal and Command-comma for settings. Mobile supports Dynamic Type/font scale and scroll; do not force all-caps or fixed text heights. Secondary text uses semantic contrast, not low-opacity primary text. Honor system appearance; black is reserved for video. Do not make frequent frame-rate changes an accessibility announcement.
 
 User guides have reciprocal English/Simplified Chinese links. The current native UI is Simplified Chinese; adding a complete English UI is separate work, not implied by bilingual documentation.
+
+Source iteration, not yet released: new Android installations use concise streaming status, with optional metrics and selectable detailed diagnostics in settings. Disabling metrics must replace the visible text immediately. Video, cursor and touch use the same aspect-fit rectangle; black bars do not send remote input. Honor system rotation. Mac settings distinguish requested bitrate/FPS from the negotiated raster/codec/target and measured throughput, and explain resolution versus frame-rate priority. iOS keeps its settings action reachable at accessibility text sizes; only branding caps Dynamic Type.
 
 ## Ownership and compatibility
 
