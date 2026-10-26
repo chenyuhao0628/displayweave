@@ -1,0 +1,118 @@
+[English](release-checklist-through-v0.3.1.md) | [简体中文](release-checklist-through-v0.3.1.zh-CN.md)
+
+> Historical record: versions, commands and conclusions describe the original snapshot. Use the [current documentation](../../README.md) for present-day instructions.
+
+# Release checklist
+
+## Current stable release: v0.3.1 (20)
+
+The [release notes](../../releases/v0.3.1.md) record reliability, video recovery, Android geometry/input and clearer settings. Native source is `c0f8f8a` (PR #19, reviewed head `cd57957`). Public releases now go directly to stable; no public candidate or preview stage.
+
+- [x] Reviewed source CI `40217422986`: 61 Swift suites and recovery/admission fixtures, universal Mac Debug, iOS Simulator, seven Android Java groups/Debug/Lint and web/docs checks passed.
+- [x] Source acceptance records real TLS/Keychain and isolated iOS/Android security, lifecycle, video/input and UX checks; physical results are separate.
+- [x] Build 20 Mac Release/DMG/ZIP preserves the exact downloaded build 19 signing identity. Nested signatures, hardened runtime, both Mac architectures, original Android certificate and unsigned arm64 device IPA verified.
+- [x] Independent Sparkle Ed25519 and artifact/feed version, identity, URL, size and hash verification passed.
+
+Before publication/integration, require full CI on the release commit, eight verified remote files, stable GitHub status, merge-commit tag ancestry and exact live Pages feed bytes. Final online results belong in the publication PR and Release. Build 19 → 20 privacy-permission continuity was not interactively retested. Mac remains Apple Development signed and unnotarized; iOS requires re-signing. Physical capture/rotation/sleep recovery, Intel, two-device performance, high refresh, accessibility and endurance remain pending.
+
+## Historical v0.3.0 (19)
+
+The [release notes](release-notes-v0.3.0.md) record Mac 4K latency, the 100 Mbps H.264 LAN ceiling, reviewed upstream recovery, artifact hashes and physical limits. Native source is `929eb93`.
+
+- [x] 60 Swift suites, universal Mac Debug, iOS Simulator Debug and Android tests/Debug/Lint passed.
+- [x] Actual Apple↔Java TLS, isolated Mac/iOS Keychain, iOS TLS/video/Pencil/lifecycle and Android Keystore/TLS/revocation checks passed.
+- [x] 20 signing regressions, 12 distribution checks, 36 brand assets and real two-binary Keychain/signing continuity passed.
+- [x] Build 19 Mac Release/DMG/ZIP verified against the exact downloaded build 18 signing identity; unsigned arm64 iOS and original-certificate Android Release verified.
+- [x] Independent Sparkle Ed25519 signature, feed/artifact identities, versions, sizes and hashes verified.
+
+Publication requires full CI on the release commit, eight verified remote files, a stable (non-prerelease) GitHub Release, merge-commit ancestry and exact live Pages feed bytes. The publication PR and Release record hosted and online results separately. No build 18 → 19 interactive permission-upgrade test was performed.
+
+Physical Intel/macOS 15, two-iMac Ethernet 4K60, real sleep/wake, multi-display recovery and endurance remain pending. This stable release retains Apple Development signing and is unnotarized; iOS requires re-signing.
+
+## Historical v0.3.0-preview.3 (18)
+
+The [release notes](release-notes-v0.3.0-preview.3.md) record fixed Mac signing, hashes and verification limits. Native/signing baseline `92b5834` retains preview.2's UI, protocol and application identifiers. The [documentation audit](../audits/documentation-audit-2026-10-17.md) covers current guides and historical-reference cleanup.
+
+- [x] Signing-source CI `38932980548`: all three jobs passed, including 52 Swift suites, Android tests/Lint and Apple compatibility builds.
+- [x] 20 signing regressions, 12 distribution tests, real two-binary Keychain continuity and local signed 17 → 17.1 permission continuity passed.
+- [x] Build 18 Mac universal Release and DMG/ZIP signatures/content, original-certificate Android Release and unsigned arm64 iOS input verified.
+- [x] Independent Sparkle Ed25519 signature and all feed/artifact identities, versions, sizes and hashes verified.
+- [x] Installed exact build 18 over signed 17.1; Screen Recording/Accessibility stayed allowed, three Local Network entries stayed enabled, no old-app backup retained.
+
+Publication gate: verify eight remote files (four binaries, two feeds, source, checksums), publish the Release, then merge only after full release-commit CI. Persist exact feeds and compare live bytes after Pages deployment. The publication PR and GitHub Release record hosted checks and live verification; local checks alone do not establish online availability.
+
+Physical gaps remain: two-device LAN/USB performance, Intel/Pencil and endurance. Skip capture/virtual-display interaction without an independent online display. This preview uses Apple Development, not Developer ID notarization; iOS still requires re-signing.
+
+## Historical v0.2.1-p2 evidence
+
+The remaining entries record p2 only. They do not verify p8 or future releases.
+
+## Published identity
+
+- Release: https://github.com/chenyuhao0628/displayweave/releases/tag/v0.2.1-p2
+- Version: `v0.2.1-p2`
+- Monotonic Mac build / Android version code: `9`
+- Release tag target commit: `cddaaad248a89ec3a4b387fb8a38cb090681895e`
+- Successful pre-release CI run: `29384709884`
+- Successful Release run: `29384932159`
+- Successful build job: `87256105382`
+- Successful Pages/update-feed job: `87256476833`
+
+## Assets and integrity
+
+| Asset | SHA-256 / check |
+| --- | --- |
+| `DisplayWeave-macOS.zip` | `2a009eb1cdade8ac532a826a78d00f75cbb2d526c41742e6d849bfc4691294b7` |
+| `DisplayWeave-macOS.dmg` | `09d09270e332e705a0b9088f84b7e709a4b560dce56f157c04278fd6a6bde633` |
+| `DisplayWeave-Android.apk` | `28efb42c0f8459ee5aabf4702369ae6cacfd691c0251fef25e2b9d1101376390` |
+| `DisplayWeave-Preview-0.1-iOS-unsigned-resigning-input.ipa` | `4580df6a947aa94da3ab9f237e72a9ff60211ce15a7a1660f1a4177325d19f99` |
+| `appcast.xml` | `6f2f1f322c7bdbe7db8ba0d9b442594251cde23b6ba116e2a7405e1b650aaa3f` |
+| `android-update.json` | `0ac96cbcf9991248dc79338c1a85f86120ba645aa4fee858d06ad3ff76f8ee12` |
+| `SHA256SUMS.txt` | Present and covers the six files above |
+
+Android signing certificate SHA-256:
+
+```text
+89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d
+```
+
+- [x] GitHub reports all seven immutable assets uploaded.
+- [x] Mac app is ad-hoc signed, universal, and intentionally not notarized.
+- [x] Android APK is v2 signed with one signer and the pinned certificate.
+- [x] iOS IPA is an unsigned arm64 re-signing input and is not directly installable.
+
+## Build and automated verification
+
+- [x] Manually dispatched workflow used `release_tag=v0.2.1-p2` and `build_number=9`.
+- [x] Workflow head and Release tag target both equal `cddaaad248a89ec3a4b387fb8a38cb090681895e`.
+- [x] Mac Release and unsigned iOS compatibility builds completed.
+- [x] Android signed Release build and all six Android self-test groups completed successfully.
+- [x] `apksigner` reported v2 signing, one signer, and the pinned certificate.
+- [x] Archive structure, displayed versions, update URLs, sizes, hashes, package identity, and signing passed `verify-update-release.sh`.
+- [x] The target commit had already passed all 22 standalone Swift tests, Android's 61-task Debug build, unsigned macOS/iOS Debug builds, and the production site/docs checks.
+
+## Update-channel checks
+
+- [x] Live Mac feed: https://chenyuhao0628.github.io/displayweave/appcast.xml
+- [x] Live Android feed: https://chenyuhao0628.github.io/displayweave/android-update.json
+- [x] Android's live feed is byte-for-byte identical to its Release asset. The live repository-backed Sparkle XML differs only by its trailing newline; version, build, URL, length, and EdDSA enclosure signature match the Release asset.
+- [x] Mac feed advertises short version `0.2.1-p2`, build `9`, ZIP size `2739582`, and the Release EdDSA signature.
+- [x] Android feed advertises version code `9`, APK size `222164`, the expected package, SHA-256, minimum SDK, and pinned certificate.
+- [x] Repository `public/` feeds contain the same values so later Pages deployments cannot roll the update channel back to Preview 5.
+- [x] Release run `29384932159` overlaid the signed feeds and deployed them successfully; the repository feeds are persisted at `0.2.1-p2 (9)` to prevent a later rollback.
+
+## Compatibility and disclosure
+
+- [x] Legacy OpenDisplay iOS continues to use length-prefix + JSON telemetry + Annex-B H.264 unless Android-only capabilities are negotiated.
+- [x] First-install instructions disclose Gatekeeper/ad-hoc signing, Android unknown-source confirmation, and the unsigned iOS boundary.
+- [x] Release notes distinguish code/build evidence from pending physical evidence and make no unsupported latency claim.
+- [x] English/Chinese Release links use absolute GitHub paths; the Simplified Chinese source is published at `docs/archive/releases/release-notes-v0.2.1-p2.zh-CN.md`.
+
+## Deferred physical evidence
+
+- [ ] Run the complete Android quick-recovery V2 matrix on attached hardware.
+- [ ] Complete a controlled same-condition USB/WiFi matrix.
+- [ ] Recheck a Legacy OpenDisplay iOS/TestFlight runtime.
+- [ ] Complete a run with two Android devices.
+- [ ] Complete the planned 30-minute and 2-hour endurance runs.
+- [ ] Repeat disconnect/reconnect timing and stale-connection callback stress on attached receivers.

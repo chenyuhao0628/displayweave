@@ -26,11 +26,11 @@ hashes=(
 sources=(
   src index.html README.md README.zh-CN.md
   AndroidReceiver/README.md AndroidReceiver/README.zh-CN.md
-  docs/development-preview.md docs/development-preview.zh-CN.md
-  docs/release-notes-v0.3.1.md
-  docs/release-notes-v0.3.1.zh-CN.md
-  docs/release-checklist.md docs/release-checklist.zh-CN.md
-  docs/automatic-updates.md docs/automatic-updates.zh-CN.md
+  docs/releases/current.md docs/releases/current.zh-CN.md
+  docs/releases/v0.3.1.md
+  docs/releases/v0.3.1.zh-CN.md
+  docs/releases/release-checklist.md docs/releases/release-checklist.zh-CN.md
+  docs/releases/automatic-updates.md docs/releases/automatic-updates.zh-CN.md
 )
 
 grep -R -Fq "$tag" "${sources[@]}" || {
@@ -142,4 +142,5 @@ if grep -Eiq 'MATCH_|Developer ID|notari[sz]|TestFlight|fastlane' "$workflow"; t
   exit 1
 fi
 
+python3 tools/check-release-integrity.py "$tag" "${hashes[@]}"
 echo "release-link check passed: $tag, ${#assets[@]} assets, and automatic-update workflow"

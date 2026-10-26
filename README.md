@@ -11,12 +11,12 @@ DisplayWeave is an independently maintained, GPL-3.0, local-first second-display
 The same app can send or receive a one-way extended/mirrored desktop over Wi-Fi
 or Ethernet. Both Macs require macOS 14+; the app negotiates hardware HEVC with H.264 fallback, with targets up to 120fps within screen/codec limits.
 This feature is included in the `v0.3.1` downloads below.
-The two-Mac physical performance matrix remains unverified. See the [user guide](docs/mac-to-mac.md) and
-[design/upstream assessment](docs/mac-to-mac-design.md).
+The two-Mac physical performance matrix remains unverified. See the [user guide](docs/guides/mac-to-mac.md) and
+[design/upstream assessment](docs/reference/mac-to-mac-design.md).
 
-This release also includes the four-surface UI refactor, selected upstream recovery improvements and network/lifecycle hardening. The [source upgrade report](docs/source-upgrade-audit-2026-10-16.md) records that baseline. This release includes the p7 [Mac HEVC, pinned direct-link discovery and negotiated Apple Pencil input](docs/hevc-wired-pencil.md), with 61 Swift suites; physical acceptance remains pending.
+This release also includes the four-surface UI refactor, selected upstream recovery improvements and network/lifecycle hardening. The [source upgrade report](docs/archive/audits/source-upgrade-audit-2026-10-16.md) records that baseline. This release includes the p7 [Mac HEVC, pinned direct-link discovery and negotiated Apple Pencil input](docs/guides/hevc-wired-pencil.md), with 61 Swift suites; physical acceptance remains pending.
 
-This release also includes [per-device resolution](docs/desktop-resolution.md), [secure pairing](docs/secure-transport.md), [consented Mac keyboard/mouse input](docs/mac-receiver-input.md), [wired/Wi-Fi handover](docs/mac-lan-handover.md), and [advanced Pencil](docs/pencil-advanced.md). Pair DisplayWeave devices using a receiving invitation; connect older OpenDisplay clients through the main-screen compatibility choice. See [interoperability](docs/opendisplay-compatibility.md).
+This release also includes [per-device resolution](docs/guides/desktop-resolution.md), [secure pairing](docs/guides/secure-transport.md), [consented Mac keyboard/mouse input](docs/guides/mac-receiver-input.md), [wired/Wi-Fi handover](docs/guides/mac-lan-handover.md), and [advanced Pencil](docs/guides/pencil-advanced.md). Pair DisplayWeave devices using a receiving invitation; connect older OpenDisplay clients through the main-screen compatibility choice. See [interoperability](docs/guides/opendisplay-compatibility.md).
 
 ## Current capabilities
 
@@ -39,7 +39,7 @@ second Android device for this release.
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-26: stable build 20 fixes capture/encoder recovery, restores quality after congestion, corrects Android video and touch geometry, and adds clearer resolution/frame-rate controls, retaining the pinned Apple Development identity. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](docs/release-notes-v0.3.1.md) for changes, permission continuity and verification limits.
+2026-10-26: stable build 20 fixes capture/encoder recovery, restores quality after congestion, corrects Android video and touch geometry, and adds clearer resolution/frame-rate controls, retaining the pinned Apple Development identity. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](docs/releases/v0.3.1.md) for changes, permission continuity and verification limits.
 
 | Platform | Asset | Distribution boundary |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ second Android device for this release.
 | Source | `DisplayWeave-v0.3.1-source.tar.gz` | Tracked source at the release tag, including GPL-3.0 and build scripts |
 | Verification | `SHA256SUMS.txt` | SHA-256 for all Release files |
 
-This is the stable release. The Mac uses Apple Development signing and remains unnotarized; iOS requires re-signing. Verify the checksum before use. Android users should also compare the certificate fingerprint in the [release checklist](docs/release-checklist.md).
+This is the stable release. The Mac uses Apple Development signing and remains unnotarized; iOS requires re-signing. Verify the checksum before use. Android users should also compare the certificate fingerprint in the [release checklist](docs/releases/release-checklist.md).
 
 The guided Mac packaging flow produces `DisplayWeave-macOS.dmg` beside the ZIP.
 The DMG is the recommended first-install package: drag
@@ -61,7 +61,7 @@ background. The ZIP remains the Sparkle update payload and an equivalent manual
 install option. Both containers hold the same `DisplayWeave.app`, so either
 installation receives later Sparkle updates after the app is in `/Applications`.
 
-The Mac keeps `app.displayweave.mac` and the existing preference migration. The first move from an ad-hoc release to this fixed signature may require permission grants once more. Subsequent builds retain the same signing identity: a local 17 → 17.1 overwrite preserved Screen Recording and Accessibility grants. See [permission continuity](docs/mac-permissions.md) for evidence and limits.
+The Mac keeps `app.displayweave.mac` and the existing preference migration. The first move from an ad-hoc release to this fixed signature may require permission grants once more. Subsequent builds retain the same signing identity: a local 17 → 17.1 overwrite preserved Screen Recording and Accessibility grants. See [permission continuity](docs/guides/mac-permissions.md) for evidence and limits.
 
 ### One-time migration and later updates
 
@@ -78,7 +78,7 @@ The Mac keeps `app.displayweave.mac` and the existing preference migration. The 
 - **iOS/iPadOS:** the unsigned re-signing input and existing OpenDisplay
   receiver protocol are unchanged by the Mac/Android update channel.
 
-See [automatic updates](docs/automatic-updates.md) for migration and recovery.
+See [automatic updates](docs/releases/automatic-updates.md) for migration and recovery.
 
 ## Android USB quick start
 
@@ -92,7 +92,7 @@ ADB authorization grants the Mac broad debugging access, not only DisplayWeave a
 
 ## Build from source
 
-Mac development uses an explicitly selected existing Apple identity. Replace the placeholder with its certificate SHA-1; [development](docs/development.md) also documents unsigned compile-only checks:
+Mac development uses an explicitly selected existing Apple identity. Replace the placeholder with its certificate SHA-1; [development](docs/development/workflow.md) also documents unsigned compile-only checks:
 
 ```bash
 security find-identity -v -p codesigning
@@ -107,35 +107,34 @@ cd AndroidReceiver
 ./gradlew clean test assembleDebug
 ```
 
-Create the offline package set (the historical script name is retained; set an explicit version/build for publication as described in [local publication](docs/local-release.md)):
+Create offline packages through `tools/package-release.sh`:
 
-```bash
-python3 -m pip install -r tools/dmg-requirements.txt
-./tools/package-preview-0.1.sh
-```
+Follow the complete [stable packaging procedure](docs/releases/local-release.md) with an explicit version/build and the previous signed app.
 
-The packaging command requires the configured Mac identity and Android keystore outside Git. To publish a new version with explicit version/build values and upgrade-baseline checks, follow [local publication](docs/local-release.md).
+The packaging command requires the configured Mac identity and Android keystore outside Git. To publish a new version with explicit version/build values and upgrade-baseline checks, follow [local publication](docs/releases/local-release.md).
 
 ## Documentation
 
+- [Repository layout and cleanup](docs/development/repository-layout.md)
+- [Build/install the iOS receiver](docs/guides/build-ios.md)
 - [Documentation index](docs/README.md)
 - [Architecture](ARCHITECTURE.md)
 - [Roadmap](ROADMAP.md)
 - [Android receiver](AndroidReceiver/README.md)
-- [Release checklist](docs/release-checklist.md)
-- [Stability evidence](docs/stability-test-report.md)
-- [USB/WiFi benchmark protocol](docs/usb-vs-wifi-benchmark.md)
-- [Bitrate modes](docs/bitrate-modes.md) and [adaptive bitrate](docs/adaptive-bitrate.md)
-- [Queue analysis](docs/low-latency-queue-analysis.md) and [keyframe strategy](docs/keyframe-strategy.md)
-- [Android decoder throughput, reference recovery, and Surface-rate mapping](docs/android-decoder-throughput-recovery.md)
+- [Release checklist](docs/releases/release-checklist.md)
+- [Stability evidence](docs/archive/audits/stability-test-report.md)
+- [USB/WiFi benchmark protocol](docs/verification/usb-vs-wifi-benchmark.md)
+- [Bitrate modes](docs/reference/bitrate-modes.md) and [adaptive bitrate](docs/reference/adaptive-bitrate.md)
+- [Queue analysis](docs/reference/low-latency-queue-analysis.md) and [keyframe strategy](docs/reference/keyframe-strategy.md)
+- [Android decoder throughput, reference recovery, and Surface-rate mapping](docs/reference/android-decoder-throughput-recovery.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 ## Current limits
 
-- [Apple HEVC / high-refresh negotiation](docs/apple-video.md) is included; physical 120fps performance remains unverified.
-- New connections require [authenticated TLS pairing](docs/secure-transport.md), including USB tunnels; old clients require explicit unencrypted legacy mode on a trusted LAN.
+- [Apple HEVC / high-refresh negotiation](docs/guides/apple-video.md) is included; physical 120fps performance remains unverified.
+- New connections require [authenticated TLS pairing](docs/guides/secure-transport.md), including USB tunnels; old clients require explicit unencrypted legacy mode on a trusted LAN.
 - Two simultaneous Android devices, the controlled same-condition USB/WiFi benchmark, and 30-minute/2-hour endurance runs remain incomplete.
 - macOS uses private `CGVirtualDisplay` behavior that may change in future macOS versions.
 - Public macOS and iOS packages are not Developer ID/App Store signed.

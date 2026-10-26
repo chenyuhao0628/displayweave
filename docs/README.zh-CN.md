@@ -2,87 +2,21 @@
 
 # DisplayWeave 文档
 
-## 当前用户指南
+当前公开版本为 **v0.3.1（20）**，发布于 2026-10-26。安装与校验见[下载指南](releases/current.zh-CN.md)，改动见[发布说明](releases/v0.3.1.zh-CN.md)。本次文档整理不发布新的应用版本。
 
-- [v0.3.1 正式版：可靠性与接收端体验](release-notes-v0.3.1.zh-CN.md)
+| 目标 | 入口 |
+| --- | --- |
+| 安装、配对、连接与设置 | [使用指南](guides/README.zh-CN.md) |
+| 构建、贡献与查找文件 | [开发文档](development/README.zh-CN.md) · [目录结构与清理](development/repository-layout.zh-CN.md) |
+| 理解传输和视频策略 | [技术参考](reference/README.zh-CN.md) |
+| 打包、签名、校验与正式发行 | [发行流程](releases/README.zh-CN.md) |
+| 复现检查、了解实机验证边界 | [验证文档](verification/README.zh-CN.md) |
+| 查阅过去的审计、计划与发布说明 | [历史归档](archive/README.zh-CN.md) |
 
-- [可靠性与使用体验升级：实现与验收](reliability-experience-upgrade.zh-CN.md)
+项目入口：[项目介绍](../README.zh-CN.md)、[架构](../ARCHITECTURE.zh-CN.md)、[路线图](../ROADMAP.zh-CN.md)、[贡献](../CONTRIBUTING.zh-CN.md)、[支持](../SUPPORT.zh-CN.md)、[安全](../SECURITY.zh-CN.md)、[Android 接收端](../AndroidReceiver/README.zh-CN.md)。
 
-- [代码与使用体验审查（2026-10-26）：问题、证据和覆盖范围](code-and-experience-audit-2026-10-26.zh-CN.md)
+## 证据用语
 
-- [v0.3.0 正式版：4K 延迟与采集恢复](release-notes-v0.3.0.zh-CN.md)
+**已实现**指源码行为；**自动化验证**说明测试与版本；**实机验证**注明真实硬件、配置和时长；**实验功能**表示表现依赖硬件；**待完成 / SKIP**表示尚未验证或完成。目标 FPS 不代表实测渲染 FPS。当前边界见 [v0.3.1 发布说明](releases/v0.3.1.zh-CN.md)。
 
-- [Mac 4K 延迟：v0.3.0 改动与本机证据](mac-4k-latency.zh-CN.md)
-- [上游 Mac 恢复机制集成与验证（2026-10-23）](upstream-integration-2026-10-23.zh-CN.md)
-
-- [`v0.3.0-preview.3` 固定签名与权限延续](release-notes-v0.3.0-preview.3.zh-CN.md)
-- [文档完整性检查（2026-10-17）](documentation-audit-2026-10-17.zh-CN.md)
-
-- [`v0.3.0-preview.2` UI 与 OpenDisplay 兼容发行说明](release-notes-v0.3.0-preview.2.zh-CN.md)
-
-- [`v0.3.0-preview.1` 发布说明](release-notes-v0.3.0-preview.1.zh-CN.md)
-
-- [Apple 正式归档/导出及前提](apple-distribution.zh-CN.md)
-- [Mac 签名与权限延续](mac-permissions.zh-CN.md)
-- [公开协议契约与共享样本](protocol.zh-CN.md)
-- [Pencil 高级输入](pencil-advanced.zh-CN.md)
-- [Mac 接收端键鼠回传](mac-receiver-input.zh-CN.md)
-- [安全连接与配对](secure-transport.zh-CN.md)与[设计/集成](secure-transport-design.zh-CN.md)
-- [Mac 有线／Wi-Fi 自动切换](mac-lan-handover.zh-CN.md)
-- [Apple 接收端 HEVC 与高刷新](apple-video.zh-CN.md)
-- [每台设备的桌面分辨率](desktop-resolution.zh-CN.md)
-- [当前功能补全方案与证据](feature-completion.zh-CN.md)
-- [HEVC、直连与 Pencil 使用／当前验收证据](hevc-wired-pencil.zh-CN.md)
-- [HEVC、有线发现与 Pencil 设计和验收](hevc-wired-pencil-plan.zh-CN.md)
-- [2026-10-16 源码升级验收与硬件边界](source-upgrade-audit-2026-10-16.zh-CN.md)与[上游集成取舍](upstream-integration-2026-10-16.zh-CN.md)
-- [UI 规范](ui-guidelines.zh-CN.md)与[源码升级计划](upgrade-plan.zh-CN.md)
-- [UI 审核与验收（2026-10-16）](ui-audit-2026-10-16.zh-CN.md)
-- [OpenDisplay 连接兼容](opendisplay-compatibility.zh-CN.md)
-- [开发工作流与当前 Codex 官方依据](development.zh-CN.md)
-- [Mac 与 Mac 局域网互联（实验性）](mac-to-mac.zh-CN.md)与[设计/上游评估](mac-to-mac-design.zh-CN.md)
-
-- [当前发行分发](development-preview.zh-CN.md)
-- [`v0.2.0-preview.2` 发布说明](release-notes-v0.2.0-preview.2.zh-CN.md)
-- [`v0.2.0-preview.3` 发布说明](release-notes-v0.2.0-preview.3.zh-CN.md)
-- [`v0.2.0-preview.4` 发布说明](release-notes-v0.2.0-preview.4.zh-CN.md)
-- [`v0.2.0-preview.5` 发布说明](release-notes-v0.2.0-preview.5.zh-CN.md)
-- [`v0.2.1` 发布说明](release-notes-v0.2.1.zh-CN.md)
-- [`v0.2.1-p1` 发布说明](release-notes-v0.2.1-p1.zh-CN.md)
-- [`v0.2.1-p2` 发布说明](release-notes-v0.2.1-p2.zh-CN.md)
-- [`v0.2.1-p3` 发布说明](release-notes-v0.2.1-p3.zh-CN.md)
-- [`v0.2.1-p4` 发布说明](release-notes-v0.2.1-p4.zh-CN.md)
-- [`v0.2.1-p5` 发布说明](release-notes-v0.2.1-p5.zh-CN.md)
-- [`v0.2.1-p6` 发布说明](release-notes-v0.2.1-p6.zh-CN.md)
-- [`v0.2.1-p7` 发布说明](release-notes-v0.2.1-p7.zh-CN.md)
-- [`v0.2.1-p8` 发布说明](release-notes-v0.2.1-p8.zh-CN.md)与[本地构建发行](local-release.zh-CN.md)
-- [发布检查清单](release-checklist.zh-CN.md)
-- [Mac 与 Android 自动更新](automatic-updates.zh-CN.md)
-- [稳定性与真机证据](stability-test-report.zh-CN.md)
-- [性能指标审计](performance-metrics-audit.zh-CN.md)
-- [Android 稳定性与延迟审计](android-stability-latency-audit.zh-CN.md)、[连接 Generation 模型](android-connection-generation.zh-CN.md)、[Protocol V2 协商](android-protocol-v2-negotiation.zh-CN.md)、[Binary Frame Header/分配路径](android-binary-frame-header-v2.zh-CN.md)、[热/功耗指标](android-thermal-power-metrics.zh-CN.md)、[帧尺寸协商](frame-size-negotiation.zh-CN.md)、[Decoder 低延迟选择](android-decoder-low-latency.zh-CN.md)、[解码吞吐恢复](android-decoder-throughput-recovery.zh-CN.md)、[WiFi 低延迟 / Surface 帧率](android-wifi-low-latency-surface-frame-rate.zh-CN.md)与 [Drop 原因策略](android-drop-reason-policy.zh-CN.md)
-- [短时 Benchmark 指南](benchmark-guide.zh-CN.md)
-- [延迟测量](latency-measurement.zh-CN.md)
-- [USB/WiFi Benchmark 规程](usb-vs-wifi-benchmark.zh-CN.md)
-- [码率模式](bitrate-modes.zh-CN.md)、[自适应码率](adaptive-bitrate.zh-CN.md)、[本地快速拥塞下降](mac-local-fast-congestion-decrease.zh-CN.md)、[队列分析](low-latency-queue-analysis.zh-CN.md)与[关键帧策略](keyframe-strategy.zh-CN.md)
-- [短时 USB/WiFi 证据](usb-vs-wifi-short-benchmark.zh-CN.md)、[Android 快速恢复 V2 证据](android-quick-recovery-v2.zh-CN.md)与[多设备架构审计](multi-device-architecture-audit.zh-CN.md)
-- [路线图与验收](roadmap-and-acceptance.zh-CN.md)
-- [Android 高刷新迁移证据](120hz-migration-plan.zh-CN.md)
-- [品牌资源](brand-assets.zh-CN.md)与[品牌/文档审计](branding-and-doc-audit.zh-CN.md)
-
-根目录指南包括[架构](../ARCHITECTURE.zh-CN.md)、[安全](../SECURITY.zh-CN.md)、[贡献说明](../CONTRIBUTING.zh-CN.md)和 [Android 接收端](../AndroidReceiver/README.zh-CN.md)。
-
-## 历史/内部记录
-
-[`v0.2.0-preview.1` 发布说明](release-notes-v0.2.0-preview.1.zh-CN.md)、
-[Preview 0.1 / Preview 2 发布说明](release-notes-preview-0.1.zh-CN.md)、
-`docs/superpowers/specs/`、`docs/superpowers/plans/` 及
-`android-usb-transport-design.md` 记录既有版本或设计决策，可以保留原语言，
-但不能作为唯一的当前用户说明。
-
-## 状态词汇
-
-- **已验证：** 在报告点名的硬件上实际执行。
-- **实验性：** 已实现，但性能或兼容性依赖硬件。
-- **待完成：** 尚未完成，也不会对外宣称已完成。
-
-Preview 2 仍未完成双 Android 并发、同条件 USB/WiFi 受控 Benchmark，以及 30 分钟/2 小时耐久测试。
+归档文件保留当时结论，包括文件名带“current”的旧记录。操作命令和下载以当前指南为准。GitHub 历史发行记录保留；清理范围是本地旧安装包与构建产物。

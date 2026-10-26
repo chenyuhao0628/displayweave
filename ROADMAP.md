@@ -2,11 +2,12 @@
 
 # DisplayWeave roadmap
 
-Updated 2026-10-23. The [feature ledger](docs/feature-completion.md) records each implementation. The current release is v0.3.0 (19), adding Mac 4K latency improvements, a 100 Mbps H.264 LAN ceiling and reviewed upstream recovery fixes. See [release notes](docs/release-notes-v0.3.0.md) for artifacts and verification boundaries.
+Updated 2026-10-26. The current release is **v0.3.1 (20)**. Capture/encoder recovery, congestion quality recovery, Android video/touch geometry and clearer controls are complete; see [release notes](docs/releases/v0.3.1.md) and the [implementation/acceptance ledger](docs/verification/reliability-experience-upgrade.md). Repository/documentation cleanup is source maintenance and does not change the published binaries.
 
-## Included in the current v0.3.0 stable release
+## Included in the current v0.3.1 stable release
 
-- Mac 4K encoding/cursor latency policies, bounded receiver pressure, 100 Mbps H.264 LAN presets and upstream capture/display recovery; see [the release notes](docs/release-notes-v0.3.0.md).
+- Generation-safe capture/encoder recovery, healthy-queue bitrate restoration, bounded Apple/Android decode pressure, aspect-correct Android video/input and resolution/frame-rate priority controls.
+- Mac 4K encoding/cursor latency policies, bounded receiver pressure, 100 Mbps H.264 LAN presets and upstream capture/display recovery; see [the release notes](docs/archive/releases/release-notes-v0.3.0.md).
 - Fixed Apple Development signing and upgrade comparisons; local permission continuity verified.
 - Shared UI standards and main-screen OpenDisplay compatibility in both connection directions.
 - Per-device Native/1080p/1440p/4K extension resolution.
@@ -33,4 +34,4 @@ Production Apple distribution requires the maintainer's Developer ID Application
 
 Two-Mac both-direction mirror/extend, Wi-Fi/Ethernet/Thunderbolt Bridge route changes, sleep/wake, hotplug, Intel runtime, input/layout/shortcut behavior; real Pencil gestures/rotation/eraser and drawing applications; Apple HEVC/high-refresh display behavior; paired LAN/USB performance and reconnects.
 
-Also pending: two simultaneous Android receivers, controlled same-resolution/codec/bitrate USB-versus-Wi-Fi benchmarks, 30-minute/2-hour endurance, and broader OS/SoC/cable matrices. Test virtual displays only with an independent online display. See [acceptance](docs/roadmap-and-acceptance.md).
+Also pending: two simultaneous Android receivers, controlled same-resolution/codec/bitrate USB-versus-Wi-Fi benchmarks, 30-minute/2-hour endurance, and broader OS/SoC/cable matrices. Test virtual displays only with an independent online display. See [acceptance](docs/archive/plans/roadmap-and-acceptance.md).

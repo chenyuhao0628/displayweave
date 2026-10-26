@@ -2,11 +2,11 @@
 
 ## DisplayWeave v0.3.1 (2026-10-26)
 
-Stable release, build 20: generation-safe capture/encoder recovery, healthy-link quality restoration, aspect-correct Android video/touch, bounded decoder queues and clearer resolution/frame-rate controls. See [English release notes](docs/release-notes-v0.3.1.md) / [简体中文发布说明](docs/release-notes-v0.3.1.zh-CN.md) for review, automated evidence and physical limits. Future releases publish directly as stable versions. Mac retains its existing Apple Development signature and is unnotarized; iOS requires re-signing.
+Stable release, build 20: generation-safe capture/encoder recovery, healthy-link quality restoration, aspect-correct Android video/touch, bounded decoder queues and clearer resolution/frame-rate controls. See [English release notes](docs/releases/v0.3.1.md) / [简体中文发布说明](docs/releases/v0.3.1.zh-CN.md) for review, automated evidence and physical limits. Future releases publish directly as stable versions. Mac retains its existing Apple Development signature and is unnotarized; iOS requires re-signing.
 
 ## DisplayWeave v0.3.0 (2026-10-23)
 
-Stable release, build 19: Mac 4K encoding/cursor latency improvements, a 100 Mbps H.264 LAN ceiling, and reviewed upstream encoder/capture/display recovery. See [English release notes](docs/release-notes-v0.3.0.md) / [简体中文发布说明](docs/release-notes-v0.3.0.zh-CN.md) for changes, checks and hardware limits. The Mac remains Apple Development signed and unnotarized; iOS requires re-signing.
+Stable release, build 19: Mac 4K encoding/cursor latency improvements, a 100 Mbps H.264 LAN ceiling, and reviewed upstream encoder/capture/display recovery. See [English release notes](docs/archive/releases/release-notes-v0.3.0.md) / [简体中文发布说明](docs/archive/releases/release-notes-v0.3.0.zh-CN.md) for changes, checks and hardware limits. The Mac remains Apple Development signed and unnotarized; iOS requires re-signing.
 
 ## Fork changes
 

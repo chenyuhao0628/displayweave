@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-OUT_DIR="$ROOT_DIR/build/preview"
-MAC_DERIVED="$ROOT_DIR/build/preview-mac-derived"
-IOS_DERIVED="$ROOT_DIR/build/preview-ios-derived"
+OUT_DIR="$ROOT_DIR/build/package/development/output"
+MAC_DERIVED="$ROOT_DIR/build/package/development/mac"
+IOS_DERIVED="$ROOT_DIR/build/package/development/ios"
 STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/displayweave-preview.XXXXXX")"
 trap 'rm -rf "$STAGE_DIR"' EXIT
 

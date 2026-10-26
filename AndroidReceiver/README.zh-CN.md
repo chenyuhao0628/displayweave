@@ -6,7 +6,7 @@ Android 接收端可以通过本地 WiFi 或由 Mac 管理的 ADB-forward USB �
 
 等待页面跟随系统明暗主题。设置在小屏上可滚动；串流时右上角设置按钮始终可用，即使已隐藏状态浮层。
 
-v0.3.1 包含[加密配对](../docs/secure-transport.zh-CN.md)与[仅 GitHub 更新](../docs/automatic-updates.zh-CN.md)。首次连接时，在**设置与帮助 → 安全与配对**生成邀请，导入 Mac 后再选择设备。局域网和 ADB 转发 USB 使用相同认证流。
+v0.3.1 包含[加密配对](../docs/guides/secure-transport.zh-CN.md)与[仅 GitHub 更新](../docs/releases/automatic-updates.zh-CN.md)。首次连接时，在**设置与帮助 → 安全与配对**生成邀请，导入 Mac 后再选择设备。局域网和 ADB 转发 USB 使用相同认证流。
 
 ## 要求
 
@@ -16,9 +16,9 @@ v0.3.1 包含[加密配对](../docs/secure-transport.zh-CN.md)与[仅 GitHub 更
 
 ## 安装 `v0.3.1`
 
-2026-10-26：正式版构建 20 修复采集／编码恢复、拥塞后画质恢复和 Android 视频／触控比例，新增更清晰的分辨率／帧率设置，沿用固定 Apple Development 签名。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](../docs/release-notes-v0.3.1.zh-CN.md)。
+2026-10-26：正式版构建 20 修复采集／编码恢复、拥塞后画质恢复和 Android 视频／触控比例，新增更清晰的分辨率／帧率设置，沿用固定 Apple Development 签名。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](../docs/releases/v0.3.1.zh-CN.md)。
 
-从 [`v0.3.1`](https://github.com/chenyuhao0628/displayweave/releases) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。p5 需要手动覆盖安装一次 p6 或更新版；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/release-checklist.zh-CN.md)中的证书指纹。
+从 [`v0.3.1`](https://github.com/chenyuhao0628/displayweave/releases) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。p5 需要手动覆盖安装一次 p6 或更新版；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/releases/release-checklist.zh-CN.md)中的证书指纹。
 
 ## 首次安装后的更新
 
@@ -45,19 +45,19 @@ v0.3.1 已包含 2026-10-26 的体验改进。视频、光标与触控共用一�
 
 新安装默认关闭详细指标，已有显式选择保持不变。关闭详情会立即恢复简洁状态；设置页提供可选择复制的完整诊断，“屏幕模式”与视频呈现 FPS 分开表述。文字模糊时，可先选接收端原生分辨率和 Mac 高画质；两端均选 75% 会叠加缩小。Mac 设备卡片展示最终编码尺寸。
 
-两级解码 FIFO 共享提交解码器前的 150 ms 帧龄上限；光标在分配位图前校验压缩大小、解码尺寸和有限几何值。见[实现与验证](../docs/reliability-experience-upgrade.zh-CN.md)。
+两级解码 FIFO 共享提交解码器前的 150 ms 帧龄上限；光标在分配位图前校验压缩大小、解码尺寸和有限几何值。见[实现与验证](../docs/verification/reliability-experience-upgrade.zh-CN.md)。
 
 ## Decoder 低延迟
 
-“**设置与帮助 → 解码器低延迟**”默认使用“自动”。Auto/On 只会在 API 30+ 的实际 Decoder 明确声明支持时请求 MediaCodec Low Latency；若参数被拒绝，会在同一 Decoder 上关闭 Low Latency 重试。Off 不会设置该参数。修改此设置会重建一次 Receiver Session。参见 [Decoder 低延迟策略](../docs/android-decoder-low-latency.zh-CN.md)。
+“**设置与帮助 → 解码器低延迟**”默认使用“自动”。Auto/On 只会在 API 30+ 的实际 Decoder 明确声明支持时请求 MediaCodec Low Latency；若参数被拒绝，会在同一 Decoder 上关闭 Low Latency 重试。Off 不会设置该参数。修改此设置会重建一次 Receiver Session。参见 [Decoder 低延迟策略](../docs/reference/android-decoder-low-latency.zh-CN.md)。
 
 ## WiFi 与显示延迟提示
 
-“**设置与帮助 → WiFi 低延迟**”默认使用“自动”。API 29+ 上，Auto/On 仅在 App 位于前台、Surface 有效、视频已进入 Streaming 且 Mac 实际 Transport 为 WiFi 时持有 `WIFI_MODE_FULL_LOW_LATENCY`；USB、断开、后台、Surface 丢失和 App 退出都会释放。Surface 帧率提示使用 Fixed-source 与 Only-if-seamless 行为，在 Surface/Config/Decoder 生命周期事件重应用，并在停止 Streaming 时清理。参见 [WiFi 低延迟与 Surface 帧率](../docs/android-wifi-low-latency-surface-frame-rate.zh-CN.md)。
+“**设置与帮助 → WiFi 低延迟**”默认使用“自动”。API 29+ 上，Auto/On 仅在 App 位于前台、Surface 有效、视频已进入 Streaming 且 Mac 实际 Transport 为 WiFi 时持有 `WIFI_MODE_FULL_LOW_LATENCY`；USB、断开、后台、Surface 丢失和 App 退出都会释放。Surface 帧率提示使用 Fixed-source 与 Only-if-seamless 行为，在 Surface/Config/Decoder 生命周期事件重应用，并在停止 Streaming 时清理。参见 [WiFi 低延迟与 Surface 帧率](../docs/reference/android-wifi-low-latency-surface-frame-rate.zh-CN.md)。
 
 ## Drop 归因
 
-Receiver Stats 保留 Android 汇总 Drop，同时发布按原因拆分的窗口/累计计数，以及最后一次 Drop 的连接/配置/帧身份。Auto Bitrate 忽略 Lifecycle、Stale、Malformed、Transport 和 Reconfiguration Drop；已分类 Decoder Throughput Pressure 必须持续两个窗口才可降低码率。参见 [Android Drop 原因策略](../docs/android-drop-reason-policy.zh-CN.md)。
+Receiver Stats 保留 Android 汇总 Drop，同时发布按原因拆分的窗口/累计计数，以及最后一次 Drop 的连接/配置/帧身份。Auto Bitrate 忽略 Lifecycle、Stale、Malformed、Transport 和 Reconfiguration Drop；已分类 Decoder Throughput Pressure 必须持续两个窗口才可降低码率。参见 [Android Drop 原因策略](../docs/reference/android-drop-reason-policy.zh-CN.md)。
 
 ## 构建与测试
 
@@ -74,9 +74,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 Release 打包与签名由仓库根目录脚本协调：
 
-```bash
-./tools/package-preview-0.1.sh
-```
+请按完整的[正式版打包流程](../docs/releases/local-release.zh-CN.md)设置明确版本／构建号并提供上一版签名应用。
 
 Keystore 保存在 Git 之外，密码从 macOS Keychain 读取。除非明确接受破坏覆盖安装兼容性，否则不要为已公开包身份生成新密钥。
 
@@ -101,4 +99,4 @@ Keystore 保存在 Git 之外，密码从 macOS Keychain 读取。除非明确�
 
 ## 安全
 
-本版默认使用固定证书指纹的双向 TLS 与邀请配对；不安全的旧版兼容需要在本机显式开启。传输私钥保存在 Android Keystore，与 APK 签名独立。ADB 授权会把 Mac 作为超出本应用范围的调试主机信任。参见[配对指南](../docs/secure-transport.zh-CN.md)与 [SECURITY.zh-CN.md](../SECURITY.zh-CN.md)。
+本版默认使用固定证书指纹的双向 TLS 与邀请配对；不安全的旧版兼容需要在本机显式开启。传输私钥保存在 Android Keystore，与 APK 签名独立。ADB 授权会把 Mac 作为超出本应用范围的调试主机信任。参见[配对指南](../docs/guides/secure-transport.zh-CN.md)与 [SECURITY.zh-CN.md](../SECURITY.zh-CN.md)。

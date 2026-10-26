@@ -4,9 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Privacy — DisplayWeave</title>
-  <meta name="description" content="DisplayWeave's privacy policy: no data collection, no analytics, no accounts, no servers. Your screen content travels directly between your Mac and your device, over your cable or your local network." />
+  <meta name="description" content="DisplayWeave privacy: direct streaming, encrypted pairing, local records and GitHub update requests." />
   <link rel="icon" type="image/png" href="logo.png" />
   <link rel="canonical" href="https://chenyuhao0628.github.io/displayweave/privacy.html" />
+  <link rel="alternate" hreflang="en" href="https://chenyuhao0628.github.io/displayweave/privacy.html" />
+  <link rel="alternate" hreflang="zh-CN" href="https://chenyuhao0628.github.io/displayweave/privacy.zh-CN.html" />
   <meta name="theme-color" content="#ffffff" />
   <style>
     :root {
@@ -81,109 +83,34 @@
 <header>
   <div class="wrap">
     <p class="eyebrow">Privacy policy</p>
-    <h1>No accounts. No analytics. No servers.</h1>
-    <p class="updated">Effective July 10, 2026 · applies to the DisplayWeave Mac, iOS/iPadOS, and Android apps and this website</p>
+    <h1>Privacy and local data</h1>
+    <p class="updated">Updated October 26, 2026 · describes DisplayWeave v0.3.1 for Mac, iOS/iPadOS, Android and this website</p>
   </div>
+  <div class="wrap"><p><a href="privacy.html" lang="en">English</a> | <a href="privacy.zh-CN.html" lang="zh-CN">简体中文</a></p></div>
 </header>
 
 <main>
   <div class="wrap">
-
-    <div class="tldr">
-      <p>DisplayWeave collects <strong>no data</strong>. There are no accounts, no analytics,
-      no telemetry, no crash reporting, no ads, and no servers — ours or anyone else's.
-      Your screen content travels directly from your Mac to an Apple receiver over USB,
-      or to an Apple or Android receiver over your local network, and nowhere else. Because the source code is public,
-      every claim on this page is verifiable.</p>
-    </div>
-
-    <h2>What DisplayWeave does with your screen</h2>
-    <p>DisplayWeave turns an iPhone, iPad, or Android device into an extra display for your Mac. To do
-    that, the Mac app captures the contents of a virtual display, encodes it as video,
-    and sends it over a <strong>single direct connection</strong> to the DisplayWeave
-    app on your device:</p>
-    <ul>
-      <li><strong>Over USB (iPhone/iPad)</strong>, the video travels through your cable
-      via the <code>usbmuxd</code> service built into macOS. It never touches any network.</li>
-      <li><strong>Over WiFi</strong>, the video travels across your own local network
-      directly between the two devices, discovered via Bonjour.</li>
-    </ul>
-    <p>In both cases the connection is peer-to-peer: no relay, no cloud, no third
-    party. Nothing is recorded or stored — frames are decoded, displayed, and
-    discarded. Touch and scroll input travels the same direct path in the other
-    direction.</p>
-
-    <h2>What the apps store on your devices</h2>
-    <p>Only local settings, only on your own hardware, never transmitted anywhere
-    except as described:</p>
-    <table>
-      <tr><th>Data</th><th>Where</th><th>Purpose</th></tr>
-      <tr><td>Preferences (quality, connection choice, display name)</td>
-          <td>Mac / device, locally</td>
-          <td>Remembering your setup between launches</td></tr>
-      <tr><td>A random install identifier (UUID)</td>
-          <td>Device, locally</td>
-          <td>Lets your own Mac recognize that the same device is reachable over both
-          USB and WiFi. It is generated on the device, has no relation to your
-          identity or hardware identifiers, and is only ever sent to Macs you
-          connect to.</td></tr>
-      <tr><td>Diagnostic log files</td>
-          <td>Mac (<code>/tmp</code>) / device (app container), locally</td>
-          <td>Debugging. Never uploaded — they leave your device only if you choose
-          to share them.</td></tr>
-    </table>
-
-    <h2>Permissions, and why they're needed</h2>
-    <table>
-      <tr><th>Permission</th><th>Why DisplayWeave asks</th></tr>
-      <tr><td>Screen Recording (Mac)</td>
-          <td>To capture the virtual display it streams to your device. macOS shows
-          the purple capture indicator whenever this is active — by design, you
-          always know.</td></tr>
-      <tr><td>Accessibility (Mac)</td>
-          <td>To turn taps and scrolls from your device into mouse events on the
-          Mac.</td></tr>
-      <tr><td>Local Network (Mac and device)</td>
-          <td>For WiFi discovery and streaming on your own network. Not needed in
-          Apple-receiver USB mode.</td></tr>
-    </table>
-    <p>Every permission is used solely for the function above, on your own machines.</p>
-
-    <h2>An honest caveat: WiFi transport is not yet encrypted</h2>
-    <div class="note">
-      <p>Apple-receiver USB streaming is point-to-point over your cable. WiFi streaming, however,
-      currently travels <strong>unencrypted across your local network</strong> —
-      someone with access to the same network could in principle observe the video
-      stream. On a trusted home or office network this is rarely a concern, but on
-      shared or public WiFi we recommend Apple-receiver USB mode where available. Encrypted WiFi transport with
-      device pairing is on the roadmap
-      (see the <a href="https://github.com/chenyuhao0628/displayweave/blob/main/docs/roadmap-and-acceptance.md">project roadmap</a>).
-      A privacy page that didn't tell you this wouldn't be worth linking to.</p>
-    </div>
-
-    <h2>This website</h2>
-    <p>This site is a static page hosted on GitHub Pages. It sets no cookies and
-    runs no analytics or tracking scripts. GitHub may log standard web-server
-    request data as part of operating the hosting; see the
-    <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub
-    Privacy Statement</a>.</p>
-
-    <h2>Verifiability</h2>
-    <p>DisplayWeave is open source under the
-    <a href="https://github.com/chenyuhao0628/displayweave/blob/main/LICENSE">GPL-3.0 license</a>.
-    The complete source code of both apps — including everything this page
-    describes — is public at
-    <a href="https://github.com/chenyuhao0628/displayweave">github.com/chenyuhao0628/displayweave</a>.
-    You don't have to take our word for any of this; you can read the code, build
-    the apps yourself, or watch the network with the tools of your choice.</p>
-
-    <h2>Changes and contact</h2>
-    <p>If the app's behavior ever changes in a way that affects this page, the page
-    will be updated in the same repository — its
-    <a href="https://github.com/chenyuhao0628/displayweave/commits/main/public/privacy.html">edit
-    history</a> is public. Questions or concerns are welcome on the
-    <a href="https://github.com/chenyuhao0628/displayweave/issues">issue tracker</a>.</p>
-
+<div class="tldr"><p>DisplayWeave sends screen video and input directly between your devices. The apps do not include an analytics or automatic crash-upload service. Local discovery, performance diagnostics, pairing records and software-update requests are described below.</p></div>
+<h2>Screen, input and connection data</h2>
+<p>The Mac captures the selected physical or virtual display, encodes video and sends it to the connected receiver. Touch, keyboard, pointer and performance messages return over the session where supported and enabled. DisplayWeave does not provide a cloud relay or automatically upload screen video.</p>
+<ul><li>Apple USB uses macOS usbmuxd; Android USB uses an authorized ADB forward. These are local cable/tunnel paths.</li><li>LAN streaming goes directly between devices over Wi-Fi or Ethernet. Bonjour/NSD discovery advertises local service metadata, including names, capabilities and installation identifiers where used. Nearby devices on that network may observe discovery metadata.</li><li>Each connected receiver has its own session. Video buffers are transient; diagnostic logs and benchmark records are separate local data.</li></ul>
+<h2>Encryption and pairing</h2>
+<p>v0.3.1 uses certificate-pinned mutual TLS and invitation pairing by default on Apple and Android, including USB tunnels. Peer trust is saved locally for reconnection. Invitations are short-lived, single-use and kept in memory; do not share them publicly. See <a href="https://github.com/chenyuhao0628/displayweave/blob/main/docs/guides/secure-transport.md">pairing and revocation</a>.</p>
+<div class="note"><p>Explicit legacy OpenDisplay compatibility is unencrypted. Enable it only for a peer and network you trust. ADB authorization separately grants the Mac debugging access to the Android device; revoke it in Android Developer options when no longer needed.</p></div>
+<h2>Local storage</h2>
+<table><tr><th>Data</th><th>Purpose and location</th></tr>
+<tr><td>Preferences and installation identifier</td><td>Saved locally to remember quality, connection choices and per-device settings, and to recognize the same installation across transports. Installation and device metadata may also be exchanged through discovery and sessions.</td></tr>
+<tr><td>Pairing identity and trusted peers</td><td>Private keys use Apple Keychain or Android Keystore. Peer names, identifiers, certificate fingerprints and trust/revocation state are stored locally by the platform security store. Revoke peers or reset the local identity in security settings.</td></tr>
+<tr><td>Diagnostics and benchmarks</td><td>Local app/system logs and selected benchmark records describe connections, timing, queues and performance. They are not automatically uploaded by DisplayWeave. Inspect and redact private details before sharing logs or screenshots.</td></tr>
+<tr><td>Update files</td><td>Mac and Android update components may cache downloaded packages locally for verification and installation.</td></tr></table>
+<h2>Update checks and this website</h2>
+<p>Mac and Android update checks contact the project's GitHub Pages feeds. Package downloads use GitHub Releases and its download infrastructure over HTTPS. Those requests expose normal connection/request metadata to the hosting provider; they do not upload your display stream. iOS has no DisplayWeave automatic-update channel. See <a href="https://github.com/chenyuhao0628/displayweave/blob/main/docs/releases/automatic-updates.md">update behavior and authenticity checks</a>.</p>
+<p>This website is hosted on GitHub Pages. The site source includes no analytics/tracking scripts or cookie-based tracking. Hosting providers may process standard request data; consult <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub's privacy statement</a> for their practices. Opening external links uses the destination's own services.</p>
+<h2>Permissions</h2>
+<ul><li>Screen Recording permits capture of the chosen Mac display.</li><li>Accessibility permits supported, enabled remote input injection.</li><li>Local Network permits local discovery and connections where required by the OS.</li><li>Android USB debugging and RSA authorization enable ADB forwarding. Installing an APK update also requires Android's installation permission and confirmation.</li></ul>
+<h2>Source and contact</h2>
+<p>DisplayWeave is distributed under <a href="https://github.com/chenyuhao0628/displayweave/blob/main/LICENSE">GPL-3.0</a>. Inspect the <a href="https://github.com/chenyuhao0628/displayweave">source</a>, <a href="https://github.com/chenyuhao0628/displayweave/blob/main/SECURITY.md">security policy</a> and <a href="https://github.com/chenyuhao0628/displayweave/commits/main/public/privacy.html">page history</a>. Report reproducible issues through the project tracker, following the security policy for vulnerabilities.</p>
   </div>
 </main>
 

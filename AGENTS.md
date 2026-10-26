@@ -3,7 +3,7 @@
 ## Start here
 - Read `CONTRIBUTING.md`, `ARCHITECTURE.md`, and the relevant current guide in `docs/README.md`.
 - This is the repository instruction entry point. Historical plans describe past decisions, not mandatory current workflows. User instructions take precedence over repository guidance.
-- Read `docs/development.md` for commands and evidence requirements; read `docs/ui-guidelines.md` before UI changes once that document exists.
+- Read `docs/development/workflow.md` for commands and evidence requirements; read `docs/development/ui-guidelines.md` before UI changes.
 
 ## Contracts
 - Public name: DisplayWeave. Preserve OpenSidecar project/target names, bundle/package IDs, preferences, Bonjour service, wire framing, and update/signing identities unless explicitly migrating them with compatibility coverage.
@@ -15,8 +15,9 @@
 - Inspect status before editing; preserve unrelated work. Use `codex/` for new branches. The working remote is `displayweave`; `origin` is upstream. Verify remote URLs before pushing.
 - Make coherent, reviewable changes. Add a regression test for a behavior fix; do not invent tests that just repeat static UI structure. Run relevant checks before each commit and the full regression gate before integrating.
 - Keep user-facing guides in English / Simplified Chinese pairs with reciprocal links. Record implementation, automated verification, physical verification and deferred work separately.
+- Keep generated output in `build/`, retained packages in `artifacts/releases/`, and selected local evidence in `artifacts/verification/`. Follow `docs/development/repository-layout.md` for cleanup.
 - Generate the Xcode project from `project.yml`. Do not commit build outputs, local credentials, device IDs, private captures or signing material.
-- Release binaries and source archives must use GitHub Releases only; update metadata uses the repository GitHub Pages site. Do not reintroduce external distribution hosts, mirrors or links. See `docs/release-downloads.md`.
+- Release binaries and source archives must use GitHub Releases only; update metadata uses the repository GitHub Pages site. Do not reintroduce external distribution hosts, mirrors or links. See `docs/releases/release-downloads.md`.
 - Publish stable releases directly. Do not create public preview, beta, RC or prerelease versions; retain historical release records. Private asset staging is allowed for integrity checks before stable publication.
 - Do not claim a source feature is in a published download until it is released.
 

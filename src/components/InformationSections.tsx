@@ -1,4 +1,4 @@
-import type { SiteCopy } from "../content"
+import type { Locale, SiteCopy } from "../content"
 
 export function EvidenceSection({ copy }: { copy: SiteCopy["proof"] }) {
   return (
@@ -22,7 +22,7 @@ export function EvidenceSection({ copy }: { copy: SiteCopy["proof"] }) {
   )
 }
 
-export function TrustSection({ copy }: { copy: SiteCopy["trust"] }) {
+export function TrustSection({ copy, locale }: { copy: SiteCopy["trust"]; locale: Locale }) {
   return (
     <section className="trust-section" id="trust">
       <div className="shell trust-layout">
@@ -31,8 +31,8 @@ export function TrustSection({ copy }: { copy: SiteCopy["trust"] }) {
           <h2>{copy.title}</h2>
           <p>{copy.body}</p>
           <div className="trust-links">
-            <a href="THIRD_PARTY_NOTICES.md">{copy.source}</a>
-            <a href="SECURITY.md">{copy.security}</a>
+            <a href="https://github.com/chenyuhao0628/displayweave/blob/main/THIRD_PARTY_NOTICES.md">{copy.source}</a>
+            <a href={`https://github.com/chenyuhao0628/displayweave/blob/main/SECURITY${locale === "zh" ? ".zh-CN" : ""}.md`}>{copy.security}</a>
           </div>
         </header>
         <div className="trust-list">

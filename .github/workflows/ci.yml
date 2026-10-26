@@ -39,14 +39,14 @@ jobs:
       - name: macOS Debug build
         run: >-
           xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac
-          -configuration Debug -derivedDataPath "$RUNNER_TEMP/mac-derived"
+          -configuration Debug -derivedDataPath build/verify/mac
           CODE_SIGNING_ALLOWED=NO ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO build
       - name: iOS Simulator compatibility build
         run: >-
           xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecariOS
           -configuration Debug -sdk iphonesimulator
           -destination 'generic/platform=iOS Simulator'
-          -derivedDataPath "$RUNNER_TEMP/ios-derived"
+          -derivedDataPath build/verify/ios
           CODE_SIGNING_ALLOWED=NO build
 
   web-and-docs:
@@ -65,6 +65,11 @@ jobs:
       - run: python -m pip install -r tools/brand-requirements.txt
       - run: python tools/test-apple-distribution.py
       - run: python tools/test-mac-signing.py
+      - name: Workspace and documentation maintenance regressions
+        run: |
+          python tools/test-workspace-cleanup.py
+          python tools/test-docs-check.py
+          python tools/test-release-packaging.py
       - run: python tools/export-brand-assets.py --check
       - run: pnpm build
       - run: pnpm run check:docs

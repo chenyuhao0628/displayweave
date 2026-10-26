@@ -85,7 +85,7 @@ export default function App({
         </section>
 
         <EvidenceSection copy={c.proof} />
-        <TrustSection copy={c.trust} />
+        <TrustSection copy={c.trust} locale={initialLocale} />
         <FAQSection copy={c.faq} />
       </main>
 

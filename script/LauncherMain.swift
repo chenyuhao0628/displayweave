@@ -1,7 +1,7 @@
 import Foundation
 
 let root = "/Users/cyh/Documents/opendisplay"
-let logPath = "\(root)/build-run/open-display-launcher.log"
+let logPath = "\(root)/build/dev/mac/open-display-launcher.log"
 
 func runProcess(_ executable: String, _ arguments: [String]) -> Int32 {
     let process = Process()
@@ -32,7 +32,7 @@ func showFailureDialog() {
 
 do {
     try FileManager.default.createDirectory(
-        atPath: "\(root)/build-run",
+        atPath: "\(root)/build/dev/mac",
         withIntermediateDirectories: true
     )
 

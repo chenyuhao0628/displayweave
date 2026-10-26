@@ -55,7 +55,6 @@ jobs:
       DISPLAYWEAVE_ANDROID_KEY_ALIAS: ${{ secrets.DISPLAYWEAVE_ANDROID_KEY_ALIAS }}
       DISPLAYWEAVE_ANDROID_KEY_PASSWORD: ${{ secrets.DISPLAYWEAVE_ANDROID_KEY_PASSWORD }}
       DISPLAYWEAVE_OUTPUT_DIR: ${{ github.workspace }}/build/update-release
-      DISPLAYWEAVE_UPDATE_RELEASE: "1"
       DISPLAYWEAVE_BUILD_NUMBER: >-
         ${{ inputs.build_number != '' && inputs.build_number || github.run_number }}
       DISPLAYWEAVE_RELEASE_TAG: >-
@@ -97,9 +96,9 @@ jobs:
       - name: Build and test Mac, unsigned iOS, and signed Android
         run: |
           set -euo pipefail
-          # package-preview uses Mac/OpenSidecarMac.entitlements and builds
+          # package-release uses Mac/OpenSidecarMac.entitlements and builds
           # OpenSidecariOS with CODE_SIGNING_ALLOWED=NO as a compatibility gate.
-          ./tools/package-preview-0.1.sh
+          ./tools/package-release.sh
 
       - name: Verify Android signer with apksigner
         run: |
@@ -119,7 +118,7 @@ jobs:
           export DISPLAYWEAVE_PUBLISHED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
           ./tools/generate-android-update-manifest.sh
 
-          GEN_APPCAST="$(find build/preview-0.1-mac-derived/SourcePackages \
+          GEN_APPCAST="$(find build/package/mac/SourcePackages \
             -type f -path '*/Sparkle/bin/generate_appcast' -print -quit)"
           test -x "$GEN_APPCAST"
           APPCAST_INPUT="$RUNNER_TEMP/displayweave-appcast-input"
@@ -206,10 +205,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: displayweave-update-feeds-${{ github.run_id }}
-          path: site-dist
+          path: build/site/client
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site-dist
+          path: build/site/client
       - id: deployment
         uses: actions/deploy-pages@v4
