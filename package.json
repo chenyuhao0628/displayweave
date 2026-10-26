@@ -3,11 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "DisplayWeave landing page (Vite + React). Builds into site-dist/ for GitHub Pages.",
+  "description": "DisplayWeave landing page (Vite + React). Builds into build/site/client/ for GitHub Pages.",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "vite",
-    "build": "pnpm run check:types && vite build && vite build --ssr src/entry-server.tsx --outDir dist-ssr --emptyOutDir && node tools/prerender.mjs && node tools/check-site.mjs",
+    "build": "pnpm run check:types && vite build && vite build --ssr src/entry-server.tsx --outDir build/site/ssr --emptyOutDir && node tools/prerender.mjs && node tools/check-site.mjs",
     "preview": "vite preview",
     "check:docs": "./tools/check-bilingual-docs.sh",
     "check:release": "./tools/check-release-links.sh",

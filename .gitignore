@@ -1,5 +1,6 @@
 # Build output
 build/
+/artifacts/
 DerivedData/
 build-run/
 build-verify-ios/
@@ -47,11 +48,9 @@ node_modules/
 .pnpm-store/
 dist-ssr/
 site-dist/
-docs/*
-!docs/*.md
-!docs/superpowers/
-!docs/superpowers/plans/
-!docs/superpowers/plans/*.md
+docs/**
+!docs/**/
+!docs/**/*.md
 
 # Android local build artifacts
 AndroidReceiver/dist/

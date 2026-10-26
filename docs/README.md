@@ -1,89 +1,22 @@
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-# DisplayWeave Documentation
+# DisplayWeave documentation
 
-## Current user guides
+Current published version: **v0.3.1 (20)**, released 2026-10-26. Start with [downloads and integrity](releases/current.md) or [what changed](releases/v0.3.1.md). This documentation reorganization does not publish a new app version.
 
-- [v0.3.1 stable release: reliability and receiver experience](release-notes-v0.3.1.md)
+| Task | Start here |
+| --- | --- |
+| Install, pair, connect and configure | [User guides](guides/README.md) |
+| Build, contribute or find a file | [Development](development/README.md) · [repository layout and cleanup](development/repository-layout.md) |
+| Understand transport and video policies | [Technical reference](reference/README.md) |
+| Package, sign, verify and publish a stable release | [Release workflow](releases/README.md) |
+| Reproduce checks and understand hardware limits | [Verification](verification/README.md) |
+| Read earlier audits, plans and release notes | [Historical archive](archive/README.md) |
 
-- [Reliability and experience upgrade — implementation and acceptance](reliability-experience-upgrade.md)
+Project entry points: [overview](../README.md), [architecture](../ARCHITECTURE.md), [roadmap](../ROADMAP.md), [contributing](../CONTRIBUTING.md), [support](../SUPPORT.md), [security](../SECURITY.md), [Android receiver](../AndroidReceiver/README.md).
 
-- [Code and experience audit (2026-10-26): findings, evidence and coverage](code-and-experience-audit-2026-10-26.md)
+## Evidence vocabulary
 
-- [v0.3.0 stable release: 4K latency and capture recovery](release-notes-v0.3.0.md)
+**Implemented** describes code. **Automated verification** names a test and revision. **Physical verification** names actual hardware, configuration and duration. **Experimental** marks a hardware-dependent capability. **Deferred / SKIP** means not verified or not completed. Requested FPS does not prove rendered FPS. Current limits are listed in the [v0.3.1 notes](releases/v0.3.1.md).
 
-- [Mac 4K latency: v0.3.0 changes and local evidence](mac-4k-latency.md)
-- [Upstream Mac recovery integration and verification (2026-10-23)](upstream-integration-2026-10-23.md)
-
-- [`v0.3.0-preview.3` fixed signing and permission continuity](release-notes-v0.3.0-preview.3.md)
-- [Documentation audit (2026-10-17)](documentation-audit-2026-10-17.md)
-
-- [`v0.3.0-preview.2` UI and OpenDisplay compatibility release](release-notes-v0.3.0-preview.2.md)
-
-- [`v0.3.0-preview.1` release notes](release-notes-v0.3.0-preview.1.md)
-
-- [Production Apple archive/export and prerequisites](apple-distribution.md)
-- [Mac signing and permission continuity](mac-permissions.md)
-- [Public protocol contract and shared fixtures](protocol.md)
-- [Advanced Pencil input](pencil-advanced.md)
-- [Mac receiver keyboard and mouse](mac-receiver-input.md)
-- [Secure connections and pairing](secure-transport.md) and [design / integration](secure-transport-design.md)
-- [Mac wired / Wi-Fi handover](mac-lan-handover.md)
-- [Apple receiver HEVC and high refresh](apple-video.md)
-- [Per-device desktop resolution](desktop-resolution.md)
-- [Active feature completion plan and evidence](feature-completion.md)
-- [HEVC, direct-link and Pencil usage / current evidence](hevc-wired-pencil.md)
-- [HEVC, wired discovery and Pencil design / acceptance](hevc-wired-pencil-plan.md)
-- [2026-10-16 source upgrade audit and hardware limits](source-upgrade-audit-2026-10-16.md) and [upstream integration decisions](upstream-integration-2026-10-16.md)
-- [UI standard](ui-guidelines.md) and [source upgrade plan](upgrade-plan.md)
-- [UI audit and acceptance (2026-10-16)](ui-audit-2026-10-16.md)
-- [OpenDisplay connection compatibility](opendisplay-compatibility.md)
-- [Development workflow and current Codex guidance](development.md)
-- [Mac-to-Mac LAN (experimental)](mac-to-mac.md) and [design/upstream assessment](mac-to-mac-design.md)
-
-- [Current release distribution](development-preview.md)
-- [`v0.2.0-preview.2` release notes](release-notes-v0.2.0-preview.2.md)
-- [`v0.2.0-preview.3` release notes](release-notes-v0.2.0-preview.3.md)
-- [`v0.2.0-preview.4` release notes](release-notes-v0.2.0-preview.4.md)
-- [`v0.2.0-preview.5` release notes](release-notes-v0.2.0-preview.5.md)
-- [`v0.2.1` release notes](release-notes-v0.2.1.md)
-- [`v0.2.1-p1` release notes](release-notes-v0.2.1-p1.md)
-- [`v0.2.1-p2` release notes](release-notes-v0.2.1-p2.md)
-- [`v0.2.1-p3` release notes](release-notes-v0.2.1-p3.md)
-- [`v0.2.1-p4` release notes](release-notes-v0.2.1-p4.md)
-- [`v0.2.1-p5` release notes](release-notes-v0.2.1-p5.md)
-- [`v0.2.1-p6` release notes](release-notes-v0.2.1-p6.md)
-- [`v0.2.1-p7` release notes](release-notes-v0.2.1-p7.md)
-- [`v0.2.1-p8` release notes](release-notes-v0.2.1-p8.md) and [local build publication](local-release.md)
-- [Release checklist](release-checklist.md)
-- [Mac and Android automatic updates](automatic-updates.md)
-- [Stability and physical-device evidence](stability-test-report.md)
-- [Performance metrics audit](performance-metrics-audit.md)
-- [Android stability and latency audit](android-stability-latency-audit.md), [connection generation model](android-connection-generation.md), [Protocol V2 negotiation](android-protocol-v2-negotiation.md), [binary frame header/allocation path](android-binary-frame-header-v2.md), [thermal/power metrics](android-thermal-power-metrics.md), [frame-size negotiation](frame-size-negotiation.md), [decoder low-latency selection](android-decoder-low-latency.md), [decoder throughput recovery](android-decoder-throughput-recovery.md), [WiFi low latency / Surface frame rate](android-wifi-low-latency-surface-frame-rate.md), and [drop-reason policy](android-drop-reason-policy.md)
-- [Short benchmark guide](benchmark-guide.md)
-- [Latency measurement](latency-measurement.md)
-- [USB versus WiFi benchmark protocol](usb-vs-wifi-benchmark.md)
-- [Bitrate modes](bitrate-modes.md), [adaptive bitrate](adaptive-bitrate.md), [local fast congestion decrease](mac-local-fast-congestion-decrease.md), [queue analysis](low-latency-queue-analysis.md), and [keyframe strategy](keyframe-strategy.md)
-- [Short USB/WiFi evidence](usb-vs-wifi-short-benchmark.md), [Android quick recovery V2 evidence](android-quick-recovery-v2.md), and [multi-device architecture audit](multi-device-architecture-audit.md)
-- [Roadmap and acceptance](roadmap-and-acceptance.md)
-- [Android high-refresh migration evidence](120hz-migration-plan.md)
-- [Brand assets](brand-assets.md) and [brand/documentation audit](branding-and-doc-audit.md)
-
-Root guides cover [architecture](../ARCHITECTURE.md), [security](../SECURITY.md), [contributing](../CONTRIBUTING.md), and the [Android receiver](../AndroidReceiver/README.md).
-
-## Historical/internal records
-
-The [`v0.2.0-preview.1` release notes](release-notes-v0.2.0-preview.1.md),
-[Preview 0.1 / Preview 2 release notes](release-notes-preview-0.1.md),
-files under `docs/superpowers/specs/` and `docs/superpowers/plans/`, and
-`android-usb-transport-design.md` record prior releases or design decisions.
-They may remain in their authored language and must not be treated as the only
-current user instructions.
-
-## Status vocabulary
-
-- **Verified:** exercised on the hardware named in the relevant report.
-- **Experimental:** implemented, but performance or compatibility remains hardware-dependent.
-- **Deferred:** not completed and not claimed.
-
-Preview 2 still defers two simultaneous Android devices, the controlled same-condition USB/WiFi benchmark, and 30-minute/2-hour endurance runs.
+Archive files preserve dated conclusions, including old filenames containing “current”. Use the current guides for commands and downloads. Historical public releases remain on GitHub; only local obsolete installers and build outputs are removed.

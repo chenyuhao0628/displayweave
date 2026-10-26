@@ -43,7 +43,7 @@ Auto 优先 USB。故障后先经过协议级宽限，再执行 0.5/1/2/4/8 秒�
 
 旧 Apple 接收端使用 H.264。Android 广播 codec/刷新能力，接收 `streamConfig`，双方支持时优先 HEVC；codec 失败会回报控制消息并回退 H.264。Android 协商 30/60/90/120fps 目标并请求兼容显示模式；请求帧率不等于实际渲染帧率。
 
-所有 Peer 都保留网络字节序的外层四字节帧长度。Legacy iOS 与未协商 Android Frame 使用 JSON Telemetry Prefix + Annex-B Payload。只有独立声明 `binaryFrameHeaderV2` 的 Android Peer 才会收到固定的 `DWV2` Identity/Timestamp/Flags Header；Receiver 随后把原始有界 Transport Array 的 Offset/Length View 交给 MediaCodec。详见 [Binary Header 与分配协议](docs/android-binary-frame-header-v2.zh-CN.md)。
+所有 Peer 都保留网络字节序的外层四字节帧长度。Legacy iOS 与未协商 Android Frame 使用 JSON Telemetry Prefix + Annex-B Payload。只有独立声明 `binaryFrameHeaderV2` 的 Android Peer 才会收到固定的 `DWV2` Identity/Timestamp/Flags Header；Receiver 随后把原始有界 Transport Array 的 Offset/Length View 交给 MediaCodec。详见 [Binary Header 与分配协议](docs/reference/android-binary-frame-header-v2.zh-CN.md)。
 
 ## 生命周期与输入
 
@@ -53,7 +53,7 @@ Android 接收端在 9000 端口提供 TCP Server，渲染 Surface 返回时会�
 
 ## 安全边界
 
-- v0.3.0-preview.1 的 Apple 与 Android 默认使用固定证书指纹的双向 TLS 和显式邀请配对；旧版兼容需主动启用且仅限可信网络。详见[配对指南](docs/secure-transport.zh-CN.md)。
+- v0.3.1 的 Apple 与 Android 默认使用固定证书指纹的双向 TLS 和显式邀请配对；旧版兼容需主动启用且仅限可信网络。详见[配对指南](docs/guides/secure-transport.zh-CN.md)。
 - ADB RSA 授权会把 Mac 作为广泛调试主机信任，不只限 DisplayWeave。
 - macOS v0.3.1 使用固定 Apple Development 身份，仍未公证；首次从临时签名迁移可能需要再授权，后续构建检查签名连续性。
 - Android APK 使用保存在 Git 之外的项目离线密钥库。
@@ -68,7 +68,7 @@ Android 接收端在 9000 端口提供 TCP Server，渲染 Surface 返回时会�
 Mac 应用可在发送和接收之间切换。接收角色先停止发送会话及发现任务，使用独立 TCP 监听、
 有界分帧和 AVSampleBufferDisplayLayer 渲染 H.264／经硬件能力确认的 HEVC。一次只接受一个发送端；旧连接回调
 不能影响替代会话。发送端按接收屏幕逻辑点、缩放和 codec 尺寸/帧率上限配置。
-Mac 使用 Apple legacy 帧，不启用 Android DWV2。详见[设计](docs/mac-to-mac-design.zh-CN.md)。
+Mac 使用 Apple legacy 帧，不启用 Android DWV2。详见[设计](docs/reference/mac-to-mac-design.zh-CN.md)。
 
 ## 源码职责与有界任务（2026-10-16）
 
@@ -85,7 +85,7 @@ Mac 使用 Apple legacy 帧，不启用 Android DWV2。详见[设计](docs/mac-t
 
 `PhoneReceiver` 在串行队列维护监听/连接，忽略旧回调；进入后台先分离旧 socket，再尽力发送 goodbye。Android 控制写入限制为一个线程、128 个排队任务和 64 KiB 单条负载；读取限制为两个线程、两个排队任务。饱和时断开对应会话，避免输入无限积压。发送端在算术和 CoreGraphics 转换前验证几何与输入。
 
-参见 [UI 规范](docs/ui-guidelines.zh-CN.md)、[开发命令](docs/development.zh-CN.md)与[源码验收和验证边界](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。
+参见 [UI 规范](docs/development/ui-guidelines.zh-CN.md)、[开发命令](docs/development/workflow.zh-CN.md)与[源码验收和验证边界](docs/archive/audits/source-upgrade-audit-2026-10-16.zh-CN.md)。
 
 ## HEVC、直连与 Pencil（源码迭代）
 
@@ -93,12 +93,12 @@ Mac HEVC 同时要求硬件编码器与接收端明确声明的硬件解码能�
 
 `DirectCable` 仅分类链路本地有线**候选**，不认证设备或证明物理拓扑。选择候选后将 Bonjour 解析和 TCP 固定到同一接口。`DirectCableAutoConnectPolicy` 提供默认关闭的开关、每次出现一次尝试和手动断开抑制。正在等待 hello 的会话也按安装 ID 去重。
 
-`pencil-v1` 通过 hello/inputConfig 显式协商。`PencilInputForwarder` 按整笔画保持原生／兼容协议；`PencilSample` 校验全部数值。`InputInjector` 发送 tablet point／proximity 并确定性取消。iOS `InputSendBudget` 在派发前限制最多 64 项排队／发送中的控制任务，每批不超过 64 KiB，连接代际隔离旧输入和完成回调。溢出关闭当前连接，由发送端释放按下状态。详见[协议与验收设计](docs/hevc-wired-pencil-plan.zh-CN.md)。
+`pencil-v1` 通过 hello/inputConfig 显式协商。`PencilInputForwarder` 按整笔画保持原生／兼容协议；`PencilSample` 校验全部数值。`InputInjector` 发送 tablet point／proximity 并确定性取消。iOS `InputSendBudget` 在派发前限制最多 64 项排队／发送中的控制任务，每批不超过 64 KiB，连接代际隔离旧输入和完成回调。溢出关闭当前连接，由发送端释放按下状态。详见[协议与验收设计](docs/reference/hevc-wired-pencil-plan.zh-CN.md)。
 
 ## Apple 视频协商
 
-两个 Apple 目标共用 `Shared/ReceiverVideoBitstream`。iOS 声明 `appleVideoV1` 编码/刷新范围；Mac 继续通过原设备身份识别。发送端在上限内协商最高 120fps、HEVC 和 H.264 回退，Android 保留独立 V2 协商。见[实现与证据](docs/apple-video.zh-CN.md)。
+两个 Apple 目标共用 `Shared/ReceiverVideoBitstream`。iOS 声明 `appleVideoV1` 编码/刷新范围；Mac 继续通过原设备身份识别。发送端在上限内协商最高 120fps、HEVC 和 H.264 回退，Android 保留独立 V2 协商。见[实现与证据](docs/guides/apple-video.zh-CN.md)。
 
 ## 已完成源码扩展
 
-[功能台账](docs/feature-completion.zh-CN.md)记录桌面分辨率、默认认证传输、同意后的 Mac 键鼠回传、同身份 Mac 切换、Pencil v2 与具名快捷操作、进程 CPU 采样、Android 池化租借和共用协议样例。iOS 展示回调按视图身份归属：替换时先释放旧输入，旧视图延迟销毁不能清除新回调或移除借用图层。解码/展示回调带连接代次，跨线程帧回调加锁。真实正式签名与最终素材仍有外部前提。
+[功能台账](docs/archive/plans/feature-completion.zh-CN.md)记录桌面分辨率、默认认证传输、同意后的 Mac 键鼠回传、同身份 Mac 切换、Pencil v2 与具名快捷操作、进程 CPU 采样、Android 池化租借和共用协议样例。iOS 展示回调按视图身份归属：替换时先释放旧输入，旧视图延迟销毁不能清除新回调或移除借用图层。解码/展示回调带连接代次，跨线程帧回调加锁。真实正式签名与最终素材仍有外部前提。

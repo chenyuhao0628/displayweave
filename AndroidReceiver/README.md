@@ -6,7 +6,7 @@ The Android receiver accepts DisplayWeave video over local WiFi or a Mac-managed
 
 The waiting screen follows the system light/dark theme. Settings scroll on small displays; the top-right Settings button remains available while streaming even when the status overlay is hidden.
 
-v0.3.1 includes [encrypted pairing](../docs/secure-transport.md) and [GitHub-only updates](../docs/automatic-updates.md). First generate an invitation under **Settings & Help → Security and pairing**, import it on the Mac, then select the device. LAN and ADB-forwarded USB use the same authenticated stream.
+v0.3.1 includes [encrypted pairing](../docs/guides/secure-transport.md) and [GitHub-only updates](../docs/releases/automatic-updates.md). First generate an invitation under **Settings & Help → Security and pairing**, import it on the Mac, then select the device. LAN and ADB-forwarded USB use the same authenticated stream.
 
 ## Requirements
 
@@ -16,9 +16,9 @@ v0.3.1 includes [encrypted pairing](../docs/secure-transport.md) and [GitHub-onl
 
 ## Install `v0.3.1`
 
-2026-10-26: stable build 20 fixes capture/encoder recovery, restores quality after congestion, corrects Android video and touch geometry, and adds clearer resolution/frame-rate controls, retaining the pinned Apple Development identity. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](../docs/release-notes-v0.3.1.md) for changes, permission continuity and verification limits.
+2026-10-26: stable build 20 fixes capture/encoder recovery, restores quality after congestion, corrects Android video and touch geometry, and adds clearer resolution/frame-rate controls, retaining the pinned Apple Development identity. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](../docs/releases/v0.3.1.md) for changes, permission continuity and verification limits.
 
-Download `DisplayWeave-Android.apk` from [`v0.3.1`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/release-checklist.md).
+Download `DisplayWeave-Android.apk` from [`v0.3.1`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/releases/release-checklist.md).
 
 ## Updates after the first install
 
@@ -48,19 +48,19 @@ The v0.3.1 release includes the 2026-10-26 experience improvements. Video, curso
 
 Detailed metrics now default off for a new installation; an explicit saved choice is retained. Turning details off immediately restores the concise status. Settings provide selectable detailed diagnostics, and “screen mode” is distinguished from video presentation FPS. If text looks soft, choose Native receiver resolution and High quality on the Mac; applying 75% scaling at both ends multiplies the reductions. The Mac device card reports the final encoded raster.
 
-Both decode FIFOs share a 150 ms packet age limit before codec submission. Cursor images are checked for compressed size, decoded dimensions and finite geometry before bitmap allocation. See [implementation and validation](../docs/reliability-experience-upgrade.md).
+Both decode FIFOs share a 150 ms packet age limit before codec submission. Cursor images are checked for compressed size, decoded dimensions and finite geometry before bitmap allocation. See [implementation and validation](../docs/verification/reliability-experience-upgrade.md).
 
 ## Decoder low latency
 
-**Settings & Help → Decoder Low Latency** defaults to Auto. Auto/On requests MediaCodec low latency only when the actual API 30+ decoder advertises support; a rejected parameter is retried on the same decoder without low latency. Off never sets the parameter. Changing this setting rebuilds the receiver session once. See [the decoder low-latency policy](../docs/android-decoder-low-latency.md).
+**Settings & Help → Decoder Low Latency** defaults to Auto. Auto/On requests MediaCodec low latency only when the actual API 30+ decoder advertises support; a rejected parameter is retried on the same decoder without low latency. Off never sets the parameter. Changing this setting rebuilds the receiver session once. See [the decoder low-latency policy](../docs/reference/android-decoder-low-latency.md).
 
 ## WiFi and display latency hints
 
-**Settings & Help → WiFi Low Latency** defaults to Auto. On API 29+, Auto/On holds `WIFI_MODE_FULL_LOW_LATENCY` only while the app is foreground, the Surface is valid, video is Streaming, and the actual Mac transport is WiFi. USB, disconnect, background, Surface loss, and app exit release it. The Surface frame-rate hint uses fixed-source and only-if-seamless behavior, is reapplied for Surface/config/decoder lifecycle events, and is cleared when streaming stops. See [WiFi low latency and Surface frame rate](../docs/android-wifi-low-latency-surface-frame-rate.md).
+**Settings & Help → WiFi Low Latency** defaults to Auto. On API 29+, Auto/On holds `WIFI_MODE_FULL_LOW_LATENCY` only while the app is foreground, the Surface is valid, video is Streaming, and the actual Mac transport is WiFi. USB, disconnect, background, Surface loss, and app exit release it. The Surface frame-rate hint uses fixed-source and only-if-seamless behavior, is reapplied for Surface/config/decoder lifecycle events, and is cleared when streaming stops. See [WiFi low latency and Surface frame rate](../docs/reference/android-wifi-low-latency-surface-frame-rate.md).
 
 ## Drop attribution
 
-Receiver stats retain the aggregate Android drop count and also publish per-reason window/lifetime counts plus the last drop's connection/config/frame identity. Auto bitrate ignores lifecycle, stale, malformed, transport, and reconfiguration drops; classified decoder-throughput pressure must persist for two windows before it can lower bitrate. See [the Android drop-reason policy](../docs/android-drop-reason-policy.md).
+Receiver stats retain the aggregate Android drop count and also publish per-reason window/lifetime counts plus the last drop's connection/config/frame identity. Auto bitrate ignores lifecycle, stale, malformed, transport, and reconfiguration drops; classified decoder-throughput pressure must persist for two windows before it can lower bitrate. See [the Android drop-reason policy](../docs/reference/android-drop-reason-policy.md).
 
 ## Build and test
 
@@ -77,9 +77,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 Release packaging and signing are orchestrated from the repository root:
 
-```bash
-./tools/package-preview-0.1.sh
-```
+Follow the complete [stable packaging procedure](../docs/releases/local-release.md) with an explicit version/build and the previous signed app.
 
 The keystore remains outside Git; its password is read from macOS Keychain. Do not generate a replacement key for an existing public package identity unless you intentionally break upgrade compatibility.
 
@@ -104,4 +102,4 @@ Two simultaneous Android devices, controlled USB/WiFi benchmark, and 30-minute/2
 
 ## Security
 
-This version defaults to pinned mutual TLS and invitation pairing; insecure legacy mode requires an explicit local choice. Private transport keys remain in Android Keystore and are separate from APK signing. ADB authorization trusts the Mac as a debugging host beyond this application. See [the pairing guide](../docs/secure-transport.md) and [SECURITY.md](../SECURITY.md).
+This version defaults to pinned mutual TLS and invitation pairing; insecure legacy mode requires an explicit local choice. Private transport keys remain in Android Keystore and are separate from APK signing. ADB authorization trusts the Mac as a debugging host beyond this application. See [the pairing guide](../docs/guides/secure-transport.md) and [SECURITY.md](../SECURITY.md).

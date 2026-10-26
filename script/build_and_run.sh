@@ -9,7 +9,7 @@ SCHEME="OpenSidecarMac"
 CONFIGURATION="Debug"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DERIVED_DATA="$ROOT_DIR/build-run"
+DERIVED_DATA="$ROOT_DIR/build/dev/mac"
 APP_BUNDLE="$DERIVED_DATA/Build/Products/$CONFIGURATION/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 

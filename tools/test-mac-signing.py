@@ -149,7 +149,7 @@ class SigningTests(unittest.TestCase):
     def test_entry_points_stop_before_build_when_identity_missing(self):
         # Execute the actual shell entry points in an isolated fake checkout.
         # Before the fix, build_and_run called Xcode with CODE_SIGN_IDENTITY=-.
-        for script in ("script/build_and_run.sh", "tools/package-preview-0.1.sh"):
+        for script in ("script/build_and_run.sh", "tools/package-release.sh"):
             with self.subTest(script=script), tempfile.TemporaryDirectory() as d:
                 d = Path(d)
                 (d / "tools").mkdir()
@@ -161,7 +161,7 @@ class SigningTests(unittest.TestCase):
                     stub = d / "bin" / command
                     stub.write_text('#!/bin/sh\necho called >> "$TEST_SIGNING_COMMAND_LOG"\n')
                     stub.chmod(0o755)
-                env = dict(os.environ, PATH=str(d / "bin") + os.pathsep + os.environ["PATH"],
+                env = dict(os.environ, DISPLAYWEAVE_VERSION_NAME="0.3.2", DISPLAYWEAVE_BUILD_NUMBER="21", PATH=str(d / "bin") + os.pathsep + os.environ["PATH"],
                            DISPLAYWEAVE_MAC_SIGNING_CONFIG=str(d / "missing.json"),
                            TEST_SIGNING_COMMAND_LOG=str(d / "commands.log"))
                 result = subprocess.run(["bash", str(d / script), "--verify"], cwd=d, env=env,
@@ -181,7 +181,7 @@ class SigningTests(unittest.TestCase):
             d = Path(d)
             (d / "tools").mkdir()
             (d / "bin").mkdir()
-            for file in ("tools/mac_signing.py", "tools/package-preview-0.1.sh"):
+            for file in ("tools/mac_signing.py", "tools/package-release.sh"):
                 shutil.copyfile(signing.ROOT / file, d / file)
             config = d / "policy.json"
             config.write_text(json.dumps(policy()))
@@ -192,10 +192,10 @@ class SigningTests(unittest.TestCase):
             if existing_output:
                 output.mkdir()
                 (output / "published.txt").write_text("preserve me")
-            env = dict(os.environ, PATH=str(d / "bin") + os.pathsep + os.environ["PATH"],
+            env = dict(os.environ, DISPLAYWEAVE_VERSION_NAME="0.3.2", DISPLAYWEAVE_BUILD_NUMBER="21", PATH=str(d / "bin") + os.pathsep + os.environ["PATH"],
                        DISPLAYWEAVE_MAC_SIGNING_CONFIG=str(config), DISPLAYWEAVE_UPDATE_RELEASE="1",
                        DISPLAYWEAVE_OUTPUT_DIR=str(output), DISPLAYWEAVE_MAC_BASELINE_APP=str(d / "missing.app"))
-            result = subprocess.run(["bash", str(d / "tools/package-preview-0.1.sh")], env=env, cwd=d,
+            result = subprocess.run(["bash", str(d / "tools/package-release.sh")], env=env, cwd=d,
                                     capture_output=True, text=True, timeout=30)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn(expected, result.stderr)

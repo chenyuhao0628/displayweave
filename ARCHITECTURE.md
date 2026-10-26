@@ -43,7 +43,7 @@ Auto prefers USB. A protocol-level grace period and bounded 0.5/1/2/4/8-second r
 
 Legacy Apple receivers use H.264. Android advertises codec and refresh capabilities, accepts `streamConfig`, and prefers HEVC when both sides support it. Codec failure produces a control message and falls back to H.264. Android negotiates 30/60/90/120fps targets and requests a compatible display mode; requested FPS is not proof of rendered FPS.
 
-All peers retain the outer four-byte network-order frame length. Legacy iOS and non-negotiated Android frames use the JSON telemetry prefix plus Annex-B payload. Only Android peers that independently advertise `binaryFrameHeaderV2` receive the fixed `DWV2` identity/timestamp/flags header; the receiver then hands an offset/length view of the original bounded transport array to MediaCodec. See [the binary-header and allocation contract](docs/android-binary-frame-header-v2.md).
+All peers retain the outer four-byte network-order frame length. Legacy iOS and non-negotiated Android frames use the JSON telemetry prefix plus Annex-B payload. Only Android peers that independently advertise `binaryFrameHeaderV2` receive the fixed `DWV2` identity/timestamp/flags header; the receiver then hands an offset/length view of the original bounded transport array to MediaCodec. See [the binary-header and allocation contract](docs/reference/android-binary-frame-header-v2.md).
 
 ## Lifecycle and input
 
@@ -53,7 +53,7 @@ Touch coordinates, drag state, cursor movement, and two-finger scroll are encode
 
 ## Security boundaries
 
-- v0.3.0-preview.1 defaults to certificate-pinned mutual TLS and explicit invitation pairing on Apple and Android. Legacy compatibility is an explicit unencrypted choice for trusted networks. See [pairing](docs/secure-transport.md).
+- v0.3.1 defaults to certificate-pinned mutual TLS and explicit invitation pairing on Apple and Android. Legacy compatibility is an explicit unencrypted choice for trusted networks. See [pairing](docs/guides/secure-transport.md).
 - ADB RSA authorization trusts the Mac as a debugging host beyond DisplayWeave.
 - The macOS v0.3.1 uses a pinned Apple Development identity and is not notarized. The first migration from an ad-hoc release may require reauthorization; later builds are checked for signing continuity.
 - The Android APK uses an offline project keystore stored outside Git.
@@ -70,11 +70,11 @@ and discovery, then uses an independent TCP listener, bounded deframing and
 AVSampleBufferDisplayLayer H.264 / hardware-gated HEVC rendering. One sender is accepted at a time; stale
 connection callbacks cannot mutate replacement sessions. The sender respects logical
 points, display scale and codec size/fps limits. Mac uses legacy Apple framing, not
-Android DWV2. See the [design](docs/mac-to-mac-design.md).
+Android DWV2. See the [design](docs/reference/mac-to-mac-design.md).
 
 ## Source ownership and bounded work (2026-10-16)
 
-The source app supports exclusive Mac send/receive roles over the same Wi-Fi or Ethernet LAN. This is packaged as an experimental feature in v0.3.0-preview.1; physical acceptance remains pending. Mirroring captures an existing display; extending creates a virtual display.
+The source app supports exclusive Mac send/receive roles over the same Wi-Fi or Ethernet LAN. This is packaged as an experimental feature in v0.3.1; physical acceptance remains pending. Mirroring captures an existing display; extending creates a virtual display.
 
 | Area | Ownership |
 | --- | --- |
@@ -87,7 +87,7 @@ The source app supports exclusive Mac send/receive roles over the same Wi-Fi or 
 
 `PhoneReceiver` owns listener/connection state on its serial queue and ignores stale callbacks. Backgrounding detaches the old socket before a best-effort goodbye. Android control writes have one worker, 128 queued tasks and a 64 KiB payload limit; readers have two workers and two queued tasks. Saturation disconnects the affected session so input cannot accumulate without bound. Sender geometry and input are validated before arithmetic and CoreGraphics conversion.
 
-See the [UI contract](docs/ui-guidelines.md), [development commands](docs/development.md), and [source audit with verification limits](docs/source-upgrade-audit-2026-10-16.md).
+See the [UI contract](docs/development/ui-guidelines.md), [development commands](docs/development/workflow.md), and [source audit with verification limits](docs/archive/audits/source-upgrade-audit-2026-10-16.md).
 
 ## HEVC, direct links and Pencil (source iteration)
 
@@ -95,12 +95,12 @@ Mac HEVC requires both a hardware encoder and an explicitly advertised hardware 
 
 `DirectCable` classifies link-local wired **candidates**; it does not authenticate peers or prove physical topology. A selected candidate pins both Bonjour resolution and TCP to its interface. `DirectCableAutoConnectPolicy` implements default-off opt-in, one attempt per appearance and manual opt-out. Existing sessions are deduplicated by installation ID, including pending hello.
 
-`pencil-v1` uses explicit hello/inputConfig negotiation. `PencilInputForwarder` fixes native/legacy mode for a whole stroke; `PencilSample` validates all numeric fields. `InputInjector` posts tablet point/proximity with deterministic cancellation. iOS `InputSendBudget` admits at most 64 queued/in-flight controls, each framed batch at most 64 KiB, before dispatch; connection epochs reject stale input and completions. An overflow closes that peer so sender cleanup releases held input. See the [protocol and acceptance plan](docs/hevc-wired-pencil-plan.md).
+`pencil-v1` uses explicit hello/inputConfig negotiation. `PencilInputForwarder` fixes native/legacy mode for a whole stroke; `PencilSample` validates all numeric fields. `InputInjector` posts tablet point/proximity with deterministic cancellation. iOS `InputSendBudget` admits at most 64 queued/in-flight controls, each framed batch at most 64 KiB, before dispatch; connection epochs reject stale input and completions. An overflow closes that peer so sender cleanup releases held input. See the [protocol and acceptance plan](docs/reference/hevc-wired-pencil-plan.md).
 
 ## Apple video negotiation
 
-Both Apple targets share `Shared/ReceiverVideoBitstream`. iOS advertises `appleVideoV1` codec/refresh envelopes; Mac recognizes its existing device identity. The sender uses bounded Apple operating-point negotiation up to 120fps and HEVC with H.264 fallback, while Android keeps its separate V2 negotiation. See [current implementation and evidence](docs/apple-video.md).
+Both Apple targets share `Shared/ReceiverVideoBitstream`. iOS advertises `appleVideoV1` codec/refresh envelopes; Mac recognizes its existing device identity. The sender uses bounded Apple operating-point negotiation up to 120fps and HEVC with H.264 fallback, while Android keeps its separate V2 negotiation. See [current implementation and evidence](docs/guides/apple-video.md).
 
 ## Completed source extensions
 
-The [feature ledger](docs/feature-completion.md) records desktop resolution, default authenticated transport, consented Mac keyboard/mouse input, same-ID Mac handover, Pencil v2 and named shortcuts, process CPU sampling, Android pooled leases and shared protocol vectors. The iOS presentation owns callbacks by view identity: replacement retires old input before attachment, and late old-view teardown cannot clear new callbacks or remove a borrowed video layer. Decoder/presentation callbacks carry connection generations; cross-thread frame callbacks use locks. Actual production signing and final artwork remain external requirements.
+The [feature ledger](docs/archive/plans/feature-completion.md) records desktop resolution, default authenticated transport, consented Mac keyboard/mouse input, same-ID Mac handover, Pencil v2 and named shortcuts, process CPU sampling, Android pooled leases and shared protocol vectors. The iOS presentation owns callbacks by view identity: replacement retires old input before attachment, and late old-view teardown cannot clear new callbacks or remove a borrowed video layer. Decoder/presentation callbacks carry connection generations; cross-thread frame callbacks use locks. Actual production signing and final artwork remain external requirements.

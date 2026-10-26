@@ -9,7 +9,7 @@ enum UpdateReleasePolicySelfTest {
         require(gradle.contains("environmentVariable(\"DISPLAYWEAVE_VERSION_NAME\")"),
                 "Android version name is injectable")
 
-        let package = try source("tools/package-preview-0.1.sh")
+        let package = try source("tools/package-release.sh")
         for marker in [
             "DISPLAYWEAVE_VERSION_NAME", "DISPLAYWEAVE_BUILD_NUMBER",
             "DisplayWeave-macOS.zip", "DisplayWeave-Android.apk"

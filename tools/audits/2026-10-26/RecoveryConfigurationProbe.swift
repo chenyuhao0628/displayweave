@@ -1,4 +1,4 @@
-// Snapshot reproducer: see docs/code-and-experience-audit-2026-10-26.md.
+// Snapshot reproducer: see docs/archive/audits/code-and-experience-audit-2026-10-26.md.
 import Foundation
 final class VirtualDisplay { let displayID: UInt32 = 1; let actualRefreshRate = 60 }
 enum DisplayTopology { static func isOnline(_ id: UInt32) -> Bool { true } }

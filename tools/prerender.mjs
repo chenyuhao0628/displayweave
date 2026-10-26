@@ -1,9 +1,9 @@
 // Build both crawlable routes from the same React tree used for hydration.
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
-import { render } from '../dist-ssr/entry-server.js'
+import { render } from '../build/site/ssr/entry-server.js'
 
-const source = await fs.readFile('site-dist/index.html', 'utf8')
+const source = await fs.readFile('build/site/client/index.html', 'utf8')
 assert.ok(source.includes('<div id="root"></div>'), 'prerender: missing root')
 const base = 'https://chenyuhao0628.github.io/displayweave/'
 const chineseDescription = 'DisplayWeave 将 iPhone、iPad 和 Android 用作 Mac 的本地第二屏，支持 Apple USB/局域网、Android ADB USB/局域网及经过校验的应用更新。'
@@ -40,6 +40,6 @@ for (const locale of ['en', 'zh']) {
         return before + JSON.stringify(schema) + after
       })
   }
-  await fs.writeFile(`site-dist/${locale === 'zh' ? 'zh' : 'index'}.html`, html)
+  await fs.writeFile(`build/site/client/${locale === 'zh' ? 'zh' : 'index'}.html`, html)
 }
 console.log('Prerendered English and Chinese routes with hydration boundaries')

@@ -10,11 +10,11 @@ DisplayWeave 是独立维护、使用 GPL-3.0、坚持本地优先的第二屏�
 
 同一应用可选择发送或接收，通过 Wi-Fi/以太网单向扩展或镜像。双方需 macOS 14+，
 应用协商硬件 HEVC，并可回退 H.264，在屏幕/编码能力内最高协商 120fps；实体双 Mac 性能矩阵待验证。此功能已包含在下方 `v0.3.1`
-发布包内。参见[使用指南](docs/mac-to-mac.zh-CN.md)及[设计与上游评估](docs/mac-to-mac-design.zh-CN.md)。
+发布包内。参见[使用指南](docs/guides/mac-to-mac.zh-CN.md)及[设计与上游评估](docs/reference/mac-to-mac-design.zh-CN.md)。
 
-本版本还包含四端 UI 规范化、上游恢复改进和网络/生命周期加固；该批基线见[源码升级报告](docs/source-upgrade-audit-2026-10-16.zh-CN.md)。本版本包含自 p7 引入的 [Mac HEVC、绑定接口的直连发现与经协商的 Apple Pencil 输入](docs/hevc-wired-pencil.zh-CN.md)，Swift 套件增至 61 组；实机验收仍待完成。
+本版本还包含四端 UI 规范化、上游恢复改进和网络/生命周期加固；该批基线见[源码升级报告](docs/archive/audits/source-upgrade-audit-2026-10-16.zh-CN.md)。本版本包含自 p7 引入的 [Mac HEVC、绑定接口的直连发现与经协商的 Apple Pencil 输入](docs/guides/hevc-wired-pencil.zh-CN.md)，Swift 套件增至 61 组；实机验收仍待完成。
 
-本版本还包含[按设备分辨率](docs/desktop-resolution.zh-CN.md)、[安全配对](docs/secure-transport.zh-CN.md)、[经许可的 Mac 键鼠回传](docs/mac-receiver-input.zh-CN.md)、[有线/Wi-Fi 切换](docs/mac-lan-handover.zh-CN.md)与[高级 Pencil](docs/pencil-advanced.zh-CN.md)。DisplayWeave 连接使用接收邀请；旧 OpenDisplay 可从主界面选择兼容连接，详见[互连指南](docs/opendisplay-compatibility.zh-CN.md)。
+本版本还包含[按设备分辨率](docs/guides/desktop-resolution.zh-CN.md)、[安全配对](docs/guides/secure-transport.zh-CN.md)、[经许可的 Mac 键鼠回传](docs/guides/mac-receiver-input.zh-CN.md)、[有线/Wi-Fi 切换](docs/guides/mac-lan-handover.zh-CN.md)与[高级 Pencil](docs/guides/pencil-advanced.zh-CN.md)。DisplayWeave 连接使用接收邀请；旧 OpenDisplay 可从主界面选择兼容连接，详见[互连指南](docs/guides/opendisplay-compatibility.zh-CN.md)。
 
 ## 当前能力
 
@@ -35,7 +35,7 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-26：正式版构建 20 修复采集／编码恢复、拥塞后画质恢复和 Android 视频／触控比例，新增更清晰的分辨率／帧率设置，沿用固定 Apple Development 签名。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](docs/release-notes-v0.3.1.zh-CN.md)。
+2026-10-26：正式版构建 20 修复采集／编码恢复、拥塞后画质恢复和 Android 视频／触控比例，新增更清晰的分辨率／帧率设置，沿用固定 Apple Development 签名。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](docs/releases/v0.3.1.zh-CN.md)。
 
 | 平台 | 产物 | 分发边界 |
 | --- | --- | --- |
@@ -48,7 +48,7 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 | 源码 | `DisplayWeave-v0.3.1-source.tar.gz` | 对应发行 tag 的完整跟踪源码，包含 GPL-3.0 与构建脚本 |
 | 验证 | `SHA256SUMS.txt` | 全部 Release 文件的 SHA-256 |
 
-这是正式版；Mac 沿用 Apple Development 签名且未公证，iOS 仍需自行签名。使用前请验证校验和；Android 用户还应核对[发布检查清单](docs/release-checklist.zh-CN.md)中的证书指纹。
+这是正式版；Mac 沿用 Apple Development 签名且未公证，iOS 仍需自行签名。使用前请验证校验和；Android 用户还应核对[发布检查清单](docs/releases/release-checklist.zh-CN.md)中的证书指纹。
 
 新的 Mac 打包流程会同时生成 `DisplayWeave-macOS.dmg` 和 ZIP。DMG 是推荐的
 首次安装包：把 DisplayWeave 拖入“应用程序”，并按照背景中
@@ -56,7 +56,7 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 容器里是同一个 `DisplayWeave.app`，放入 `/Applications` 后都能收到后续 Sparkle
 更新。
 
-Mac 保留 `app.displayweave.mac` 和既有偏好迁移。从旧临时签名版本首次升级到固定签名时，可能需要再授权一次；后续构建保持相同签名身份。本机 17 → 17.1 覆盖安装已验证屏幕录制、辅助功能权限保留，详见[权限延续](docs/mac-permissions.zh-CN.md)的证据与边界。
+Mac 保留 `app.displayweave.mac` 和既有偏好迁移。从旧临时签名版本首次升级到固定签名时，可能需要再授权一次；后续构建保持相同签名身份。本机 17 → 17.1 覆盖安装已验证屏幕录制、辅助功能权限保留，详见[权限延续](docs/guides/mac-permissions.zh-CN.md)的证据与边界。
 
 ### 一次性迁移与后续更新
 
@@ -71,7 +71,7 @@ Mac 保留 `app.displayweave.mac` 和既有偏好迁移。从旧临时签名版�
 - **iOS/iPadOS：** 未签名自签输入包与现有 OpenDisplay 接收协议不受
   Mac/Android 更新渠道影响。
 
-迁移与恢复说明见[自动更新](docs/automatic-updates.zh-CN.md)。
+迁移与恢复说明见[自动更新](docs/releases/automatic-updates.zh-CN.md)。
 
 ## Android USB 快速开始
 
@@ -85,7 +85,7 @@ ADB 授权会向 Mac 提供广泛调试权限，而不只限于 DisplayWeave。�
 
 ## 从源码构建
 
-Mac 开发使用明确选定的已有 Apple 身份。把占位符换成证书 SHA-1；只编译、不签名的检查命令见[开发指南](docs/development.zh-CN.md)：
+Mac 开发使用明确选定的已有 Apple 身份。把占位符换成证书 SHA-1；只编译、不签名的检查命令见[开发指南](docs/development/workflow.zh-CN.md)：
 
 ```bash
 security find-identity -v -p codesigning
@@ -100,34 +100,33 @@ cd AndroidReceiver
 ./gradlew clean test assembleDebug
 ```
 
-生成离线产物（保留历史脚本名；发行时按[本地发行](docs/local-release.zh-CN.md)显式设置版本与构建号）：
+使用 `tools/package-release.sh` 生成离线产物：
 
-```bash
-python3 -m pip install -r tools/dmg-requirements.txt
-./tools/package-preview-0.1.sh
-```
+请按完整的[正式版打包流程](docs/releases/local-release.zh-CN.md)设置明确版本／构建号并提供上一版签名应用。
 
-打包命令需要已配置的 Mac 身份与 Git 外的 Android keystore。正式发布新版本时，按[本地发行](docs/local-release.zh-CN.md)明确设置版本／构建号并比较升级基线。
+打包命令需要已配置的 Mac 身份与 Git 外的 Android keystore。正式发布新版本时，按[本地发行](docs/releases/local-release.zh-CN.md)明确设置版本／构建号并比较升级基线。
 
 ## 文档
 
+- [目录结构与清理](docs/development/repository-layout.zh-CN.md)
+- [构建／安装 iOS 接收端](docs/guides/build-ios.zh-CN.md)
 - [文档索引](docs/README.zh-CN.md)
 - [系统架构](ARCHITECTURE.zh-CN.md)
 - [路线图](ROADMAP.zh-CN.md)
 - [Android 接收端](AndroidReceiver/README.zh-CN.md)
-- [发布检查清单](docs/release-checklist.zh-CN.md)
-- [稳定性证据](docs/stability-test-report.zh-CN.md)
-- [USB/WiFi Benchmark 规程](docs/usb-vs-wifi-benchmark.zh-CN.md)
-- [码率模式](docs/bitrate-modes.zh-CN.md)与[自适应码率](docs/adaptive-bitrate.zh-CN.md)
-- [队列分析](docs/low-latency-queue-analysis.zh-CN.md)与[关键帧策略](docs/keyframe-strategy.zh-CN.md)
+- [发布检查清单](docs/releases/release-checklist.zh-CN.md)
+- [稳定性证据](docs/archive/audits/stability-test-report.zh-CN.md)
+- [USB/WiFi Benchmark 规程](docs/verification/usb-vs-wifi-benchmark.zh-CN.md)
+- [码率模式](docs/reference/bitrate-modes.zh-CN.md)与[自适应码率](docs/reference/adaptive-bitrate.zh-CN.md)
+- [队列分析](docs/reference/low-latency-queue-analysis.zh-CN.md)与[关键帧策略](docs/reference/keyframe-strategy.zh-CN.md)
 - [安全说明](SECURITY.zh-CN.md)
 - [贡献说明](CONTRIBUTING.zh-CN.md)
 - [第三方声明](THIRD_PARTY_NOTICES.md)
 
 ## 当前限制
 
-- 已包含 [Apple HEVC / 高刷协商](docs/apple-video.zh-CN.md)，实机 120fps 性能尚未验证。
-- 新连接需要[认证 TLS 配对](docs/secure-transport.zh-CN.md)，USB 隧道也相同；旧版客户端需要在可信网络中显式启用未加密旧版兼容。
+- 已包含 [Apple HEVC / 高刷协商](docs/guides/apple-video.zh-CN.md)，实机 120fps 性能尚未验证。
+- 新连接需要[认证 TLS 配对](docs/guides/secure-transport.zh-CN.md)，USB 隧道也相同；旧版客户端需要在可信网络中显式启用未加密旧版兼容。
 - 双 Android 并发、同条件 USB/WiFi 受控 Benchmark，以及 30 分钟/2 小时耐久测试尚未完成。
 - macOS 使用私有 `CGVirtualDisplay` 行为，未来 macOS 版本可能发生变化。
 - 公开 macOS 与 iOS 包未使用 Developer ID/App Store 签名。

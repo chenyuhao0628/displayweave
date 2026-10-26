@@ -26,6 +26,9 @@ export default function SiteFooter({
           >
             {copy.docs}
           </a>
+          <a href={locale === "zh" ? "privacy.zh-CN.html" : "privacy.html"}>
+            {locale === "zh" ? "隐私" : "Privacy"}
+          </a>
           <a href="https://github.com/chenyuhao0628/displayweave/issues">
             {copy.issues}
           </a>

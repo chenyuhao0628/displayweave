@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>隐私 — DisplayWeave</title>
+  <meta name="description" content="DisplayWeave 隐私说明：直连串流、加密配对、本地记录与 GitHub 更新请求。" />
+  <link rel="icon" type="image/png" href="logo.png" />
+  <link rel="canonical" href="https://chenyuhao0628.github.io/displayweave/privacy.zh-CN.html" />
+  <link rel="alternate" hreflang="en" href="https://chenyuhao0628.github.io/displayweave/privacy.html" />
+  <link rel="alternate" hreflang="zh-CN" href="https://chenyuhao0628.github.io/displayweave/privacy.zh-CN.html" />
+  <meta name="theme-color" content="#ffffff" />
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #111111;
+      --muted: #666666;
+      --faint: #999999;
+      --line: #e5e5e5;
+      --line-strong: #111111;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg); color: var(--fg); line-height: 1.6;
+      font-size: 16px; -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 0 28px; }
+    a { color: var(--fg); text-decoration: underline; text-underline-offset: 2px;
+        text-decoration-thickness: 1px; text-decoration-color: var(--line-strong); }
+    a:hover { text-decoration-thickness: 2px; }
+
+    nav { border-bottom: 1px solid var(--line); }
+    nav .wrap { display: flex; align-items: center; gap: 10px; height: 60px; }
+    nav .brand { display: flex; align-items: center; gap: 10px; font-weight: 600;
+      letter-spacing: -0.01em; text-decoration: none; }
+    nav .brand img { width: 26px; height: 26px; }
+
+    header { padding: 72px 0 36px; border-bottom: 1px solid var(--line); }
+    .eyebrow { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--faint); margin-bottom: 18px; }
+    h1 { font-size: clamp(2rem, 5vw, 2.8rem); letter-spacing: -0.03em; font-weight: 600;
+      line-height: 1.05; }
+    .updated { color: var(--muted); font-size: 0.9rem; margin-top: 14px; }
+    main { padding: 16px 0 24px; }
+    h2 { font-size: 1.3rem; margin: 44px 0 14px; letter-spacing: -0.015em; font-weight: 600;
+      padding-top: 24px; border-top: 1px solid var(--line); }
+    p, li { color: var(--muted); margin-bottom: 12px; }
+    main > .wrap > p strong, li strong { color: var(--fg); }
+    ul { padding-left: 22px; margin-bottom: 12px; }
+    li { margin-bottom: 6px; }
+    .tldr { border: 1px solid var(--line-strong); border-radius: 3px; padding: 24px;
+      margin: 28px 0 8px; }
+    .tldr p { margin-bottom: 0; color: var(--fg); }
+    .note { border: 1px solid var(--line); border-left: 3px solid var(--line-strong);
+      border-radius: 3px; padding: 16px 20px; color: var(--muted); font-size: 0.95rem; }
+    .note p { margin-bottom: 0; }
+    code { font-family: var(--mono); font-size: 0.88em;
+      background: #f2f2f2; padding: 1px 5px; border-radius: 3px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.93rem; margin-bottom: 12px; }
+    th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--faint); font-weight: 600; }
+    footer { padding: 44px 0 56px; color: var(--muted); font-size: 0.9rem;
+      border-top: 1px solid var(--line); margin-top: 52px; }
+    footer .links { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 12px; }
+    footer a { color: var(--muted); text-decoration-color: var(--line); }
+    footer .fine { color: var(--faint); font-size: 0.84rem; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="zh.html">
+      <img src="icon-256.png" alt="" /> DisplayWeave
+    </a>
+  </div>
+</nav>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">隐私说明</p>
+    <h1>隐私与本地数据</h1>
+    <p class="updated">2026-10-26 更新 · 适用于 DisplayWeave v0.3.1 的 Mac、iOS/iPadOS、Android 应用与本网站</p>
+  </div>
+  <div class="wrap"><p><a href="privacy.html" lang="en">English</a> | <a href="privacy.zh-CN.html" lang="zh-CN">简体中文</a></p></div>
+</header>
+
+<main>
+  <div class="wrap">
+<div class="tldr"><p>DisplayWeave 在你的设备之间直接传输屏幕视频和输入。应用不包含分析统计或自动崩溃上传服务。下文说明本地发现、性能诊断、配对记录和软件更新请求。</p></div>
+<h2>屏幕、输入与连接数据</h2>
+<p>Mac 采集选定的物理或虚拟显示器，编码后发送给已连接的接收端。受支持且已启用的触控、键盘、指针与性能消息通过会话回传。DisplayWeave 不提供云端串流中继，也不会自动上传屏幕视频。</p>
+<ul><li>Apple USB 使用 macOS usbmuxd；Android USB 使用已授权的 ADB 转发，均为本地线缆／隧道路径。</li><li>局域网串流通过 Wi-Fi 或以太网在设备之间直连。Bonjour／NSD 发现会广播本地服务元数据，包括所使用的名称、能力和安装标识；同网络中的附近设备可能看到发现信息。</li><li>每个接收端拥有独立会话。视频缓冲是临时数据；诊断日志和基准记录属于另外保存的本地数据。</li></ul>
+<h2>加密与配对</h2>
+<p>v0.3.1 的 Apple 与 Android 默认使用固定证书指纹的双向 TLS 和邀请配对，USB 隧道也相同。信任记录保存在本地供重连使用。邀请短时有效、只能使用一次并仅存于内存，请勿公开分享。参见<a href="https://github.com/chenyuhao0628/displayweave/blob/main/docs/guides/secure-transport.zh-CN.md">配对与撤销</a>。</p>
+<div class="note"><p>显式启用的旧版 OpenDisplay 兼容连接不加密，仅在可信设备与网络中使用。ADB 授权还会单独授予 Mac 对 Android 设备的调试权限，不再需要时可在 Android 开发者选项中撤销。</p></div>
+<h2>本地存储</h2>
+<table><tr><th>数据</th><th>用途与位置</th></tr>
+<tr><td>偏好与安装标识</td><td>本地保存画质、连接选择、按设备设置，并识别不同传输下的同一安装。安装与设备元数据也可能通过服务发现和会话交换。</td></tr>
+<tr><td>配对身份与可信设备</td><td>私钥使用 Apple Keychain 或 Android Keystore。平台安全存储在本地保存设备名称、标识、证书指纹及信任／撤销状态。可在安全设置中撤销设备或重置本机身份。</td></tr>
+<tr><td>诊断与基准记录</td><td>本地应用／系统日志和选定基准记录描述连接、时序、队列与性能。DisplayWeave 不会自动上传。分享日志或截图前请检查并脱敏。</td></tr>
+<tr><td>更新文件</td><td>Mac 与 Android 更新组件可能在本地缓存下载包，以供校验和安装。</td></tr></table>
+<h2>更新检查与本网站</h2>
+<p>Mac 和 Android 更新检查会请求项目 GitHub Pages 更新源。安装包通过 HTTPS 从 GitHub Releases 及其下载基础设施获取。托管方会因此收到常规连接／请求元数据，不会收到屏幕串流。iOS 没有 DisplayWeave 自动更新通道。详见<a href="https://github.com/chenyuhao0628/displayweave/blob/main/docs/releases/automatic-updates.zh-CN.md">更新行为与完整性检查</a>。</p>
+<p>本网站由 GitHub Pages 托管，网站源码不含分析／追踪脚本或基于 cookie 的跟踪。托管方可能处理常规请求数据，其做法见 <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub 隐私声明</a>。打开外部链接时使用目标网站的服务。</p>
+<h2>权限</h2>
+<ul><li>屏幕录制用于采集所选 Mac 显示器。</li><li>辅助功能用于注入受支持且已启用的远程输入。</li><li>系统需要时，本地网络权限用于局域网发现与连接。</li><li>Android USB 调试和 RSA 授权用于 ADB 转发；APK 更新还需要 Android 安装权限和系统确认。</li></ul>
+<h2>源码与联系</h2>
+<p>DisplayWeave 使用 <a href="https://github.com/chenyuhao0628/displayweave/blob/main/LICENSE">GPL-3.0</a>。可查看<a href="https://github.com/chenyuhao0628/displayweave">源码</a>、<a href="https://github.com/chenyuhao0628/displayweave/blob/main/SECURITY.zh-CN.md">安全规则</a>和<a href="https://github.com/chenyuhao0628/displayweave/commits/main/public/privacy.zh-CN.html">页面历史</a>。可复现问题通过项目 issue 反馈，漏洞请遵循安全规则。</p>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a href="zh.html">首页</a>
+      <a href="https://github.com/chenyuhao0628/displayweave">GitHub</a>
+      <a href="https://github.com/chenyuhao0628/displayweave/issues">问题反馈</a>
+      <a href="https://github.com/chenyuhao0628/displayweave/blob/main/LICENSE">GPL-3.0 许可</a>
+    </div>
+    <p class="fine">DisplayWeave — 一台 Mac，多种屏幕。开放、本地、跨设备。</p>
+  </div>
+</footer>
+
+</body>
+</html>

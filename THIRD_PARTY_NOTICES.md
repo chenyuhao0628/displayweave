@@ -25,12 +25,12 @@ and the video view in `MacReceiver/MacReceiver.swift` inform
 framing, exclusive sessions, lifecycle isolation, and integration with the
 DisplayWeave role UI. These adaptations remain GPL-3.0. The complete upstream
 history has not been merged; the assessment is recorded in
-`docs/mac-to-mac-design.md`.
+`docs/reference/mac-to-mac-design.md`.
 
 The 2026-10-16 source upgrade also adapts failure/retry handling from
 `87b000b` / `c27e538`, deferred touch-down semantics from `04590ed`, and bounded
 logging from the design in `19481a6`. Implementations and regression coverage
-are local adaptations under GPL-3.0; see `docs/upstream-integration-2026-10-16.md`.
+are local adaptations under GPL-3.0; see `docs/archive/audits/upstream-integration-2026-10-16.md`.
 
 The follow-up HEVC/direct-link/Pencil source iteration selectively adapts
 `91ca272` (HEVC parameter sets and hardware negotiation), `42ad6fb` and the
@@ -39,7 +39,7 @@ and `da9f369` (Pencil tablet pressure/tilt/proximity fields). `1c857a4` is relea
 metadata, not the Pencil implementation. Local additions include explicit input
 capability negotiation, conservative fallback envelopes, strict address parsing,
 interface pinning, opt-in auto-connect, bounded controls and lifecycle tests.
-See `docs/hevc-wired-pencil-plan.md`. All adaptations retain GPL-3.0.
+See `docs/reference/hevc-wired-pencil-plan.md`. All adaptations retain GPL-3.0.
 
 ## SideScreen
 

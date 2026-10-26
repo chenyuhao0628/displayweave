@@ -4,7 +4,7 @@
 
 Focused bug reports, hardware evidence, documentation corrections, and small pull requests are welcome.
 
-See [AGENTS.md](AGENTS.md) for repository agent instructions and [the development workflow](docs/development.md) for current commands, official Codex references, and completion gates.
+See [AGENTS.md](AGENTS.md) for repository agent instructions and [the development workflow](docs/development/workflow.md) for current commands, official Codex references, and completion gates.
 
 ## Before changing code
 
@@ -24,7 +24,7 @@ pnpm run check:release
 cd AndroidReceiver && ./gradlew clean test assembleDebug
 ```
 
-Run the relevant standalone Swift and Android protocol/policy self-tests listed in [docs/release-checklist.md](docs/release-checklist.md). Hardware claims need reproducible logs with device model, OS, transport, resolution, codec, target frame rate, duration, and observed rendered FPS.
+Run the relevant standalone Swift and Android protocol/policy self-tests listed in [docs/releases/release-checklist.md](docs/releases/release-checklist.md). Hardware claims need reproducible logs with device model, OS, transport, resolution, codec, target frame rate, duration, and observed rendered FPS.
 
 ## Pull requests
 

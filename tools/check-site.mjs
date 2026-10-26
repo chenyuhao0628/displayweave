@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-import { localeForPathname } from '../dist-ssr/entry-server.js'
+import { access, readFile } from 'node:fs/promises'
+import path from 'node:path'
+import { localeForPathname } from '../build/site/ssr/entry-server.js'
 
 // Pages strips .html; initial client rendering must retain the SSR language.
 for (const pathname of ['/zh.html', '/zh', '/displayweave/zh.html', '/displayweave/zh', '/displayweave/zh/']) {
@@ -11,7 +12,7 @@ for (const pathname of ['/', '/displayweave/', '/displayweave/index.html', '/dis
 }
 
 for (const [file, locale] of [['index.html', 'en'], ['zh.html', 'zh-CN']]) {
-  const html = await readFile(`site-dist/${file}`, 'utf8')
+  const html = await readFile(`build/site/client/${file}`, 'utf8')
   assert.ok(html.includes(`<html lang="${locale}">`), `${file}: document language`)
   const title = html.match(/<title>(.*?)<\/title>/)?.[1] ?? ''
   assert.ok(title.includes('DisplayWeave'), `${file}: branded title`)
@@ -29,5 +30,16 @@ for (const [file, locale] of [['index.html', 'en'], ['zh.html', 'zh-CN']]) {
   }
   assert.ok(html.includes(locale === 'en' ? 'Experimental in v0.3.1' : 'v0.3.1 实验功能'),
     `${file}: published experimental capability is labeled`)
+}
+// Validate the actual built files after relocation, including static bilingual pages.
+const siteRoot = path.resolve('build/site/client')
+for (const file of ['index.html', 'zh.html', 'privacy.html', 'privacy.zh-CN.html']) {
+  const html = await readFile(path.join(siteRoot, file), 'utf8')
+  for (const [, url] of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
+    if (/^(?:[a-z][\w+.-]*:|\/\/|#)/i.test(url)) continue
+    const target = path.resolve(siteRoot, url.split(/[?#]/)[0] || file)
+    assert.ok(target === siteRoot || target.startsWith(siteRoot + path.sep), `${file}: local link stays in site`)
+    await access(target)
+  }
 }
 console.log('Bilingual site metadata, navigation and release-scope checks PASS')

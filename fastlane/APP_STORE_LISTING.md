@@ -3,11 +3,12 @@
 > **Current status:** This is reference metadata for a future DisplayWeave iOS
 > distribution update. The repository is currently source-first and does not
 > claim that a signed DisplayWeave App Store/TestFlight package is available.
-> A Simulator-only development preview may be published separately, but it is
-> not an App Store/TestFlight build and cannot be installed on physical devices.
+> v0.3.1 publishes an unsigned arm64 device IPA for re-signing through GitHub
+> Releases. It is not directly installable. This file is unpublished store metadata;
+> it is not a record of a live DisplayWeave listing.
 
-Canonical copy for the iOS app's App Store Connect / TestFlight text fields, kept in
-version control so we know what's live and can edit deliberately.
+Draft copy for potential App Store Connect text fields. Verify every claim and
+complete the distribution prerequisites before any future submission.
 
 > **Privacy:** the **Feedback email** and any contact addresses are intentionally
 > **not** stored here. Set/maintain those directly in App Store Connect.
@@ -52,14 +53,14 @@ Turn the iPhone or iPad you already own into a real second display for your Mac 
 ```
 DisplayWeave turns your iPhone or iPad into a second display for your Mac.
 
-It's the open-source way to put your spare Apple device to work as a real extended monitor — drag windows onto it, keep chat, notes, or logs in view, and gain screen space anywhere you go. It's not a mirror: it's a genuine additional display your Mac treats like any other monitor.
+It's the open-source way to put your spare Apple device to work as a real extended monitor — drag windows onto it, keep chat, notes, or logs in view, and gain screen space anywhere you go. Choose an extended display or mirror an existing Mac display.
 
 • Real extended display — arrange it in your Mac's Display settings and drag windows across
-• Connect over USB for the lowest latency, or over Wi-Fi with zero setup
+• Connect over USB or your local network using invitation pairing
 • Retina-sharp, pixel-for-pixel rendering
 • Touch and scroll — tap, drag, and two-finger scroll to control your Mac
 • Works in portrait or landscape
-• Private by design — a direct connection between your own devices, with no accounts, no servers, and no tracking
+• Direct screen streaming between your devices, with encrypted pairing by default; see the privacy page for local data and update requests
 
 IMPORTANT: DisplayWeave requires the companion DisplayWeave app for Mac, running on your computer on the same cable or Wi-Fi network. Get it at https://github.com/chenyuhao0628/displayweave — without it, this app has nothing to connect to.
 
@@ -88,7 +89,7 @@ https://chenyuhao0628.github.io/displayweave/privacy.html
 
 ---
 
-## TestFlight
+## Historical TestFlight draft (not a publication channel)
 
 **Beta App Description**
 ```

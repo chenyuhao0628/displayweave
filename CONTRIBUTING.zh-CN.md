@@ -4,7 +4,7 @@
 
 欢迎范围清晰的问题报告、硬件证据、文档修正和小型 Pull Request。
 
-仓库代理规则见 [AGENTS.md](AGENTS.md)，当前命令、Codex 官方依据和完成标准见[开发工作流](docs/development.zh-CN.md)。
+仓库代理规则见 [AGENTS.md](AGENTS.md)，当前命令、Codex 官方依据和完成标准见[开发工作流](docs/development/workflow.zh-CN.md)。
 
 ## 修改代码之前
 
@@ -24,7 +24,7 @@ pnpm run check:release
 cd AndroidReceiver && ./gradlew clean test assembleDebug
 ```
 
-请运行 [docs/release-checklist.zh-CN.md](docs/release-checklist.zh-CN.md) 中相关 Swift 与 Android 协议/策略自检。硬件结论需要可复现日志，包含设备型号、系统、传输、分辨率、codec、目标帧率、时长与实际渲染 FPS。
+请运行 [docs/releases/release-checklist.zh-CN.md](docs/releases/release-checklist.zh-CN.md) 中相关 Swift 与 Android 协议/策略自检。硬件结论需要可复现日志，包含设备型号、系统、传输、分辨率、codec、目标帧率、时长与实际渲染 FPS。
 
 ## Pull Request
 

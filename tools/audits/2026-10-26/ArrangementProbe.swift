@@ -1,4 +1,4 @@
-// Snapshot reproducer: see docs/code-and-experience-audit-2026-10-26.md.
+// Snapshot reproducer: see docs/archive/audits/code-and-experience-audit-2026-10-26.md.
 import Foundation
 import CoreGraphics
 @main struct ArrangementProbe {

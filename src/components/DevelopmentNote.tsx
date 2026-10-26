@@ -25,7 +25,7 @@ export default function DevelopmentNote({ locale }: { locale: Locale }) {
         </div>
         <a
           className="text-link"
-          href={`https://github.com/chenyuhao0628/displayweave/blob/main/docs/mac-to-mac${chinese ? ".zh-CN" : ""}.md`}
+          href={`https://github.com/chenyuhao0628/displayweave/blob/main/docs/guides/mac-to-mac${chinese ? ".zh-CN" : ""}.md`}
         >
           {chinese ? "查看连接与验收指南" : "Connection and acceptance guide"}
           <span aria-hidden="true">↗</span>
