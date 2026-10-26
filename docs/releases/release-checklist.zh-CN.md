@@ -2,16 +2,17 @@
 
 # 正式版发布检查清单
 
-发行包：**v0.3.2 / 构建 21**，2026-10-26。[发布说明](v0.3.2.zh-CN.md)、[准确文件与哈希](current.zh-CN.md)、[本地命令](local-release.zh-CN.md)。
+当前公开版本：**v0.3.2 / 构建 21**，于 2026-10-26 03:45:55 UTC 发布为正式版／Latest。[发布说明](v0.3.2.zh-CN.md)、[准确文件与哈希](current.zh-CN.md)、[本地命令](local-release.zh-CN.md)。
 
 ## 发行记录
 
 - [x] 经维护者授权自审原生源码 `b01e132`，源码 PR #22 合并为 `1bfa1ca`。未宣称独立审批；使用现有所有者 bypass，未修改仓库规则。
 - [x] 源码 CI `40263716075` 三项任务通过；本地运行结果与实机缺口见[iMac 证据](../verification/imac-resolution-performance.zh-CN.md)。
 - [x] 构建 21 的 Mac universal 签名、加固运行时、与准确下载构建 20 的身份连续性、独立 Sparkle Ed25519、原 Android 证书和无签名 arm64 iOS 均已验证。
-- [ ] 发行 PR CI、不可变 tag／源码归档与 main 祖先关系：验证后记录。
-- [ ] 八项 GitHub 文件独立下载／哈希、正式版／Latest 及匿名访问：发布后记录。
-- [ ] Pages 部署与两个在线更新源和发行文件逐字节一致：部署后记录。
+- [x] 发行 CI `40265167436` 在 tag `v0.3.2`／提交 `1a6221c182d141c21b14f2bdeabca87809d2283f` 上通过，源码归档与该提交跟踪源码完全一致。
+- [x] 发布前独立下载核验八项 GitHub 文件，发布后再次匿名下载全部文件且哈希一致，确认正式版／Latest。公开 API 元数据首次遇到共享 IP 限流；认证 API 元数据和全部匿名附件下载通过。
+
+[发行 PR #23](https://github.com/chenyuhao0628/displayweave/pull/23)记录最终合并／main 祖先关系、最终提交 CI、Pages 部署与更新源核验回执。发行证据与清理日志保存在下列本地目录。
 
 Android 签名证书 SHA-256：`89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d`。Mac 沿用 Apple Development 签名且未公证，iOS 需要重签。未交互重测 20 → 21 隐私权限；双 2019 Intel iMac 缩放、延迟、适配和耐久仍待验收。
 

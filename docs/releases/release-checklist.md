@@ -2,16 +2,17 @@
 
 # Stable release checklist
 
-Release package: **v0.3.2 / build 21**, 2026-10-26. [Release notes](v0.3.2.md), [exact files and hashes](current.md), [local commands](local-release.md).
+Current publication: **v0.3.2 / build 21**, published 2026-10-26 at 03:45:55 UTC as stable/Latest. [Release notes](v0.3.2.md), [exact files and hashes](current.md), [local commands](local-release.md).
 
 ## Publication record
 
 - [x] Maintainer-authorized self-review of native head `b01e132`; source PR #22 merged as `1bfa1ca`. No independent approval is claimed. Existing owner bypass was used without changing repository rules.
 - [x] Source CI `40263716075` passed all three jobs. Local runtime results and physical gaps are recorded in the [iMac evidence](../verification/imac-resolution-performance.md).
 - [x] Build 21 Mac universal signature, hardened runtime and identity compared against exact downloaded build 20; independent Sparkle Ed25519, original Android certificate and unsigned arm64 iOS verified.
-- [ ] Release PR CI, immutable tag/source archive and main ancestry: record after verification.
-- [ ] All eight GitHub files independently downloaded/hashed, stable/Latest and anonymous access: record after publication.
-- [ ] Pages deployment and both live feeds matching the release bytes: record after deployment.
+- [x] Release CI `40265167436` passed on tag `v0.3.2` / commit `1a6221c182d141c21b14f2bdeabca87809d2283f`; the source archive exactly matches its tracked source.
+- [x] All eight GitHub files independently downloaded and hashed before publication and again anonymously afterward; stable/Latest confirmed. Public API metadata initially hit a shared-IP rate limit; authenticated metadata and all anonymous asset downloads passed.
+
+The [release PR #23](https://github.com/chenyuhao0628/displayweave/pull/23) records the final merge/main ancestry, final commit CI and Pages deployment/feed verification receipts. Publication evidence and cleanup logs are retained locally below.
 
 Android signer SHA-256: `89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d`. Mac remains Apple Development signed and unnotarized; iOS needs re-signing. Build 20 → 21 privacy permissions were not interactively retested. Dual 2019 Intel iMac scaling, latency, adaptation and endurance remain pending.
 
