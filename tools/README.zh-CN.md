@@ -14,6 +14,7 @@
 | 网站／文档 | `prerender.mjs`、`check-site.mjs`、`check-docs.py`；通过 `pnpm build` / `pnpm run check:docs` 执行 |
 | 品牌／DMG 素材 | `export-brand-assets.py`、`create-guided-dmg.sh` |
 | 清理生成文件 | `clean-workspace.py`，默认只预览 |
+| 客户 Mac 显示证据 | `collect-mac-display-evidence.swift`，只读采集；[双端 5K 排查提示词](../docs/verification/customer-mac-geometry.zh-CN.md) |
 | 维护回归测试 | `test-workspace-cleanup.py`、`test-docs-check.py`、`test-release-packaging.py` |
 | 历史探针 | `audits/2026-10-26/`，复现旧问题，不作为当前验收 |
 
