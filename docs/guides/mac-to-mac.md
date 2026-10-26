@@ -59,3 +59,7 @@ above comes from earlier lid-open runs; clamshell/headless operation remains
 unverified. If test displays remain listed after closing the lid mid-test,
 restore a physical display before inspecting the list; do not count that state
 as successful release validation.
+
+## iMac scaling and sustained encoder load (source update)
+
+After v0.3.1, source adds explicit iMac 4K/4.5K/5K desktop presets, a receiver-derived logical-size label and measured encoder-load adaptation. Use **Match receiving screen** plus fullscreen reception to align desktop size; use frame-rate priority to lower transmission load without rearranging windows. These changes are not yet published. See [desktop resolution](desktop-resolution.md) and [the iMac evidence](../verification/imac-resolution-performance.md).

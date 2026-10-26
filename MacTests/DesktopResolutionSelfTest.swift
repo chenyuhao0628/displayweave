@@ -11,6 +11,22 @@ import Foundation
         let retina = DesktopResolutionPolicy.geometry(.native, nativeWidth: 5120,
             nativeHeight: 2880, nativePointsWide: 2560, nativePointsHigh: 1440, backingScale: 2)
         precondition(retina.pointsWide == 2560 && retina.pixelsWide == 5120)
+        for (raw, width, height) in [("iMac4K", 4096, 2304), ("iMac4_5K", 4480, 2520), ("iMac5K", 5120, 2880)] {
+            guard let selection = DesktopResolution(rawValue: raw) else {
+                fatalError("missing iMac desktop preset: \(raw)")
+            }
+            let geometry = DesktopResolutionPolicy.geometry(selection, nativeWidth: width,
+                nativeHeight: height, backingScale: 2)
+            precondition(geometry.pointsWide == width / 2 && geometry.pointsHigh == height / 2)
+            precondition(geometry.pixelsWide == width && geometry.pixelsHigh == height)
+            let portrait = DesktopResolutionPolicy.geometry(selection, nativeWidth: height,
+                nativeHeight: width, backingScale: 2)
+            precondition(portrait.pointsWide == height / 2 && portrait.pointsHigh == width / 2)
+            let limited = DesktopResolutionPolicy.raster(geometry, qualityScale: 0.5,
+                maxWidth: 4096, maxHeight: 2304)
+            precondition(limited.width == width / 2 && geometry.pointsWide == width / 2,
+                         "lowering transmission quality must not resize the desktop")
+        }
         let fhd = DesktopResolutionPolicy.geometry(.fullHD, nativeWidth: 5120,
             nativeHeight: 2880, backingScale: 2)
         precondition(fhd.pixelsWide == 1920 && fhd.pixelsHigh == 1080)
@@ -34,10 +50,13 @@ import Foundation
         defer { defaults.removePersistentDomain(forName: name) }
         var settings = StreamSettings.load(from: defaults)
         precondition(settings.desktopResolutions.resolution(for: "A") == .native)
+        precondition(settings.adaptEncoderLoad)
+        settings.adaptEncoderLoad = false
         settings.desktopResolutions.set(.fullHD, for: "A")
         settings.desktopResolutions.set(.ultraHD, for: "B")
         settings.save(to: defaults)
         let loaded = StreamSettings.load(from: defaults)
+        precondition(!loaded.adaptEncoderLoad)
         precondition(loaded.desktopResolutions.resolution(for: "A") == .fullHD)
         precondition(loaded.desktopResolutions.resolution(for: "B") == .ultraHD)
         settings.desktopResolutions.set(.native, for: "A")

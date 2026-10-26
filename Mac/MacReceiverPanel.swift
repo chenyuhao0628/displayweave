@@ -47,6 +47,8 @@ struct MacReceiverPanel: View {
                         }
                     }
                     Toggle("全屏显示接收画面", isOn: $controller.fullscreen)
+                    Text("作为扩展显示器使用时，建议全屏并在发送端选择“跟随接收屏幕”。窗口模式会缩放整个远端桌面；调传输画质不会改变桌面大小。")
+                        .font(.caption).foregroundStyle(.secondary)
                     Text("关闭接收画面窗口会断开当前连接。接收画面不需要屏幕录制权限。")
                         .font(.caption).foregroundStyle(.secondary)
                 }

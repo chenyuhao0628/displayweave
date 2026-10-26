@@ -58,6 +58,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
 
     private var stream: SCStream?
     private var encoder: VTCompressionSession?
+    private let encoderWork = EncoderWorkQueue()
     private var connection: NWConnection?
     private var admission: AppleSecureAdmission?
     private var usbTLSRelay: UsbmuxTLSRelay?
@@ -192,6 +193,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private var pipelineSentFrames = 0
     private var pipelineSentBytes = 0
     private var maxEncodeSubmissionMs: Double = 0
+    private var encodeSubmissionMsTotal: Double = 0
+    private var encodeSubmissionCount = 0
+    private var encoderDropsThisWindow = 0
+    private var encoderLoad: EncoderLoadController?
+    private var encoderLoadAdjustmentID: UUID?
+    private var encoderLoadAdjustmentTask: Task<Void, Never>?
     private var requestedCaptureFps = 60
     private var decoderFpsAdjustmentInFlight = false
     private var actualVirtualDisplayRefreshRate = 60
@@ -335,6 +342,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         }
         // SCDisplay reports points; capture at point resolution for M1.
         let macPlan = info.usesAppleVideoCapabilities ? MacReceiverPolicy.plan(info: info, settings: settings, sourceWidth: display.width, sourceHeight: display.height, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
+        logAppleStreamPlan(macPlan)
         let mobileRaster = DesktopResolutionPolicy.mirrorRaster(sourceWidth: display.width,
             sourceHeight: display.height, qualityScale: quality.scale,
             maxWidth: info.maxEncodeWide ?? info.pixelsWide,
@@ -384,6 +392,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
 
         guard !stopped else { throw CancellationError() }
         let macPlan = info.usesAppleVideoCapabilities ? MacReceiverPolicy.plan(info: info, settings: settings, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
+        logAppleStreamPlan(macPlan)
         let mobileDesktop = DesktopResolutionPolicy.geometry(
             settings.desktopResolutions.resolution(for: info.id),
             nativeWidth: info.pixelsWide, nativeHeight: info.pixelsHigh, backingScale: 2)
@@ -620,6 +629,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private func invalidateCapturePipeline() -> SCStream? {
         let retired = stream
         stream = nil
+        encoderLoadAdjustmentTask?.cancel()
+        encoderLoadAdjustmentTask = nil
+        encoderLoadAdjustmentID = nil
+        encoderLoad = nil
         stopCursorEcho()
         captureDisplayID = 0
         captureFrames.retire()
@@ -631,8 +644,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         pendingEncodeWork.discard(generation: encoderGeneration)
         keyframeRequests.retireInFlightRequest()
         encoderGeneration &+= 1
-        if let encoder { VTCompressionSessionInvalidate(encoder) }
-        encoder = nil
+        retireEncoder()
         return retired
     }
 
@@ -661,6 +673,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             guard !stopped, !pipelineFailureReported else { return nil }
             let captureFps = lastHello?.usesAppleVideoCapabilities == true ? max(1, min(120, fps)) : RefreshRatePolicy.sanitize(fps)
             requestedCaptureFps = captureFps
+            encoderLoad = lastHello?.isMacReceiver == true && settings.adaptEncoderLoad && settings.bitrateMode != .benchmark
+                ? EncoderLoadController(configuration: .init(width: pixelsWide, height: pixelsHigh, fps: captureFps), priority: settings.priority)
+                : nil
             actualVirtualDisplayRefreshRate = RefreshRatePolicy.sanitize(
                 virtualDisplayRefreshRate)
             lastCaptureFpsWarningAt = Date.distantPast
@@ -728,6 +743,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         config.queueDepth = 8
         config.showsCursor = !localCursor
         return config
+    }
+
+    private func logAppleStreamPlan(_ plan: MacStreamPlan?) {
+        guard let plan else { return }
+        Log.info("APPLE-STREAM-PLAN desktopPoints=\(plan.pointsWide)x\(plan.pointsHigh) scale=\(plan.scale) raster=\(plan.width)x\(plan.height) fps=\(plan.fps) requestedCodec=\(settings.codecMode.rawValue) selectedCodec=\(plan.codec.rawValue) hardwareHEVCEncoder=\(EncoderHardwareCapabilities.hevc) priority=\(settings.priority.rawValue) adaptEncoderLoad=\(settings.adaptEncoderLoad)")
     }
 
     @MainActor
@@ -1356,6 +1376,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                         }
                     }
                 }
+                let capturedFrames = self.capFrames
                 self.capFrames = 0
                 self.capWindowStart = Date()
                 self.logCaptureFpsIfLimited(actualFps: capFps)
@@ -1381,8 +1402,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 self.sendJSONFrame(stats.pingJson(nowMs: Date().timeIntervalSince1970 * 1000))
                 if self.settings.enableDebugStats {
                     let seconds = max(elapsed, 0.001)
-                    Log.info("PIPELINE-STATS captureFps=\(capFps) encodedFps=\(Double(self.pipelineEncodedFrames) / seconds) sentFps=\(Double(self.pipelineSentFrames) / seconds) preEncodeAndOutputDrops=\(self.dropsThisWindow) pendingEncodes=\(self.pendingEncodes) encodeBudget=\(SendQueuePolicy.encodeBudget(fps: self.requestedCaptureFps)) pendingSends=\(self.pendingSends) sendCompletionMs=\(self.lastSendCompletionDelayMs) actualMbps=\(Double(self.pipelineSentBytes) * 8 / seconds / 1_000_000) encodeSubmitMaxMs=\(self.maxEncodeSubmissionMs)")
+                    Log.info("PIPELINE-STATS captureFps=\(capFps) encodedFps=\(Double(self.pipelineEncodedFrames) / seconds) sentFps=\(Double(self.pipelineSentFrames) / seconds) preEncodeAndOutputDrops=\(self.dropsThisWindow) pendingEncodes=\(self.pendingEncodes) encodeBudget=\(SendQueuePolicy.encodeBudget(fps: self.requestedCaptureFps)) pendingSends=\(self.pendingSends) sendCompletionMs=\(self.lastSendCompletionDelayMs) actualMbps=\(Double(self.pipelineSentBytes) * 8 / seconds / 1_000_000) encodeSubmitMaxMs=\(self.maxEncodeSubmissionMs) encodeSubmitAverageMs=\(self.encodeSubmissionMsTotal / Double(max(1, self.encodeSubmissionCount))) encoderPressureDrops=\(self.encoderDropsThisWindow)")
                 }
+                self.evaluateEncoderLoad(captures: capturedFrames, seconds: elapsed)
+                self.encodeSubmissionMsTotal = 0
+                self.encodeSubmissionCount = 0
+                self.encoderDropsThisWindow = 0
                 self.pipelineEncodedFrames = 0
                 self.pipelineSentFrames = 0
                 self.pipelineSentBytes = 0
@@ -1391,6 +1416,60 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 self.dropsThisWindow = 0
             }
             self.schedulePing()
+        }
+    }
+
+    private func evaluateEncoderLoad(captures: Int, seconds: Double) {
+        guard encoderLoadAdjustmentID == nil, !decoderFpsAdjustmentInFlight,
+              let activeStream = stream, var controller = encoderLoad else { return }
+        let decision = controller.evaluate(.init(
+            now: ProcessInfo.processInfo.systemUptime, seconds: seconds,
+            captures: captures, outputs: pipelineEncodedFrames, encoderDrops: encoderDropsThisWindow,
+            submissions: encodeSubmissionCount,
+            submissionMs: encodeSubmissionMsTotal / Double(max(1, encodeSubmissionCount)),
+            pendingSends: pendingSends, sendCompletionMs: lastSendCompletionDelayMs))
+        encoderLoad = controller
+        guard let decision else { return }
+        let target = decision.configuration
+        let id = UUID()
+        encoderLoadAdjustmentID = id
+        cancelDropReplay()
+        _ = captureFrames.begin() // no old-size cached frame can reach the new encoder
+        let config = makeCaptureConfiguration(width: target.width, height: target.height, fps: target.fps)
+        Log.info("ENCODER-LOAD action=\(decision.recovering ? "recover" : "reduce") raster=\(target.width)x\(target.height) fps=\(target.fps) priority=\(settings.priority.rawValue) desktopUnchanged=true")
+        encoderLoadAdjustmentTask = Task { [weak self, weak activeStream] in
+            guard let self, let activeStream else { return }
+            do {
+                try Task.checkCancellation()
+                try await activeStream.updateConfiguration(config)
+                try Task.checkCancellation()
+                self.queue.async {
+                    guard !self.stopped, !self.pipelineFailureReported,
+                          self.stream === activeStream, self.encoderLoadAdjustmentID == id else { return }
+                    defer { self.encoderLoadAdjustmentID = nil; self.encoderLoadAdjustmentTask = nil }
+                    self.retireEncoder()
+                    self.activeStreamWidth = target.width
+                    self.activeStreamHeight = target.height
+                    self.requestedCaptureFps = target.fps
+                    do {
+                        // A codec fallback may have completed while SCK updated.
+                        // Use the current codec owned by this capture pipeline.
+                        try self.setupEncoder(width: target.width, height: target.height,
+                                              fps: target.fps, preferredCodec: self.streamCodec)
+                        self.sendStreamConfig(width: target.width, height: target.height)
+                        self.requestKeyframe(.streamReconfigure)
+                    } catch { self.failPipeline(error) }
+                }
+            } catch {
+                self.queue.async {
+                    guard !self.stopped, self.stream === activeStream,
+                          self.encoderLoadAdjustmentID == id else { return }
+                    self.encoderLoadAdjustmentID = nil; self.encoderLoadAdjustmentTask = nil
+                    // SCK may have applied part of a failed configuration. Stop
+                    // cleanly rather than encoding mismatched dimensions forever.
+                    self.failPipeline(DisplayUnitCoordinator.failure("自动调整编码负载失败，请重新连接；也可在串流设置中关闭自动适配。"))
+                }
+            }
         }
     }
 
@@ -1780,8 +1859,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             if failedCodec == StreamCodec.hevc.rawValue, streamCodec == .hevc {
                 macCodecFallback.recordFailure(.hevc)
                 decoderRecoveryEvent = "codec-fallback"
-                if let encoder { VTCompressionSessionInvalidate(encoder) }
-                encoder = nil
+                retireEncoder()
                 do {
                     try setupEncoder(width: max(activeStreamWidth, 2),
                                      height: max(activeStreamHeight, 2),
@@ -1887,10 +1965,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                         return
                     }
                     self.requestedCaptureFps = decoderCap
-                    if let encoder = self.encoder {
-                        VTCompressionSessionInvalidate(encoder)
-                    }
-                    self.encoder = nil
+                    self.retireEncoder()
                     defer { self.decoderFpsAdjustmentInFlight = false }
                     do {
                         try self.setupEncoder(
@@ -1998,6 +2073,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         pipelineSentFrames = 0
         pipelineSentBytes = 0
         capFrames = 0
+        maxEncodeSubmissionMs = 0
+        encodeSubmissionMsTotal = 0
+        encodeSubmissionCount = 0
+        encoderDropsThisWindow = 0
         capWindowStart = Date()
         localCongestionWindowStart = ProcessInfo.processInfo.systemUptime
         lastLocalOldestPendingSendAgeMs = 0
@@ -2017,9 +2096,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             let automatic = StreamEncodingPolicy.bitrate(
                 width: width, height: height, fps: finalFps, codec: attempt.codec,
                 quality: quality, transport: bitrateTransport)
-            return try createEncoder(width: width, height: height, fps: finalFps,
-                codec: attempt.codec, lowLatency: attempt.lowLatency,
-                bitrate: selectedBitrate(automatic: automatic, codec: attempt.codec))
+            return try encoderWork.perform {
+                try createEncoder(width: width, height: height, fps: finalFps,
+                    codec: attempt.codec, lowLatency: attempt.lowLatency,
+                    bitrate: selectedBitrate(automatic: automatic, codec: attempt.codec))
+            }
         }, onFailure: { attempt, error in
             Log.info("ENCODER-ATTEMPT codec=\(attempt.codec.rawValue) lowLatencyRC=\(attempt.lowLatency) failed: \(error.localizedDescription)")
         })
@@ -2044,6 +2125,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         Task { @MainActor in onTargetBitrate?(Double(streamBitrate) / 1_000_000) }
         Log.info("encoder ready: \(width)x\(height) \(streamCodec.label) fps=\(finalFps) bitrate=\(streamBitrate / 1_000_000)Mbps keyframeInterval=\(KeyframePolicy.frameInterval(fps: finalFps, transport: bitrateTransport)) quality=\(quality.rawValue) lowLatencyRequested=\(lowLatency) lowLatencyRC=\(selected.attempt.lowLatency)")
         if stream != nil { startCursorEcho() }
+    }
+
+    private func retireEncoder() {
+        if let encoder { encoderWork.perform { VTCompressionSessionInvalidate(encoder) } }
+        encoder = nil
     }
 
     private func createEncoder(width: Int, height: Int, fps: Int, codec: StreamCodec,
@@ -2145,6 +2231,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             retireCaptureForRecovery()
             return
         }
+        guard encoderLoadAdjustmentID == nil,
+              CVPixelBufferGetWidth(pixelBuffer) == activeStreamWidth,
+              CVPixelBufferGetHeight(pixelBuffer) == activeStreamHeight else { return }
         captureRecovery.finished(succeeded: true, consoleAvailable: true)
         captureFrames.offer(pixelBuffer, generation: captureFrames.generation)
         lastCaptureAt = Date()
@@ -2162,6 +2251,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 requestKeyframe(reason)
             }
             dropsThisWindow = queueDecision.droppedFrames
+            if pendingSends < maxPendingSends { encoderDropsThisWindow += 1 }
             dropsTotal += 1
             scheduleDropReplay()
             return
@@ -2192,50 +2282,65 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             decoderRecoveryEvent = forcedKeyframeRequest.reason.rawValue
             Log.info("forcing keyframe reason=\(forcedKeyframeRequest.reason.rawValue) requests=\(keyframeRequests.requestCount) coalesced=\(keyframeRequests.coalescedCount)")
         }
+        let submission = EncoderFrameSubmission(encoder: encoder, pixels: pixelBuffer, properties: frameProperties)
         let encodeStart = Date()
         let duration = CMTime(
             value: 1,
             timescale: CMTimeScale(lastHello?.isMacReceiver == true ? requestedCaptureFps : StreamEncodingPolicy.frameDurationTimescale(fps: requestedCaptureFps)))
-        let submissionStart = ProcessInfo.processInfo.systemUptime
-        let status = VTCompressionSessionEncodeFrame(
-            encoder,
-            imageBuffer: pixelBuffer,
-            presentationTimeStamp: pts,
-            duration: duration,
-            frameProperties: frameProperties,
-            infoFlagsOut: nil
-        ) { [weak self] status, _, buffer in
+        let accepted = encoderWork.submit(limit: SendQueuePolicy.encodeBudget(fps: requestedCaptureFps)) { [weak self] in
             guard let self else { return }
+            let submissionStart = ProcessInfo.processInfo.systemUptime
+            let status = VTCompressionSessionEncodeFrame(
+                submission.encoder,
+                imageBuffer: submission.pixels,
+                presentationTimeStamp: pts,
+                duration: duration,
+                frameProperties: submission.properties,
+                infoFlagsOut: nil
+            ) { [weak self] status, _, buffer in
+                guard let self else { return }
+                self.queue.async {
+                    self.handleEncodedFrame(
+                        status: status, buffer: buffer,
+                        forcedKeyframeRequest: forcedKeyframeRequest,
+                        capturedAtMs: capturedAtMs,
+                        encodedForWireGeneration: encodedForWireGeneration,
+                        encodedForEncoderGeneration: encodedForEncoderGeneration,
+                        encodeWorkID: encodeWorkID,
+                        protocolFrameIdentity: protocolFrameIdentity,
+                        encodeStart: encodeStart)
+                }
+            }
+            let submissionMs = (ProcessInfo.processInfo.systemUptime - submissionStart) * 1_000
             self.queue.async {
-                self.handleEncodedFrame(
-                    status: status,
-                    buffer: buffer,
-                    forcedKeyframeRequest: forcedKeyframeRequest,
-                    capturedAtMs: capturedAtMs,
-                    encodedForWireGeneration: encodedForWireGeneration,
-                    encodedForEncoderGeneration: encodedForEncoderGeneration,
-                    encodeWorkID: encodeWorkID,
-                    protocolFrameIdentity: protocolFrameIdentity,
-                    encodeStart: encodeStart)
+                guard !self.stopped, encodedForWireGeneration == self.wireConnectionGeneration,
+                      encodedForEncoderGeneration == self.encoderGeneration else { return }
+                self.maxEncodeSubmissionMs = max(self.maxEncodeSubmissionMs, submissionMs)
+                self.encodeSubmissionMsTotal += submissionMs
+                self.encodeSubmissionCount += 1
+                if status != noErr, self.pendingEncodeWork.complete(
+                    generation: encodedForEncoderGeneration, workID: encodeWorkID) {
+                    self.keyframeRequests.complete(forcedKeyframeRequest, encodedKeyframe: false)
+                    self.handleEncodeFailure(status: status)
+                }
             }
         }
-        maxEncodeSubmissionMs = max(maxEncodeSubmissionMs,
-            (ProcessInfo.processInfo.systemUptime - submissionStart) * 1_000)
-        if status == noErr {
+        if accepted {
+            // Cancel only the replay covered by this admission. New captures can
+            // arrive while the worker blocks and must retain their own replay.
             cancelDropReplay()
         } else {
-            pendingEncodeWork.complete(
-                generation: encodedForEncoderGeneration,
-                workID: encodeWorkID)
-            if forcedKeyframeRequest != nil {
-                keyframeRequests.complete(forcedKeyframeRequest, encodedKeyframe: false)
-            }
-            handleEncodeFailure(status: status)
+            pendingEncodeWork.complete(generation: encodedForEncoderGeneration, workID: encodeWorkID)
+            keyframeRequests.complete(forcedKeyframeRequest, encodedKeyframe: false)
+            dropsThisWindow += 1
+            encoderDropsThisWindow += 1
+            dropsTotal += 1
+            scheduleDropReplay()
         }
     }
 
     private var pipelineHasCapacity: Bool {
-        !SendQueuePolicy.shouldDrop(pendingSends: pendingSends, pendingEncodes: pendingEncodes,
+        encoderLoadAdjustmentID == nil && !SendQueuePolicy.shouldDrop(pendingSends: pendingSends, pendingEncodes: pendingEncodes,
             sendBudget: maxPendingSends, encodeBudget: SendQueuePolicy.encodeBudget(fps: requestedCaptureFps))
     }
 
@@ -2245,7 +2350,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     }
 
     private func scheduleDropReplay() {
-        guard !stopped, !pipelineFailureReported, connectionReady, stream != nil else { return }
+        guard !stopped, !pipelineFailureReported, connectionReady, stream != nil,
+              encoderLoadAdjustmentID == nil else { return }
         captureFrames.dropped(at: ProcessInfo.processInfo.systemUptime)
         armDropReplay()
     }
@@ -2367,8 +2473,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             let fallback = streamCodec == .hevc
             if fallback { macCodecFallback.recordFailure(.hevc) }
             Log.info("rebuilding encoder after failure attempt=\(encoderFailureRecovery.rebuilds) fallback=\(fallback)")
-            if let encoder { VTCompressionSessionInvalidate(encoder) }
-            encoder = nil
+            retireEncoder()
             do {
                 try setupEncoder(width: max(activeStreamWidth, 2),
                                  height: max(activeStreamHeight, 2),
@@ -2567,8 +2672,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         if settings.bitrateMode == .manual, settings.bitratePreset.bitsPerSecond != streamBitrate {
             limits.append("请求 \(settings.bitratePreset.megabits) Mbps，按 \(streamCodec.label)／\(bitrateTransport == .usb ? "USB" : "局域网") 范围以 \(streamBitrate / 1_000_000) Mbps 生效")
         }
-        if let requested = settings.fpsMode.userSelectedFps, requested > requestedCaptureFps {
+        if let load = encoderLoad, load.current != load.original {
+            limits.append("已按编码负载自动适配，桌面大小不变；可选帧率优先或在设置中关闭自动适配")
+        } else if let requested = settings.fpsMode.userSelectedFps, requested > requestedCaptureFps {
             limits.append("请求 \(requested) fps，受屏幕或解码能力限制；Apple 接收端可尝试“帧率优先”")
+        }
+        if mode == .extend, let info = lastHello, info.isMacReceiver {
+            let desktop = MacReceiverPolicy.plan(info: info, settings: settings)
+            if width < desktop.pointsWide * desktop.scale || height < desktop.pointsHigh * desktop.scale {
+                limits.append("传输画面低于桌面像素尺寸；画质、解码能力或编码负载会限制细节，不改变逻辑桌面")
+            }
         }
         let explanation = limits.isEmpty ? nil : limits.joined(separator: "。")
         Task { @MainActor in onStreamDescription?(description, explanation) }
@@ -2699,10 +2812,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private func applyAdaptiveDecision(_ decision: AdaptiveBitrateDecision) {
         guard let encoder else { return }
         streamBitrate = decision.newBitrate
-        VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_AverageBitRate,
-                             value: streamBitrate as CFNumber)
-        VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_DataRateLimits,
-                             value: [max(streamBitrate / 8, 1), 1] as CFArray)
+        encoderWork.perform {
+            VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_AverageBitRate,
+                                 value: streamBitrate as CFNumber)
+            VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_DataRateLimits,
+                                 value: [max(streamBitrate / 8, 1), 1] as CFArray)
+        }
         lastAdaptiveDecision = decision
         Task { @MainActor in onTargetBitrate?(Double(streamBitrate) / 1_000_000) }
         sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)

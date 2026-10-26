@@ -13,3 +13,4 @@ Reproduction procedures, selected source acceptance and physical-test boundaries
 - [Reliability and experience upgrade](reliability-experience-upgrade.md)
 - [Android USB vs WiFi Benchmark](usb-vs-wifi-benchmark.md)
 - [Workspace and documentation cleanup — 2026-10-26](workspace-cleanup-2026-10-26.md)
+- [iMac desktop scaling and encoder load](imac-resolution-performance.md)

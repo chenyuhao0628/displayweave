@@ -59,8 +59,14 @@ struct SenderSettingsView: View {
             ForEach(StreamPriority.allCases, id: \.self) { Text($0.label).tag($0) }
         }.pickerStyle(.segmented)
         Text(controller.settings.priority == .resolution
-             ? "Apple 接收端优先保留文字细节，必要时降低帧率。例如 4K 可能以 60 fps 生效。"
+             ? "Apple 接收端优先保留文字细节，必要时降低帧率；Mac 自动适配开启时也会根据实际编码负载调整。"
              : "Apple 接收端优先达到所选帧率上限，必要时降低编码分辨率；桌面布局保持不变。")
+            .font(.caption).foregroundStyle(.secondary)
+    }
+
+    VStack(alignment: .leading, spacing: 4) {
+        Toggle("自动适配 Mac 编码负载", isOn: setting(\.adaptEncoderLoad))
+        Text("持续掉帧时，按上面的优先项调整传输分辨率或帧率，桌面和窗口大小保持不变。负载缓解后逐步恢复；静止画面不会触发降级。测试码率模式停用此功能。")
             .font(.caption).foregroundStyle(.secondary)
     }
 

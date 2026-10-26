@@ -10,6 +10,7 @@ private final class ProbeStats: @unchecked Sendable {
     var output = 0
     var failed = 0
     var skipped = 0
+    var maxSubmitMs = 0.0
     var latency: [Double] = [] // at most 180 samples per bounded run
 }
 
@@ -20,9 +21,12 @@ private final class ProbeStats: @unchecked Sendable {
         try run(budget: 1, frameDelayLimit: 0, bitrate: bitrate)
         try run(budget: SendQueuePolicy.encodeBudget(fps: 60),
                 frameDelayLimit: SendQueuePolicy.frameDelayLimit(fps: 60), bitrate: bitrate)
+        try run(budget: SendQueuePolicy.encodeBudget(fps: 60),
+                frameDelayLimit: SendQueuePolicy.frameDelayLimit(fps: 60), bitrate: bitrate, offload: true)
     }
 
-    static func run(budget: Int, frameDelayLimit: Int, bitrate: Int) throws {
+    static func run(budget: Int, frameDelayLimit: Int, bitrate: Int, offload: Bool = false) throws {
+        let worker = EncoderWorkQueue()
         let width = 3840, height = 2160, frames = 180, fps = 60
         var session: VTCompressionSession?
         let spec: [CFString: Any] = [kVTVideoEncoderSpecification_EnableLowLatencyRateControl: true,
@@ -63,7 +67,6 @@ private final class ProbeStats: @unchecked Sendable {
         precondition(CVPixelBufferPoolCreate(nil, nil, attributes as CFDictionary, &pool) == kCVReturnSuccess)
         let stats = ProbeStats()
         let begin = ProcessInfo.processInfo.systemUptime
-        var maxSubmitMs = 0.0
         for frame in 0..<frames {
             let due = begin + Double(frame) / Double(fps)
             let delay = due - ProcessInfo.processInfo.systemUptime
@@ -92,27 +95,39 @@ private final class ProbeStats: @unchecked Sendable {
             let left = (frame * 24) % (width - 384)
             for row in 800..<1184 { memset(base.advanced(by: row * stride + left), 210, 384) }
             CVPixelBufferUnlockBaseAddress(pixel, [])
-            let start = ProcessInfo.processInfo.systemUptime
-            let status = VTCompressionSessionEncodeFrame(session, imageBuffer: pixel,
-                presentationTimeStamp: CMTime(value: Int64(frame), timescale: 60),
-                duration: CMTime(value: 1, timescale: 60), frameProperties: nil, infoFlagsOut: nil) { status, _, sample in
+            let submission = EncoderFrameSubmission(encoder: session, pixels: pixel, properties: nil)
+            let encode: @Sendable () -> Void = {
+                let start = ProcessInfo.processInfo.systemUptime
+                let status = VTCompressionSessionEncodeFrame(submission.encoder, imageBuffer: submission.pixels,
+                    presentationTimeStamp: CMTime(value: Int64(frame), timescale: 60),
+                    duration: CMTime(value: 1, timescale: 60), frameProperties: nil, infoFlagsOut: nil) { status, _, sample in
+                    stats.lock.withLock {
+                        stats.pending -= 1
+                        if status == noErr, sample != nil { stats.output += 1 }
+                        else { stats.failed += 1 }
+                        stats.latency.append((ProcessInfo.processInfo.systemUptime - start) * 1_000)
+                    }
+                }
                 stats.lock.withLock {
-                    stats.pending -= 1
-                    if status == noErr, sample != nil { stats.output += 1 }
-                    else { stats.failed += 1 }
-                    stats.latency.append((ProcessInfo.processInfo.systemUptime - start) * 1_000)
+                    stats.maxSubmitMs = max(stats.maxSubmitMs, (ProcessInfo.processInfo.systemUptime - start) * 1_000)
+                    if status != noErr { stats.pending -= 1; stats.failed += 1 }
                 }
             }
-            maxSubmitMs = max(maxSubmitMs, (ProcessInfo.processInfo.systemUptime - start) * 1_000)
-            if status != noErr { stats.lock.withLock { stats.pending -= 1; stats.failed += 1 } }
+            if offload {
+                if !worker.submit(limit: budget, encode) {
+                    stats.lock.withLock { stats.pending -= 1; stats.skipped += 1 }
+                }
+            } else { encode() }
         }
-        VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
+        let drained = worker.perform { VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid) }
+        precondition(drained == noErr)
+
         let elapsed = ProcessInfo.processInfo.systemUptime - begin
         stats.lock.withLock {
             let sorted = stats.latency.sorted()
             let p50 = sorted.isEmpty ? 0 : sorted[sorted.count / 2]
             let p95 = sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, sorted.count * 95 / 100)]
-            print("4K-PROBE hardware=\(hardware ?? "unknown" as CFString) hardwareQueryStatus=\(hardwareStatus) budget=\(budget) frameDelayLimit=\(frameDelayLimit) captures=\(frames) encoded=\(stats.output) skipped=\(stats.skipped) failed=\(stats.failed) pendingPeak=\(stats.peak) outputFps=\(String(format: "%.2f", Double(stats.output) / elapsed)) encodeP50Ms=\(String(format: "%.2f", p50)) encodeP95Ms=\(String(format: "%.2f", p95)) submitMaxMs=\(String(format: "%.2f", maxSubmitMs))")
+            print("4K-PROBE offload=\(offload) hardware=\(hardware ?? "unknown" as CFString) hardwareQueryStatus=\(hardwareStatus) budget=\(budget) frameDelayLimit=\(frameDelayLimit) captures=\(frames) encoded=\(stats.output) skipped=\(stats.skipped) failed=\(stats.failed) pendingPeak=\(stats.peak) outputFps=\(String(format: "%.2f", Double(stats.output) / elapsed)) encodeP50Ms=\(String(format: "%.2f", p50)) encodeP95Ms=\(String(format: "%.2f", p95)) submitMaxMs=\(String(format: "%.2f", stats.maxSubmitMs))")
             precondition(stats.pending == 0 && stats.peak <= budget && stats.failed == 0)
         }
     }

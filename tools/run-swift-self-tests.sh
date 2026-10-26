@@ -64,6 +64,10 @@ run_test KeyframePolicySelfTest \
 run_test EncoderSessionFactorySelfTest \
   "${settings[@]}" Mac/EncoderSessionFactory.swift Mac/SessionLifetime.swift \
   MacTests/EncoderSessionFactorySelfTest.swift
+run_test EncoderWorkQueueSelfTest \
+  Mac/EncoderWorkQueue.swift MacTests/EncoderWorkQueueSelfTest.swift
+run_test EncoderLoadControllerSelfTest \
+  "${settings[@]}" Mac/EncoderLoadController.swift MacTests/EncoderLoadControllerSelfTest.swift
 run_test CaptureRecoverySelfTest \
   Mac/CaptureRecovery.swift Mac/CaptureSourceCheck.swift MacTests/CaptureRecoverySelfTest.swift
 run_test DisplayRecoverySelfTest \
@@ -208,6 +212,7 @@ run_test WireContractSelfTest \
   Shared/DesktopInputProtocol.swift Shared/PencilProtocol.swift Shared/PencilActions.swift MacTests/WireContractSelfTest.swift
 
 python3 tools/test-capture-configuration.py
+python3 tools/test-encoder-load-integration.py
 python3 tools/test-ios-video-admission.py
 
-echo "Swift standalone self-tests PASS (61 suites + capture/admission fixtures)"
+echo "Swift standalone self-tests PASS (63 suites + capture/load/admission fixtures)"
