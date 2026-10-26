@@ -14,4 +14,4 @@ Reproduction procedures, selected source acceptance and physical-test boundaries
 - [Android USB vs WiFi Benchmark](usb-vs-wifi-benchmark.md)
 - [Workspace and documentation cleanup — 2026-10-26](workspace-cleanup-2026-10-26.md)
 - [iMac desktop scaling and encoder load](imac-resolution-performance.md)
-- [Customer handoff: 5K display and window sizing](customer-mac-geometry.md)
+- [Customer handoff: investigate 5K sizing from one Mac](customer-mac-geometry.md)

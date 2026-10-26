@@ -6,13 +6,16 @@ import AppKit
 import ApplicationServices
 import CryptoKit
 import Darwin
+import SystemConfiguration
 
 let usage = """
 Usage: xcrun swift collect-mac-display-evidence.swift \
   --machine A --role sender --case C00 --phase failing --output /absolute/local/folder \
   [--hardware] [--window-pid 1234] [--app-path /Applications/DisplayWeave.app]
 
-Run on BOTH Macs with matching case IDs. Each call creates a new private snapshot.
+Start on the Mac running Codex. Each call creates a new private LOCAL snapshot.
+--machine and --role label the source; they do not select or connect to another Mac.
+Collect peer evidence only when useful, using an existing authorized access method.
 --hardware adds a bounded GPU/display system_profiler query; use on the first snapshot only.
 --window-pid includes bounds for one customer-chosen neutral test app, without titles.
 --app-path inspects an extra installed copy WITHOUT launching it. Running apps are discovered separately.
@@ -98,6 +101,22 @@ func mode(_ m: CGDisplayMode) -> [String: Any] {
      "pixelWidth": m.pixelWidth, "pixelHeight": m.pixelHeight,
      "refreshHz": m.refreshRate, "ioFlags": m.ioFlags,
      "usableForDesktopGUI": m.isUsableForDesktopGUI()]
+}
+
+// An SSH shell may not share the desktop user's WindowServer/permission context.
+// Export scope hints, never SSH endpoints, account names or environment contents.
+func executionContext() -> [String: Any] {
+    var consoleUID: uid_t = 0
+    var consoleGID: gid_t = 0
+    let consoleName = SCDynamicStoreCopyConsoleUser(nil, &consoleUID, &consoleGID) as String?
+    let consoleUserPresent = consoleName.map { !["loginwindow", "_mbsetupuser"].contains($0) } ?? false
+    let sshHint = ["SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"].contains { ProcessInfo.processInfo.environment[$0] != nil }
+    return ["sshEnvironmentPresent": sshHint, "effectiveUserID": geteuid(),
+            "consoleUserPresent": consoleUserPresent,
+            "consoleUserID": consoleUserPresent ? consoleUID as Any : NSNull(),
+            "matchesConsoleUser": consoleUserPresent ? (geteuid() == consoleUID) as Any : NSNull(),
+            "machineAndRoleAreCallerLabels": true,
+            "note": "Only this execution host is measured. SSH hints and matching user IDs do not prove access to the active graphical session. Empty app/window lists may mean unavailable session access, not absence of a running app. Preferences belong to the executing user; no account switching is attempted."]
 }
 
 // Numeric display IDs are local WindowServer identifiers, not hardware serials.
@@ -308,7 +327,8 @@ func gpuSummary() -> [String: Any] {
 }
 
 var snapshot: [String: Any] = [
-    "schema": "displayweave.mac-geometry.v1", "collectorVersion": "1",
+    "schema": "displayweave.mac-geometry.v1", "collectorVersion": "2",
+    "executionContext": executionContext(),
     "machine": options.machine, "role": options.role, "caseID": options.caseID, "phase": options.phase,
     "startedAtUTC": iso.string(from: started), "timezone": TimeZone.current.identifier,
     "secondsFromGMT": TimeZone.current.secondsFromGMT(for: started),
