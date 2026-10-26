@@ -1,10 +1,10 @@
 [English](development-preview.md) | [简体中文](development-preview.zh-CN.md)
 
-# DisplayWeave `v0.3.0` 正式版分发
+# DisplayWeave `v0.3.1` 正式版分发
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-23：正式版构建 19 加入 Mac 4K 延迟优化、100 Mbps H.264 局域网上限和逐项审查的上游恢复修复，沿用固定 Apple Development 签名。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](release-notes-v0.3.0.zh-CN.md)。
+2026-10-26：正式版构建 20 修复采集／编码恢复、拥塞后画质恢复和 Android 视频／触控比例，新增更清晰的分辨率／帧率设置，沿用固定 Apple Development 签名。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](release-notes-v0.3.1.zh-CN.md)。
 
 | 平台/更新源 | 产物 | SHA-256 或信任边界 |
 | --- | --- | --- |
@@ -14,7 +14,7 @@
 | iOS/iPadOS | `DisplayWeave-iOS-unsigned-resigning-input.ipa` | `9db070367ffe92ba4d77d5d8c574867dfce3e321e39b953ac5f3b5e9f1f86078`；未签名自签输入包 |
 | Mac 更新源 | `appcast.xml` | [配置的 Sparkle 更新源](https://chenyuhao0628.github.io/displayweave/appcast.xml) |
 | Android 更新源 | `android-update.json` | [配置的元数据更新源](https://chenyuhao0628.github.io/displayweave/android-update.json) |
-| 源码 | `DisplayWeave-v0.3.0-source.tar.gz` | 发行 tag 的跟踪源码；哈希见校验和文件 |
+| 源码 | `DisplayWeave-v0.3.1-source.tar.gz` | 发行 tag 的跟踪源码；哈希见校验和文件 |
 | 校验和 | `SHA256SUMS.txt` | 覆盖以上七个 Release 文件 |
 
 Android 签名证书 SHA-256：

@@ -2,7 +2,18 @@
 
 # Release checklist
 
-## Current stable release: v0.3.0 (19)
+## Current stable release: v0.3.1 (20)
+
+The [release notes](release-notes-v0.3.1.md) record reliability, video recovery, Android geometry/input and clearer settings. Native source is `c0f8f8a` (PR #19, reviewed head `cd57957`). Public releases now go directly to stable; no public candidate or preview stage.
+
+- [x] Reviewed source CI `40217422986`: 61 Swift suites and recovery/admission fixtures, universal Mac Debug, iOS Simulator, seven Android Java groups/Debug/Lint and web/docs checks passed.
+- [x] Source acceptance records real TLS/Keychain and isolated iOS/Android security, lifecycle, video/input and UX checks; physical results are separate.
+- [x] Build 20 Mac Release/DMG/ZIP preserves the exact downloaded build 19 signing identity. Nested signatures, hardened runtime, both Mac architectures, original Android certificate and unsigned arm64 device IPA verified.
+- [x] Independent Sparkle Ed25519 and artifact/feed version, identity, URL, size and hash verification passed.
+
+Before publication/integration, require full CI on the release commit, eight verified remote files, stable GitHub status, merge-commit tag ancestry and exact live Pages feed bytes. Final online results belong in the publication PR and Release. Build 19 → 20 privacy-permission continuity was not interactively retested. Mac remains Apple Development signed and unnotarized; iOS requires re-signing. Physical capture/rotation/sleep recovery, Intel, two-device performance, high refresh, accessibility and endurance remain pending.
+
+## Historical v0.3.0 (19)
 
 The [release notes](release-notes-v0.3.0.md) record Mac 4K latency, the 100 Mbps H.264 LAN ceiling, reviewed upstream recovery, artifact hashes and physical limits. Native source is `929eb93`.
 

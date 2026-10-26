@@ -55,7 +55,7 @@ All statuses have readable text and an icon. Decorative art is hidden from acces
 
 User guides have reciprocal English/Simplified Chinese links. The current native UI is Simplified Chinese; adding a complete English UI is separate work, not implied by bilingual documentation.
 
-Source iteration, not yet released: new Android installations use concise streaming status, with optional metrics and selectable detailed diagnostics in settings. Disabling metrics must replace the visible text immediately. Video, cursor and touch use the same aspect-fit rectangle; black bars do not send remote input. Honor system rotation. Mac settings distinguish requested bitrate/FPS from the negotiated raster/codec/target and measured throughput, and explain resolution versus frame-rate priority. iOS keeps its settings action reachable at accessibility text sizes; only branding caps Dynamic Type.
+Released in v0.3.1: new Android installations use concise streaming status, with optional metrics and selectable detailed diagnostics in settings. Disabling metrics must replace the visible text immediately. Video, cursor and touch use the same aspect-fit rectangle; black bars do not send remote input. Honor system rotation. Mac settings distinguish requested bitrate/FPS from the negotiated raster/codec/target and measured throughput, and explain resolution versus frame-rate priority. iOS keeps its settings action reachable at accessibility text sizes; only branding caps Dynamic Type.
 
 ## Ownership and compatibility
 

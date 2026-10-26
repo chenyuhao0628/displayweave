@@ -1,10 +1,10 @@
 [English](development-preview.md) | [简体中文](development-preview.zh-CN.md)
 
-# DisplayWeave `v0.3.0` Stable Release Distribution
+# DisplayWeave `v0.3.1` Stable Release Distribution
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-23: stable build 19 includes Mac 4K latency improvements, the 100 Mbps H.264 LAN ceiling and reviewed upstream recovery fixes, retaining the pinned Apple Development identity. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](release-notes-v0.3.0.md) for changes, permission continuity and verification limits.
+2026-10-26: stable build 20 fixes capture/encoder recovery, restores quality after congestion, corrects Android video and touch geometry, and adds clearer resolution/frame-rate controls, retaining the pinned Apple Development identity. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](release-notes-v0.3.1.md) for changes, permission continuity and verification limits.
 
 | Platform/feed | Asset | SHA-256 or trust boundary |
 | --- | --- | --- |
@@ -14,7 +14,7 @@
 | iOS/iPadOS | `DisplayWeave-iOS-unsigned-resigning-input.ipa` | `9db070367ffe92ba4d77d5d8c574867dfce3e321e39b953ac5f3b5e9f1f86078`; unsigned re-signing input |
 | Mac update feed | `appcast.xml` | [Configured Sparkle feed](https://chenyuhao0628.github.io/displayweave/appcast.xml) |
 | Android update feed | `android-update.json` | [Configured metadata feed](https://chenyuhao0628.github.io/displayweave/android-update.json) |
-| Source | `DisplayWeave-v0.3.0-source.tar.gz` | Tracked source at the release tag; hash in the checksum manifest |
+| Source | `DisplayWeave-v0.3.1-source.tar.gz` | Tracked source at the release tag; hash in the checksum manifest |
 | Checksums | `SHA256SUMS.txt` | Hashes all seven release files above |
 
 Android signing certificate SHA-256:

@@ -2,7 +2,7 @@
 
 # Reliability and experience upgrade
 
-Source development, started 2026-10-26. Baseline: `01613ef`; the [audit](code-and-experience-audit-2026-10-26.md) is historical evidence, not a claim about the updated source or a published release.
+Source implementation completed on 2026-10-26 and included in [v0.3.1](release-notes-v0.3.1.md). Baseline: `01613ef`; the [audit](code-and-experience-audit-2026-10-26.md) is historical evidence, not a claim about the updated source or a published release.
 
 ## Scope and acceptance
 
@@ -12,7 +12,7 @@ Source development, started 2026-10-26. Baseline: `01613ef`; the [audit](code-an
 4. **Settings and performance (A09, T01, T04–T06, T08–T12):** truthful requested/effective settings, explicit 30 fps, clear resolution/refresh tradeoffs and actionable connection feedback. Retain protocol/resource bounds; document evaluated parameters and unresolved hardware experiments.
 5. **Completion:** relevant regressions per commit, both Apple builds, Android tests/build/lint, web/docs/release checks, security/lifecycle runtime fixtures, self-review and reproducible local artifacts. Record source, automated, UI and physical evidence separately.
 
-Compatibility: preserve preference keys, project/package/bundle IDs, framing, service discovery, pairing, signing/update identities and attribution. Sender/receiver roles remain exclusive. No public release is implied. Historical snapshot probes remain tied to the baseline; new regressions must exercise fixed production behavior.
+Compatibility: preserve preference keys, project/package/bundle IDs, framing, service discovery, pairing, signing/update identities and attribution. Sender/receiver roles remain exclusive. Release packaging and online verification are recorded separately in the v0.3.1 release notes. Historical snapshot probes remain tied to the baseline; new regressions must exercise fixed production behavior.
 
 ## Implementation and verification ledger
 
@@ -82,7 +82,7 @@ These are source/regression outcomes; physical acceptance is separate. The origi
 - Final gate passed: website TypeScript/client/SSR/prerender and generated-site checks, 98 bilingual documentation pairs, release links (v0.3.0 / 8 assets), 12 Apple distribution tests, 20 Mac signing policy tests and 36 brand assets.
 - Inspected evidence: Android synthetic aspect/metrics screenshots and actual input; iOS waiting/onboarding/settings light/dark and maximum accessibility text. No Mac window or full screen-reader acceptance is claimed.
 
-Reproduce with the commands in [development](development.md), including `tools/test-android-experience.py` and the sequential mobile runtime scripts. Logs/screenshots are local and ignored under `build/diagnostics/upgrade-2026-10-26/`; final development artifacts are under `build/deliverables/reliability-experience/`. The artifact README records exact revision, hashes, signing/install boundaries and local use. Source changes do not alter the public v0.3.0 release/feed.
+Reproduce with the commands in [development](development.md), including `tools/test-android-experience.py` and the sequential mobile runtime scripts. Logs/screenshots are local and ignored under `build/diagnostics/upgrade-2026-10-26/`; final development artifacts are under `build/deliverables/reliability-experience/`. The artifact README records exact revision, hashes, signing/install boundaries and local use. These development artifacts are separate from the signed v0.3.1 Release packages; see the [release notes](release-notes-v0.3.1.md) for publication and update-feed verification.
 
 ## Commits
 

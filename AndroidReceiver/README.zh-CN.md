@@ -6,7 +6,7 @@ Android 接收端可以通过本地 WiFi 或由 Mac 管理的 ADB-forward USB �
 
 等待页面跟随系统明暗主题。设置在小屏上可滚动；串流时右上角设置按钮始终可用，即使已隐藏状态浮层。
 
-v0.3.0 包含[加密配对](../docs/secure-transport.zh-CN.md)与[仅 GitHub 更新](../docs/automatic-updates.zh-CN.md)。首次连接时，在**设置与帮助 → 安全与配对**生成邀请，导入 Mac 后再选择设备。局域网和 ADB 转发 USB 使用相同认证流。
+v0.3.1 包含[加密配对](../docs/secure-transport.zh-CN.md)与[仅 GitHub 更新](../docs/automatic-updates.zh-CN.md)。首次连接时，在**设置与帮助 → 安全与配对**生成邀请，导入 Mac 后再选择设备。局域网和 ADB 转发 USB 使用相同认证流。
 
 ## 要求
 
@@ -14,11 +14,11 @@ v0.3.0 包含[加密配对](../docs/secure-transport.zh-CN.md)与[仅 GitHub 更
 - WiFi：Mac 与 Android 位于同一可信局域网，并按系统要求授予附近 WiFi/本地网络发现权限。
 - USB：支持数据传输的线缆、开发者选项、USB 调试，以及允许 Mac 的 RSA 身份。
 
-## 安装 `v0.3.0`
+## 安装 `v0.3.1`
 
-2026-10-23：正式版构建 19 加入 Mac 4K 延迟优化、100 Mbps H.264 局域网上限和逐项审查的上游恢复修复，沿用固定 Apple Development 签名。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](../docs/release-notes-v0.3.0.zh-CN.md)。
+2026-10-26：正式版构建 20 修复采集／编码恢复、拥塞后画质恢复和 Android 视频／触控比例，新增更清晰的分辨率／帧率设置，沿用固定 Apple Development 签名。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](../docs/release-notes-v0.3.1.zh-CN.md)。
 
-从 [`v0.3.0`](https://github.com/chenyuhao0628/displayweave/releases) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。p5 需要手动覆盖安装一次 p6 或更新版；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/release-checklist.zh-CN.md)中的证书指纹。
+从 [`v0.3.1`](https://github.com/chenyuhao0628/displayweave/releases) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。p5 需要手动覆盖安装一次 p6 或更新版；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/release-checklist.zh-CN.md)中的证书指纹。
 
 ## 首次安装后的更新
 
@@ -39,9 +39,9 @@ v0.3.0 包含[加密配对](../docs/secure-transport.zh-CN.md)与[仅 GitHub 更
 
 USB 模式不会静默变成 WiFi，WiFi 模式不会创建 ADB forward。
 
-## 当前源码体验改进
+## v0.3.1 体验改进
 
-2026-10-26 源码迭代尚未包含在 v0.3.0 下载中。视频、光标与触控共用一个保持比例的显示矩形，镜像不再被拉伸，黑边不响应远程触控。手指静止按住 120 ms 后发送按下；提前移动可更早开始拖动，第二根手指取消待发按下并进入滚动。Android 尊重系统旋转偏好。
+v0.3.1 已包含 2026-10-26 的体验改进。视频、光标与触控共用一个保持比例的显示矩形，镜像不再被拉伸，黑边不响应远程触控。手指静止按住 120 ms 后发送按下；提前移动可更早开始拖动，第二根手指取消待发按下并进入滚动。Android 尊重系统旋转偏好。
 
 新安装默认关闭详细指标，已有显式选择保持不变。关闭详情会立即恢复简洁状态；设置页提供可选择复制的完整诊断，“屏幕模式”与视频呈现 FPS 分开表述。文字模糊时，可先选接收端原生分辨率和 Mac 高画质；两端均选 75% 会叠加缩小。Mac 设备卡片展示最终编码尺寸。
 

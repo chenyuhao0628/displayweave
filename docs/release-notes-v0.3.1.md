@@ -1,0 +1,56 @@
+[English](release-notes-v0.3.1.md) | [简体中文](release-notes-v0.3.1.zh-CN.md)
+
+# DisplayWeave v0.3.1
+
+Release date: 2026-10-26. **Stable release**, Mac build / Android version code **20**. Native source baseline: `c0f8f8a`, the merge of PR #19 (reviewed head `cd57957`). The previous stable release was v0.3.0 (19). This and future releases publish directly as stable versions, without a public preview or release-candidate stage.
+
+## Changes
+
+- Make reconnect and capture recovery generation-safe. Retired keyframe requests cannot consume a replacement request; changed receiver geometry is applied after interrupted capture; rotation preserves actual display adjacency.
+- Bound encoder failure recovery. Transient failures retry at most three times per round, encoder rebuilds at most twice, and five seconds of healthy output restores the budget. Exhaustion stops the session with a reconnect/lower-resolution recovery action.
+- Restore image quality after congestion. Mac encoder drops no longer imply network congestion by themselves. Healthy active send queues can recover; below the original Auto target, bitrate rises 20% after three healthy seconds. Probing above that target remains 7% / five seconds, and Mac local-only recovery never exceeds its original target.
+- Preserve short Apple video reference chains across brief backpressure, within two additional frames / 50 ms. iOS uses current and legacy sender health telemetry and ends a connection that receives no valid first video within 15 seconds; a static desktop after first video remains connected.
+- Keep Android video, cursor and touch on the same aspect-fit rectangle. Black bars ignore remote touches. Stationary holds begin after 120 ms; drag, two-finger scrolling, pause and resize cancel or retire the correct gesture. System rotation preferences are respected.
+- Bound Android cursor decoding before bitmap allocation, and give both 12-frame decode queues one shared 150 ms receive-to-codec deadline. Expired dependencies are discarded and recovered at a keyframe. This is a queue bound, not a measured end-to-end latency claim.
+- Add Apple resolution/frame-rate priority and a 30 fps ceiling. Show requested and effective bitrate, encoded raster, codec and target FPS. Normalize unavailable manual presets to the nearest valid choice, fit mirrored video within receiver capabilities, simplify Android's default status and keep iOS settings reachable at large text sizes.
+
+The [audit](code-and-experience-audit-2026-10-26.md) records baseline evidence. The [upgrade ledger](reliability-experience-upgrade.md) maps all A01–A10 fixes, parameter decisions and additional improvements to regressions and acceptance limits. Historical probes deliberately describe the old baseline; current regression suites exercise the repaired behavior.
+
+## Upgrade and compatibility
+
+Update both sender and receiver to use the complete set of improvements. Existing peers retain their negotiated compatibility paths. Existing explicit metrics and quality preferences are retained; new Android installations use concise status, with details available in Settings. Invalid manual bitrate choices are normalized. Choose **Resolution priority** for text clarity or **Frame-rate priority** when smoother movement matters more; target FPS is not measured rendered FPS.
+
+Mac packaging verified identity continuity against the exact downloaded v0.3.0 ZIP, including bundle ID, team and designated requirement. Build 19 → 20 privacy-permission continuity was not interactively retested. Earlier signed-overwrite evidence remains in [Mac permissions](mac-permissions.md). A first upgrade from an ad-hoc build may still need permission grants again.
+
+**The Mac release retains Apple Development signing and is not notarized.** Verify the checksum, install in `/Applications`, and use the documented **Privacy & Security → Open Anyway** recovery if needed. Android keeps the original project certificate. The iOS IPA is an unsigned arm64 device re-signing input and needs the user's own valid Apple signing identity; it is not a Simulator download or directly installable app.
+
+GPL-3.0, upstream attribution, project/bundle/package identifiers, existing preference keys, pairing, Bonjour service, wire framing, Sparkle key and Android certificate are preserved. Downloads use GitHub Releases; the [existing update channels](automatic-updates.md) use GitHub Pages.
+
+## Automated verification
+
+- Reviewed head `cd57957`: CI `40217422986` passed all three jobs, covering 61 Swift suites plus production-method recovery/admission fixtures, universal Mac Debug, iOS Simulator, Android tests/Debug/Lint, website and documentation checks. Android has seven plain-Java groups; standard unit-test tasks report NO-SOURCE, not extra tests. Lint reports 0 errors / 21 warnings.
+- The source acceptance ledger records actual Apple↔Java TLS, isolated Mac/iOS Keychain, secure iOS video/Pencil/lifecycle, and Android Keystore/TLS/revocation checks. Extended Android emulator checks cover synthetic aspect ratio, metrics toggles, black-bar rejection, center taps and stationary holds. These results are separate from physical performance evidence.
+- Build 20: signed universal arm64/x86_64 Mac Release and guided DMG/ZIP, hardened runtime and nested signatures, original-certificate Android Release, and unsigned iPhoneOS arm64 IPA verified. The packaging command reruns all seven Android Java groups.
+- Independent Sparkle Ed25519 verification against the embedded public key passed. Bundle/feed identities, version/build, archive hygiene, URL, size and SHA-256 checks passed for all platform files and feeds.
+- Final local gate passed: 61 Swift suites and capture/admission fixtures, universal Mac Debug, iOS Simulator, Android tests/Debug/Lint, website, 99 bilingual document pairs, release links, 12 distribution checks, 20 signing tests, 36 brand assets and whitespace checks. Merge CI `40250827532` passed on `c0f8f8a`. Full hosted CI is also required on the release commit; the publication PR records that result and remote asset/feed verification separately.
+
+Local release evidence is under ignored `build/diagnostics/release-v0.3.1/`; source runtime evidence remains under `build/diagnostics/upgrade-2026-10-26/`. Development Debug/Simulator packages are not the published Release artifacts.
+
+## Physical verification and deferred work
+
+**SKIP:** interactive Mac capture/virtual-display/window tests without an independent usable display. No WindowServer or remote-access service was restarted. Real sleep/wake, multi-display recovery, Intel runtime, two-device LAN/USB latency, high-refresh hardware, energy usage, physical Pencil/touch, VoiceOver/TalkBack and 30-minute/2-hour endurance remain pending. Synthetic policies, emulator screenshots and successful builds do not establish those results.
+
+## Downloads
+
+[GitHub Release](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.3.1). Eight assets: four binaries, two feeds, `DisplayWeave-v0.3.1-source.tar.gz` and `SHA256SUMS.txt`. The source archive contains tracked source at the immutable release tag, GPL-3.0, attribution and build scripts. Its hash is included in the seven-entry checksum manifest. Previous releases and assets remain unchanged.
+
+| Asset | SHA-256 |
+| --- | --- |
+| `DisplayWeave-macOS.zip` | `d567e1081f3bcf974a280935628083d99311c074a8a1ee80b0d9c1223663f8ca` |
+| `DisplayWeave-macOS.dmg` | `50759c579713ee637cacf0106c4d8656dafaa8e4c1866bcb36f0a326c3b405c0` |
+| `DisplayWeave-Android.apk` | `3826c8ad64ae5924e78396a916f310adeb4bbef393f20799eca52b04de21716f` |
+| `DisplayWeave-iOS-unsigned-resigning-input.ipa` | `7a1dcae8d11449f7c64b08a1aa8b362bc6849d94353c9bc080ee30ad0803da3c` |
+| `appcast.xml` | `3824a5626463db280f207f01afa01b7f5ac2be964a7128ce6ec1c8fa224f57eb` |
+| `android-update.json` | `72e0e3517b8718ebfa66180165ed0e0840d587b0e106d0d6ffa8776450239f41` |
+
+Android signing certificate SHA-256: `89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d`.

@@ -4,6 +4,8 @@
 
 ## Current user guides
 
+- [v0.3.1 stable release: reliability and receiver experience](release-notes-v0.3.1.md)
+
 - [Reliability and experience upgrade — implementation and acceptance](reliability-experience-upgrade.md)
 
 - [Code and experience audit (2026-10-26): findings, evidence and coverage](code-and-experience-audit-2026-10-26.md)
