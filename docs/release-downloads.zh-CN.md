@@ -2,6 +2,8 @@
 
 # 发行下载
 
+发布规则（2026-10-26）：直接发布正式版本，不经过公开 preview、beta 或 RC 候选阶段；GitHub Release 必须设置 `prerelease=false`。可以用未公开草稿暂存文件，校验完成后一次性正式发布，这不构成公开候选版本。历史发行保持不可变。
+
 DisplayWeave 的发行文件以 GitHub Release 附件形式发布在 `chenyuhao0628/displayweave`
 上，不存在站外下载主机。
 

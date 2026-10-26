@@ -17,6 +17,7 @@
 - Keep user-facing guides in English / Simplified Chinese pairs with reciprocal links. Record implementation, automated verification, physical verification and deferred work separately.
 - Generate the Xcode project from `project.yml`. Do not commit build outputs, local credentials, device IDs, private captures or signing material.
 - Release binaries and source archives must use GitHub Releases only; update metadata uses the repository GitHub Pages site. Do not reintroduce external distribution hosts, mirrors or links. See `docs/release-downloads.md`.
+- Publish stable releases directly. Do not create public preview, beta, RC or prerelease versions; retain historical release records. Private asset staging is allowed for integrity checks before stable publication.
 - Do not claim a source feature is in a published download until it is released.
 
 ## Hardware tests

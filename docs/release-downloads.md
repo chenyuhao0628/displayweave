@@ -2,6 +2,8 @@
 
 # Release downloads
 
+Release policy (2026-10-26): publish stable versions directly, without public preview, beta or release-candidate stages. GitHub Releases must use `prerelease=false`. An unpublished draft may stage files for verification before one stable publication; it is not a public candidate version. Historical releases remain immutable.
+
 DisplayWeave release binaries are published as GitHub Release assets on
 `chenyuhao0628/displayweave`. There is no off-platform download host.
 

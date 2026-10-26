@@ -2,7 +2,7 @@
 
 # Mac 本地拥塞与恢复
 
-本文描述 2026-10-26 源码迭代，不代表新的已发布版本。PR 8 引入本地下降通道，后续工作增加 Mac 接收端恢复。本轮实现与验证见[升级记录](reliability-experience-upgrade.zh-CN.md)。
+本文描述 v0.3.1 正式版（2026-10-26）。PR 8 引入本地下降通道，后续工作增加 Mac 接收端恢复。本轮实现与验证见[升级记录](reliability-experience-upgrade.zh-CN.md)。
 
 ## 采样与所有权
 

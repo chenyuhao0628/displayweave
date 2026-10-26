@@ -6,7 +6,7 @@ Auto is the default and adapts within codec/transport bounds. Manual selects a f
 
 **v0.3.0 bounds (2026-10-23):** HEVC LAN 12–100, HEVC USB 20–160, H.264 LAN 8–100, and H.264 USB 10–100 Mbps. LAN includes Ethernet and Wi-Fi; its internal policy name remains `wifi`. The H.264 LAN ceiling was 60 Mbps in preview.3; v0.3.0 permits Manual 80/100 Mbps without Benchmark mode. See [release notes](release-notes-v0.3.0.md). Auto also uses a transport-aware initial estimate; for example, 3040×1904 at 120 fps with High-quality HEVC starts around 112 Mbps on USB. The settings UI filters manual presets using the selected codec and transport; the sender revalidates the value using the negotiated codec and actual transport.
 
-Current source (2026-10-26, not yet released): the picker is labeled **Requested bitrate**. Auto codec/transport lists the union of potentially valid presets; explicit choices narrow the list. Loading settings or changing modes normalizes an unavailable preset to the nearest valid value, in one settings transaction. A session card explains when the negotiated codec/transport clamps the request, and shows its encoded raster and FPS.
+In v0.3.1 (2026-10-26): the picker is labeled **Requested bitrate**. Auto codec/transport lists the union of potentially valid presets; explicit choices narrow the list. Loading settings or changing modes normalizes an unavailable preset to the nearest valid value, in one settings transaction. A session card explains when the negotiated codec/transport clamps the request, and shows its encoded raster and FPS.
 
 Target Bitrate is encoder intent. Actual Bitrate is measured socket throughput. They are displayed and recorded separately.
 

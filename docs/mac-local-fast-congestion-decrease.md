@@ -2,7 +2,7 @@
 
 # Mac local congestion and recovery
 
-This guide describes the 2026-10-26 source iteration, not a new published release. PR 8 introduced the local decrease path; subsequent work added Mac receiver recovery. Current implementation and verification are recorded in the [upgrade ledger](reliability-experience-upgrade.md).
+This guide describes the v0.3.1 release (2026-10-26). PR 8 introduced the local decrease path; subsequent work added Mac receiver recovery. Current implementation and verification are recorded in the [upgrade ledger](reliability-experience-upgrade.md).
 
 ## Sampling and ownership
 

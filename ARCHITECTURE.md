@@ -55,7 +55,7 @@ Touch coordinates, drag state, cursor movement, and two-finger scroll are encode
 
 - v0.3.0-preview.1 defaults to certificate-pinned mutual TLS and explicit invitation pairing on Apple and Android. Legacy compatibility is an explicit unencrypted choice for trusted networks. See [pairing](docs/secure-transport.md).
 - ADB RSA authorization trusts the Mac as a debugging host beyond DisplayWeave.
-- The macOS v0.3.0 uses a pinned Apple Development identity and is not notarized. The first migration from an ad-hoc release may require reauthorization; later builds are checked for signing continuity.
+- The macOS v0.3.1 uses a pinned Apple Development identity and is not notarized. The first migration from an ad-hoc release may require reauthorization; later builds are checked for signing continuity.
 - The Android APK uses an offline project keystore stored outside Git.
 - The iOS public artifact is an unsigned re-signing input.
 - `CGVirtualDisplay` is a private API and can change across macOS releases.
