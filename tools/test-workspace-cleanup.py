@@ -101,6 +101,14 @@ class CleanupTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "all seven"):
             cleanup.verify_release(self.root, "v0.3.1")
 
+    def test_finder_metadata_does_not_invalidate_retained_release(self):
+        latest = self.release("v0.3.1")
+        (latest / ".DS_Store").write_bytes(b"Finder metadata")
+        self.assertEqual(cleanup.verify_release(self.root, "v0.3.1"), latest)
+        (latest / "unexpected.apk").write_bytes(b"unverified file")
+        with self.assertRaisesRegex(ValueError, "unexpected"):
+            cleanup.verify_release(self.root, "v0.3.1")
+
     def test_manifest_traversal_is_rejected(self):
         latest = self.release("v0.3.1")
         (latest / "SHA256SUMS.txt").write_text("0" * 64 + "  ../../outside\n")

@@ -58,7 +58,8 @@ def verify_release(root, version):
         checksums[match[2]] = match[1].lower()
     if set(checksums) != expected:
         raise ValueError("Retained release must contain all seven checksummed assets")
-    if {p.name for p in path.iterdir()} != expected | {"SHA256SUMS.txt"}:
+    # Browsing the retained folder in Finder can create this harmless metadata.
+    if {p.name for p in path.iterdir() if p.name != ".DS_Store"} != expected | {"SHA256SUMS.txt"}:
         raise ValueError("Retained release contains missing or unexpected files")
     for name, digest in checksums.items():
         asset = confined(root, f"artifacts/releases/{version}/{name}")
