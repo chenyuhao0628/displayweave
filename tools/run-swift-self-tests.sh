@@ -220,5 +220,6 @@ python3 tools/test-capture-configuration.py
 python3 tools/test-encoder-load-integration.py
 python3 tools/test-ios-video-admission.py
 python3 tools/test-desktop-match-update.py
+python3 tools/test-collect-mac-display-evidence.py
 
-echo "Swift standalone self-tests PASS (65 suites + capture/load/admission/desktop-update fixtures)"
+echo "Swift standalone self-tests PASS (65 suites + capture/load/admission/desktop-update/collector fixtures)"

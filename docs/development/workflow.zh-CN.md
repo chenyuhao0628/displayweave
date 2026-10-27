@@ -56,7 +56,7 @@ xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecariOS -configuration 
 
 ## 当前验证覆盖
 
-`tools/run-swift-self-tests.sh` 执行 63 组独立测试，以及抽取当前生产方法的捕获恢复／编码负载调参／iOS 视频准入测试；Android `test` 包含七组纯 Java 自测，并使用实际编译 SDK 的 boot classpath；`pnpm build` 执行 TypeScript、client/SSR 生产构建、双语预渲染与生成页面断言。添加共用源码后需构建两个 Apple 目标。
+`tools/run-swift-self-tests.sh` 执行 65 组独立测试，以及抽取当前方法的捕获恢复／编码负载调参／iOS 视频准入／桌面匹配／采集器偏好测试；Android `test` 包含七组纯 Java 自测，并使用实际编译 SDK 的 boot classpath；`pnpm build` 执行 TypeScript、client/SSR 生产构建、双语预渲染与生成页面断言。添加共用源码后需构建两个 Apple 目标。
 
 `python3 tools/test-apple-keychain.py --ios-simulator` 在随机测试命名空间验证真实 Mac/iOS 钥匙串身份持久化、密钥丢失恢复与显式重置。`python3 tools/test-secure-ios-receiver.py` 使用生产 PhoneReceiver/安全代码构建隔离应用，以认证 TLS 发送合成视频、检查撤销并切至后台。两者均创建/删除自己的模拟器，不改动已安装应用。后者可加 `--screenshots build/security-ui`，在测试邀请消耗后记录浅色/深色设置界面。模拟器测试需顺序运行，避免多个冷启动互相争用；不捕获用户桌面，不创建虚拟显示器。
 

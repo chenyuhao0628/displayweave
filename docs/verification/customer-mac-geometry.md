@@ -2,7 +2,7 @@
 
 # Investigate 5K sizing from one Mac: task for the on-site model
 
-Updated 2026-10-26, revision 2 with one investigation entry point. The customer opens this kit in Codex on **one iMac that already has it**. The other Mac does not need Codex, and the customer does not need to operate two workflows. This document specifies the questions and evidence standards; the on-site model chooses methods, tools and experiment order.
+Updated 2026-10-27, revision 3 with one investigation entry point. The customer opens this kit in Codex on **one iMac that already has it**. The other Mac does not need Codex, and the customer does not need to operate two workflows. This document specifies the questions and evidence standards; the on-site model chooses methods, tools and experiment order.
 
 ## Task to give directly to Codex
 
@@ -62,7 +62,7 @@ xcrun swift ./collect-mac-display-evidence.swift \
   --output "$HOME/Desktop/DisplayWeave-evidence" --hardware
 ```
 
-**The tool measures only its execution host.** `--machine B` is a label, not a connection to the other Mac. If you run it remotely, verify the execution host, desktop user, permissions, paths, available tooling and output origin before gathering results locally. Version 2 adds `executionContext` SSH hints and console-user matching; those hints alone do not prove access to the active graphical session.
+**The tool measures only its execution host.** `--machine B` is a label, not a connection to the other Mac. If you run it remotely, verify the execution host, desktop user, permissions, paths, available tooling and output origin before gathering results locally. The `executionContext` SSH hints and console-user matching do not prove access to the active graphical session. Version 3 recognizes the stored automatic desktop selection and default; absent values remain unknown.
 
 Other available features:
 
@@ -109,4 +109,4 @@ Keep originals local. Create `share-redacted/` with reviewed reports/evidence, r
 
 ## Maintainer verification scope
 
-Collector version 2 remains local/read-only and adds execution-context hints. One Codex organizes the investigation; this does not give the script remote-access capabilities. Apple Silicon compilation, collection and context-field checks, x86_64/macOS 14 typechecking and bilingual documentation checks have passed. Real SSH/cross-user graphical sessions, the customer's two Intel iMacs and this failure still require on-site validation. Tool checks do not prove the application issue is fixed.
+Collector version 3 remains local/read-only. One Codex organizes the investigation; this does not give the script remote-access capabilities. Apple Silicon compilation and collection, x86_64/macOS 14 typechecking, and an isolated preference-snapshot regression passed. The fixture checks automatic and legacy values, unknown and absent defaults, peer aliases and the 128-entry bound. Real SSH/cross-user graphical sessions, the customer's two Intel iMacs and this failure still require on-site validation. Tool checks do not prove the application issue is fixed.

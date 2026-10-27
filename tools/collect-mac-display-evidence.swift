@@ -175,17 +175,21 @@ func appInfo(_ url: URL) -> [String: Any] {
 func preferenceSnapshot(_ id: String) -> [String: Any] {
     let keys = ["macRole", "mode", "receiverDisplayID", "receiverFullscreen", "fpsMode", "fps", "codecMode", "codec",
                 "quality", "transportMode", "debugStats", "bitrateMode", "bitrateMbps", "streamPriority", "adaptEncoderLoad"]
+    let allowed: Set<String> = ["automatic", "native", "fullHD", "quadHD", "ultraHD", "iMac4K", "iMac4_5K", "iMac5K"]
+    func safeResolution(_ value: String) -> String { allowed.contains(value) ? value : "unknown" }
     var values: [String: Any] = [:]
     for key in keys {
         guard let value = CFPreferencesCopyAppValue(key as CFString, id as CFString) else { continue }
         if let string = value as? String { values[key] = String(string.prefix(128)) }
         else if let number = value as? NSNumber { values[key] = number }
     }
+    if let savedDefault = CFPreferencesCopyAppValue("desktopResolutionDefault.v2" as CFString, id as CFString) as? String {
+        values["desktopResolutionDefault.v2"] = safeResolution(savedDefault)
+    }
     if let saved = CFPreferencesCopyAppValue("desktopResolutions.v1" as CFString, id as CFString) as? [String: String] {
-        let allowed: Set<String> = ["native", "fullHD", "quadHD", "ultraHD", "iMac4K", "iMac4_5K", "iMac5K"]
         values["desktopResolutions.v1"] = saved.keys.sorted().prefix(128).map { peer -> [String: String] in
             let hash = SHA256.hash(data: Data(peer.utf8)).prefix(6).map { String(format: "%02x", $0) }.joined()
-            return ["peerAlias": "peer-" + hash, "resolution": allowed.contains(saved[peer] ?? "") ? saved[peer]! : "unknown"]
+            return ["peerAlias": "peer-" + hash, "resolution": safeResolution(saved[peer] ?? "")]
         }
     }
     return ["bundleID": id, "storedValuesOnly": values,
@@ -327,7 +331,7 @@ func gpuSummary() -> [String: Any] {
 }
 
 var snapshot: [String: Any] = [
-    "schema": "displayweave.mac-geometry.v1", "collectorVersion": "2",
+    "schema": "displayweave.mac-geometry.v1", "collectorVersion": "3",
     "executionContext": executionContext(),
     "machine": options.machine, "role": options.role, "caseID": options.caseID, "phase": options.phase,
     "startedAtUTC": iso.string(from: started), "timezone": TimeZone.current.identifier,
