@@ -94,8 +94,15 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
         let scale = screen.backingScaleFactor
         // Keep the notch outside the advertised usable desktop rectangle.
         let size = CGSize(width: screen.frame.width, height: screen.frame.height - screen.safeAreaInsets.top)
+        guard scale.isFinite, scale > 0, scale <= 4, size.width >= 2, size.height >= 2,
+              size.width <= 16384 / scale, size.height <= 16384 / scale else { return }
+        let displayID = Self.id(screen)
+        let physical = DesktopMatchDisplays.physicalSize(displayID: displayID, bounds: CGDisplayBounds(displayID))
+        let panelHeight = physical.map { $0.height * Double(size.height / screen.frame.height) }
         receiver.configure(panel: PanelAnnouncement(pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
-            scale: scale, pointsWide: Int(size.width), pointsHigh: Int(size.height)), name: name,
+            scale: scale, pointsWide: Int(size.width), pointsHigh: Int(size.height),
+            millimetersWide: physical.map { Int($0.width.rounded()) },
+            millimetersHigh: panelHeight.map { Int($0.rounded()) }), name: name,
             maxFps: AppleVideoPolicy.frameRate(maximum: screen.maximumFramesPerSecond))
     }
 

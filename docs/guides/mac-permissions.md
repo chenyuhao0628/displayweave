@@ -4,7 +4,7 @@
 
 Starting with `v0.3.0-preview.3` (18), the Mac app uses a pinned Apple Development identity. Run and local packaging enforce that identity and compare upgrades. Earlier preview.2 assets remain ad-hoc signed and unchanged. The first migration from an ad-hoc copy may require authorization once more; subsequent fixed-signature builds preserve their code identity.
 
-For v0.3.2 (21), packaging compared the exact downloaded build 20 app and verified the same designated requirement, team, bundle identity and arm64/x86_64 architectures. Build 20 → 21 privacy permissions were not interactively retested; older signed-overwrite observations below retain their original scope. See [release evidence](../releases/v0.3.2.md).
+For v0.3.3 (22), packaging compared the exact downloaded build 21 app and verified the same designated requirement, team, bundle identity and arm64/x86_64 architectures. Build 21 → 22 privacy permissions were not interactively retested; older signed-overwrite observations below retain their original scope. See [release evidence](../releases/v0.3.3.md).
 
 ## Why upgrades lost permissions
 

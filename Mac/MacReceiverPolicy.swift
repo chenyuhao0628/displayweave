@@ -25,19 +25,41 @@ struct MacStreamPlan: Equatable {
 }
 
 enum MacReceiverPolicy {
+    static func physicalSize(panel: PanelAnnouncement?) -> DesktopPhysicalSize? {
+        guard let panel, let width = panel.millimetersWide, let height = panel.millimetersHigh,
+              (2...16384).contains(panel.pixelsWide), (2...16384).contains(panel.pixelsHigh),
+              panel.scale.isFinite, (0.1...4).contains(panel.scale) else { return nil }
+        return DesktopPhysicalSize.validated(width: Double(width), height: Double(height),
+            pointsWide: panel.pointsWide ?? Int(Double(panel.pixelsWide) / panel.scale),
+            pointsHigh: panel.pointsHigh ?? Int(Double(panel.pixelsHigh) / panel.scale),
+            pixelsWide: panel.pixelsWide, pixelsHigh: panel.pixelsHigh)
+    }
+
+    static func desktop(info: PhoneInfo, settings: StreamSettings,
+                        automaticReference: DesktopMatchReference? = nil) -> DesktopMatchResult {
+        let panel = info.panel
+        let scale = (panel?.scale ?? info.scale) >= 1.5 ? 2 : 1
+        let selection = settings.desktopResolutions.resolution(for: info.id)
+        let native = DesktopResolutionPolicy.geometry(selection,
+            nativeWidth: panel?.pixelsWide ?? info.pixelsWide,
+            nativeHeight: panel?.pixelsHigh ?? info.pixelsHigh,
+            nativePointsWide: panel?.pointsWide, nativePointsHigh: panel?.pointsHigh, backingScale: scale)
+        guard selection == .automatic, info.isMacReceiver else {
+            return DesktopMatchResult(geometry: native, basis: .receiver)
+        }
+        return DesktopMatchPolicy.match(receiver: native, reference: automaticReference,
+                                        receiverSize: physicalSize(panel: panel))
+    }
+
     /// Preserve the desktop's logical geometry while fitting the encoded raster.
     /// HEVC remains inside a valid H.264 envelope for same-raster fallback.
     static func plan(info: PhoneInfo, settings: StreamSettings,
                      sourceWidth: Int? = nil, sourceHeight: Int? = nil,
-                     hardwareHEVCEncode: Bool = false) -> MacStreamPlan {
-        let panel = info.panel
-        let scale = (panel?.scale ?? info.scale) >= 1.5 ? 2 : 1
+                     hardwareHEVCEncode: Bool = false,
+                     automaticReference: DesktopMatchReference? = nil) -> MacStreamPlan {
         func dimension(_ value: Int) -> Int { min(16384, max(2, value)) & ~1 }
-        let pw = dimension(panel?.pixelsWide ?? info.pixelsWide)
-        let ph = dimension(panel?.pixelsHigh ?? info.pixelsHigh)
-        let desktop = DesktopResolutionPolicy.geometry(settings.desktopResolutions.resolution(for: info.id),
-            nativeWidth: pw, nativeHeight: ph, nativePointsWide: panel?.pointsWide,
-            nativePointsHigh: panel?.pointsHigh, backingScale: scale)
+        let desktop = desktop(info: info, settings: settings, automaticReference: automaticReference).geometry
+        let scale = desktop.scale
         let pointsWide = desktop.pointsWide
         let pointsHigh = desktop.pointsHigh
         let nativeW = dimension(sourceWidth ?? (pointsWide * scale))

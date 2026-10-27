@@ -2,21 +2,19 @@
 
 # Stable release checklist
 
-Current publication: **v0.3.2 / build 21**, published 2026-10-26 at 03:45:55 UTC as stable/Latest. [Release notes](v0.3.2.md), [exact files and hashes](current.md), [local commands](local-release.md).
+Current release: **v0.3.3 / build 22**. [Release notes](v0.3.3.md), [exact files and hashes](current.md), [local commands](local-release.md).
 
 ## Publication record
 
-- [x] Maintainer-authorized self-review of native head `b01e132`; source PR #22 merged as `1bfa1ca`. No independent approval is claimed. Existing owner bypass was used without changing repository rules.
-- [x] Source CI `40263716075` passed all three jobs. Local runtime results and physical gaps are recorded in the [iMac evidence](../verification/imac-resolution-performance.md).
-- [x] Build 21 Mac universal signature, hardened runtime and identity compared against exact downloaded build 20; independent Sparkle Ed25519, original Android certificate and unsigned arm64 iOS verified.
-- [x] Release CI `40265167436` passed on tag `v0.3.2` / commit `1a6221c182d141c21b14f2bdeabca87809d2283f`; the source archive exactly matches its tracked source.
-- [x] All eight GitHub files independently downloaded and hashed before publication and again anonymously afterward; stable/Latest confirmed. Public API metadata initially hit a shared-IP rate limit; authenticated metadata and all anonymous asset downloads passed.
+- [x] Maintainer-authorized self-review of native head `bc928c3`; source CI `40447026849` passed all three jobs. No independent approval is claimed.
+- [x] Local automated checks and synthetic display evidence are recorded in the [matching evidence](../verification/automatic-desktop-matching.md). Both initial iOS simulator failures and their successful isolated reruns are recorded in the [release notes](v0.3.3.md).
+- [x] Build 22 Mac universal signature, hardened runtime and identity compared against the exact downloaded build 21; independent Sparkle Ed25519, original Android certificate and unsigned arm64 iOS verified.
 
-The [release PR #23](https://github.com/chenyuhao0628/displayweave/pull/23) records the final merge/main ancestry, final commit CI and Pages deployment/feed verification receipts. Publication evidence and cleanup logs are retained locally below.
+The [release PR #24](https://github.com/chenyuhao0628/displayweave/pull/24) is the integration record for final CI, publication and Pages verification. The [v0.3.2 notes](v0.3.2.md) retain the previous publication receipts.
 
-Android signer SHA-256: `89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d`. Mac remains Apple Development signed and unnotarized; iOS needs re-signing. Build 20 → 21 privacy permissions were not interactively retested. Dual 2019 Intel iMac scaling, latency, adaptation and endurance remain pending.
+Android signer SHA-256: `89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d`. Mac remains Apple Development signed and unnotarized; iOS needs re-signing. Build 21 → 22 privacy permissions were not interactively retested. Customer two-Mac matching, native 5K video, Intel runtime and endurance remain pending.
 
-Local packages: `artifacts/releases/v0.3.2/`; evidence: `artifacts/verification/v0.3.2/` and `artifacts/verification/imac-resolution-2026-10-26/`. The [v0.3.1 notes](v0.3.1.md) and [earlier checklists](../archive/releases/release-checklist-through-v0.3.1.md) preserve historical evidence.
+Local packages: `artifacts/releases/v0.3.3/`. The [v0.3.1 notes](v0.3.1.md) and [earlier checklists](../archive/releases/release-checklist-through-v0.3.1.md) preserve historical evidence.
 
 ## Every subsequent publication
 

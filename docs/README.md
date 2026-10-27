@@ -2,7 +2,7 @@
 
 # DisplayWeave documentation
 
-Current published version: **v0.3.2 (21)**, released 2026-10-26. Start with [downloads and integrity](releases/current.md) or [what changed](releases/v0.3.2.md). This release includes the iMac scaling and encoder-load fixes.
+Current published version: **v0.3.3 (22)**, released 2026-10-27. Start with [downloads and integrity](releases/current.md) or [what changed](releases/v0.3.3.md). Automatic Mac desktop matching remains an estimate, not native 5K video.
 
 | Task | Start here |
 | --- | --- |
@@ -17,6 +17,6 @@ Project entry points: [overview](../README.md), [architecture](../ARCHITECTURE.m
 
 ## Evidence vocabulary
 
-**Implemented** describes code. **Automated verification** names a test and revision. **Physical verification** names actual hardware, configuration and duration. **Experimental** marks a hardware-dependent capability. **Deferred / SKIP** means not verified or not completed. Requested FPS does not prove rendered FPS. Current limits are listed in the [v0.3.2 notes](releases/v0.3.2.md).
+**Implemented** describes code. **Automated verification** names a test and revision. **Physical verification** names actual hardware, configuration and duration. **Experimental** marks a hardware-dependent capability. **Deferred / SKIP** means not verified or not completed. Requested FPS does not prove rendered FPS. Current limits are listed in the [v0.3.3 notes](releases/v0.3.3.md).
 
 Archive files preserve dated conclusions, including old filenames containing “current”. Use the current guides for commands and downloads. Historical public releases remain on GitHub; only local obsolete installers and build outputs are removed.

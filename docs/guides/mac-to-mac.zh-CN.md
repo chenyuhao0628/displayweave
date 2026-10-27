@@ -57,4 +57,4 @@ Thunderbolt Bridge 或 link-local 以太网可作为绑定接口的候选，[有
 
 ## iMac 缩放与持续编码负载（源码更新）
 
-v0.3.2 增加 iMac 4K/4.5K/5K 桌面档位、接收端逻辑尺寸标签及基于实际编码负载的适配。使用“跟随接收屏幕”与接收端全屏对齐桌面大小；选择帧率优先可降低传输负载而不重新排列窗口。参见[桌面分辨率](desktop-resolution.zh-CN.md)和[iMac 验证证据](../verification/imac-resolution-performance.zh-CN.md)。
+v0.3.2 增加 iMac 4K/4.5K/5K 桌面档位、接收端逻辑尺寸标签及基于实际编码负载的适配。v0.3.3 可结合接收端全屏使用“自动匹配”估算相近的桌面尺寸；已有安装需选择一次。选择帧率优先可降低传输负载而不重新排列窗口。原生 5K 视频仍不可用。参见[桌面分辨率](desktop-resolution.zh-CN.md)和[匹配证据](../verification/automatic-desktop-matching.zh-CN.md)。

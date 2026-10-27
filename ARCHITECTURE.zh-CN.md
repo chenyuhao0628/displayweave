@@ -106,3 +106,7 @@ Mac HEVC 同时要求硬件编码器与接收端明确声明的硬件解码能�
 ## 桌面几何与实际编码负载（v0.3.2）
 
 桌面逻辑点／底层像素与编码尺寸分别管理。iMac 档位与跟随接收端的几何保持所选布局，视频画质可独立适配。`EncoderWorkQueue` 把 VideoToolbox 所有权串行化并移出采集／控制队列，最多保留两次提交。`EncoderLoadController` 根据持续活动画面的编码压力判断，排除静止／网络受限窗口，遵循用户的分辨率／帧率优先选择。采集重配置清理缓存帧、拒绝过期代次并限制为五秒。详见[实施与证据](docs/verification/imac-resolution-performance.zh-CN.md)；5K 桌面不扩展 Apple 视频解码范围。
+
+## 桌面自动匹配（v0.3.3）
+
+Mac 接收端的逻辑桌面根据可用的发送端参考屏和经过校验的系统报告物理尺寸估算。尺寸缺失时按比例回退；移动接收端保留原有几何，已有偏好保持不变。屏幕变化按会话防抖，采用冷却和过期状态检查。Apple 视频范围仍为 4096×2304，见[匹配证据](docs/verification/automatic-desktop-matching.zh-CN.md)。

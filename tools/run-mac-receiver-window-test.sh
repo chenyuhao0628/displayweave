@@ -8,10 +8,11 @@ swiftc Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.s
   Shared/AppleTransportIdentity.swift Shared/AppleTLS.swift Shared/SecurePairingProtocol.swift \
   Shared/SecurePairingState.swift Shared/AppleSecurityStore.swift Shared/AppleSecureAdmission.swift Shared/AppleTransportSecurity.swift \
   Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift Mac/LatestValueRelay.swift Shared/BoundedLogWriter.swift Mac/Log.swift Shared/DesktopInputProtocol.swift Shared/InputSendBudget.swift Mac/Receiver/ReceiverDesktopInputCapture.swift Shared/ReceiverVideoFlowPolicy.swift Mac/Receiver/MacVideoRenderer.swift Mac/Receiver/StreamReceiver.swift Mac/Receiver/ReceiverVideoView.swift \
+  Mac/DesktopResolution.swift Mac/DesktopMatchDisplays.swift Mac/DisplayArrangement.swift \
   Mac/Receiver/MacReceiverController.swift MacTests/ReceiverTestSupport.swift \
   MacTests/MacReceiverWindowSelfTest.swift -o "$temporary/ReceiverWindowTest"
 "$temporary/ReceiverWindowTest"
 swiftc -import-objc-header Mac/OpenSidecarMac-Bridging-Header.h \
-  Mac/VirtualDisplay.swift Mac/RefreshRatePolicy.swift Mac/OriginRestore.swift Mac/DisplayTopology.swift Mac/DisplayUnitCoordinator.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
+  Mac/VirtualDisplay.swift Mac/RefreshRatePolicy.swift Mac/OriginRestore.swift Mac/DisplayTopology.swift Mac/DisplayUnitCoordinator.swift Mac/DesktopResolution.swift Shared/BoundedLogWriter.swift Mac/Log.swift \
   MacTests/MacVirtualDisplaySelfTest.swift -o "$temporary/VirtualDisplayTest"
 "$temporary/VirtualDisplayTest"

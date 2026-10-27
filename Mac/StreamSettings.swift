@@ -187,6 +187,16 @@ struct StreamSettings: Equatable {
         let storedBitrateMode = defaults.string(forKey: "bitrateMode")
         let bitrateMode = BitrateMode(rawValue: storedBitrateMode ?? "") ?? .auto
         let bitratePreset = BitratePreset(rawValue: defaults.integer(forKey: "bitrateMbps")) ?? .mbps40
+        let savedDefault = DesktopResolution(rawValue: defaults.string(forKey: "desktopResolutionDefault.v2") ?? "")
+        let legacyKeys = ["desktopResolutions.v1", "quality", "fpsMode", "fps", "codecMode", "codec",
+                          "transportMode", "debugStats", "bitrateMode", "bitrateMbps", "streamPriority",
+                          "macRole", "mode", "presentation", "wifiRemembered", "usbDisabled",
+                          "installIDByUDID", "installIDByAndroidSerial", "receiverFullscreen", "receiverName"]
+        let desktopDefault: DesktopResolution = savedDefault == .automatic ? .automatic
+            : savedDefault == .native || legacyKeys.contains(where: { defaults.object(forKey: $0) != nil }) ? .native : .automatic
+        if savedDefault != .automatic && savedDefault != .native {
+            defaults.set(desktopDefault.rawValue, forKey: "desktopResolutionDefault.v2")
+        }
         var settings = StreamSettings(
             fpsMode: fpsMode,
             codecMode: codecMode,
@@ -196,7 +206,8 @@ struct StreamSettings: Equatable {
             bitrateMode: bitrateMode,
             bitratePreset: bitratePreset,
             desktopResolutions: DesktopResolutionPreferences(
-                stored: defaults.dictionary(forKey: "desktopResolutions.v1") as? [String: String] ?? [:]),
+                stored: defaults.dictionary(forKey: "desktopResolutions.v1") as? [String: String] ?? [:],
+                defaultResolution: desktopDefault),
             priority: StreamPriority(rawValue: defaults.string(forKey: "streamPriority") ?? "") ?? .resolution,
             adaptEncoderLoad: defaults.object(forKey: "adaptEncoderLoad") == nil || defaults.bool(forKey: "adaptEncoderLoad"))
         settings.normalizeBitratePreset()
@@ -212,6 +223,7 @@ struct StreamSettings: Equatable {
         defaults.set(bitrateMode.rawValue, forKey: "bitrateMode")
         defaults.set(bitratePreset.rawValue, forKey: "bitrateMbps")
         defaults.set(desktopResolutions.stored, forKey: "desktopResolutions.v1")
+        defaults.set(desktopResolutions.defaultResolution.rawValue, forKey: "desktopResolutionDefault.v2")
         defaults.set(priority.rawValue, forKey: "streamPriority")
         defaults.set(adaptEncoderLoad, forKey: "adaptEncoderLoad")
     }

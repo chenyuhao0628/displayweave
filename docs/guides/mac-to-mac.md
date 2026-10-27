@@ -62,4 +62,4 @@ as successful release validation.
 
 ## iMac scaling and sustained encoder load (source update)
 
-v0.3.2 adds explicit iMac 4K/4.5K/5K desktop presets, a receiver-derived logical-size label and measured encoder-load adaptation. Use **Match receiving screen** plus fullscreen reception to align desktop size; use frame-rate priority to lower transmission load without rearranging windows. See [desktop resolution](desktop-resolution.md) and [the iMac evidence](../verification/imac-resolution-performance.md).
+v0.3.2 adds explicit iMac 4K/4.5K/5K desktop presets, a receiver-derived logical-size label and measured encoder-load adaptation. In v0.3.3, use **Automatic matching** with fullscreen reception to estimate comparable desktop sizes; existing installations select it once. Frame-rate priority can lower transmission load without rearranging windows. Native 5K video remains unavailable. See [desktop resolution](desktop-resolution.md) and [the matching evidence](../verification/automatic-desktop-matching.md).

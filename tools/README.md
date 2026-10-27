@@ -14,6 +14,7 @@ Run tools from the repository root. See [development](../docs/development/workfl
 | Website / documentation | `prerender.mjs`, `check-site.mjs`, `check-docs.py` via `pnpm build` / `pnpm run check:docs` |
 | Brand / DMG assets | `export-brand-assets.py`, `create-guided-dmg.sh` |
 | Clean generated outputs | `clean-workspace.py` (dry run by default) |
+| Customer Mac display evidence | `collect-mac-display-evidence.swift` (read-only); [investigate from one Mac](../docs/verification/customer-mac-geometry.md) |
 | Maintenance regressions | `test-workspace-cleanup.py`, `test-docs-check.py`, `test-release-packaging.py` |
 | Historical probes | `audits/2026-10-26/`; these reproduce old bugs, not current acceptance |
 
