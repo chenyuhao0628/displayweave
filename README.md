@@ -39,7 +39,7 @@ second Android device for this release.
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-27: build 22 adds automatic matching of Mac extended desktops from available sender and receiver display data. Existing installations keep their prior settings until they select automatic matching. Native 5K video and customer two-Mac acceptance remain unverified. See the [release notes](docs/releases/v0.3.3.md) for limitations and verification.
+2026-10-27: build 22 adds automatic matching of Mac extended desktops from available sender and receiver display data. Existing installations keep their prior settings until they select automatic matching. Native 5K video is not supported; customer two-Mac acceptance remains unverified. See the [release notes](docs/releases/v0.3.3.md) for limitations and verification.
 
 | Platform | Asset | Distribution boundary |
 | --- | --- | --- |

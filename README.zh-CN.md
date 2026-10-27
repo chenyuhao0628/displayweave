@@ -35,7 +35,7 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-27：构建 22 根据可用的发送端和接收端显示器数据自动匹配 Mac 扩展桌面。已有安装保留旧设置，需选择一次“自动匹配”。原生 5K 视频与客户双 Mac 实机验收仍未完成，见[发布说明](docs/releases/v0.3.3.zh-CN.md)。
+2026-10-27：构建 22 根据可用的发送端和接收端显示器数据自动匹配 Mac 扩展桌面。已有安装保留旧设置，需选择一次“自动匹配”。目前不支持原生 5K 视频，客户双 Mac 实机验收尚未完成，见[发布说明](docs/releases/v0.3.3.zh-CN.md)。
 
 | 平台 | 产物 | 分发边界 |
 | --- | --- | --- |
