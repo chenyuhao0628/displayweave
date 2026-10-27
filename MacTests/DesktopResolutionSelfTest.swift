@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 @main enum DesktopResolutionSelfTest {
     static func main() throws {
@@ -45,11 +46,64 @@ import Foundation
             nativeHeight: -1, backingScale: 99)
         precondition(invalid.pixelsWide <= 16384 && invalid.pixelsHigh >= 4)
 
+        let main = DesktopMatchReference(id: 1, bounds: CGRect(x: 0, y: 0, width: 2048, height: 1152),
+            isMain: true, isBuiltIn: true, eligible: true, physicalSize: .init(width: 600, height: 338))
+        let neighbour = DesktopMatchReference(id: 2, bounds: CGRect(x: 2048, y: 0, width: 2048, height: 1152),
+            isMain: false, isBuiltIn: false, eligible: true, physicalSize: .init(width: 600, height: 338))
+        let virtual = DesktopMatchReference(id: 3, bounds: CGRect(x: 4096, y: 0, width: 1280, height: 720),
+            isMain: false, isBuiltIn: false, eligible: false, physicalSize: nil)
+        let saved = CGRect(x: 4096, y: 0, width: 1280, height: 720)
+        precondition(DesktopMatchPolicy.reference(from: [main, neighbour, virtual], adjacentTo: saved)?.id == 2)
+        precondition(DesktopMatchPolicy.reference(from: [virtual, neighbour, main], adjacentTo: nil)?.id == 1)
+        precondition(DesktopMatchPolicy.reference(from: [virtual], adjacentTo: saved) == nil)
+
+        let receiver = DesktopGeometry(pointsWide: 2560, pointsHigh: 1440, scale: 2)
+        let matching = DesktopMatchPolicy.match(receiver: receiver, reference: main,
+            receiverSize: .init(width: 598, height: 337))
+        precondition(matching.geometry == .init(pointsWide: 2048, pointsHigh: 1152, scale: 2))
+        precondition(matching.basis == .physical)
+        let unknownSize = DesktopMatchPolicy.match(receiver: receiver, reference: main, receiverSize: nil)
+        precondition(unknownSize.geometry == matching.geometry && unknownSize.basis == .proportional)
+        let smallReceiver = DesktopMatchPolicy.match(receiver: receiver, reference: main,
+            receiverSize: .init(width: 300, height: 169))
+        precondition(smallReceiver.geometry == .init(pointsWide: 1024, pointsHigh: 576, scale: 2))
+        let tall = DesktopMatchPolicy.match(receiver: .init(pointsWide: 1440, pointsHigh: 2560, scale: 2),
+            reference: main, receiverSize: nil)
+        precondition(tall.geometry == .init(pointsWide: 1152, pointsHigh: 2048, scale: 2))
+        let oneX = DesktopMatchPolicy.match(receiver: .init(pointsWide: 2560, pointsHigh: 1440, scale: 1),
+            reference: main, receiverSize: nil)
+        precondition(oneX.geometry == .init(pointsWide: 2048, pointsHigh: 1152, scale: 2),
+                     "a smaller logical desktop needs more backing detail on a 1x receiver")
+        let oneXEnough = DesktopMatchPolicy.match(receiver: .init(pointsWide: 1920, pointsHigh: 1080, scale: 1),
+            reference: main, receiverSize: nil)
+        precondition(oneXEnough.geometry == .init(pointsWide: 2048, pointsHigh: 1152, scale: 1))
+        let fallback = DesktopMatchPolicy.match(receiver: receiver, reference: nil, receiverSize: nil)
+        precondition(fallback.geometry == receiver && fallback.basis == .receiver)
+        let huge = DesktopMatchPolicy.match(receiver: .init(pointsWide: 8192, pointsHigh: 2, scale: 2),
+            reference: main, receiverSize: .init(width: 2000, height: 50))
+        precondition(huge.geometry.pixelsWide <= 16384 && huge.geometry.pixelsHigh <= 16384)
+        precondition(huge.geometry.pixelsWide * huge.geometry.pixelsHigh <= 67_108_864)
+        precondition(DesktopPhysicalSize.validated(width: 600, height: 338, pointsWide: 2048,
+            pointsHigh: 1152) != nil)
+        let rotatedSize = DesktopPhysicalSize.validated(width: 600, height: 338, pointsWide: 1152,
+            pointsHigh: 2048)
+        precondition(rotatedSize == .init(width: 338, height: 600))
+        precondition(DesktopPhysicalSize.validated(width: 2048 * 25.4 / 72, height: 1152 * 25.4 / 72,
+            pointsWide: 2048, pointsHigh: 1152) == nil, "72 dpi fallback is not a measurement")
+        precondition(DesktopPhysicalSize.validated(width: .nan, height: 338, pointsWide: 2048,
+            pointsHigh: 1152) == nil)
+        precondition(DesktopPhysicalSize.validated(width: 10, height: 2000, pointsWide: 2048,
+            pointsHigh: 1152) == nil)
+
         let name = "DesktopResolutionSelfTest.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         var settings = StreamSettings.load(from: defaults)
-        precondition(settings.desktopResolutions.resolution(for: "A") == .native)
+        precondition(settings.desktopResolutions.resolution(for: "A") == .automatic)
+        precondition(settings.desktopResolutions.resolution(for: nil) == .native)
+        defaults.set(["connection"], forKey: "wifiRemembered")
+        precondition(StreamSettings.load(from: defaults).desktopResolutions.resolution(for: "A") == .automatic,
+                     "a first connection must not turn a new installation into a legacy one on relaunch")
         precondition(settings.adaptEncoderLoad)
         settings.adaptEncoderLoad = false
         settings.desktopResolutions.set(.fullHD, for: "A")
@@ -62,6 +116,10 @@ import Foundation
         settings.desktopResolutions.set(.native, for: "A")
         precondition(settings.desktopResolutions.resolution(for: "A") == .native)
         precondition(settings.desktopResolutions.resolution(for: "B") == .ultraHD)
+        settings.save(to: defaults)
+        precondition(StreamSettings.load(from: defaults).desktopResolutions.resolution(for: "A") == .native)
+        settings.desktopResolutions.set(.automatic, for: "A")
+        precondition(settings.desktopResolutions.resolution(for: "A") == .automatic)
         let invalidPreferences = DesktopResolutionPreferences(stored: ["": "fullHD",
             String(repeating: "x", count: 257): "fullHD", "bad": "unknown"])
         precondition(invalidPreferences.stored.isEmpty)
@@ -78,6 +136,40 @@ import Foundation
             sourceWidth: 1000, sourceHeight: 800)
         precondition(mirror.width == 900 && mirror.height == 720,
                      "mirroring must use the physical source aspect ratio")
+        selected.desktopResolutions.set(.automatic, for: "A")
+        let automatic = MacReceiverPolicy.plan(info: info, settings: selected, automaticReference: main)
+        precondition(automatic.pointsWide == 2048 && automatic.pointsHigh == 1152)
+        precondition(automatic.width == 1280 && automatic.height == 720,
+                     "automatic desktop geometry must not evade a receiver's video envelope")
+        let physicalInfo = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":5120,"pixelsHigh":2880,"scale":2,"device":"Mac","id":"A","panel":{"pixelsWide":5120,"pixelsHigh":2880,"scale":2,"pointsWide":2560,"pointsHigh":1440,"millimetersWide":300,"millimetersHigh":169}}"#.utf8))
+        let physicalPlan = MacReceiverPolicy.plan(info: physicalInfo, settings: selected, automaticReference: main)
+        precondition(physicalPlan.pointsWide == 1024 && physicalPlan.pointsHigh == 576)
+        precondition(physicalInfo.hasValidGeometry && MacReceiverPolicy.physicalSize(panel: physicalInfo.panel) != nil)
+        let malformedPhysical = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":5120,"pixelsHigh":2880,"scale":2,"device":"Mac","id":"A","panel":{"pixelsWide":5120,"pixelsHigh":2880,"scale":2,"millimetersWide":-1,"millimetersHigh":169}}"#.utf8))
+        precondition(malformedPhysical.hasValidGeometry && MacReceiverPolicy.physicalSize(panel: malformedPhysical.panel) == nil)
+        precondition(MacReceiverPolicy.plan(info: malformedPhysical, settings: selected,
+            automaticReference: main).pointsWide == 2048, "invalid optional millimeters must fall back")
+        let wrongPhysicalType = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":5120,"pixelsHigh":2880,"scale":2,"device":"Mac","id":"A","panel":{"pixelsWide":5120,"pixelsHigh":2880,"scale":2,"millimetersWide":"unknown","millimetersHigh":999999999999999999999999}}"#.utf8))
+        precondition(wrongPhysicalType.hasValidGeometry && MacReceiverPolicy.physicalSize(panel: wrongPhysicalType.panel) == nil,
+                     "optional extension fields must not prevent legacy geometry negotiation")
+
+        let legacyName = "\(name).legacy"
+        let legacy = UserDefaults(suiteName: legacyName)!
+        defer { legacy.removePersistentDomain(forName: legacyName) }
+        legacy.set(["saved": "iMac4K"], forKey: "desktopResolutions.v1")
+        var migrated = StreamSettings.load(from: legacy)
+        precondition(migrated.desktopResolutions.resolution(for: "saved") == .iMac4K)
+        precondition(migrated.desktopResolutions.resolution(for: "unspecified") == .native)
+        migrated.desktopResolutions.set(.automatic, for: "unspecified")
+        migrated.save(to: legacy)
+        let reloaded = StreamSettings.load(from: legacy)
+        precondition(reloaded.desktopResolutions.resolution(for: "saved") == .iMac4K)
+        precondition(reloaded.desktopResolutions.resolution(for: "unspecified") == .automatic)
+        precondition(reloaded.desktopResolutions.resolution(for: "another") == .native)
+        let legacyWithoutMap = UserDefaults(suiteName: "\(name).old-settings")!
+        defer { legacyWithoutMap.removePersistentDomain(forName: "\(name).old-settings") }
+        legacyWithoutMap.set("balanced", forKey: "quality")
+        precondition(StreamSettings.load(from: legacyWithoutMap).desktopResolutions.resolution(for: "A") == .native)
         print("Desktop resolution geometry, bounds, per-device persistence and encoder limits PASS")
     }
 }

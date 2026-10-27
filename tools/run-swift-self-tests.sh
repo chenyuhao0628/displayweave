@@ -101,6 +101,11 @@ run_test StreamSettingsSelfTest \
 run_test DesktopResolutionSelfTest \
   "${settings[@]}" Mac/DeviceCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift \
   Mac/MacReceiverPolicy.swift MacTests/DesktopResolutionSelfTest.swift
+run_test DesktopMatchMonitorSelfTest \
+  Mac/DesktopMatchMonitor.swift MacTests/DesktopMatchMonitorSelfTest.swift
+run_test DesktopMatchDisplaysSelfTest \
+  Mac/DesktopResolution.swift Mac/DisplayArrangement.swift Mac/DesktopMatchDisplays.swift \
+  MacTests/DesktopMatchDisplaysSelfTest.swift
 run_test AppleVideoPolicySelfTest \
   "${settings[@]}" Mac/DeviceCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift \
   Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift \
@@ -214,5 +219,6 @@ run_test WireContractSelfTest \
 python3 tools/test-capture-configuration.py
 python3 tools/test-encoder-load-integration.py
 python3 tools/test-ios-video-admission.py
+python3 tools/test-desktop-match-update.py
 
-echo "Swift standalone self-tests PASS (63 suites + capture/load/admission fixtures)"
+echo "Swift standalone self-tests PASS (65 suites + capture/load/admission/desktop-update fixtures)"

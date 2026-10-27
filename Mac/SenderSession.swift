@@ -50,14 +50,12 @@ final class DeviceSession: ObservableObject, Identifiable {
     // the same physical device across USB and WiFi.
     @Published var deviceID: String?
     @Published var receiverInfo: PhoneInfo?
+    @Published var appliedDesktop: DesktopGeometry?
+    @Published var desktopMatchNote: String?
 
     var nativeDesktop: DesktopGeometry? {
         guard let info = receiverInfo else { return nil }
         return desktopGeometry(.native, info: info)
-    }
-
-    func desktopGeometry(_ selection: DesktopResolution) -> DesktopGeometry? {
-        receiverInfo.map { desktopGeometry(selection, info: $0) }
     }
 
     private func desktopGeometry(_ selection: DesktopResolution, info: PhoneInfo) -> DesktopGeometry {

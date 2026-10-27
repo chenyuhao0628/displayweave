@@ -136,6 +136,10 @@ enum DisplayArrangement {
         return Placement(rect: rect, side: record.count == 5 ? Side(rawValue: record[4]) : nil)
     }
 
+    static func savedBounds(for device: String, defaults: UserDefaults = .standard) -> CGRect? {
+        load(device, defaults: defaults)?.rect
+    }
+
     private static func valid(_ rect: CGRect) -> Bool {
         let values = [rect.origin.x, rect.origin.y, rect.size.width, rect.size.height]
         return values.allSatisfy { $0.isFinite && $0 >= CGFloat(Int32.min) && $0 <= CGFloat(Int32.max) }

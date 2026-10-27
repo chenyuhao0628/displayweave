@@ -660,6 +660,12 @@ final class SenderController: ObservableObject {
             session?.streamDescription = description
             session?.streamLimitDescription = explanation
         }
+        sender.onDesktopGeometry = { [weak self, weak session] geometry, note in
+            guard let self, let session, self.roleEnabled, !session.failed,
+                  self.sessions.contains(where: { $0 === session }) else { return }
+            session.appliedDesktop = geometry
+            session.desktopMatchNote = note
+        }
         sender.onBenchmarkStatus = { [weak session] status in
             session?.benchmarkStatus = status
         }

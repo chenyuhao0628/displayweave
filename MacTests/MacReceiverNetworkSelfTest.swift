@@ -41,7 +41,8 @@ private final class ReceiverLogProbe: @unchecked Sendable {
         }
         let logProbe = ReceiverLogProbe()
         let receiver = StreamReceiver(diagnostic: { logProbe.accept($0) }, securityProvider: { .legacy })
-        receiver.configure(panel: PanelAnnouncement(pixelsWide: 1920, pixelsHigh: 1080, scale: 1),
+        receiver.configure(panel: PanelAnnouncement(pixelsWide: 1920, pixelsHigh: 1080, scale: 1,
+                           millimetersWide: 530, millimetersHigh: 300),
                            name: "Test", maxFps: 120)
         receiver.start(port: 0, advertiseService: false)
         try await waitFor("listen") { receiver.listeningPort != 0 }
@@ -51,6 +52,8 @@ private final class ReceiverLogProbe: @unchecked Sendable {
             let hello = try peer.hello()
             precondition(hello["device"] as? String == "Mac")
             precondition(hello["maxFps"] as? Int == 120)
+            let panel = hello["panel"] as? [String: Any]
+            precondition(panel?["millimetersWide"] as? Int == 530 && panel?["millimetersHigh"] as? Int == 300)
             precondition((hello["supportedCodecs"] as? [String])?.contains("h264") == true)
             precondition(hello["protocolVersion"] == nil && hello["power"] == nil && hello["cursorPort"] == nil)
             return peer

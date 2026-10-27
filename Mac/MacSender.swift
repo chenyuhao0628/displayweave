@@ -42,6 +42,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     @MainActor var onStats: ((Int, Double) -> Void)?   // framesSent, mbps
     @MainActor var onTargetBitrate: ((Double) -> Void)?
     @MainActor var onStreamDescription: ((String, String?) -> Void)?
+    @MainActor var onDesktopGeometry: ((DesktopGeometry, String?) -> Void)?
     @MainActor var onBenchmarkStatus: ((String) -> Void)?
     // Fired when a previously connected device stays gone past the grace
     // period — the controller ends the session (capture, virtual display,
@@ -261,6 +262,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private var captureSourceCheck = CaptureSourceCheck()
     private var captureNeedsRebuild = false
     private var appliedCaptureInfo: PhoneInfo? // queue-owned configuration actually installed
+    @MainActor private var desktopMatchMonitor: DesktopMatchMonitor?
     private var encoderFailureRecovery = EncoderFailureRecovery()
     private var releasedForRenumbering = false
     private var waitingForConsole = false
@@ -391,17 +393,39 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         Log.info("phone hello: \(info.pixelsWide)x\(info.pixelsHigh) @\(info.scale)x device=\(info.negotiatedDeviceModel) refresh=\(info.negotiatedRefreshRate)Hz maxFps=\(info.negotiatedMaxFps) codecs=\(info.negotiatedSupportedCodecs.joined(separator: ",")) preferred=\(info.negotiatedPreferredCodec) sdk=\(info.negotiatedAndroidSdk) transport=\(info.negotiatedTransport)")
 
         guard !stopped else { throw CancellationError() }
-        let macPlan = info.usesAppleVideoCapabilities ? MacReceiverPolicy.plan(info: info, settings: settings, hardwareHEVCEncode: EncoderHardwareCapabilities.hevc) : nil
+        let selection = settings.desktopResolutions.resolution(for: info.id)
+        let arrangementKey = info.id ?? "serial-\(displaySerial)"
+        let reference = selection == .automatic && info.isMacReceiver
+            ? DesktopMatchDisplays.reference(for: arrangementKey) : nil
+        let match = info.usesAppleVideoCapabilities
+            ? MacReceiverPolicy.desktop(info: info, settings: settings, automaticReference: reference) : nil
+        let macPlan = info.usesAppleVideoCapabilities ? MacReceiverPolicy.plan(info: info, settings: settings,
+            hardwareHEVCEncode: EncoderHardwareCapabilities.hevc, automaticReference: reference) : nil
         logAppleStreamPlan(macPlan)
         let mobileDesktop = DesktopResolutionPolicy.geometry(
-            settings.desktopResolutions.resolution(for: info.id),
+            selection,
             nativeWidth: info.pixelsWide, nativeHeight: info.pixelsHigh, backingScale: 2)
-        let pointsWide = macPlan?.pointsWide ?? mobileDesktop.pointsWide
-        let pointsHigh = macPlan?.pointsHigh ?? mobileDesktop.pointsHigh
+        let desktop = match?.geometry ?? mobileDesktop
+        let pointsWide = desktop.pointsWide
+        let pointsHigh = desktop.pointsHigh
         // Rough physical size so macOS picks a sane default UI scale.
-        let mm = info.isMacReceiver ? CGSize(width: Double(pointsWide) * 25.4 / 110, height: Double(pointsHigh) * 25.4 / 110) : info.pixelsWide >= info.pixelsHigh
-            ? CGSize(width: 147, height: 68)
-            : CGSize(width: 68, height: 147)
+        let mm: CGSize
+        if selection == .automatic, info.isMacReceiver, let physical = MacReceiverPolicy.physicalSize(panel: info.panel) {
+            mm = CGSize(width: physical.width, height: physical.height)
+        } else if info.isMacReceiver {
+            mm = CGSize(width: Double(pointsWide) * 25.4 / 110, height: Double(pointsHigh) * 25.4 / 110)
+        } else {
+            mm = info.pixelsWide >= info.pixelsHigh ? CGSize(width: 147, height: 68) : CGSize(width: 68, height: 147)
+        }
+        let matchNote: String?
+        if selection == .automatic, info.isMacReceiver {
+            matchNote = Self.automaticMatchNote(match, reference: reference)
+            Log.info("DESKTOP-AUTO basis=\(String(describing: match?.basis)) reference=\(reference == nil ? "none" : "available") desktopPoints=\(pointsWide)x\(pointsHigh)")
+        } else if selection == .automatic {
+            matchNote = "自动匹配：此设备使用接收屏幕尺寸"
+        } else {
+            matchNote = nil
+        }
 
         // USB sessions can start before lockdown resolves the device name —
         // fall back to the kind from the hello rather than the generic label.
@@ -416,7 +440,6 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             ? displaySerial
             : displaySerial ^ 0x8000_0000
         let requestedRefreshRate = macPlan?.fps ?? settings.selectedFps(deviceMaxFps: info.negotiatedMaxFps)
-        let arrangementKey = info.id ?? "serial-\(displaySerial)"
         let desktopSize = CGSize(width: pointsWide, height: pointsHigh)
         try displayCoordinator.register(self)
         let vd = try await makeAvoidingUnitClash { () -> VirtualDisplay? in
@@ -463,6 +486,20 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                                virtualDisplayRefreshRate: vd.actualRefreshRate,
                                codec: codec)
         queue.sync { appliedCaptureInfo = info }
+        guard !stopped else { throw CancellationError() }
+        onDesktopGeometry?(desktop, matchNote)
+        if selection == .automatic, info.isMacReceiver {
+            if desktopMatchMonitor == nil {
+                let monitor = DesktopMatchMonitor(name: NSApplication.didChangeScreenParametersNotification) { [weak self] in
+                    self?.updateAutomaticDesktop() ?? false
+                }
+                desktopMatchMonitor = monitor
+                monitor.start()
+            }
+        } else {
+            desktopMatchMonitor?.stop()
+            desktopMatchMonitor = nil
+        }
 
         // Debug aid (`defaults write app.displayweave.mac.debug testPattern -bool true`):
         // an animated window on the virtual display generates a constant frame
@@ -485,6 +522,53 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     @MainActor private var reconfiguring = false
     private var reconfigurationTask: Task<Void, Never>? // owned by queue
     private var reconfigurationID: UUID? // queued/cancelled task completions cannot clear a replacement
+
+    private static func automaticMatchNote(_ match: DesktopMatchResult?, reference: DesktopMatchReference?) -> String {
+        let name = reference?.isMain == true ? "发送端主显示器" : "发送端其他显示器"
+        switch match?.basis {
+        case .physical: return "自动匹配：参考\(name)与系统报告的屏幕尺寸"
+        case .proportional: return "自动匹配：参考\(name)；实际屏幕尺寸未知"
+        default: return "自动匹配：无法读取发送端显示器，已跟随接收屏幕"
+        }
+    }
+
+    @MainActor
+    private func updateAutomaticDesktop() -> Bool {
+        guard !stopped, mode == .extend else { return false }
+        let snapshot: (PhoneInfo, VirtualDisplay)? = queue.sync {
+            guard !stopped, !pipelineFailureReported, !releasedForRenumbering, stream != nil,
+                  reconfigurationTask == nil, consoleCanCapture, let info = lastHello,
+                  info.isMacReceiver, settings.desktopResolutions.resolution(for: info.id) == .automatic,
+                  let display = virtualDisplay else { return nil }
+            return (info, display)
+        }
+        guard let (info, display) = snapshot else { return false }
+        let reference = DesktopMatchDisplays.reference(for: info.id ?? "serial-\(displaySerial)")
+        let match = reference.map {
+            MacReceiverPolicy.desktop(info: info, settings: settings, automaticReference: $0)
+        }
+        let current = DesktopGeometry(pointsWide: display.pointsWide, pointsHigh: display.pointsHigh,
+                                      scale: display.backingScale)
+        let stillCurrent = {
+            guard !self.stopped, !self.pipelineFailureReported, !self.releasedForRenumbering, self.stream != nil,
+                  self.reconfigurationTask == nil, self.virtualDisplay === display, let latest = self.lastHello,
+                  latest.id == info.id, latest.sameDisplayConfiguration(as: info), self.consoleCanCapture else { return false }
+            return true
+        }
+        if match == nil || match?.geometry == current {
+            guard queue.sync(execute: stillCurrent) else { return false }
+            let note = match == nil ? "自动匹配：参考屏暂不可用，保留当前桌面"
+                : Self.automaticMatchNote(match, reference: reference)
+            onDesktopGeometry?(current, note)
+            return false
+        }
+        return queue.sync {
+            guard stillCurrent() else { return false }
+            Log.info("DESKTOP-AUTO display change requires desktop reconfiguration")
+            scheduleReconfiguration()
+            return reconfigurationTask != nil
+        }
+    }
 
     @MainActor
     private func reconfigure(_ info: PhoneInfo) async -> PhoneInfo? {
@@ -754,6 +838,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     @discardableResult
     func stop() -> Task<Void, Never> {
         stopped = true
+        desktopMatchMonitor?.stop()
+        desktopMatchMonitor = nil
         displayCoordinator.unregister(self)
         cursorEcho.stop()
         TestPattern.hide(ownerID: testPatternOwnerID)
@@ -994,6 +1080,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                     self.scheduleReconfiguration()
                 } else if self.stream == nil {
                     self.scheduleCaptureRecovery()
+                } else {
+                    // Screen notifications received during the rebuild may
+                    // have been checked while its configuration was busy.
+                    Task { @MainActor [weak self] in self?.desktopMatchMonitor?.reconsider() }
                 }
             }
         }
@@ -2685,10 +2775,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         } else if let requested = settings.fpsMode.userSelectedFps, requested > requestedCaptureFps {
             limits.append("请求 \(requested) fps，受屏幕或解码能力限制；Apple 接收端可尝试“帧率优先”")
         }
-        if mode == .extend, let info = lastHello, info.isMacReceiver {
-            let desktop = MacReceiverPolicy.plan(info: info, settings: settings)
-            if width < desktop.pointsWide * desktop.scale || height < desktop.pointsHigh * desktop.scale {
-                limits.append("传输画面低于桌面像素尺寸；画质、解码能力或编码负载会限制细节，不改变逻辑桌面")
+        if mode == .extend, lastHello?.isMacReceiver == true, let desktop = virtualDisplay {
+            if width < desktop.pointsWide * desktop.backingScale || height < desktop.pointsHigh * desktop.backingScale {
+                limits.append("传输画面低于桌面像素，细节可能变软；可尝试“清晰”画质或较小桌面，仍受接收能力限制")
             }
         }
         let explanation = limits.isEmpty ? nil : limits.joined(separator: "。")

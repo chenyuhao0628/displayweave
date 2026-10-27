@@ -40,12 +40,16 @@ struct SessionRow: View {
                     }
                 }
                 .disabled(controller.replacingSessions || !DesktopResolutionPreferences.validIdentity(session.deviceID))
-                .help("跟随接收屏幕可匹配接收端当前的桌面大小。更改仅重连这台设备；编码画质不会改变窗口大小。")
-                if let desktop = session.desktopGeometry(controller.desktopResolution(for: session)) {
+                .help("自动匹配参考发送端与接收端的屏幕数据。更改仅重连这台设备；编码画质不会改变桌面大小。")
+                if let desktop = session.appliedDesktop {
                     Text(desktop.summary).font(.caption).monospacedDigit().foregroundStyle(.secondary)
                 }
-                if session.receiverInfo?.isMacReceiver == true {
-                    Text("跨屏窗口大小不一致时，选“跟随接收屏幕”，并在接收端全屏显示。想降低负载，请调画质或选帧率优先；窗口模式会把整个桌面缩放进接收窗口。")
+                if let note = session.desktopMatchNote {
+                    Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                if session.receiverInfo?.isMacReceiver == true,
+                   controller.desktopResolution(for: session) == .automatic {
+                    Text("以接收端全屏为基础；窗口模式会缩放整个桌面。")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
