@@ -2,7 +2,7 @@
 
 # Automatic desktop matching
 
-Date: 2026-10-27. This describes unreleased source changes, not the published v0.3.2 download. See the [desktop resolution guide](../guides/desktop-resolution.md) for operation and limitations.
+Date: 2026-10-27. The v0.3.3 release contains these source changes; v0.3.2 does not. See the [desktop resolution guide](../guides/desktop-resolution.md) for operation and limitations.
 
 ## Implementation
 
@@ -17,6 +17,12 @@ Old preference maps and the old implicit receiver-matched default are preserved 
 `DesktopResolutionSelfTest` covers the reported 2048×1152-point case, portrait and 1×/2× choices, physical-size validation and missing/malformed fields, bounded geometry, receiver video limits, per-device settings and legacy migration. `DesktopMatchMonitorSelfTest` covers coalescing, cooldown, reconsideration after a busy rebuild and teardown; `DesktopMatchDisplaysSelfTest` queries the current display read-only or reports SKIP. `MacReceiverNetworkSelfTest` exercises the optional physical dimensions in a loopback hello. `tools/test-desktop-match-update.py` executes the current production update and reconfiguration-scheduling methods with stubbed display operations, including missing reference, unchanged geometry, independent sessions, stopped state, replaced display, stale receiver information and the post-rebuild recheck.
 
 The local Swift standalone gate, universal unsigned Mac Debug build, documentation checks and whitespace check are the reproducible source checks. The normal signed development Run action was also used; it does not replace the installed release.
+
+The customer evidence collector now recognizes automatic per-device selections and the stored default without exposing raw peer IDs. An isolated preference-domain fixture checks recognized, unknown and absent values and its export bound; the collector was run locally and typechecked for x86_64/macOS 14.
+
+## Upstream review
+
+Refreshed upstream `origin/main` at `07d6b785754a868f7e7bea93e387a7495ba08fa5`, unchanged since the [earlier evaluation](reliability-experience-upgrade.md). The Mac recovery changes `1522cd2`, `cde4fc8` and `5de4252` were already selectively adapted and tested. Android accessory transport `e8a7f0f` remains deferred until its protocol/security integration and physical accessory hardware can be verified; upstream release feeds and signing are not imported.
 
 ## Local observations
 

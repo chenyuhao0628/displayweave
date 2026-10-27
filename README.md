@@ -6,15 +6,15 @@
 
 DisplayWeave is an independently maintained, GPL-3.0, local-first second-display project derived from [OpenDisplay](https://github.com/peetzweg/opendisplay). It turns iPhone, iPad, and Android devices into extended or mirrored displays for a Mac.
 
-## Mac-to-Mac (experimental in v0.3.2)
+## Mac-to-Mac (experimental in v0.3.3)
 
 The same app can send or receive a one-way extended/mirrored desktop over Wi-Fi
 or Ethernet. Both Macs require macOS 14+; the app negotiates hardware HEVC with H.264 fallback, with targets up to 120fps within screen/codec limits.
-This feature is included in the `v0.3.2` downloads below.
+This feature is included in the `v0.3.3` downloads below.
 The two-Mac physical performance matrix remains unverified. See the [user guide](docs/guides/mac-to-mac.md) and
 [design/upstream assessment](docs/reference/mac-to-mac-design.md).
 
-This release also includes the four-surface UI refactor, selected upstream recovery improvements and network/lifecycle hardening. The [source upgrade report](docs/archive/audits/source-upgrade-audit-2026-10-16.md) records that baseline. This release includes the p7 [Mac HEVC, pinned direct-link discovery and negotiated Apple Pencil input](docs/guides/hevc-wired-pencil.md), with 63 Swift suites; physical acceptance remains pending.
+This release also includes the four-surface UI refactor, selected upstream recovery improvements and network/lifecycle hardening. The [source upgrade report](docs/archive/audits/source-upgrade-audit-2026-10-16.md) records that baseline. This release includes the p7 [Mac HEVC, pinned direct-link discovery and negotiated Apple Pencil input](docs/guides/hevc-wired-pencil.md); physical acceptance remains pending.
 
 This release also includes [per-device resolution](docs/guides/desktop-resolution.md), [secure pairing](docs/guides/secure-transport.md), [consented Mac keyboard/mouse input](docs/guides/mac-receiver-input.md), [wired/Wi-Fi handover](docs/guides/mac-lan-handover.md), and [advanced Pencil](docs/guides/pencil-advanced.md). Pair DisplayWeave devices using a receiving invitation; connect older OpenDisplay clients through the main-screen compatibility choice. See [interoperability](docs/guides/opendisplay-compatibility.md).
 
@@ -35,11 +35,11 @@ The physical-device recovery and high-refresh observations below were recorded
 during Preview 2 validation and remain prior evidence; they were not rerun on a
 second Android device for this release.
 
-## Download `v0.3.2`
+## Download `v0.3.3`
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-26: stable build 21 adds iMac 4K/4.5K/5K desktop presets and explicit logical-size labels, isolates blocking encoder work, and adapts sustained Mac encoder pressure without changing desktop layout. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](docs/releases/v0.3.2.md) for changes, permission continuity and verification limits.
+2026-10-27: build 22 adds automatic matching of Mac extended desktops from available sender and receiver display data. Existing installations keep their prior settings until they select automatic matching. Native 5K video and customer two-Mac acceptance remain unverified. See the [release notes](docs/releases/v0.3.3.md) for limitations and verification.
 
 | Platform | Asset | Distribution boundary |
 | --- | --- | --- |
@@ -49,8 +49,8 @@ second Android device for this release.
 | iOS/iPadOS | `DisplayWeave-iOS-unsigned-resigning-input.ipa` | Unsigned re-signing input; cannot be installed directly |
 | Mac feed | `appcast.xml` | Sparkle feed authenticated by the public key embedded in the Mac app |
 | Android feed | `android-update.json` | HTTPS metadata with size, hash, version, package, and pinned certificate |
-| Source | `DisplayWeave-v0.3.2-source.tar.gz` | Tracked source at the release tag, including GPL-3.0 and build scripts |
-| Verification | `SHA256SUMS.txt` | SHA-256 for all Release files |
+| Source | `DisplayWeave-v0.3.3-source.tar.gz` | Tracked source at the release tag, including GPL-3.0 and build scripts |
+| Verification | `SHA256SUMS.txt` | SHA-256 for the other seven Release files |
 
 This is the stable release. The Mac uses Apple Development signing and remains unnotarized; iOS requires re-signing. Verify the checksum before use. Android users should also compare the certificate fingerprint in the [release checklist](docs/releases/release-checklist.md).
 
@@ -137,6 +137,7 @@ The packaging command requires the configured Mac identity and Android keystore 
 - New connections require [authenticated TLS pairing](docs/guides/secure-transport.md), including USB tunnels; old clients require explicit unencrypted legacy mode on a trusted LAN.
 - Two simultaneous Android devices, the controlled same-condition USB/WiFi benchmark, and 30-minute/2-hour endurance runs remain incomplete.
 - macOS uses private `CGVirtualDisplay` behavior that may change in future macOS versions.
+- Mac automatic desktop matching is an estimate; Apple video remains limited to 4096×2304, so a 5K-sized desktop can still appear soft.
 - Public macOS and iOS packages are not Developer ID/App Store signed.
 
 ## Origin and license

@@ -2,7 +2,7 @@
 
 # 自动匹配桌面
 
-日期：2026-10-27。本文描述尚未发布的源码改动，不代表已发布的 v0.3.2 下载。使用方式和限制参见[桌面分辨率指南](../guides/desktop-resolution.zh-CN.md)。
+日期：2026-10-27。v0.3.3 发行包包含本文改动，v0.3.2 不包含。使用方式和限制参见[桌面分辨率指南](../guides/desktop-resolution.zh-CN.md)。
 
 ## 实现
 
@@ -17,6 +17,12 @@
 `DesktopResolutionSelfTest` 覆盖客户的 2048×1152 点案例、竖屏和 1×/2× 选择、物理尺寸校验及缺失/异常字段、几何边界、接收端视频上限、按设备保存和旧偏好迁移。`DesktopMatchMonitorSelfTest` 覆盖事件合并、冷却、繁忙重建后的重新检查和停止清理；`DesktopMatchDisplaysSelfTest` 只读查询当前显示器，无可用屏时报告 SKIP。`MacReceiverNetworkSelfTest` 通过回环 hello 验证可选物理尺寸字段。`tools/test-desktop-match-update.py` 使用桩替代显示器操作，执行当前生产更新与重配置调度方法，覆盖参考屏缺失、几何不变、会话隔离、停止、显示器被替换、过期接收端信息和重建后的再次检查。
 
 本机源码检查包括 Swift 独立测试门禁、通用架构未签名 Mac Debug 构建、文档检查及空白检查；还使用正常签名的开发版 Run 操作验证启动，未替换已安装正式版。
+
+客户证据采集器现可识别按设备保存的自动选择和已存默认值，不导出原始设备 ID。隔离偏好域夹具检查已知、未知和缺失值及导出上限；采集器已在本机运行并完成 x86_64/macOS 14 类型检查。
+
+## 上游评估
+
+已刷新上游 `origin/main`，头部 `07d6b785754a868f7e7bea93e387a7495ba08fa5` 与[此前评估](reliability-experience-upgrade.zh-CN.md)一致。Mac 恢复改动 `1522cd2`、`cde4fc8` 和 `5de4252` 已选择性适配并测试。Android 配件传输 `e8a7f0f` 仍需协议／安全整合与真实配件硬件验证，暂缓引入；不导入上游发行源和签名。
 
 ## 本机观察
 

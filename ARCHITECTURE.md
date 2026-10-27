@@ -108,3 +108,7 @@ The [feature ledger](docs/archive/plans/feature-completion.md) records desktop r
 ## Desktop geometry and measured encoder load (v0.3.2)
 
 Desktop points/backing pixels are separate from the encoded raster. iMac presets and receiver-matched geometry preserve the selected layout while video quality adapts. `EncoderWorkQueue` serializes VideoToolbox ownership away from capture/control, with at most two retained submissions. `EncoderLoadController` uses sustained active encoder pressure, excludes idle/network-limited windows, and follows the user's resolution/frame-rate priority. Capture reconfiguration clears cached frames, rejects stale generations and has a five-second deadline. See [the implementation and evidence](docs/verification/imac-resolution-performance.md); a 5K desktop does not expand the Apple video decoder envelope.
+
+## Automatic desktop matching (v0.3.3)
+
+For Mac receivers, an eligible sender display and optional validated system-reported physical dimensions inform an estimated logical desktop. Missing sizes fall back to proportional matching; mobile receivers retain their existing geometry. Existing preferences are preserved. Screen changes are debounced and session-scoped, with cooldown and stale-state checks. The 4096×2304 Apple video envelope is unchanged. See [the matching evidence](docs/verification/automatic-desktop-matching.md).

@@ -2,15 +2,15 @@
 
 # DisplayWeave roadmap
 
-Updated 2026-10-26. The current release is **v0.3.2 (21)**. iMac desktop scaling and measured encoder-load adaptation are included; see [release notes](docs/releases/v0.3.2.md) and the [implementation/acceptance ledger](docs/verification/imac-resolution-performance.md).
+Updated 2026-10-27. The current release is **v0.3.3 (22)**. Mac desktop matching estimates size from available display data; see [release notes](docs/releases/v0.3.3.md) and the [implementation/acceptance ledger](docs/verification/automatic-desktop-matching.md).
 
-## Included in the current v0.3.2 stable release
+## Included in the current v0.3.3 stable release
 
 - Generation-safe capture/encoder recovery, healthy-queue bitrate restoration, bounded Apple/Android decode pressure, aspect-correct Android video/input and resolution/frame-rate priority controls.
 - Mac 4K encoding/cursor latency policies, bounded receiver pressure, 100 Mbps H.264 LAN presets and upstream capture/display recovery; see [the release notes](docs/archive/releases/release-notes-v0.3.0.md).
 - Fixed Apple Development signing and upgrade comparisons; local permission continuity verified.
 - Shared UI standards and main-screen OpenDisplay compatibility in both connection directions.
-- Per-device receiver-matched/1080p/1440p/4K/iMac 4K/4.5K/5K desktop modes; bounded encoder work and default-on measured load adaptation preserve window layout.
+- Per-device automatic/receiver-matched/1080p/1440p/4K/iMac 4K/4.5K/5K desktop modes; bounded encoder work and default-on measured load adaptation preserve window layout.
 - Default mutual TLS, invitation pairing, revocation and explicit legacy compatibility on Apple and Android.
 - Apple HEVC/H.264 fallback and bounded 30–120fps negotiation.
 - Consented Mac receiver keyboard/mouse input with release on focus, role and session changes.
@@ -32,6 +32,6 @@ Production Apple distribution requires the maintainer's Developer ID Application
 
 ## Physical acceptance
 
-Two-Mac both-direction mirror/extend, Wi-Fi/Ethernet/Thunderbolt Bridge route changes, sleep/wake, hotplug, Intel runtime, input/layout/shortcut behavior; real Pencil gestures/rotation/eraser and drawing applications; Apple HEVC/high-refresh display behavior; paired LAN/USB performance and reconnects.
+Two-Mac automatic matching and native 5K clarity, both-direction mirror/extend, Wi-Fi/Ethernet/Thunderbolt Bridge route changes, sleep/wake, hotplug, Intel runtime, input/layout/shortcut behavior; real Pencil gestures/rotation/eraser and drawing applications; Apple HEVC/high-refresh display behavior; paired LAN/USB performance and reconnects. Native 5K video is not implemented; the Apple video envelope remains 4096×2304.
 
 Also pending: two simultaneous Android receivers, controlled same-resolution/codec/bitrate USB-versus-Wi-Fi benchmarks, 30-minute/2-hour endurance, and broader OS/SoC/cable matrices. Test virtual displays only with an independent online display. See [acceptance](docs/archive/plans/roadmap-and-acceptance.md).

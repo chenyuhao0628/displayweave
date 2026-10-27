@@ -11,15 +11,15 @@ DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases an
 - Android artifact: `DisplayWeave-Android.apk`
 
 The current stable release is
-[`v0.3.2`](https://github.com/chenyuhao0628/displayweave/releases).
+[`v0.3.3`](https://github.com/chenyuhao0628/displayweave/releases).
 Install a current APK manually once; later builds use the in-app channel automatically.
 This release includes both the guided DMG and the Sparkle ZIP payload.
 
-The v0.3.2 Mac build uses a pinned Apple Development identity and is not notarized. Sparkle authenticates the ZIP with the unchanged embedded EdDSA key. Update authenticity and permission continuity are separate: packaging checks the Mac signing identity, while Sparkle verifies the update signature. Neither makes this a Developer ID notarized release.
+The v0.3.3 Mac build uses a pinned Apple Development identity and is not notarized. Sparkle authenticates the ZIP with the unchanged embedded EdDSA key. Update authenticity and permission continuity are separate: packaging checks the Mac signing identity, while Sparkle verifies the update signature. Neither makes this a Developer ID notarized release.
 
-2026-10-26: stable build 21 adds iMac 4K/4.5K/5K desktop presets and explicit logical-size labels, isolates blocking encoder work, and adapts sustained Mac encoder pressure without changing desktop layout. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](v0.3.2.md) for changes, permission continuity and verification limits.
+2026-10-27: build 22 adds automatic Mac desktop matching while preserving existing selections. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](v0.3.3.md) for changes, permission continuity and verification limits.
 
-The source workflow now requires a pinned Apple signing identity and an upgrade comparison; see [permission continuity](../guides/mac-permissions.md). Previous release assets remain immutable; v0.3.2 was compared against the downloaded build 20 and retains its signing identity. See [local releases](local-release.md) for reproducible commands and validation requirements.
+The source workflow requires a pinned Apple signing identity and an upgrade comparison; see [permission continuity](../guides/mac-permissions.md). Previous release assets remain immutable; v0.3.3 was compared against the exact downloaded build 21 and retains its signing identity. See [local releases](local-release.md) for reproducible commands and validation requirements.
 
 ## One-time user migration
 

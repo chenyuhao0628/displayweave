@@ -6,13 +6,13 @@
 
 DisplayWeave 是独立维护、使用 GPL-3.0、坚持本地优先的第二屏项目，源自 [OpenDisplay](https://github.com/peetzweg/opendisplay)。它可以把 iPhone、iPad 和 Android 设备变成 Mac 的扩展或镜像显示器。
 
-## Mac 与 Mac（v0.3.2 实验功能）
+## Mac 与 Mac（v0.3.3 实验功能）
 
 同一应用可选择发送或接收，通过 Wi-Fi/以太网单向扩展或镜像。双方需 macOS 14+，
-应用协商硬件 HEVC，并可回退 H.264，在屏幕/编码能力内最高协商 120fps；实体双 Mac 性能矩阵待验证。此功能已包含在下方 `v0.3.2`
+应用协商硬件 HEVC，并可回退 H.264，在屏幕/编码能力内最高协商 120fps；实体双 Mac 性能矩阵待验证。此功能已包含在下方 `v0.3.3`
 发布包内。参见[使用指南](docs/guides/mac-to-mac.zh-CN.md)及[设计与上游评估](docs/reference/mac-to-mac-design.zh-CN.md)。
 
-本版本还包含四端 UI 规范化、上游恢复改进和网络/生命周期加固；该批基线见[源码升级报告](docs/archive/audits/source-upgrade-audit-2026-10-16.zh-CN.md)。本版本包含自 p7 引入的 [Mac HEVC、绑定接口的直连发现与经协商的 Apple Pencil 输入](docs/guides/hevc-wired-pencil.zh-CN.md)，Swift 套件增至 63 组；实机验收仍待完成。
+本版本还包含四端 UI 规范化、上游恢复改进和网络/生命周期加固；该批基线见[源码升级报告](docs/archive/audits/source-upgrade-audit-2026-10-16.zh-CN.md)。本版本包含自 p7 引入的 [Mac HEVC、绑定接口的直连发现与经协商的 Apple Pencil 输入](docs/guides/hevc-wired-pencil.zh-CN.md)；实机验收仍待完成。
 
 本版本还包含[按设备分辨率](docs/guides/desktop-resolution.zh-CN.md)、[安全配对](docs/guides/secure-transport.zh-CN.md)、[经许可的 Mac 键鼠回传](docs/guides/mac-receiver-input.zh-CN.md)、[有线/Wi-Fi 切换](docs/guides/mac-lan-handover.zh-CN.md)与[高级 Pencil](docs/guides/pencil-advanced.zh-CN.md)。DisplayWeave 连接使用接收邀请；旧 OpenDisplay 可从主界面选择兼容连接，详见[互连指南](docs/guides/opendisplay-compatibility.zh-CN.md)。
 
@@ -31,11 +31,11 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 
 下述真机恢复与高刷新观察来自 Preview 2 验证，继续作为既有证据；本版本没有在第二台 Android 上重新执行这些项目。
 
-## 下载 `v0.3.2`
+## 下载 `v0.3.3`
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-26：正式版构建 21 增加 iMac 4K/4.5K/5K 桌面档位与明确的逻辑尺寸标签，隔离可能阻塞的编码提交，并在不改变桌面布局的前提下适配持续编码压力。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](docs/releases/v0.3.2.zh-CN.md)。
+2026-10-27：构建 22 根据可用的发送端和接收端显示器数据自动匹配 Mac 扩展桌面。已有安装保留旧设置，需选择一次“自动匹配”。原生 5K 视频与客户双 Mac 实机验收仍未完成，见[发布说明](docs/releases/v0.3.3.zh-CN.md)。
 
 | 平台 | 产物 | 分发边界 |
 | --- | --- | --- |
@@ -45,8 +45,8 @@ Android 高刷新仍属实验功能。一台 OnePlus 在 HEVC/120 WiFi 下实测
 | iOS/iPadOS | `DisplayWeave-iOS-unsigned-resigning-input.ipa` | 未签名自签输入包，不能直接安装 |
 | Mac 更新源 | `appcast.xml` | 由 Mac 应用内置公钥认证的 Sparkle 更新源 |
 | Android 更新源 | `android-update.json` | 包含大小、哈希、版本、包名与固定证书的 HTTPS 元数据 |
-| 源码 | `DisplayWeave-v0.3.2-source.tar.gz` | 对应发行 tag 的完整跟踪源码，包含 GPL-3.0 与构建脚本 |
-| 验证 | `SHA256SUMS.txt` | 全部 Release 文件的 SHA-256 |
+| 源码 | `DisplayWeave-v0.3.3-source.tar.gz` | 对应发行 tag 的完整跟踪源码，包含 GPL-3.0 与构建脚本 |
+| 验证 | `SHA256SUMS.txt` | 其余七个 Release 文件的 SHA-256 |
 
 这是正式版；Mac 沿用 Apple Development 签名且未公证，iOS 仍需自行签名。使用前请验证校验和；Android 用户还应核对[发布检查清单](docs/releases/release-checklist.zh-CN.md)中的证书指纹。
 
@@ -129,6 +129,7 @@ cd AndroidReceiver
 - 新连接需要[认证 TLS 配对](docs/guides/secure-transport.zh-CN.md)，USB 隧道也相同；旧版客户端需要在可信网络中显式启用未加密旧版兼容。
 - 双 Android 并发、同条件 USB/WiFi 受控 Benchmark，以及 30 分钟/2 小时耐久测试尚未完成。
 - macOS 使用私有 `CGVirtualDisplay` 行为，未来 macOS 版本可能发生变化。
+- Mac 桌面自动匹配是估算；Apple 视频仍限制在 4096×2304，因此 5K 大小桌面仍可能发软。
 - 公开 macOS 与 iOS 包未使用 Developer ID/App Store 签名。
 
 ## 来源与许可证
