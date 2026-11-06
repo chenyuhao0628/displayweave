@@ -76,6 +76,10 @@ fun registerSelfTest(name: String, mainClassName: String) =
         mainClass.set(mainClassName)
     }
 
+val runExperimentalFpsPolicySelfTest = registerSelfTest(
+    "runExperimentalFpsPolicySelfTest", "app.opendisplay.android.ExperimentalFpsPolicySelfTest"
+)
+
 val runProtocolSelfTest = registerSelfTest(
     "runProtocolSelfTest",
     "app.opendisplay.android.protocol.ProtocolSelfTest"
@@ -119,6 +123,7 @@ tasks.withType<Test>().configureEach {
 
 tasks.matching { it.name == "test" }.configureEach {
     dependsOn(
+        runExperimentalFpsPolicySelfTest,
         runProtocolSelfTest,
         runReceiverExperienceSelfTest,
         runVideoStreamPolicySelfTest,

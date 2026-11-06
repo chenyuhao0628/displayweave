@@ -195,6 +195,25 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 });
     }
 
+    /** Preserve the authenticated socket while the Activity has no video surface. */
+    public void updateOutputSurface(Surface nextSurface) {
+        executeTransportEvent(() -> {
+            synchronized (this) {
+                surface = nextSurface;
+            }
+            resetQueuedFrames();
+            releaseDecoder();
+            long generation = connectionCoordinator.currentGeneration();
+            if (nextSurface != null && nextSurface.isValid()
+                    && connectionCoordinator.isCurrent(generation)) {
+                configureDecoderForIdentity(generation, protocolSession.sessionEpoch(),
+                        protocolSession.configVersion(), VideoStreamConfig.DEFAULT, currentStreamConfig);
+                lastFrameRenderedMs = System.currentTimeMillis();
+                requestKeyframe();
+            }
+        });
+    }
+
     public void start(Surface surface) {
         if (running) {
             return;
@@ -1260,7 +1279,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
     private void recoverDecoderIfStalled(long nowMs) {
         long generation = connectionCoordinator.currentGeneration();
-        if (!running || !connectionCoordinator.isCurrent(generation)
+        if (!running || surface == null || !connectionCoordinator.isCurrent(generation)
                 || !DecoderStallRecoveryPolicy.shouldRecover(
                 nowMs, lastVideoReceivedMs, lastFrameRenderedMs, lastDecoderRecoveryMs)) {
             return;

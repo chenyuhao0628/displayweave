@@ -12,6 +12,8 @@ import android.graphics.Rect;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.Display;
@@ -44,11 +46,26 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private static final String KEY_SHOW_METRICS = "showMetrics";
     private static final String KEY_DISPLAY_PROFILE = "displayProfile";
     private static final String KEY_DECODER_LOW_LATENCY = "decoderLowLatency";
+    private static final String KEY_NATIVE_60 = "experimentalNative60";
+    private static final String KEY_EXPERIMENTAL_HIGH_FPS = "experimentalHighFps";
     private static final String KEY_WIFI_LOW_LATENCY = "wifiLowLatency";
 
     private ReceiverUi ui;
     private AndroidSecuritySettings securitySettings;
     private Button streamSettingsButton;
+    private View settingsRevealHotspot;
+    private final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private static final long SETTINGS_BUTTON_AUTO_HIDE_MS = 4_000;
+    private boolean streaming;
+    private final Runnable hideStreamSettingsButton = () -> {
+        if (streaming && streamSettingsButton != null) {
+            streamSettingsButton.animate().alpha(0f).setDuration(180).withEndAction(() -> {
+                if (!streaming || streamSettingsButton == null) return;
+                streamSettingsButton.setVisibility(View.GONE);
+                settingsRevealHotspot.setVisibility(View.VISIBLE);
+            });
+        }
+    };
     private FrameLayout root;
     private ReceiverSurfaceView surfaceView;
     private CursorOverlayView cursorOverlay;
@@ -66,7 +83,6 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private TextView updateDownloadProgressText;
     private String updateState = "尚未检查更新";
     private String currentStatus = "等待启动…";
-    private boolean streaming;
     private boolean foreground;
     private String currentTransport = "unknown";
     private final ScrollGestureTracker scrollGesture = new ScrollGestureTracker();
@@ -93,6 +109,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             requestPermissions(new String[] {Manifest.permission.NEARBY_WIFI_DEVICES}, REQUEST_NEARBY_WIFI);
         }
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        CodecCapabilities.setExperimentalHighFps(
+                prefs.getBoolean(KEY_EXPERIMENTAL_HIGH_FPS, false));
+        CodecCapabilities.setExperimentalNative60(prefs.getBoolean(KEY_NATIVE_60, false));
         updateCoordinator = createUpdateCoordinator();
         wifiLowLatencyLifecycle = new WifiLowLatencyLifecycle(
                 Build.VERSION.SDK_INT, createWifiLowLatencyLock());
@@ -147,12 +166,13 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         securitySettings.dismiss();
         updateWifiLowLatencyState();
         surfaceFrameRateLifecycle.onPause();
-        receiverLifecycle.onPause();
+        // Keep the transport alive; Surface lifecycle suspends decoding separately.
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
+        uiHandler.removeCallbacks(hideStreamSettingsButton);
         surfaceFrameRateLifecycle.onDestroy();
         wifiLowLatencyLifecycle.shutdown("activityDestroyed");
         updateCoordinator.shutdown();
@@ -228,7 +248,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
 
     @Override
     public void onCursor(double x, double y, boolean visible) {
-        runOnUiThread(() -> cursorOverlay.moveCursor(x, y, visible));
+        cursorOverlay.offerCursor(x, y, visible);
     }
 
     @Override
@@ -350,6 +370,15 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 dp(72), dp(48), Gravity.TOP | Gravity.END);
         settingsParams.setMargins(dp(12), dp(16), dp(12), 0);
         root.addView(streamSettingsButton, settingsParams);
+        settingsRevealHotspot = new View(this);
+        settingsRevealHotspot.setContentDescription("显示设置按钮");
+        settingsRevealHotspot.setClickable(true);
+        settingsRevealHotspot.setVisibility(View.GONE);
+        settingsRevealHotspot.setOnClickListener(v -> revealStreamSettingsButton());
+        FrameLayout.LayoutParams revealParams = new FrameLayout.LayoutParams(
+                dp(72), dp(48), Gravity.TOP | Gravity.END);
+        revealParams.setMargins(dp(12), dp(16), dp(12), 0);
+        root.addView(settingsRevealHotspot, revealParams);
         setContentView(root);
         updateStatusOverlayVisibility();
 
@@ -359,6 +388,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 activeSurface = holder;
                 surfaceFrameRateLifecycle.onSurfaceCreated();
                 updateWifiLowLatencyState();
+                if (server != null) server.updateOutputSurface(holder.getSurface());
                 receiverLifecycle.onSurfaceCreated();
             }
 
@@ -375,7 +405,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 surfaceFrameRateLifecycle.onSurfaceDestroyed();
                 activeSurface = null;
                 updateWifiLowLatencyState();
-                receiverLifecycle.onSurfaceDestroyed();
+                if (server != null) server.updateOutputSurface(null);
             }
         });
 
@@ -546,6 +576,36 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         quality.setOnClickListener(v -> showDisplayProfileDialog());
         content.addView(quality, matchWrap());
         content.addView(text("Mac 的画质设置还会影响最终分辨率。文字不清晰时，先选原生分辨率，并在 Mac 选择高画质。", 13, ui.secondary, false), matchWrap());
+
+        CheckBox highFps = new CheckBox(this);
+        highFps.setText("实验性 60/90 FPS");
+        highFps.setChecked(prefs.getBoolean(KEY_EXPERIMENTAL_HIGH_FPS, false));
+        highFps.setOnCheckedChangeListener((button, checked) -> {
+            receiverLifecycle.stopForSettings();
+            prefs.edit().putBoolean(KEY_EXPERIMENTAL_HIGH_FPS, checked).apply();
+            CodecCapabilities.setExperimentalHighFps(checked);
+            receiverLifecycle.reevaluate();
+            setStatus("帧率策略已更新，请从 Mac 重新连接");
+        });
+        content.addView(highFps, matchWrap());
+        content.addView(text("Uses codec size/rate limits if performance points cap FPS. "
+                + "Try 50% resolution, then 60/90 FPS on Mac. If frames lag, disable and reconnect. "
+                + "Actual FPS is not guaranteed.", 13, ui.secondary, false), matchWrap());
+
+        CheckBox native60 = new CheckBox(this);
+        native60.setText("实验性原生 60 FPS（忽略吞吐量声明）");
+        native60.setChecked(prefs.getBoolean(KEY_NATIVE_60, false));
+        native60.setOnCheckedChangeListener((button, checked) -> {
+            receiverLifecycle.stopForSettings();
+            prefs.edit().putBoolean(KEY_NATIVE_60, checked).apply();
+            CodecCapabilities.setExperimentalNative60(checked);
+            receiverLifecycle.reevaluate();
+            setStatus("请从 Mac 重新连接");
+        });
+        content.addView(native60, matchWrap());
+        content.addView(text("Experimental: allows up to 2400x1080 at 60 FPS when size is supported. "
+                + "Measured throughput may be lower. Disable if lagging or decoder errors occur.",
+                13, ui.secondary, false), matchWrap());
 
         Button decoderLowLatency = ui.button("");
         decoderLowLatency.setText("解码器低延迟："
@@ -824,6 +884,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             return false;
         }
         server.setDecoderLowLatencyMode(currentDecoderLowLatencyMode());
+        startForegroundService(new android.content.Intent(this, ReceiverKeepAliveService.class));
         server.start(activeSurface.getSurface());
         if (!advertiseWifi) {
             setStatus("USB 已就绪；授予附近设备权限后可使用 WiFi 发现");
@@ -837,6 +898,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         }
         server.stop();
         server = null;
+        stopService(new android.content.Intent(this, ReceiverKeepAliveService.class));
     }
 
     private DecoderLowLatencyMode currentDecoderLowLatencyMode() {
@@ -949,10 +1011,13 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     private void setStreaming(boolean streaming) {
+        boolean wasStreaming = this.streaming;
         this.streaming = streaming;
         if (streaming) {
             surfaceFrameRateLifecycle.onStreamingStarted();
+            if (!wasStreaming) revealStreamSettingsButton();
         } else {
+            uiHandler.removeCallbacks(hideStreamSettingsButton);
             cancelTouchGesture();
             lastMetrics = new StreamMetrics(0, 0, 0, 0);
             surfaceFrameRateLifecycle.onStreamingStopped();
@@ -961,6 +1026,15 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         updateWifiLowLatencyState();
         idlePanel.setVisibility(streaming ? View.GONE : View.VISIBLE);
         updateStatusOverlayVisibility();
+    }
+
+    private void revealStreamSettingsButton() {
+        if (streamSettingsButton == null || settingsRevealHotspot == null || !streaming) return;
+        uiHandler.removeCallbacks(hideStreamSettingsButton);
+        settingsRevealHotspot.setVisibility(View.GONE);
+        streamSettingsButton.setAlpha(1f);
+        streamSettingsButton.setVisibility(View.VISIBLE);
+        uiHandler.postDelayed(hideStreamSettingsButton, SETTINGS_BUTTON_AUTO_HIDE_MS);
     }
 
     private void refreshStreamingStatus() {
@@ -1169,8 +1243,10 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         }
         boolean show = streaming && (prefs == null || prefs.getBoolean(KEY_SHOW_STATUS, true));
         statusView.setVisibility(show ? View.VISIBLE : View.GONE);
-        if (streamSettingsButton != null) {
-            streamSettingsButton.setVisibility(streaming ? View.VISIBLE : View.GONE);
+        if (!streaming) {
+            uiHandler.removeCallbacks(hideStreamSettingsButton);
+            if (streamSettingsButton != null) streamSettingsButton.setVisibility(View.GONE);
+            if (settingsRevealHotspot != null) settingsRevealHotspot.setVisibility(View.GONE);
         }
     }
 

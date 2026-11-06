@@ -103,3 +103,5 @@ Two simultaneous Android devices, controlled USB/WiFi benchmark, and 30-minute/2
 ## Security
 
 This version defaults to pinned mutual TLS and invitation pairing; insecure legacy mode requires an explicit local choice. Private transport keys remain in Android Keystore and are separate from APK signing. ADB authorization trusts the Mac as a debugging host beyond this application. See [the pairing guide](../docs/guides/secure-transport.md) and [SECURITY.md](../SECURITY.md).
+
+[Proposed session controls and validation gaps](../docs/reference/android-receiver-session-controls.md)

@@ -18,6 +18,47 @@ public final class CursorOverlayView extends View {
     private double anchorX;
     private double anchorY;
     private boolean visible;
+    private final Object pendingLock = new Object();
+    private double pendingX, pendingY;
+    private boolean pendingVisible;
+    private boolean updateScheduled;
+    private final Runnable applyLatestPosition = () -> {
+        double nextX, nextY;
+        boolean nextVisible;
+        synchronized (pendingLock) {
+            nextX = pendingX;
+            nextY = pendingY;
+            nextVisible = pendingVisible;
+            updateScheduled = false;
+        }
+        moveCursor(nextX, nextY, nextVisible);
+    };
+
+    /** Called from the transport thread; retain one latest update per UI frame. */
+    public void offerCursor(double x, double y, boolean visible) {
+        synchronized (pendingLock) {
+            pendingX = x;
+            pendingY = y;
+            pendingVisible = visible;
+            if (updateScheduled) return;
+            updateScheduled = true;
+            postOnAnimation(applyLatestPosition);
+        }
+    }
+
+    private void clearPendingPosition() {
+        synchronized (pendingLock) {
+            removeCallbacks(applyLatestPosition);
+            updateScheduled = false;
+            pendingVisible = false;
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        clearPendingPosition();
+        super.onDetachedFromWindow();
+    }
 
     public CursorOverlayView(Context context) {
         super(context);
@@ -45,6 +86,7 @@ public final class CursorOverlayView extends View {
     }
 
     public void resetCursor() {
+        clearPendingPosition();
         visible = false;
         invalidate();
     }
