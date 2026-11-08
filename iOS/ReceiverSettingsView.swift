@@ -10,6 +10,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("showAnalytics") private var showAnalytics = false
     @AppStorage("metalRenderer") private var metalRenderer = false
+    @AppStorage(AppleVideoPolicy.nativeHighRefreshTrialKey) private var nativeHighRefreshTrial = false
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
@@ -47,6 +48,18 @@ struct SettingsView: View {
                 }
 
                 PencilSettingsSection(receiver: receiver)
+
+                if AppleVideoPolicy.nativeHighRefreshEnvelope(
+                    width: Int(UIScreen.main.nativeBounds.width), height: Int(UIScreen.main.nativeBounds.height),
+                    maxFps: UIScreen.main.maximumFramesPerSecond) != nil {
+                    Section {
+                        Toggle("原生分辨率高刷（实验性）", isOn: $nativeHighRefreshTrial)
+                    } header: {
+                        Text("视频能力")
+                    } footer: {
+                        Text("默认关闭，下次连接生效。Mac 端选择“清晰”和“跟随接收屏幕”以保留原生像素。更高吞吐量会增加负载，不保证实际编码或上屏帧率。")
+                    }
+                }
 
                 Section {
                     Toggle("性能浮层", isOn: $showAnalytics)

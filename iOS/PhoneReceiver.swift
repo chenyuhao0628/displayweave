@@ -198,6 +198,8 @@ final class PhoneReceiver: ObservableObject {
     /// rebuilds the virtual display as a portrait/landscape monitor.
     private var nativeLong = 0
     private var nativeShort = 0
+    // Changing the trial setting cannot change an already-advertised connection.
+    private var nativeHighRefreshTrialForConnection = false
     private(set) var devicePixelsWide = 0
     private(set) var devicePixelsHigh = 0
     var deviceScale: Double = 2
@@ -416,6 +418,8 @@ final class PhoneReceiver: ObservableObject {
             self.connection = conn
             self.peerID = authenticatedPeer?.installID
             self.resetStreamState()
+            self.nativeHighRefreshTrialForConnection = UserDefaults.standard.bool(
+                forKey: AppleVideoPolicy.nativeHighRefreshTrialKey)
             conn.stateUpdateHandler = { [weak self, weak conn] state in
                 guard let self, let conn, self.running, self.connection === conn else { return }
                 switch state {
@@ -607,8 +611,24 @@ final class PhoneReceiver: ObservableObject {
         devicePixelsHigh > devicePixelsWide ? (2304, 4096) : (4096, 2304)
     }
 
+    private var nativeVideoEnvelope: AppleNativeVideoEnvelope? {
+        guard nativeHighRefreshTrialForConnection else { return nil }
+        return AppleVideoPolicy.nativeHighRefreshEnvelope(width: devicePixelsWide,
+            height: devicePixelsHigh, maxFps: displayMaxFps)
+    }
+
     private func sendHello(on conn: NWConnection) {
         let codecs = supportsHEVC ? ["h264", "hevc"] : ["h264"]
+        let limits = videoLimits
+        let nativeEnvelope = nativeVideoEnvelope
+        var videoCaps: [[String: Any]] = []
+        videoCaps.reserveCapacity(codecs.count * (nativeEnvelope == nil ? 1 : 2))
+        for codec in codecs {
+            videoCaps.append(["codec": codec, "maxWidth": limits.width, "maxHeight": limits.height,
+                              "maxFrameRate": displayMaxFps,
+                              "maxPixelsPerSecond": AppleVideoPolicy.maxPixelsPerSecond])
+            if let nativeEnvelope { videoCaps.append(nativeEnvelope.capability(codec: codec)) }
+        }
         sendControl([
             "type": "hello",
             "pixelsWide": devicePixelsWide,
@@ -621,10 +641,8 @@ final class PhoneReceiver: ObservableObject {
             "refreshRate": displayMaxFps, "maxFps": displayMaxFps,
             "displayMaxFrameRate": displayMaxFps,
             "supportedCodecs": codecs, "preferredCodec": supportsHEVC ? "hevc" : "h264",
-            "maxEncodeWide": videoLimits.width, "maxEncodeHigh": videoLimits.height,
-            "videoCaps": codecs.map { ["codec": $0, "maxWidth": videoLimits.width,
-                "maxHeight": videoLimits.height, "maxFrameRate": displayMaxFps,
-                "maxPixelsPerSecond": AppleVideoPolicy.maxPixelsPerSecond] as [String: Any] },
+            "maxEncodeWide": limits.width, "maxEncodeHigh": limits.height,
+            "videoCaps": videoCaps,
         ], on: conn)
         Log.info("hello sent")
     }
@@ -828,8 +846,9 @@ final class PhoneReceiver: ObservableObject {
     }
 
     private func configureVideo(_ object: [String: Any]) {
-        guard let config = AppleVideoConfiguration(object, maxWidth: videoLimits.width,
-                maxHeight: videoLimits.height, maxFps: displayMaxFps) else {
+        guard let config = AppleVideoConfiguration(object,
+                maxWidth: videoLimits.width, maxHeight: videoLimits.height,
+                maxFps: displayMaxFps, nativeEnvelope: nativeVideoEnvelope) else {
             rejectVideo("视频配置超出能力，请降低画质后重连"); return
         }
         guard videoFallback.accepts(config.codec) else {
