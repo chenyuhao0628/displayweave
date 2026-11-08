@@ -195,6 +195,32 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 });
     }
 
+    /** Preserve the authenticated socket while the Activity has no video surface. */
+    public void updateOutputSurface(Surface nextSurface) {
+        executeTransportEvent(() -> {
+            synchronized (this) {
+                surface = nextSurface;
+            }
+            streamingGeneration = 0;
+            resetQueuedFrames();
+            releaseDecoder();
+            long generation = connectionCoordinator.currentGeneration();
+            if (nextSurface != null && nextSurface.isValid()
+                    && connectionCoordinator.isCurrent(generation)) {
+                lastFrameRenderedMs = System.currentTimeMillis();
+                long sessionEpoch = protocolSession.sessionEpoch();
+                long configVersion = protocolSession.configVersion();
+                if (protocolSession.matchesIdentity(sessionEpoch, configVersion)) {
+                    configureDecoderForIdentity(generation, sessionEpoch,
+                            configVersion, VideoStreamConfig.DEFAULT, currentStreamConfig);
+                } else {
+                    replaceDecoder(generation);
+                    requestKeyframe();
+                }
+            }
+        });
+    }
+
     public void start(Surface surface) {
         if (running) {
             return;
@@ -631,7 +657,9 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                             object.optInt("width", activeDisplaySpec.pixelsWide),
                             object.optInt("height", activeDisplaySpec.pixelsHigh),
                             object.optInt("bitrate", 0));
-                    if (config.width <= 0 || config.height <= 0) {
+                    if (config.width <= 0 || config.height <= 0
+                            || config.width > 8192 || config.height > 8192
+                            || (long) config.width * config.height > 33_554_432L) {
                         throw new IllegalArgumentException(
                                 "invalid stream dimensions " + config.width + "x" + config.height);
                     }
@@ -839,9 +867,9 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 next = new H264SurfaceDecoder(
                         surface, nextListener, decoderLowLatencyMode);
                 decoder = next;
+                decoderAwaitingFreshConfig = false;
             }
             next.applyStreamConfig(config.codec, config.fps, config.width, config.height);
-            decoderAwaitingFreshConfig = false;
         });
     }
 
@@ -938,6 +966,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         }
         resetQueuedFrames();
         H264SurfaceDecoder activeDecoder = decoder;
+        decoder = null;
         decoderAwaitingFreshConfig = requireFreshConfig;
         decoderWorker.execute(activeDecoder::release);
         return true;
@@ -1260,7 +1289,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
     private void recoverDecoderIfStalled(long nowMs) {
         long generation = connectionCoordinator.currentGeneration();
-        if (!running || !connectionCoordinator.isCurrent(generation)
+        if (!running || surface == null || !connectionCoordinator.isCurrent(generation)
                 || !DecoderStallRecoveryPolicy.shouldRecover(
                 nowMs, lastVideoReceivedMs, lastFrameRenderedMs, lastDecoderRecoveryMs)) {
             return;

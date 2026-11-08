@@ -163,6 +163,12 @@ final class SenderController: ObservableObject {
         setRoleEnabled(UserDefaults.standard.string(forKey: "macRole") != "receiver")
     }
 
+    deinit {
+        if let securityObserver {
+            NotificationCenter.default.removeObserver(securityObserver)
+        }
+    }
+
     @discardableResult
     func setRoleEnabled(_ enabled: Bool) -> Task<Void, Never>? {
         guard enabled != roleEnabled else { return nil }
@@ -649,16 +655,22 @@ final class SenderController: ObservableObject {
             }
             self.dedupeSessions()
         }
-        sender.onStats = { [weak session] frames, mbps in
-            session?.framesSent = frames
-            session?.mbps = mbps
+        sender.onStats = { [weak self, weak session] frames, mbps in
+            guard let self, let session, self.roleEnabled, !session.failed,
+                  self.sessions.contains(where: { $0 === session }) else { return }
+            session.framesSent = frames
+            session.mbps = mbps
         }
-        sender.onTargetBitrate = { [weak session] mbps in
-            session?.targetMbps = mbps
+        sender.onTargetBitrate = { [weak self, weak session] mbps in
+            guard let self, let session, self.roleEnabled, !session.failed,
+                  self.sessions.contains(where: { $0 === session }) else { return }
+            session.targetMbps = mbps
         }
-        sender.onStreamDescription = { [weak session] description, explanation in
-            session?.streamDescription = description
-            session?.streamLimitDescription = explanation
+        sender.onStreamDescription = { [weak self, weak session] description, explanation in
+            guard let self, let session, self.roleEnabled, !session.failed,
+                  self.sessions.contains(where: { $0 === session }) else { return }
+            session.streamDescription = description
+            session.streamLimitDescription = explanation
         }
         sender.onDesktopGeometry = { [weak self, weak session] geometry, note in
             guard let self, let session, self.roleEnabled, !session.failed,
@@ -666,8 +678,10 @@ final class SenderController: ObservableObject {
             session.appliedDesktop = geometry
             session.desktopMatchNote = note
         }
-        sender.onBenchmarkStatus = { [weak session] status in
-            session?.benchmarkStatus = status
+        sender.onBenchmarkStatus = { [weak self, weak session] status in
+            guard let self, let session, self.roleEnabled,
+                  self.sessions.contains(where: { $0 === session }) else { return }
+            session.benchmarkStatus = status
         }
         sender.onDisconnected = { [weak self, weak session] reason in
             guard let self, let session, self.roleEnabled, self.sessions.contains(where: { $0 === session }) else { return }

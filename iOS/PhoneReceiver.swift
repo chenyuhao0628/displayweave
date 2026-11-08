@@ -198,6 +198,8 @@ final class PhoneReceiver: ObservableObject {
     /// rebuilds the virtual display as a portrait/landscape monitor.
     private var nativeLong = 0
     private var nativeShort = 0
+    // Changing the trial setting cannot change an already-advertised connection.
+    private var nativeHighRefreshTrialForConnection = false
     private(set) var devicePixelsWide = 0
     private(set) var devicePixelsHigh = 0
     var deviceScale: Double = 2
@@ -416,14 +418,18 @@ final class PhoneReceiver: ObservableObject {
             self.connection = conn
             self.peerID = authenticatedPeer?.installID
             self.resetStreamState()
+            self.nativeHighRefreshTrialForConnection = UserDefaults.standard.bool(
+                forKey: AppleVideoPolicy.nativeHighRefreshTrialKey)
+            let encrypted = authenticatedPeer != nil
             conn.stateUpdateHandler = { [weak self, weak conn] state in
                 guard let self, let conn, self.running, self.connection === conn else { return }
                 switch state {
                 case .ready:
+                    guard !encrypted else { return }
                     self.lastDataReceived = Date()
                     self.firstVideoDeadline.begin(at: ProcessInfo.processInfo.systemUptime)
-                    self.setStatus("已连接，正在等待 Mac 画面…")
                     self.setConnected(true)
+                    self.setStatus("已连接，正在等待 Mac 画面…")
                     self.sendHello(on: conn)
                 case .failed, .cancelled:
                     self.connection = nil
@@ -432,7 +438,6 @@ final class PhoneReceiver: ObservableObject {
                 default: break
                 }
             }
-            let encrypted = authenticatedPeer != nil
             let generation = self.inputSendBudget.generation
             DispatchQueue.main.async {
                 guard self.inputSendBudget.generation == generation else { return }
@@ -441,8 +446,8 @@ final class PhoneReceiver: ObservableObject {
             if encrypted {
                 self.lastDataReceived = Date()
                 self.firstVideoDeadline.begin(at: ProcessInfo.processInfo.systemUptime)
-                self.setStatus("安全连接已建立，正在等待 Mac 画面…")
                 self.setConnected(true)
+                self.setStatus("安全连接已建立，正在等待 Mac 画面…")
                 self.sendHello(on: conn)
             } else { conn.start(queue: self.queue) }
             self.receive(on: conn)
@@ -452,7 +457,7 @@ final class PhoneReceiver: ObservableObject {
 
     private func schedulePing() {
         queue.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            guard let self else { return }
+            guard let self, self.running else { return }
             if self.connection?.state == .ready {
                 self.sendControl(["type": "ping", "t": self.nowMs])
             }
@@ -536,7 +541,7 @@ final class PhoneReceiver: ObservableObject {
 
     private func scheduleWatchdog() {
         queue.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            guard let self else { return }
+            guard let self, self.running else { return }
             if let conn = self.connection, conn.state == .ready,
                Date().timeIntervalSince(self.lastDataReceived) > 5 {
                 Log.info("watchdog: nothing from the Mac for >5s — dropping connection")
@@ -572,6 +577,7 @@ final class PhoneReceiver: ObservableObject {
         videoCodec = .h264
         videoFallback = AppleVideoFallbackPolicy()
         configuredVideo = nil
+        nativeHighRefreshTrialForConnection = false
         resetVideoDecoder()
         DispatchQueue.main.async {
             guard self.inputSendBudget.generation == generation else { return }
@@ -607,8 +613,29 @@ final class PhoneReceiver: ObservableObject {
         devicePixelsHigh > devicePixelsWide ? (2304, 4096) : (4096, 2304)
     }
 
+    var supportsNativeHighRefreshTrial: Bool {
+        AppleVideoPolicy.nativeHighRefreshEnvelope(
+            width: nativeLong, height: nativeShort, maxFps: displayMaxFps) != nil
+    }
+
+    private var nativeVideoEnvelope: AppleNativeVideoEnvelope? {
+        guard nativeHighRefreshTrialForConnection else { return nil }
+        return AppleVideoPolicy.nativeHighRefreshEnvelope(width: devicePixelsWide,
+            height: devicePixelsHigh, maxFps: displayMaxFps)
+    }
+
     private func sendHello(on conn: NWConnection) {
         let codecs = supportsHEVC ? ["h264", "hevc"] : ["h264"]
+        let limits = videoLimits
+        let nativeEnvelope = nativeVideoEnvelope
+        var videoCaps: [[String: Any]] = []
+        videoCaps.reserveCapacity(codecs.count * (nativeEnvelope == nil ? 1 : 2))
+        for codec in codecs {
+            videoCaps.append(["codec": codec, "maxWidth": limits.width, "maxHeight": limits.height,
+                              "maxFrameRate": displayMaxFps,
+                              "maxPixelsPerSecond": AppleVideoPolicy.maxPixelsPerSecond])
+            if let nativeEnvelope { videoCaps.append(nativeEnvelope.capability(codec: codec)) }
+        }
         sendControl([
             "type": "hello",
             "pixelsWide": devicePixelsWide,
@@ -621,10 +648,8 @@ final class PhoneReceiver: ObservableObject {
             "refreshRate": displayMaxFps, "maxFps": displayMaxFps,
             "displayMaxFrameRate": displayMaxFps,
             "supportedCodecs": codecs, "preferredCodec": supportsHEVC ? "hevc" : "h264",
-            "maxEncodeWide": videoLimits.width, "maxEncodeHigh": videoLimits.height,
-            "videoCaps": codecs.map { ["codec": $0, "maxWidth": videoLimits.width,
-                "maxHeight": videoLimits.height, "maxFrameRate": displayMaxFps,
-                "maxPixelsPerSecond": AppleVideoPolicy.maxPixelsPerSecond] as [String: Any] },
+            "maxEncodeWide": limits.width, "maxEncodeHigh": limits.height,
+            "videoCaps": videoCaps,
         ], on: conn)
         Log.info("hello sent")
     }
@@ -828,8 +853,15 @@ final class PhoneReceiver: ObservableObject {
     }
 
     private func configureVideo(_ object: [String: Any]) {
-        guard let config = AppleVideoConfiguration(object, maxWidth: videoLimits.width,
-                maxHeight: videoLimits.height, maxFps: displayMaxFps) else {
+        let swappedEnvelope = nativeVideoEnvelope.map {
+            AppleNativeVideoEnvelope(width: $0.height, height: $0.width, maxFps: $0.maxFps)
+        }
+        guard let config = AppleVideoConfiguration(object,
+                maxWidth: videoLimits.width, maxHeight: videoLimits.height,
+                maxFps: displayMaxFps, nativeEnvelope: nativeVideoEnvelope)
+            ?? AppleVideoConfiguration(object,
+                maxWidth: videoLimits.height, maxHeight: videoLimits.width,
+                maxFps: displayMaxFps, nativeEnvelope: swappedEnvelope) else {
             rejectVideo("视频配置超出能力，请降低画质后重连"); return
         }
         guard videoFallback.accepts(config.codec) else {
@@ -913,9 +945,16 @@ final class PhoneReceiver: ObservableObject {
 
         guard let sample else { return }
 
-        if loggedDisplayPath != (useMetalPath && onDecodedFrame != nil) {
-            loggedDisplayPath = useMetalPath && onDecodedFrame != nil
+        let metalActive = useMetalPath && onDecodedFrame != nil
+        if loggedDisplayPath != metalActive {
+            let previous = loggedDisplayPath
+            loggedDisplayPath = metalActive
             Log.info("display path: metal=\(useMetalPath) sink=\(onDecodedFrame != nil)")
+            if previous != nil, metalActive, decompressionSession == nil {
+                waitingForKeyframe = true
+                requestKeyframeIfNeeded()
+                return
+            }
         }
         if useMetalPath, onDecodedFrame != nil {
             decodeAndRender(sample, captureMs: captureMs)

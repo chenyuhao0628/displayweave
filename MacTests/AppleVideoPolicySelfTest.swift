@@ -2,6 +2,8 @@ import Foundation
 
 @main enum AppleVideoPolicySelfTest {
     static func main() throws {
+        nativeHighRefreshAdmission()
+        try nativeHighRefreshPlans()
         precondition(AppleVideoPolicy.frameRate(maximum: 120) == 120)
         precondition(AppleVideoPolicy.frameRate(maximum: 119) == 90)
         precondition(AppleVideoPolicy.frameRate(maximum: 59) == 30)
@@ -65,5 +67,70 @@ import Foundation
         fallback.receivedH264()
         precondition(!fallback.expired(now: 20) && !fallback.accepts(.hevc))
         print("Apple video refresh, codec envelopes, config bounds and timed fallback PASS")
+    }
+
+    private static func nativeHighRefreshAdmission() {
+        let native = AppleVideoPolicy.nativeHighRefreshEnvelope(width: 2752, height: 2064, maxFps: 120)!
+        let object: [String: Any] = ["codec": "hevc", "width": 2752, "height": 2064, "fps": 120]
+        precondition(AppleVideoConfiguration(object, maxWidth: 4096, maxHeight: 2304, maxFps: 120) == nil,
+                     "the conservative default must not silently opt in")
+        let accepted = AppleVideoConfiguration(object, maxWidth: 4096, maxHeight: 2304, maxFps: 120,
+                                              nativeEnvelope: native)
+        precondition(accepted?.width == 2752 && accepted?.height == 2064 && accepted?.fps == 120
+                     && accepted?.codec == .hevc, "the explicit native envelope preserves all native pixels")
+        let wide: [String: Any] = ["codec": "hevc", "width": 4096, "height": 2304, "fps": 72]
+        precondition(AppleVideoConfiguration(wide, maxWidth: 4096, maxHeight: 2304, maxFps: 120,
+                                            nativeEnvelope: native) == nil,
+                     "a point below the extra pixel budget must still fit the complete native rectangle")
+        precondition(AppleVideoConfiguration(object, maxWidth: 4096, maxHeight: 2304, maxFps: 60,
+                                            nativeEnvelope: native) == nil, "the screen ceiling still applies")
+        let slower = object.merging(["fps": 90]) { _, value in value }
+        precondition(AppleVideoConfiguration(slower, maxWidth: 4096, maxHeight: 2304, maxFps: 120)?.fps == 90,
+                     "native 90 fps remains available without the trial")
+        let portrait = AppleVideoPolicy.nativeHighRefreshEnvelope(width: 2064, height: 2752, maxFps: 120)!
+        let rotated = object.merging(["width": 2064, "height": 2752]) { _, value in value }
+        let acceptedPortrait = AppleVideoConfiguration(rotated, maxWidth: 2304, maxHeight: 4096, maxFps: 120,
+                                                      nativeEnvelope: portrait)
+        precondition(acceptedPortrait?.width == 2064 && acceptedPortrait?.height == 2752
+                     && acceptedPortrait?.fps == 120, "native admission follows the announced orientation")
+        precondition(AppleVideoConfiguration(rotated, maxWidth: 2304, maxHeight: 4096, maxFps: 120,
+                                            nativeEnvelope: native) == nil, "alternative rectangles cannot be combined")
+        precondition(AppleVideoPolicy.nativeHighRefreshEnvelope(width: Int.max, height: 2064, maxFps: 120) == nil)
+        precondition(AppleVideoPolicy.nativeHighRefreshEnvelope(width: 2751, height: 2064, maxFps: 120) == nil)
+        precondition(AppleVideoPolicy.nativeHighRefreshEnvelope(width: 2752, height: 2064, maxFps: 60) == nil)
+        precondition(AppleVideoPolicy.nativeHighRefreshEnvelope(width: 2420, height: 1668, maxFps: 120) == nil)
+    }
+
+    private static func nativeHighRefreshPlans() throws {
+        let native = AppleVideoPolicy.nativeHighRefreshEnvelope(width: 2752, height: 2064, maxFps: 120)!
+        let legacyCaps = ["h264", "hevc"].map {
+            ["codec": $0, "maxWidth": 4096, "maxHeight": 2304, "maxFrameRate": 120,
+             "maxPixelsPerSecond": AppleVideoPolicy.maxPixelsPerSecond] as [String: Any]
+        }
+        func info(_ caps: [[String: Any]]) throws -> PhoneInfo {
+            let hello: [String: Any] = ["pixelsWide": 2752, "pixelsHigh": 2064, "scale": 2, "device": "iPad",
+                "capabilities": [AppleVideoPolicy.capability], "supportedCodecs": ["h264", "hevc"],
+                "displayMaxFrameRate": 120, "videoCaps": caps]
+            return try JSONDecoder().decode(PhoneInfo.self, from: JSONSerialization.data(withJSONObject: hello))
+        }
+        var settings = StreamSettings(fpsMode: .auto, codecMode: .auto, quality: .high,
+                                      transportMode: .auto, enableDebugStats: true)
+        settings.priority = .frameRate
+        let conservative = MacReceiverPolicy.plan(info: try info(legacyCaps), settings: settings, hardwareHEVCEncode: true)
+        precondition(conservative.fps == 120 && conservative.width < 2752 && conservative.height < 2064)
+        let enabled = try info(legacyCaps + ["h264", "hevc"].map { native.capability(codec: $0) })
+        let hevc = MacReceiverPolicy.plan(info: enabled, settings: settings, hardwareHEVCEncode: true)
+        precondition(hevc.width == 2752 && hevc.height == 2064 && hevc.fps == 120 && hevc.codec == .hevc)
+        precondition(hevc.pointsWide == 1376 && hevc.pointsHigh == 1032 && hevc.scale == 2,
+                     "native encoded pixels must not change the HiDPI desktop layout")
+        settings.codecMode = .h264
+        let h264 = MacReceiverPolicy.plan(info: enabled, settings: settings, hardwareHEVCEncode: true)
+        precondition(h264.width == hevc.width && h264.height == hevc.height
+                     && h264.fps == hevc.fps && h264.codec == .h264, "same-raster fallback stays valid")
+        settings.codecMode = .auto
+        let hevcOnly = try info(legacyCaps + [native.capability(codec: "hevc")])
+        let safe = MacReceiverPolicy.plan(info: hevcOnly, settings: settings, hardwareHEVCEncode: true)
+        precondition(safe.fps == 120 && safe.width < 2752 && safe.height < 2064,
+                     "an HEVC-only native offer must not bypass the conservative H.264 fallback")
     }
 }

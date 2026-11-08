@@ -336,7 +336,10 @@ public final class H264SurfaceDecoder {
     private MediaFormat decoderFormat(
             int width, int height, byte[] vps, byte[] sps, byte[] pps) {
         MediaFormat format = MediaFormat.createVideoFormat(streamConfig.mimeType, width, height);
-        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, Math.max(width * height, 1 << 20));
+        long maxInputBytes = Math.min(
+                Math.max((long) width * Math.max(height, 1), 1L << 20),
+                16L * 1024L * 1024L);
+        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, (int) maxInputBytes);
         format.setInteger(MediaFormat.KEY_PRIORITY, 0);
         if (android.os.Build.VERSION.SDK_INT >= 31) {
             format.setInteger(MediaFormat.KEY_ALLOW_FRAME_DROP, 1);

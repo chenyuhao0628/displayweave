@@ -12,6 +12,19 @@ import java.util.Map;
 public final class CodecCapabilities {
     private CodecCapabilities() {}
 
+    // Process-wide receiver preference, shared by Hello and runtime decoder checks.
+    // Disabled by default: performance-point coverage remains the normal policy.
+    private static volatile boolean experimentalHighFps;
+    private static volatile boolean experimentalNative60;
+
+    public static void setExperimentalNative60(boolean enabled) {
+        experimentalNative60 = enabled;
+    }
+
+    public static void setExperimentalHighFps(boolean enabled) {
+        experimentalHighFps = enabled;
+    }
+
     public static String[] supportedVideoCodecs() {
         List<String> codecs = new ArrayList<>();
         if (hasUsableHardwareDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC)) {
@@ -153,6 +166,12 @@ public final class CodecCapabilities {
             return false;
         }
         try {
+            // Explicit opt-in trial: bypass declared throughput only, retaining
+            // the decoder's size limits and a bounded 2400x1080, 60 FPS envelope.
+            if (ExperimentalFpsPolicy.allowsNative60(experimentalNative60, width, height, fps)
+                    && video.isSizeSupported(width, height)) {
+                return true;
+            }
             List<MediaCodecInfo.VideoCapabilities.PerformancePoint> points =
                     android.os.Build.VERSION.SDK_INT >= 29
                             ? video.getSupportedPerformancePoints() : null;
@@ -164,7 +183,11 @@ public final class CodecCapabilities {
                         return true;
                     }
                 }
-                return false;
+                if (!experimentalHighFps || fps > 90) {
+                    return false;
+                }
+                // Opt-in probe of the codec's declared size/rate range when vendor
+                // performance points are conservative. This is not measured throughput.
             }
             return video.areSizeAndRateSupported(width, height, fps);
         } catch (RuntimeException ignored) {

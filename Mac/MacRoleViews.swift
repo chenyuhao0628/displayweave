@@ -87,5 +87,6 @@ struct MacConnectionIcon: View {
     var body: some View {
         Image(systemName: sender.running || receiver.connected
               ? "rectangle.on.rectangle.fill" : "rectangle.on.rectangle")
+            .accessibilityLabel(sender.running || receiver.connected ? "DisplayWeave 已连接" : "DisplayWeave 未连接")
     }
 }

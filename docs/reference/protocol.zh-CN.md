@@ -56,7 +56,7 @@ Android 接收缓冲使用显式引用租约，最多 32 MiB / 32 个缓冲，�
 
 逻辑桌面几何与编码分辨率独立。Mac `panel` 可携带逻辑点及 1×/2× 缩放。每项 `videoCaps` 同时约束编码、宽/高、帧率和可选每秒像素量；同编码多个条目属于候选范围。发送端必须满足完整范围，并保留可行 H.264 回退。源码 Apple 刷新选择受屏幕、编码和吞吐量约束，最高 120fps；这是请求值，不是实测渲染。
 
-`streamConfig` 声明 `codec`、`width`、`height`、`fps`（Apple 也接受继承字段 `framesPerSecond`），以及适用的码率/身份/帧大小字段。Apple 尺寸须为能力内的正偶数且不超过 8192，FPS 不超过 120，每秒像素量不超过 `4096 × 2304 × 60`。HEVC 失败发送 `codecFailure`，发送端回退 H.264；Apple 接收器允许三秒回退，在该失败连接上不再升级 HEVC。
+`streamConfig` 声明 `codec`、`width`、`height`、`fps`（Apple 也接受继承字段 `framesPerSecond`），以及适用的码率/身份/帧大小字段。Apple 尺寸须为能力内的正偶数且不超过 8192，FPS 不超过 120。默认每秒像素预算为 `4096 × 2304 × 60`。iOS 原生屏幕试验范围只能提高自身矩形内的预算：配置须满足该完整范围及屏幕帧率上限，试验开关按连接锁定。详见 [Apple 视频指南](../guides/apple-video.zh-CN.md)。HEVC 失败发送 `codecFailure`，发送端回退 H.264；Apple 接收器允许三秒回退，在该失败连接上不再升级 HEVC。
 
 Android 核心 V2 要求 `protocolVersion >= 2`、Android 身份及以下**全部六项**：`streamConfigAck`、`decoderReady`、`firstFrameRendered`、`sessionEpoch`、`configVersion`、`frameSequence`。`maxFrameBytes` 与 `binaryFrameHeaderV2` 继续独立判定。
 

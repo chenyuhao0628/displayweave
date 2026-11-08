@@ -10,6 +10,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("showAnalytics") private var showAnalytics = false
     @AppStorage("metalRenderer") private var metalRenderer = false
+    @AppStorage(AppleVideoPolicy.nativeHighRefreshTrialKey) private var nativeHighRefreshTrial = false
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
@@ -24,8 +25,10 @@ struct SettingsView: View {
                                    value: receiver.connected ? "已连接" : "正在等待 Mac")
                     if receiver.videoSize != .zero {
                         LabeledContent("编码 / 目标", value: "\(receiver.codecLabel) · \(receiver.requestedFps) fps")
+                            .monospacedDigit()
                         LabeledContent("画面",
                                        value: "\(Int(receiver.videoSize.width))×\(Int(receiver.videoSize.height)) @ \(receiver.fps) fps")
+                            .monospacedDigit()
                         Text("画面 FPS 为视频提交速率；系统按屏幕、温度与电量决定真实刷新。")
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -47,6 +50,16 @@ struct SettingsView: View {
                 }
 
                 PencilSettingsSection(receiver: receiver)
+
+                if receiver.supportsNativeHighRefreshTrial {
+                    Section {
+                        Toggle("原生分辨率高刷（实验性）", isOn: $nativeHighRefreshTrial)
+                    } header: {
+                        Text("视频能力")
+                    } footer: {
+                        Text("默认关闭，下次连接生效。Mac 端选择“清晰”和“跟随接收屏幕”以保留原生像素。更高吞吐量会增加负载，不保证实际编码或上屏帧率。")
+                    }
+                }
 
                 Section {
                     Toggle("性能浮层", isOn: $showAnalytics)

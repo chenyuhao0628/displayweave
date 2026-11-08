@@ -32,6 +32,7 @@ jobs:
   release_please:
     if: inputs.release_tag == ''
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
       tag_name: ${{ steps.rp.outputs.tag_name }}
@@ -48,7 +49,10 @@ jobs:
       always() &&
       (inputs.release_tag != '' || needs.release_please.outputs.release_created == 'true')
     runs-on: macos-26
+    timeout-minutes: 45
     env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
       SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
       DISPLAYWEAVE_ANDROID_KEYSTORE_BASE64: ${{ secrets.DISPLAYWEAVE_ANDROID_KEYSTORE_BASE64 }}
       DISPLAYWEAVE_ANDROID_STORE_PASSWORD: ${{ secrets.DISPLAYWEAVE_ANDROID_STORE_PASSWORD }}
@@ -66,7 +70,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: command -v xcodegen >/dev/null || brew install xcodegen
 
       - name: Require pinned Mac signing identity
         run: |
@@ -180,6 +184,7 @@ jobs:
     needs: build_updates
     if: ${{ always() && needs.build_updates.result == 'success' && inputs.deploy_feeds }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       pages: write

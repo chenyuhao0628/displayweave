@@ -150,7 +150,7 @@ struct SenderSettingsView: View {
             .font(.caption).foregroundStyle(.secondary)
     }
     VStack(alignment: .leading, spacing: 8) {
-        Text(controller.androidAdbStatus)
+        Label(controller.androidAdbStatus, systemImage: "cable.connector")
             .font(.caption)
             .foregroundStyle(.secondary)
         DisclosureGroup("Android ADB 设置") {

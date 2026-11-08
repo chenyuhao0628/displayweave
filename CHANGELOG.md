@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add an opt-in iOS/iPadOS native-resolution high-refresh trial, latched per connection, with matching H.264/HEVC native-panel envelopes and unchanged conservative defaults.
+- Validate complete native-envelope bounds and fallback-safe sender planning. Document setup and the difference between native decoding and actual presentation in the [Apple video guide](docs/guides/apple-video.md).
+
 ## DisplayWeave v0.3.1 (2026-10-26)
 
 Stable release, build 20: generation-safe capture/encoder recovery, healthy-link quality restoration, aspect-correct Android video/touch, bounded decoder queues and clearer resolution/frame-rate controls. See [English release notes](docs/releases/v0.3.1.md) / [简体中文发布说明](docs/releases/v0.3.1.zh-CN.md) for review, automated evidence and physical limits. Future releases publish directly as stable versions. Mac retains its existing Apple Development signature and is unnotarized; iOS requires re-signing.
