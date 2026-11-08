@@ -211,16 +211,6 @@ struct VideoLayerView: UIViewRepresentable {
 
         // The video is aspect-fit inside the view; map view coords into the
         // displayed video rect and normalize to [0,1].
-        private func videoRect() -> CGRect? {
-            guard let video = receiver?.videoSize, video != .zero,
-                  bounds.width > 0, bounds.height > 0 else { return nil }
-            let scale = min(bounds.width / video.width, bounds.height / video.height)
-            let size = CGSize(width: video.width * scale, height: video.height * scale)
-            return CGRect(x: (bounds.width - size.width) / 2,
-                          y: (bounds.height - size.height) / 2,
-                          width: size.width, height: size.height)
-        }
-
         private func isInsideVideoRect(_ point: CGPoint) -> Bool {
             videoRect()?.contains(point) == true
         }
