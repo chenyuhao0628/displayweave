@@ -576,6 +576,7 @@ final class PhoneReceiver: ObservableObject {
         videoCodec = .h264
         videoFallback = AppleVideoFallbackPolicy()
         configuredVideo = nil
+        nativeHighRefreshTrialForConnection = false
         resetVideoDecoder()
         DispatchQueue.main.async {
             guard self.inputSendBudget.generation == generation else { return }
@@ -609,6 +610,11 @@ final class PhoneReceiver: ObservableObject {
 
     private var videoLimits: (width: Int, height: Int) {
         devicePixelsHigh > devicePixelsWide ? (2304, 4096) : (4096, 2304)
+    }
+
+    var supportsNativeHighRefreshTrial: Bool {
+        AppleVideoPolicy.nativeHighRefreshEnvelope(
+            width: devicePixelsWide, height: devicePixelsHigh, maxFps: displayMaxFps) != nil
     }
 
     private var nativeVideoEnvelope: AppleNativeVideoEnvelope? {

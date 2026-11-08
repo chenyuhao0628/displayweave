@@ -49,9 +49,7 @@ struct SettingsView: View {
 
                 PencilSettingsSection(receiver: receiver)
 
-                if AppleVideoPolicy.nativeHighRefreshEnvelope(
-                    width: Int(UIScreen.main.nativeBounds.width), height: Int(UIScreen.main.nativeBounds.height),
-                    maxFps: UIScreen.main.maximumFramesPerSecond) != nil {
+                if receiver.supportsNativeHighRefreshTrial {
                     Section {
                         Toggle("原生分辨率高刷（实验性）", isOn: $nativeHighRefreshTrial)
                     } header: {
