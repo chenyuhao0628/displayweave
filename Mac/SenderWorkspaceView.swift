@@ -32,7 +32,8 @@ struct SenderWorkspaceView: View {
                         ProgressView("正在应用设置，等待旧连接释放…")
                     }
                     if let status = controller.macLANStatus {
-                        Text(status).font(.callout).foregroundStyle(.secondary)
+                        Label(status, systemImage: "network")
+                            .font(.callout).foregroundStyle(.secondary)
                         if controller.macLANRecoveryActive {
                             Button("取消恢复") { controller.cancelMacLANRecovery() }
                         }

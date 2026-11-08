@@ -237,6 +237,10 @@ struct StreamEncodingPolicySelfTest {
             payloadBytes: FrameSizePolicy.legacyMaxBytes + 1,
             negotiatedMaxBytes: nil),
             "legacy send behavior stays unnegotiated and unchanged")
+        assertTrue(!FrameSizePolicy.permits(
+            payloadBytes: FrameSizePolicy.absoluteMaxBytes + 1,
+            negotiatedMaxBytes: nil),
+            "unnegotiated send behavior remains bounded by the absolute 16 MiB safety ceiling")
         let frameOne = identity.nextFrame()
         let frameTwo = identity.nextFrame()
         assertEqual(1, Int(frameOne.frameSequence), "first frame sequence")

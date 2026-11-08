@@ -177,5 +177,6 @@ struct BarGraph: View {
                 }, with: .color(.white.opacity(0.35)), lineWidth: 0.5)
             }
         }
+        .accessibilityHidden(true)
     }
 }

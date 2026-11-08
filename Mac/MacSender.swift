@@ -2134,7 +2134,6 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     }
 
     private func waitForHello() async throws -> PhoneInfo {
-        if let lastHello { return lastHello }
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 if let hello = self.lastHello {

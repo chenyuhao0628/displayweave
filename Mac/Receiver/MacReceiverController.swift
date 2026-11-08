@@ -74,6 +74,16 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
         })
     }
 
+    deinit {
+        for observer in observers {
+            NotificationCenter.default.removeObserver(observer)
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        if let activity {
+            ProcessInfo.processInfo.endActivity(activity)
+        }
+    }
+
     static func id(_ screen: NSScreen) -> UInt32 {
         (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
     }

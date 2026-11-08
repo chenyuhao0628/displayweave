@@ -211,15 +211,24 @@ struct VideoLayerView: UIViewRepresentable {
 
         // The video is aspect-fit inside the view; map view coords into the
         // displayed video rect and normalize to [0,1].
-        private func normalized(_ point: CGPoint) -> (x: Double, y: Double)? {
+        private func videoRect() -> CGRect? {
             guard let video = receiver?.videoSize, video != .zero,
                   bounds.width > 0, bounds.height > 0 else { return nil }
             let scale = min(bounds.width / video.width, bounds.height / video.height)
             let size = CGSize(width: video.width * scale, height: video.height * scale)
-            let origin = CGPoint(x: (bounds.width - size.width) / 2,
-                                 y: (bounds.height - size.height) / 2)
-            let x = (point.x - origin.x) / size.width
-            let y = (point.y - origin.y) / size.height
+            return CGRect(x: (bounds.width - size.width) / 2,
+                          y: (bounds.height - size.height) / 2,
+                          width: size.width, height: size.height)
+        }
+
+        private func isInsideVideoRect(_ point: CGPoint) -> Bool {
+            videoRect()?.contains(point) == true
+        }
+
+        private func normalized(_ point: CGPoint) -> (x: Double, y: Double)? {
+            guard let rect = videoRect(), rect.width > 0, rect.height > 0 else { return nil }
+            let x = (point.x - rect.origin.x) / rect.width
+            let y = (point.y - rect.origin.y) / rect.height
             return (min(max(x, 0), 1), min(max(y, 0), 1))
         }
 
@@ -277,6 +286,7 @@ struct VideoLayerView: UIViewRepresentable {
 
         private func sendPencil(_ phase: String, touch: UITouch, event: UIEvent?) {
             if phase == "began" {
+                guard isInsideVideoRect(touch.location(in: self)) else { return }
                 cancelFingerPress()
                 twoFingerActive = false
                 panGeneration = nil
@@ -332,7 +342,7 @@ struct VideoLayerView: UIViewRepresentable {
 
         private func performPencilGesture(preference: String, system: UIPencilPreferredAction) {
             guard let window, window.rootViewController?.presentedViewController == nil,
-                  UIApplication.shared.applicationState == .active,
+                   UIApplication.shared.applicationState == .active,
                   let receiver, receiver.connected, receiver.videoSize != .zero,
                   receiver.pencilExtendedAvailable else { return }
             let selected = PencilGestureAction(rawValue: UserDefaults.standard.string(forKey: preference) ?? "system") ?? .system
@@ -351,7 +361,8 @@ struct VideoLayerView: UIViewRepresentable {
         @objc func didPencilHover(_ recognizer: UIHoverGestureRecognizer) {
             switch recognizer.state {
             case .began, .changed:
-                guard pencilTouch == nil, let norm = normalized(recognizer.location(in: self)) else { return }
+                let point = recognizer.location(in: self)
+                guard pencilTouch == nil, isInsideVideoRect(point), let norm = normalized(point) else { return }
                 cancelFingerPress()
                 pencilHoverActive = true
                 if hoverGeneration == nil { hoverGeneration = receiver?.inputGeneration }
@@ -380,12 +391,14 @@ struct VideoLayerView: UIViewRepresentable {
                   let video = receiver?.videoSize, video != .zero else { return }
             switch recognizer.state {
             case .began:
+                let location = recognizer.location(in: self)
+                guard isInsideVideoRect(location) else { return }
                 twoFingerActive = true
                 lastPan = .zero
                 cancelFingerPress()
                 panGeneration = receiver?.inputGeneration
                 // Anchor scrolling under the gesture without sending a click.
-                if let n = normalized(recognizer.location(in: self)) {
+                if let n = normalized(location) {
                     lastNorm = n
                     receiver?.sendTouch(phase: "moved", x: n.x, y: n.y, generation: panGeneration)
                 }
@@ -418,6 +431,7 @@ struct VideoLayerView: UIViewRepresentable {
             }
             guard let touch = touches.first(where: { $0.type == .direct }),
                   let norm = normalized(touch.location(in: self)) else { return }
+            if phase == "began", !isInsideVideoRect(touch.location(in: self)) { return }
             lastNorm = norm
             let position = CGPoint(x: norm.x, y: norm.y)
             switch phase {

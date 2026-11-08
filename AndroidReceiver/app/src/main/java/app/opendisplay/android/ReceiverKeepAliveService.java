@@ -10,6 +10,15 @@ import android.os.IBinder;
 public final class ReceiverKeepAliveService extends Service {
     @Override public void onCreate() {
         super.onCreate();
+        promoteToForeground();
+    }
+
+    @Override public int onStartCommand(Intent intent, int flags, int id) {
+        promoteToForeground();
+        return START_NOT_STICKY;
+    }
+
+    private void promoteToForeground() {
         try {
             String channel = "receiver_session";
             NotificationManager manager = getSystemService(NotificationManager.class);
@@ -38,8 +47,6 @@ public final class ReceiverKeepAliveService extends Service {
             stopSelf();
         }
     }
-    @Override public int onStartCommand(Intent intent, int flags, int id) {
-        return START_NOT_STICKY;
-    }
+
     @Override public IBinder onBind(Intent intent) { return null; }
 }

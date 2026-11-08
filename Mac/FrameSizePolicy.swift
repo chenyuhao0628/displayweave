@@ -17,7 +17,7 @@ enum FrameSizePolicy {
     }
 
     static func permits(payloadBytes: Int, negotiatedMaxBytes: Int?) -> Bool {
-        guard payloadBytes > 0 else { return false }
+        guard payloadBytes > 0, payloadBytes <= absoluteMaxBytes else { return false }
         guard let negotiatedMaxBytes else { return true }
         return payloadBytes <= min(negotiatedMaxBytes, absoluteMaxBytes)
     }

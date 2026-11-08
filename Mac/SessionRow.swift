@@ -8,7 +8,9 @@ struct SessionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: session.failed ? "exclamationmark.triangle" : "display")
+                Image(systemName: session.failed
+                      ? "exclamationmark.triangle"
+                      : (session.framesSent > 0 ? "display" : "arrow.triangle.2.circlepath"))
                     .font(.title2).foregroundStyle(session.failed ? .orange : .secondary)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {

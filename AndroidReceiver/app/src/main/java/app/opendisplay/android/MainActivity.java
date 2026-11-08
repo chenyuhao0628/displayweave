@@ -178,12 +178,16 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
 
     @Override
     public void onStatus(String status) {
-        runOnUiThread(() -> setStatus(status));
+        runOnUiThread(() -> {
+            if (server == null) return;
+            setStatus(status);
+        });
     }
 
     @Override
     public void onConnected(boolean connected) {
         runOnUiThread(() -> {
+            if (server == null) return;
             receiverLifecycle.onConnectionChanged(connected);
             updateKeepAliveService(connected);
             setStatus(connected ? "Mac 已连接，等待画面…" : "等待 Mac 连接…");
@@ -196,12 +200,16 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
 
     @Override
     public void onStreaming(boolean streaming) {
-        runOnUiThread(() -> setStreaming(streaming));
+        runOnUiThread(() -> {
+            if (server == null) return;
+            setStreaming(streaming);
+        });
     }
 
     @Override
     public void onConnectionState(ReceiverConnectionStateSnapshot state) {
         runOnUiThread(() -> {
+            if (server == null) return;
             switch (state.state) {
                 case DISCONNECTED:
                     setStatus("等待 Mac 连接…");
@@ -267,6 +275,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     @Override
     public void onMetrics(StreamMetrics metrics) {
         runOnUiThread(() -> {
+            if (server == null) return;
             lastMetrics = metrics;
             currentTransport = metrics.transport == null ? "unknown" : metrics.transport;
             updateWifiLowLatencyState();
@@ -277,6 +286,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     @Override
     public void onStreamConfig(VideoStreamConfig config) {
         runOnUiThread(() -> {
+            if (server == null) return;
             lastStreamConfig = config;
             updateVideoViewport();
             surfaceFrameRateLifecycle.onStreamConfig(config.fps);
@@ -287,6 +297,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     @Override
     public void onTransportChanged(String transport) {
         runOnUiThread(() -> {
+            if (server == null) return;
             currentTransport = transport == null ? "unknown" : transport;
             updateWifiLowLatencyState();
         });
@@ -349,6 +360,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         statusView = new TextView(this);
         statusView.setTextColor(Color.WHITE);
         statusView.setTextSize(15);
+        statusView.setFontFeatureSettings("tnum");
         statusView.setText(currentStatus);
         statusView.setPadding(dp(16), dp(12), dp(16), dp(12));
         statusView.setMinHeight(dp(48));
@@ -363,20 +375,14 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         root.addView(statusView, statusParams);
         streamSettingsButton = ui.button("设置");
         streamSettingsButton.setContentDescription("打开设置与帮助");
-        streamSettingsButton.setOnClickListener(v -> showSettingsDialog());
+        streamSettingsButton.setOnClickListener(v -> {
+            revealStreamSettingsButton();
+            showSettingsDialog();
+        });
         FrameLayout.LayoutParams settingsParams = new FrameLayout.LayoutParams(
                 dp(72), dp(48), Gravity.TOP | Gravity.END);
         settingsParams.setMargins(dp(12), dp(16), dp(12), 0);
         root.addView(streamSettingsButton, settingsParams);
-        settingsRevealHotspot = new View(this);
-        settingsRevealHotspot.setContentDescription("显示设置按钮");
-        settingsRevealHotspot.setClickable(true);
-        settingsRevealHotspot.setVisibility(View.GONE);
-        settingsRevealHotspot.setOnClickListener(v -> revealStreamSettingsButton());
-        FrameLayout.LayoutParams revealParams = new FrameLayout.LayoutParams(
-                dp(72), dp(48), Gravity.TOP | Gravity.END);
-        revealParams.setMargins(dp(12), dp(16), dp(12), 0);
-        root.addView(settingsRevealHotspot, revealParams);
         setContentView(root);
         updateStatusOverlayVisibility();
 
@@ -404,6 +410,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 activeSurface = null;
                 updateWifiLowLatencyState();
                 if (server != null) server.updateOutputSurface(null);
+                receiverLifecycle.onSurfaceDestroyed();
             }
         });
 
@@ -817,10 +824,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                     DecoderLowLatencyMode selected = modes[which];
                     prefs.edit().putString(
                             KEY_DECODER_LOW_LATENCY, selected.key).apply();
-                    if (server != null) {
-                        stopServer();
-                        startServerIfReady();
-                    }
+                    receiverLifecycle.stopForSettings();
+                    receiverLifecycle.reevaluate();
                     setStatus("解码器低延迟已设为" + selected.label
                             + "，正在重新建立有限会话…");
                     dialog.dismiss();
