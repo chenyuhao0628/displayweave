@@ -853,8 +853,8 @@ final class PhoneReceiver: ObservableObject {
     }
 
     private func configureVideo(_ object: [String: Any]) {
-        let swappedEnvelope = nativeVideoEnvelope.map {
-            AppleNativeVideoEnvelope(width: $0.height, height: $0.width, maxFps: $0.maxFps)
+        let swappedEnvelope = nativeVideoEnvelope.flatMap {
+            AppleVideoPolicy.nativeHighRefreshEnvelope(width: $0.height, height: $0.width, maxFps: $0.fps)
         }
         guard let config = AppleVideoConfiguration(object,
                 maxWidth: videoLimits.width, maxHeight: videoLimits.height,
@@ -947,10 +947,9 @@ final class PhoneReceiver: ObservableObject {
 
         let metalActive = useMetalPath && onDecodedFrame != nil
         if loggedDisplayPath != metalActive {
-            let previous = loggedDisplayPath
             loggedDisplayPath = metalActive
             Log.info("display path: metal=\(useMetalPath) sink=\(onDecodedFrame != nil)")
-            if previous != nil, metalActive, decompressionSession == nil {
+            if lastFrameAt != nil, metalActive, decompressionSession == nil {
                 waitingForKeyframe = true
                 requestKeyframeIfNeeded()
                 return
