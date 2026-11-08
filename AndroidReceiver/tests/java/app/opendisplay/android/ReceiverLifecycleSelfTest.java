@@ -98,6 +98,35 @@ public final class ReceiverLifecycleSelfTest {
                 "security mode switch must stop before starting one replacement");
         security.onDestroy();
         require(securityActions.stops == 3, "replacement leaked after destroy");
+
+        RecordingActions connectedActions = new RecordingActions();
+        ReceiverLifecycleCoordinator connected =
+                new ReceiverLifecycleCoordinator(connectedActions);
+        connected.onResume();
+        connected.onSurfaceCreated();
+        require(connectedActions.starts == 1 && connectedActions.stops == 0,
+                "initial foreground server must start");
+        connected.onConnectionChanged(true);
+        connected.onPause();
+        connected.onSurfaceDestroyed();
+        require(connectedActions.stops == 0,
+                "an active connected session must survive background surface loss");
+        connected.onSurfaceCreated();
+        connected.onResume();
+        require(connectedActions.starts == 1 && connectedActions.stops == 0,
+                "returning to foreground must reuse the preserved connected server");
+        connected.onPause();
+        connected.onSurfaceDestroyed();
+        connected.onConnectionChanged(false);
+        require(connectedActions.stops == 1,
+                "disconnecting while backgrounded must stop the preserved server immediately");
+        connected.onSurfaceCreated();
+        connected.onResume();
+        require(connectedActions.starts == 2,
+                "foreground return after background disconnect must start a fresh server");
+        connected.onDestroy();
+        require(connectedActions.stops == 2,
+                "destroy after connected session must stop server cleanly");
         System.out.println("ReceiverLifecycleSelfTest PASS");
     }
 }

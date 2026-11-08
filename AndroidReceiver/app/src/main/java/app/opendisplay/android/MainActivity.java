@@ -53,17 +53,13 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private ReceiverUi ui;
     private AndroidSecuritySettings securitySettings;
     private Button streamSettingsButton;
-    private View settingsRevealHotspot;
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private static final long SETTINGS_BUTTON_AUTO_HIDE_MS = 4_000;
+    private static final float SETTINGS_BUTTON_FADED_ALPHA = 0.22f;
     private boolean streaming;
     private final Runnable hideStreamSettingsButton = () -> {
         if (streaming && streamSettingsButton != null) {
-            streamSettingsButton.animate().alpha(0f).setDuration(180).withEndAction(() -> {
-                if (!streaming || streamSettingsButton == null) return;
-                streamSettingsButton.setVisibility(View.GONE);
-                settingsRevealHotspot.setVisibility(View.VISIBLE);
-            });
+            streamSettingsButton.animate().alpha(SETTINGS_BUTTON_FADED_ALPHA).setDuration(180);
         }
     };
     private FrameLayout root;
@@ -166,7 +162,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         securitySettings.dismiss();
         updateWifiLowLatencyState();
         surfaceFrameRateLifecycle.onPause();
-        // Keep the transport alive; Surface lifecycle suspends decoding separately.
+        receiverLifecycle.onPause();
         super.onPause();
     }
 
@@ -188,6 +184,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     @Override
     public void onConnected(boolean connected) {
         runOnUiThread(() -> {
+            receiverLifecycle.onConnectionChanged(connected);
+            updateKeepAliveService(connected);
             setStatus(connected ? "Mac 已连接，等待画面…" : "等待 Mac 连接…");
             if (!connected) {
                 setStreaming(false);
@@ -588,9 +586,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             setStatus("帧率策略已更新，请从 Mac 重新连接");
         });
         content.addView(highFps, matchWrap());
-        content.addView(text("Uses codec size/rate limits if performance points cap FPS. "
-                + "Try 50% resolution, then 60/90 FPS on Mac. If frames lag, disable and reconnect. "
-                + "Actual FPS is not guaranteed.", 13, ui.secondary, false), matchWrap());
+        content.addView(text("当 PerformancePoint 限制帧率时，改用解码器尺寸/帧率范围（最高 90 FPS）。"
+                + "可先尝试 50% 分辨率并在 Mac 端选择 60/90 FPS；若卡顿请关闭后重连，不保证实际呈现帧率。",
+                13, ui.secondary, false), matchWrap());
 
         CheckBox native60 = new CheckBox(this);
         native60.setText("实验性原生 60 FPS（忽略吞吐量声明）");
@@ -603,8 +601,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             setStatus("请从 Mac 重新连接");
         });
         content.addView(native60, matchWrap());
-        content.addView(text("Experimental: allows up to 2400x1080 at 60 FPS when size is supported. "
-                + "Measured throughput may be lower. Disable if lagging or decoder errors occur.",
+        content.addView(text("实验性：在解码器支持该尺寸时允许最高 2400×1080 @ 60 FPS（绕过吞吐量声明）。"
+                + "实际吞吐可能偏低；若出现延迟或解码错误请关闭后重连。",
                 13, ui.secondary, false), matchWrap());
 
         Button decoderLowLatency = ui.button("");
@@ -884,7 +882,6 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             return false;
         }
         server.setDecoderLowLatencyMode(currentDecoderLowLatencyMode());
-        startForegroundService(new android.content.Intent(this, ReceiverKeepAliveService.class));
         server.start(activeSurface.getSurface());
         if (!advertiseWifi) {
             setStatus("USB 已就绪；授予附近设备权限后可使用 WiFi 发现");
@@ -898,7 +895,20 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         }
         server.stop();
         server = null;
-        stopService(new android.content.Intent(this, ReceiverKeepAliveService.class));
+        updateKeepAliveService(false);
+    }
+
+    private void updateKeepAliveService(boolean active) {
+        android.content.Intent serviceIntent = new android.content.Intent(this, ReceiverKeepAliveService.class);
+        try {
+            if (active) {
+                startForegroundService(serviceIntent);
+            } else {
+                stopService(serviceIntent);
+            }
+        } catch (RuntimeException error) {
+            android.util.Log.w("OpenDisplay", "Unable to update keep-alive service: " + error.getMessage());
+        }
     }
 
     private DecoderLowLatencyMode currentDecoderLowLatencyMode() {
@@ -1029,9 +1039,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     private void revealStreamSettingsButton() {
-        if (streamSettingsButton == null || settingsRevealHotspot == null || !streaming) return;
+        if (streamSettingsButton == null || !streaming) return;
         uiHandler.removeCallbacks(hideStreamSettingsButton);
-        settingsRevealHotspot.setVisibility(View.GONE);
         streamSettingsButton.setAlpha(1f);
         streamSettingsButton.setVisibility(View.VISIBLE);
         uiHandler.postDelayed(hideStreamSettingsButton, SETTINGS_BUTTON_AUTO_HIDE_MS);
@@ -1246,7 +1255,6 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         if (!streaming) {
             uiHandler.removeCallbacks(hideStreamSettingsButton);
             if (streamSettingsButton != null) streamSettingsButton.setVisibility(View.GONE);
-            if (settingsRevealHotspot != null) settingsRevealHotspot.setVisibility(View.GONE);
         }
     }
 

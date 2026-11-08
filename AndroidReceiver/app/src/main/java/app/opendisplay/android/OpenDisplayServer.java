@@ -201,15 +201,15 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             synchronized (this) {
                 surface = nextSurface;
             }
+            streamingGeneration = 0;
             resetQueuedFrames();
             releaseDecoder();
             long generation = connectionCoordinator.currentGeneration();
             if (nextSurface != null && nextSurface.isValid()
                     && connectionCoordinator.isCurrent(generation)) {
+                lastFrameRenderedMs = System.currentTimeMillis();
                 configureDecoderForIdentity(generation, protocolSession.sessionEpoch(),
                         protocolSession.configVersion(), VideoStreamConfig.DEFAULT, currentStreamConfig);
-                lastFrameRenderedMs = System.currentTimeMillis();
-                requestKeyframe();
             }
         });
     }

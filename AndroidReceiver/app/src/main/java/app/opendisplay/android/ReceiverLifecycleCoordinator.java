@@ -9,6 +9,7 @@ final class ReceiverLifecycleCoordinator {
     private final Actions actions;
     private boolean resumed;
     private boolean surfaceAvailable;
+    private boolean sessionConnected;
     private boolean running;
 
     ReceiverLifecycleCoordinator(Actions actions) {
@@ -22,7 +23,9 @@ final class ReceiverLifecycleCoordinator {
 
     void onPause() {
         resumed = false;
-        stopIfRunning();
+        if (!sessionConnected) {
+            stopIfRunning();
+        }
     }
 
     void onSurfaceCreated() {
@@ -32,19 +35,38 @@ final class ReceiverLifecycleCoordinator {
 
     void onSurfaceDestroyed() {
         surfaceAvailable = false;
-        stopIfRunning();
+        if (!sessionConnected) {
+            stopIfRunning();
+        }
+    }
+
+    void onConnectionChanged(boolean connected) {
+        sessionConnected = connected;
+        if (!connected && (!resumed || !surfaceAvailable)) {
+            stopIfRunning();
+        }
     }
 
     void onDestroy() {
         resumed = false;
         surfaceAvailable = false;
+        sessionConnected = false;
         stopIfRunning();
     }
 
     /** Security settings stop first, then reevaluate after persistence succeeds. */
-    void stopForSettings() { stopIfRunning(); }
+    void stopForSettings() {
+        sessionConnected = false;
+        stopIfRunning();
+    }
 
     void reevaluate() {
+        if (!resumed || !surfaceAvailable) {
+            if (!sessionConnected) {
+                stopIfRunning();
+            }
+            return;
+        }
         ensureStarted();
     }
 
