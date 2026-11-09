@@ -185,9 +185,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     @Override
-    public void onConnected(boolean connected) {
+    public void onConnected(OpenDisplayServer source, boolean connected) {
         runOnUiThread(() -> {
-            if (server == null) return;
+            if (server != source) return;
             receiverLifecycle.onConnectionChanged(connected);
             updateKeepAliveService(connected);
             setStatus(connected ? "Mac 已连接，等待画面…" : "等待 Mac 连接…");
