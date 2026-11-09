@@ -169,6 +169,7 @@ final class PhoneReceiver: ObservableObject {
     private var decompressionSession: VTDecompressionSession?
     private var decodeWindow: [Double] = []
     private var photonWindow: [Double] = []
+    private let maxWindowSamples = 600
     private var loggedDisplayPath = false
     private var decodeErrorCount = 0
     // Default OFF: A/B measurement showed the system video layer reaches
@@ -184,8 +185,11 @@ final class PhoneReceiver: ObservableObject {
         queue.async {
             guard self.inputSendBudget.generation == generation, let offset = self.clockOffsetMs else { return }
             let photon = (presentedWallMs + offset) - captureMs
-            if photon > -50, photon < 5000 {
+            if photon.isFinite, photon > -50, photon < 5000 {
                 self.photonWindow.append(max(photon, 0))
+                if self.photonWindow.count > self.maxWindowSamples {
+                    self.photonWindow.removeFirst()
+                }
             }
         }
     }
@@ -322,7 +326,7 @@ final class PhoneReceiver: ObservableObject {
             self.connection = nil
             self.peerID = nil
             self.resetStreamState()
-            self.setConnected(false)
+            self.setConnected(false, updateStatus: false)
             self.setStatus("已在后台断开")
             if let old {
                 let payload = Data("{\"type\":\"goodbye\"}".utf8)
@@ -417,11 +421,12 @@ final class PhoneReceiver: ObservableObject {
             let peer = String(describing: conn.endpoint)
             self.transport = (peer.hasPrefix("127.0.0.1") || peer.hasPrefix("::1")
                               || peer.hasPrefix("localhost")) ? "USB" : "WiFi"
-            // Replace any existing connection and reset decoder state.
+            // Replace any existing connection and reset decoder state before binding the new connection.
             self.connection?.cancel()
-            self.connection = conn
+            self.connection = nil
             self.peerID = authenticatedPeer?.installID
-            self.resetStreamState()
+            self.resetStreamState(acceptingInput: true)
+            self.connection = conn
             self.nativeHighRefreshTrialForConnection = UserDefaults.standard.bool(
                 forKey: AppleVideoPolicy.nativeHighRefreshTrialKey)
             let encrypted = authenticatedPeer != nil
@@ -432,7 +437,7 @@ final class PhoneReceiver: ObservableObject {
                     guard !encrypted else { return }
                     self.lastDataReceived = Date()
                     self.firstVideoDeadline.begin(at: ProcessInfo.processInfo.systemUptime)
-                    self.setConnected(true)
+                    self.setConnected(true, updateStatus: false)
                     self.setStatus("已连接，正在等待 Mac 画面…")
                     self.sendHello(on: conn)
                 case .failed, .cancelled:
@@ -450,7 +455,7 @@ final class PhoneReceiver: ObservableObject {
             if encrypted {
                 self.lastDataReceived = Date()
                 self.firstVideoDeadline.begin(at: ProcessInfo.processInfo.systemUptime)
-                self.setConnected(true)
+                self.setConnected(true, updateStatus: false)
                 self.setStatus("安全连接已建立，正在等待 Mac 画面…")
                 self.sendHello(on: conn)
             } else { conn.start(queue: self.queue) }
@@ -524,7 +529,7 @@ final class PhoneReceiver: ObservableObject {
             let visible = (obj["v"] as? Int ?? 0) == 1
             let x = obj["x"] as? Double ?? 0
             let y = obj["y"] as? Double ?? 0
-            guard x.isFinite, y.isFinite else { return }
+            guard x.isFinite, y.isFinite, x >= 0, x <= 1, y >= 0, y <= 1 else { return }
             let generation = inputSendBudget.generation
             DispatchQueue.main.async {
                 guard self.inputSendBudget.generation == generation else { return }
@@ -561,8 +566,8 @@ final class PhoneReceiver: ObservableObject {
         }
     }
 
-    private func resetStreamState() {
-        let generation = inputSendBudget.reset(accepting: connection != nil)
+    private func resetStreamState(acceptingInput: Bool = false) {
+        let generation = inputSendBudget.reset(accepting: acceptingInput)
         pencilNegotiated = false
         pencilExtendedNegotiated = false
         pencilActionSession = nil; pencilActionSequence = 0
@@ -591,7 +596,6 @@ final class PhoneReceiver: ObservableObject {
         lastFrameAt = nil
         frameIntervals.removeAll()
         decodeFlushes = 0
-        displayLayer.flushAndRemoveImage()
         framesThisWindow = 0; bytesThisWindow = 0; stallsThisWindow = 0
         fpsWindowStart = Date()
         offsetSamples.removeAll(); clockOffsetMs = nil; lastRttMs = 0
@@ -602,10 +606,6 @@ final class PhoneReceiver: ObservableObject {
             self.fps = 0
             self.perf = PerfStats()
             self.onCursor?(0, 0, false)
-        }
-        if let session = decompressionSession {
-            VTDecompressionSessionInvalidate(session)
-            decompressionSession = nil
         }
         decodeWindow.removeAll(keepingCapacity: true)
         photonWindow.removeAll(keepingCapacity: true)
@@ -714,7 +714,7 @@ final class PhoneReceiver: ObservableObject {
         connection = nil
         conn.cancel()
         resetStreamState()
-        setConnected(false)
+        setConnected(false, updateStatus: false)
         setStatus(status)
     }
 
@@ -772,7 +772,7 @@ final class PhoneReceiver: ObservableObject {
                     self.connection = nil
                     conn.cancel()
                     self.resetStreamState()
-                    self.setConnected(false)
+                    self.setConnected(false, updateStatus: false)
                     self.setStatus("已拒绝无效数据，等待 Mac 重新连接")
                     return
                 }
@@ -807,10 +807,16 @@ final class PhoneReceiver: ObservableObject {
         guard let format = packet.format else { requestKeyframeIfNeeded(); return }
         if packet.formatChanged {
             let dims = CMVideoFormatDescriptionGetDimensions(format)
+            let limits = videoLimits
+            let maxDim = max(limits.width, limits.height)
+            let minDim = min(limits.width, limits.height)
+            let withinUnconfiguredLimits = (Int(dims.width) <= maxDim && Int(dims.height) <= minDim)
+                || (Int(dims.width) <= minDim && Int(dims.height) <= maxDim)
             guard dims.width > 0, dims.height > 0, dims.width <= 8192, dims.height <= 8192,
                   Int64(dims.width) * Int64(dims.height) <= 33_554_432,
-                  configuredVideo == nil || (Int(dims.width) == configuredVideo?.width
-                    && Int(dims.height) == configuredVideo?.height) else {
+                  (configuredVideo == nil && withinUnconfiguredLimits)
+                    || (Int(dims.width) == configuredVideo?.width
+                      && Int(dims.height) == configuredVideo?.height) else {
                 rejectVideo("视频尺寸与配置不符，请重新连接"); return
             }
             displayLayer.flush()
@@ -953,13 +959,18 @@ final class PhoneReceiver: ObservableObject {
         if loggedDisplayPath != metalActive {
             loggedDisplayPath = metalActive
             Log.info("display path: metal=\(useMetalPath) sink=\(onDecodedFrame != nil)")
-            if lastFrameAt != nil, metalActive, decompressionSession == nil {
+            if let session = decompressionSession {
+                VTDecompressionSessionInvalidate(session)
+                decompressionSession = nil
+            }
+            displayLayer.flushAndRemoveImage()
+            if lastFrameAt != nil {
                 waitingForKeyframe = true
                 requestKeyframeIfNeeded()
                 return
             }
         }
-        if useMetalPath, onDecodedFrame != nil {
+        if metalActive {
             decodeAndRender(sample, captureMs: captureMs)
         } else {
             // Display immediately: low latency, no PTS scheduling.
@@ -994,11 +1005,16 @@ final class PhoneReceiver: ObservableObject {
         // True end-to-end latency: Mac capture timestamp vs our clock mapped
         // onto the Mac's via the ping/pong offset.
         if let captureMs, let sendMs {
-            encodeWindow.append(sendMs - captureMs)
+            let encodeMs = sendMs - captureMs
+            if encodeMs.isFinite, encodeMs >= 0, encodeMs < 5000 {
+                encodeWindow.append(encodeMs)
+                if encodeWindow.count > maxWindowSamples { encodeWindow.removeFirst() }
+            }
             if let offset = clockOffsetMs {
                 let e2e = (nowMs + offset) - captureMs
-                if e2e > -50, e2e < 5000 {
+                if e2e.isFinite, e2e > -50, e2e < 5000 {
                     e2eWindow.append(e2e)
+                    if e2eWindow.count > maxWindowSamples { e2eWindow.removeFirst() }
                     e2eRing.append(max(e2e, 0))
                     if e2eRing.count > maxSamples { e2eRing.removeFirst() }
                 }
@@ -1116,7 +1132,14 @@ final class PhoneReceiver: ObservableObject {
         ) { [weak self] status, _, imageBuffer, _, _ in
             guard let self, self.inputSendBudget.generation == generation else { return }
             if status == noErr, let imageBuffer {
-                self.decodeWindow.append(self.nowMs - t0)
+                self.decodeErrorCount = 0
+                let decodeMs = self.nowMs - t0
+                if decodeMs.isFinite, decodeMs >= 0, decodeMs < 5000 {
+                    self.decodeWindow.append(decodeMs)
+                    if self.decodeWindow.count > self.maxWindowSamples {
+                        self.decodeWindow.removeFirst()
+                    }
+                }
                 self.onDecodedFrame?(imageBuffer, captureMs)
             } else {
                 if self.decodeErrorCount % 60 == 0 {
@@ -1166,15 +1189,20 @@ final class PhoneReceiver: ObservableObject {
         }
     }
 
-    private func setConnected(_ value: Bool) {
+    private func setConnected(_ value: Bool, updateStatus: Bool = true) {
         let generation = inputSendBudget.generation
         DispatchQueue.main.async {
             guard self.inputSendBudget.generation == generation else { return }
             self.connected = value; if !value { self.encrypted = false }
         }
-        if !value { setStatus(security.encrypted ? "正在安全监听 :9000" : "旧版兼容（未加密） :9000") }
-        else {
-            setStatus(peerID == nil ? "已连接（未加密兼容）" : "已加密连接")
+        if !value {
+            if updateStatus {
+                setStatus(security.encrypted ? "正在安全监听 :\(port)" : "旧版兼容（未加密） :\(port)")
+            }
+        } else {
+            if updateStatus {
+                setStatus(peerID == nil ? "已连接（未加密兼容）" : "已加密连接")
+            }
             // Remember the first ever successful connection to a Mac so the
             // first-run onboarding hint never reappears (issue #49).
             if !UserDefaults.standard.bool(forKey: "hasConnectedBefore") {

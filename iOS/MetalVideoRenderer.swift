@@ -27,6 +27,7 @@ final class MetalVideoRenderer {
     private let renderQueue = DispatchQueue(label: "metal.render", qos: .userInteractive)
     private let lock = NSLock()
     private var pendingFrame: (buffer: CVPixelBuffer, captureMs: Double?, generation: UInt64)?
+    private var currentDrawableSize: CGSize = .zero
 
     /// presentedTime (CACurrentMediaTime base) + the capture timestamp that
     /// was threaded through render(_:captureMs:).
@@ -96,7 +97,35 @@ final class MetalVideoRenderer {
         // beats all of these on iOS (dedicated video compositor plane),
         // which is why this renderer is opt-in.
         metalLayer.maximumDrawableCount = 3
-        CVMetalTextureCacheCreate(nil, nil, device, nil, &textureCache)
+        let cacheStatus = CVMetalTextureCacheCreate(nil, nil, device, nil, &textureCache)
+        guard cacheStatus == kCVReturnSuccess, textureCache != nil else {
+            Log.info("CVMetalTextureCacheCreate failed: \(cacheStatus)")
+            return nil
+        }
+    }
+
+    @MainActor
+    func updateLayout(frame: CGRect, drawableSize: CGSize) {
+        metalLayer.frame = frame
+        guard drawableSize.width > 0, drawableSize.height > 0 else { return }
+        lock.lock()
+        let changed = currentDrawableSize != drawableSize
+        if changed { currentDrawableSize = drawableSize }
+        lock.unlock()
+        if changed || metalLayer.drawableSize != drawableSize {
+            metalLayer.drawableSize = drawableSize
+        }
+    }
+
+    func reset() {
+        lock.lock()
+        pendingFrame = nil
+        currentDrawableSize = .zero
+        lock.unlock()
+        renderQueue.async { [weak self] in
+            guard let cache = self?.textureCache else { return }
+            CVMetalTextureCacheFlush(cache, 0)
+        }
     }
 
     /// Called on the receiver's queue — returns immediately.
@@ -124,8 +153,21 @@ final class MetalVideoRenderer {
     private func draw(_ pixelBuffer: CVPixelBuffer, captureMs: Double?, generation: UInt64) {
         let w = CVPixelBufferGetWidth(pixelBuffer)
         let h = CVPixelBufferGetHeight(pixelBuffer)
-        if metalLayer.drawableSize != CGSize(width: w, height: h) {
-            metalLayer.drawableSize = CGSize(width: w, height: h)
+        let targetSize = CGSize(width: w, height: h)
+        lock.lock()
+        let needsDrawableResize = currentDrawableSize != targetSize
+        if needsDrawableResize { currentDrawableSize = targetSize }
+        lock.unlock()
+        if needsDrawableResize {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                if self.metalLayer.drawableSize != targetSize {
+                    self.metalLayer.drawableSize = targetSize
+                }
+                CATransaction.commit()
+            }
         }
 
         guard let cache = textureCache else { return }

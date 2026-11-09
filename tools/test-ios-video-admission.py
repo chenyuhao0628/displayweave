@@ -45,6 +45,17 @@ fixture += """
     }
 }
 """
+if not args.source_ref:
+    assert "let withinUnconfiguredLimits =" in source, "handleAnnexB must enforce videoLimits when configuredVideo is nil"
+    assert "(configuredVideo == nil && withinUnconfiguredLimits)" in source, "unconfigured Annex-B stream must not bypass videoLimits"
+    adopt_idx = source.index("private func adopt(")
+    reset_call_idx = source.index("self.resetStreamState(acceptingInput: true)", adopt_idx)
+    conn_assign_idx = source.index("self.connection = conn", adopt_idx)
+    assert reset_call_idx < conn_assign_idx, "adopt must resetStreamState before assigning self.connection = conn"
+    assert "self.decodeErrorCount = 0" in source[source.index("private func decodeAndRender("):], (
+        "decodeAndRender must reset decodeErrorCount on successful frame decode"
+    )
+
 with tempfile.TemporaryDirectory(prefix="displayweave-ios-admission-") as tmp:
     path = Path(tmp)
     (path / "Fixture.swift").write_text(fixture)
