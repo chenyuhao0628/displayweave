@@ -41,6 +41,22 @@ private final class AcceptedConnection: @unchecked Sendable { var connection: NW
         opening.cancel()
         do { let conn = try await opening.value; conn.cancel(); fatalError("cancelled open succeeded") }
         catch is CancellationError { }
+
+        let timeoutClient = NWConnection(host: "127.0.0.1", port: listener.port!, using: .tcp)
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            timeoutClient.stateUpdateHandler = { state in
+                if case .ready = state { continuation.resume() }
+                if case .failed(let error) = state { continuation.resume(throwing: error) }
+            }
+            timeoutClient.start(queue: .main)
+        }
+        timeoutClient.stateUpdateHandler = nil
+        do {
+            _ = try await Usbmux.readMessage(on: timeoutClient, timeout: .milliseconds(80))
+            fatalError("silent peer should time out")
+        } catch Usbmux.Failure.timedOut {
+            // Expected.
+        }
         print("Usbmux cancellation releases silent read and cancelled open PASS")
     }
 }

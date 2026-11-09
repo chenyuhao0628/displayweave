@@ -167,23 +167,125 @@ protocol AndroidAdbProcessRunning: Sendable {
         -> AndroidAdbCommandResult
 }
 
+private final class AdbProcessExitBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var status: Int32?
+    private var continuation: CheckedContinuation<Int32, Never>?
+
+    func finish(with exitStatus: Int32) {
+        lock.lock()
+        guard status == nil else {
+            lock.unlock()
+            return
+        }
+        status = exitStatus
+        let cont = continuation
+        continuation = nil
+        lock.unlock()
+        cont?.resume(returning: exitStatus)
+    }
+
+    func wait() async -> Int32 {
+        await withCheckedContinuation { cont in
+            lock.lock()
+            if let status {
+                lock.unlock()
+                cont.resume(returning: status)
+            } else {
+                continuation = cont
+                lock.unlock()
+            }
+        }
+    }
+}
+
+private final class AdbBoundedPipeReader: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finished = false
+    private var collected = Data()
+    private var continuation: CheckedContinuation<Data, Never>?
+
+    init(handle: FileHandle, maxBytes: Int, label: String) {
+        DispatchQueue(label: label, qos: .userInitiated).async { [weak self] in
+            var buffer = Data()
+            while true {
+                let chunk = (try? handle.read(upToCount: 16 * 1024)) ?? nil
+                guard let chunk, !chunk.isEmpty else { break }
+                if buffer.count < maxBytes {
+                    let remaining = maxBytes - buffer.count
+                    buffer.append(chunk.prefix(remaining))
+                }
+            }
+            try? handle.close()
+            self?.complete(with: buffer)
+        }
+    }
+
+    private func complete(with data: Data) {
+        lock.lock()
+        guard !finished else {
+            lock.unlock()
+            return
+        }
+        finished = true
+        collected = data
+        let cont = continuation
+        continuation = nil
+        lock.unlock()
+        cont?.resume(returning: data)
+    }
+
+    func wait() async -> Data {
+        await withCheckedContinuation { cont in
+            lock.lock()
+            if finished {
+                let data = collected
+                lock.unlock()
+                cont.resume(returning: data)
+            } else {
+                continuation = cont
+                lock.unlock()
+            }
+        }
+    }
+}
+
 struct FoundationAdbProcessRunner: AndroidAdbProcessRunning {
+    static let maxOutputBytes = 256 * 1024
+
     func run(executable: URL, arguments: [String], timeout: Duration) async throws
         -> AndroidAdbCommandResult {
         let process = Process()
         let stdout = Pipe()
         let stderr = Pipe()
+        let exitBox = AdbProcessExitBox()
         process.executableURL = executable
         process.arguments = arguments
         process.standardOutput = stdout
         process.standardError = stderr
-        try process.run()
+        process.terminationHandler = { proc in
+            exitBox.finish(with: proc.terminationStatus)
+        }
+        do {
+            try process.run()
+        } catch {
+            process.terminationHandler = nil
+            throw error
+        }
+
+        let stdoutReader = AdbBoundedPipeReader(
+            handle: stdout.fileHandleForReading,
+            maxBytes: Self.maxOutputBytes,
+            label: "adb.stdout.reader")
+        let stderrReader = AdbBoundedPipeReader(
+            handle: stderr.fileHandleForReading,
+            maxBytes: Self.maxOutputBytes,
+            label: "adb.stderr.reader")
 
         return try await withTaskCancellationHandler {
             try await withThrowingTaskGroup(of: Int32?.self) { group in
                 group.addTask {
-                    process.waitUntilExit()
-                    return process.terminationStatus
+                    await exitBox.wait()
                 }
                 group.addTask {
                     try await Task.sleep(for: timeout)
@@ -195,13 +297,14 @@ struct FoundationAdbProcessRunner: AndroidAdbProcessRunning {
                 }
                 if first == nil {
                     if process.isRunning { process.terminate() }
-                    process.waitUntilExit()
+                    try? stdout.fileHandleForReading.close()
+                    try? stderr.fileHandleForReading.close()
                     group.cancelAll()
                     throw AndroidAdbFailure.timedOut
                 }
                 group.cancelAll()
-                let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
-                let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
+                let outputData = await stdoutReader.wait()
+                let errorData = await stderrReader.wait()
                 return AndroidAdbCommandResult(
                     stdout: String(decoding: outputData, as: UTF8.self),
                     stderr: String(decoding: errorData, as: UTF8.self),
@@ -209,6 +312,8 @@ struct FoundationAdbProcessRunner: AndroidAdbProcessRunning {
             }
         } onCancel: {
             if process.isRunning { process.terminate() }
+            try? stdout.fileHandleForReading.close()
+            try? stderr.fileHandleForReading.close()
         }
     }
 }
