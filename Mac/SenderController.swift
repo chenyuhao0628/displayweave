@@ -106,11 +106,38 @@ final class SenderController: ObservableObject {
     //  - WiFi devices the user connected before (wifiRemembered) reconnect
     //    in a short window at LAUNCH only — never mid-session.
     // `-autostart NO` disables all auto-connecting.
+    private static let maxPersistedEntries = 128
+
+    private static func boundedArray(_ values: Set<String>) -> [String] {
+        Array(values.sorted().prefix(maxPersistedEntries))
+    }
+
+    private static func boundedDictionary(_ values: [String: String]) -> [String: String] {
+        guard values.count > maxPersistedEntries else { return values }
+        var result: [String: String] = [:]
+        for key in values.keys.sorted().prefix(maxPersistedEntries) {
+            result[key] = values[key]
+        }
+        return result
+    }
+
     private var usbDisabled = Set(UserDefaults.standard.stringArray(forKey: "usbDisabled") ?? []) {
-        didSet { UserDefaults.standard.set(Array(usbDisabled), forKey: "usbDisabled") }
+        didSet {
+            if usbDisabled.count > Self.maxPersistedEntries {
+                usbDisabled = Set(Self.boundedArray(usbDisabled))
+                return
+            }
+            UserDefaults.standard.set(Self.boundedArray(usbDisabled), forKey: "usbDisabled")
+        }
     }
     private var wifiRemembered = Set(UserDefaults.standard.stringArray(forKey: "wifiRemembered") ?? []) {
-        didSet { UserDefaults.standard.set(Array(wifiRemembered), forKey: "wifiRemembered") }
+        didSet {
+            if wifiRemembered.count > Self.maxPersistedEntries {
+                wifiRemembered = Set(Self.boundedArray(wifiRemembered))
+                return
+            }
+            UserDefaults.standard.set(Self.boundedArray(wifiRemembered), forKey: "wifiRemembered")
+        }
     }
     // Install id learned from each USB device's hello, persisted, so the
     // same hardware is recognized across transports even when the user
@@ -118,12 +145,25 @@ final class SenderController: ObservableObject {
     // the moment an identity is learned.
     @Published private var installIDByUDID: [String: String] =
         UserDefaults.standard.dictionary(forKey: "installIDByUDID") as? [String: String] ?? [:] {
-        didSet { UserDefaults.standard.set(installIDByUDID, forKey: "installIDByUDID") }
+        didSet {
+            let bounded = Self.boundedDictionary(installIDByUDID)
+            if bounded.count != installIDByUDID.count {
+                installIDByUDID = bounded
+                return
+            }
+            UserDefaults.standard.set(bounded, forKey: "installIDByUDID")
+        }
     }
     @Published private var installIDByAndroidSerial: [String: String] =
         UserDefaults.standard.dictionary(forKey: "installIDByAndroidSerial") as? [String: String] ?? [:] {
-        didSet { UserDefaults.standard.set(installIDByAndroidSerial,
-                                           forKey: "installIDByAndroidSerial") }
+        didSet {
+            let bounded = Self.boundedDictionary(installIDByAndroidSerial)
+            if bounded.count != installIDByAndroidSerial.count {
+                installIDByAndroidSerial = bounded
+                return
+            }
+            UserDefaults.standard.set(bounded, forKey: "installIDByAndroidSerial")
+        }
     }
     private let autoConnectEnabled = UserDefaults.standard.object(forKey: "autostart") == nil
         || UserDefaults.standard.bool(forKey: "autostart")

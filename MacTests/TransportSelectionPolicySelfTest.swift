@@ -133,6 +133,12 @@ struct TransportSelectionPolicySelfTest {
                 existing: lastPeerMessage,
                 failureObservedAt: Date(timeIntervalSince1970: 108)),
               "reconnect attempts must preserve the original disconnect deadline")
+        check(10.0,
+              DisconnectGracePolicy.graceSeconds(everConnected: true, reconnectGraceSeconds: 10),
+              "established sessions use the 10-second reconnect grace")
+        check(30.0,
+              DisconnectGracePolicy.graceSeconds(everConnected: false, reconnectGraceSeconds: 10),
+              "pre-connection retries use a bounded 30-second initial grace instead of spinning forever")
         check(true,
               ConnectionGenerationPolicy.accepts(
                 callbackGeneration: 2, currentGeneration: 2,

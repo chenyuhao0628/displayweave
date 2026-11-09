@@ -20,16 +20,29 @@ enum DisplayArrangement {
     /// (tested per-orientation spots and flipping back to an orientation's
     /// old position reads as broken; deliberate split positions are a
     /// possible opt-in, see #128).
+    private static let maxStoredDevices = 64
+
     static func save(origin: CGPoint, size: CGSize, device: String,
                      defaults: UserDefaults = .standard, mainBounds: CGRect? = nil) {
         let rect = CGRect(origin: origin, size: size)
         guard valid(rect), !device.isEmpty, device.utf8.count <= 512 else { return }
+        let targetKey = key(device)
+        if defaults.object(forKey: targetKey) == nil {
+            let existingKeys = defaults.dictionaryRepresentation().keys
+                .filter { $0.hasPrefix("displayOrigin.") }
+                .sorted()
+            if existingKeys.count >= maxStoredDevices {
+                for staleKey in existingKeys.prefix(existingKeys.count - maxStoredDevices + 1) {
+                    defaults.removeObject(forKey: staleKey)
+                }
+            }
+        }
         let previousSide = load(device, defaults: defaults)?.side
         let main = mainBounds ?? CGDisplayBounds(CGMainDisplayID())
         let side = side(of: rect, relativeTo: main, preferring: previousSide)
         var record = [Int(origin.x), Int(origin.y), Int(size.width), Int(size.height)]
         if let side { record.append(side.rawValue) }
-        defaults.set(record, forKey: key(device))
+        defaults.set(record, forKey: targetKey)
     }
 
     /// Where a new display of `size` points should go: the saved spot

@@ -76,8 +76,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        SenderController.shared.setRoleEnabled(false)
-        MacRoleController.shared.receiver.stop()
+        var senderDone = false
+        var receiverDone = false
+        if let cleanup = SenderController.shared.setRoleEnabled(false) {
+            Task { @MainActor in
+                await cleanup.value
+                senderDone = true
+            }
+        } else {
+            senderDone = true
+        }
+        MacRoleController.shared.receiver.stop {
+            receiverDone = true
+        }
+        let deadline = Date().addingTimeInterval(0.4)
+        while (!senderDone || !receiverDone) && Date() < deadline {
+            _ = RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
     }
 
     // Background/Dock modes: opening the app again (Spotlight, Finder, Dock

@@ -86,6 +86,13 @@ enum ReconnectPeerReadinessPolicy {
 }
 
 enum DisconnectGracePolicy {
+    static let initialConnectGraceSeconds: TimeInterval = 30
+
+    static func graceSeconds(everConnected: Bool,
+                             reconnectGraceSeconds: TimeInterval) -> TimeInterval {
+        everConnected ? reconnectGraceSeconds : max(reconnectGraceSeconds, initialConnectGraceSeconds)
+    }
+
     static func startedAt(existing: Date?, failureObservedAt: Date) -> Date {
         existing ?? failureObservedAt
     }

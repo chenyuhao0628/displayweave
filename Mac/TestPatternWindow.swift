@@ -2,7 +2,7 @@
 import SwiftUI
 import AppKit
 import MetalKit
-import CoreVideo
+import QuartzCore
 
 /// Debug aid: a full-screen animated window on the virtual display so the
 /// pipeline streams continuously — without it, ScreenCaptureKit emits nothing
@@ -23,8 +23,9 @@ enum TestPattern {
     // AppKit may still own a display-transform animation when a virtual
     // display disappears. Releasing the window in that transaction has
     // crashed inside _NSWindowTransformAnimation.dealloc on macOS 26.
-    // Keep hidden debug windows alive for the process lifetime instead.
+    // Keep a bounded pool of hidden shell windows without their Metal views.
     private static var retiredWindows: [NSWindow] = []
+    private static let maxRetiredWindows = 16
 
     static func show(ownerID: UUID, on displayID: CGDirectDisplayID) {
         hide(ownerID: ownerID)
@@ -45,7 +46,7 @@ enum TestPattern {
                                      backing: .buffered, defer: false)
                     w.animationBehavior = .none
                     w.isReleasedWhenClosed = false
-                    w.contentView = DisplayLinkPatternView(displayID: displayID)
+                    w.contentView = DisplayLinkPatternView(screen: screen)
                     w.setFrame(screen.frame, display: true, animate: false)
                     guard !Task.isCancelled else {
                         retire(w)
@@ -74,8 +75,12 @@ enum TestPattern {
 
     private static func retire(_ window: NSWindow) {
         (window.contentView as? DisplayLinkPatternView)?.stop()
+        window.contentView = nil
         window.animationBehavior = .none
         window.orderOut(nil)
+        if retiredWindows.count >= maxRetiredWindows {
+            retiredWindows.removeFirst()
+        }
         retiredWindows.append(window)
     }
 
@@ -86,39 +91,20 @@ enum TestPattern {
 
 private final class DisplayLinkPatternView: MTKView, MTKViewDelegate {
     private lazy var commandQueue = device?.makeCommandQueue()
-    private var renderDisplayLink: CVDisplayLink?
+    private var renderDisplayLink: CADisplayLink?
 
-    init(displayID: CGDirectDisplayID) {
+    init(screen: NSScreen) {
         super.init(frame: .zero, device: MTLCreateSystemDefaultDevice())
         delegate = self
         // A fixed 120fps MTKView can fall to a divisor (30fps) on a 90Hz
-        // virtual display. Bind a CoreVideo clock to the virtual display. Its
-        // callback is not delayed by main-thread logging/control traffic.
+        // virtual display. Bind an NSScreen CADisplayLink to the virtual display.
         enableSetNeedsDisplay = true
         isPaused = true
         framebufferOnly = true
         colorPixelFormat = .bgra8Unorm
-        var link: CVDisplayLink?
-        if CVDisplayLinkCreateWithCGDisplay(displayID, &link) == kCVReturnSuccess,
-           let link {
-            CVDisplayLinkSetOutputCallback(link, { _, _, _, _, _, context in
-                guard let context else { return kCVReturnInvalidArgument }
-                let view = Unmanaged<DisplayLinkPatternView>
-                    .fromOpaque(context).takeUnretainedValue()
-                autoreleasepool {
-                    view.draw()
-                }
-                return kCVReturnSuccess
-            }, Unmanaged.passUnretained(self).toOpaque())
-            renderDisplayLink = link
-            CVDisplayLinkStart(link)
-        } else {
-            // Keep MTKView's scheduler as a compatibility fallback if the
-            // display clock cannot be created.
-            preferredFramesPerSecond = 120
-            enableSetNeedsDisplay = false
-            isPaused = false
-        }
+        let link = screen.displayLink(target: self, selector: #selector(stepDisplayLink))
+        link.add(to: .main, forMode: .common)
+        renderDisplayLink = link
     }
 
     @available(*, unavailable)
@@ -130,10 +116,14 @@ private final class DisplayLinkPatternView: MTKView, MTKViewDelegate {
         stop()
     }
 
-    func stop() {
-        if let renderDisplayLink {
-            CVDisplayLinkStop(renderDisplayLink)
+    @objc private func stepDisplayLink() {
+        autoreleasepool {
+            draw()
         }
+    }
+
+    func stop() {
+        renderDisplayLink?.invalidate()
         renderDisplayLink = nil
     }
 
