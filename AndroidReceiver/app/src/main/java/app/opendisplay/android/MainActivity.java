@@ -99,10 +99,20 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        if (Build.VERSION.SDK_INT >= 33
-                && checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
-                != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[] {Manifest.permission.NEARBY_WIFI_DEVICES}, REQUEST_NEARBY_WIFI);
+        if (Build.VERSION.SDK_INT >= 33) {
+            java.util.ArrayList<String> neededPermissions = new java.util.ArrayList<>(2);
+            if (checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
+                    != PackageManager.PERMISSION_GRANTED) {
+                neededPermissions.add(Manifest.permission.NEARBY_WIFI_DEVICES);
+            }
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                neededPermissions.add(Manifest.permission.POST_NOTIFICATIONS);
+            }
+            if (!neededPermissions.isEmpty()) {
+                requestPermissions(
+                        neededPermissions.toArray(new String[0]), REQUEST_NEARBY_WIFI);
+            }
         }
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         CodecCapabilities.setExperimentalHighFps(
@@ -177,9 +187,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     @Override
-    public void onStatus(String status) {
+    public void onStatus(OpenDisplayServer source, String status) {
         runOnUiThread(() -> {
-            if (server == null) return;
+            if (server != source) return;
             setStatus(status);
         });
     }
@@ -199,17 +209,17 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     @Override
-    public void onStreaming(boolean streaming) {
+    public void onStreaming(OpenDisplayServer source, boolean streaming) {
         runOnUiThread(() -> {
-            if (server == null) return;
+            if (server != source) return;
             setStreaming(streaming);
         });
     }
 
     @Override
-    public void onConnectionState(ReceiverConnectionStateSnapshot state) {
+    public void onConnectionState(OpenDisplayServer source, ReceiverConnectionStateSnapshot state) {
         runOnUiThread(() -> {
-            if (server == null) return;
+            if (server != source) return;
             switch (state.state) {
                 case DISCONNECTED:
                     setStatus("等待 Mac 连接…");
@@ -253,13 +263,15 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     @Override
-    public void onCursor(double x, double y, boolean visible) {
+    public void onCursor(OpenDisplayServer source, double x, double y, boolean visible) {
+        if (server != source) return;
         cursorOverlay.offerCursor(x, y, visible);
     }
 
     @Override
-    public void onCursorImage(byte[] png, double anchorX, double anchorY,
+    public void onCursorImage(OpenDisplayServer source, byte[] png, double anchorX, double anchorY,
                               double normalizedWidth, double normalizedHeight) {
+        if (server != source) return;
         if (png == null || png.length == 0 || png.length > CursorImagePolicy.MAX_BYTES) return;
         BitmapFactory.Options bounds = new BitmapFactory.Options();
         bounds.inJustDecodeBounds = true;
@@ -268,14 +280,17 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 anchorX, anchorY, normalizedWidth, normalizedHeight)) return;
         Bitmap bitmap = BitmapFactory.decodeByteArray(png, 0, png.length);
         if (bitmap == null) return;
-        runOnUiThread(() -> cursorOverlay.setCursorImage(
-                bitmap, anchorX, anchorY, normalizedWidth, normalizedHeight));
+        runOnUiThread(() -> {
+            if (server != source) return;
+            cursorOverlay.setCursorImage(
+                    bitmap, anchorX, anchorY, normalizedWidth, normalizedHeight);
+        });
     }
 
     @Override
-    public void onMetrics(StreamMetrics metrics) {
+    public void onMetrics(OpenDisplayServer source, StreamMetrics metrics) {
         runOnUiThread(() -> {
-            if (server == null) return;
+            if (server != source) return;
             lastMetrics = metrics;
             currentTransport = metrics.transport == null ? "unknown" : metrics.transport;
             updateWifiLowLatencyState();
@@ -284,9 +299,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     @Override
-    public void onStreamConfig(VideoStreamConfig config) {
+    public void onStreamConfig(OpenDisplayServer source, VideoStreamConfig config) {
         runOnUiThread(() -> {
-            if (server == null) return;
+            if (server != source) return;
             lastStreamConfig = config;
             updateVideoViewport();
             surfaceFrameRateLifecycle.onStreamConfig(config.fps);
@@ -295,9 +310,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     @Override
-    public void onTransportChanged(String transport) {
+    public void onTransportChanged(OpenDisplayServer source, String transport) {
         runOnUiThread(() -> {
-            if (server == null) return;
+            if (server != source) return;
             currentTransport = transport == null ? "unknown" : transport;
             updateWifiLowLatencyState();
         });
@@ -908,17 +923,26 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private void updateKeepAliveService(boolean active) {
         if (keepAliveRequested == active) return;
         android.content.Intent serviceIntent = new android.content.Intent(this, ReceiverKeepAliveService.class);
-        try {
-            if (active) {
+        if (active) {
+            try {
                 startForegroundService(serviceIntent);
-            } else {
+                keepAliveRequested = true;
+            } catch (RuntimeException error) {
+                android.util.Log.w("OpenDisplay", "Unable to start keep-alive service: " + error.getMessage());
+            }
+        } else {
+            keepAliveRequested = false;
+            try {
                 // Do not cancel an unacknowledged startForegroundService request.
                 // Let the service promote before processing its ordered stop.
                 startService(serviceIntent.setAction(ReceiverKeepAliveService.ACTION_STOP));
+            } catch (RuntimeException error) {
+                try {
+                    stopService(new android.content.Intent(this, ReceiverKeepAliveService.class));
+                } catch (RuntimeException stopError) {
+                    android.util.Log.w("OpenDisplay", "Unable to stop keep-alive service: " + stopError.getMessage());
+                }
             }
-            keepAliveRequested = active;
-        } catch (RuntimeException error) {
-            android.util.Log.w("OpenDisplay", "Unable to update keep-alive service: " + error.getMessage());
         }
     }
 
@@ -967,7 +991,6 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 sendTouchEvents(touchGesture.move(x, y));
                 break;
             case MotionEvent.ACTION_UP:
-            case MotionEvent.ACTION_POINTER_UP:
                 cancelPendingHold();
                 sendTouchEvents(touchGesture.end(x, y));
                 view.performClick();

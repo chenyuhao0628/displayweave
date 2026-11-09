@@ -31,8 +31,8 @@ public final class UpdateCoordinator {
     private boolean checking;
     private boolean downloading;
     private boolean installing;
-    private UpdateManifest pendingManifest;
-    private File pendingFile;
+    private volatile UpdateManifest pendingManifest;
+    private volatile File pendingFile;
 
     public UpdateCoordinator(
             Activity activity, SharedPreferences preferences, Listener listener) {

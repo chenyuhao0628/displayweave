@@ -45,21 +45,25 @@ public final class NsdAdvertiser {
         registration = new NsdManager.RegistrationListener() {
             @Override
             public void onServiceRegistered(NsdServiceInfo serviceInfo) {
+                if (registration != this) return;
                 listener.onNsdStatus("已广播：" + serviceInfo.getServiceName());
             }
 
             @Override
             public void onRegistrationFailed(NsdServiceInfo serviceInfo, int errorCode) {
+                if (registration != this) return;
                 listener.onNsdStatus("广播失败：" + errorCode);
             }
 
             @Override
             public void onServiceUnregistered(NsdServiceInfo serviceInfo) {
+                if (registration != this) return;
                 listener.onNsdStatus("广播已停止");
             }
 
             @Override
             public void onUnregistrationFailed(NsdServiceInfo serviceInfo, int errorCode) {
+                if (registration != this) return;
                 listener.onNsdStatus("停止广播失败：" + errorCode);
             }
         };
@@ -67,13 +71,14 @@ public final class NsdAdvertiser {
     }
 
     public void stop() {
-        if (registration != null) {
+        NsdManager.RegistrationListener activeRegistration = registration;
+        registration = null;
+        if (activeRegistration != null) {
             try {
-                nsdManager.unregisterService(registration);
+                nsdManager.unregisterService(activeRegistration);
             } catch (IllegalArgumentException ignored) {
                 // Already unregistered by the framework.
             }
-            registration = null;
         }
         if (multicastLock != null && multicastLock.isHeld()) {
             multicastLock.release();

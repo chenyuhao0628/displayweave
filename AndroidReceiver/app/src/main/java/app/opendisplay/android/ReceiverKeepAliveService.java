@@ -36,11 +36,16 @@ public final class ReceiverKeepAliveService extends Service {
             PendingIntent open = PendingIntent.getActivity(this, 0,
                     new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            PendingIntent stop = PendingIntent.getService(this, 1,
+                    new Intent(this, ReceiverKeepAliveService.class).setAction(ACTION_STOP),
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             Notification notification = new Notification.Builder(this, channel)
                     .setSmallIcon(android.R.drawable.stat_sys_upload)
                     .setContentTitle("DisplayWeave")
                     .setContentText("保持 Mac 连接，点按返回接收画面")
                     .setContentIntent(open)
+                    .addAction(new Notification.Action.Builder(
+                            null, "停止保持", stop).build())
                     .setOngoing(true)
                     .build();
             if (Build.VERSION.SDK_INT >= 29) {
