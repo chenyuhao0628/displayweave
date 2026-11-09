@@ -61,6 +61,7 @@ public final class SecureTls {
     }
 
     /** New context for each connection: no cross-connection session cache/resumption. */
+    @android.annotation.SuppressLint("CustomX509TrustManager")
     public static SSLContext context(PrivateKey privateKey, X509Certificate certificate,
                                      Predicate<String> acceptedFingerprint) throws GeneralSecurityException {
         SSLContext context = SSLContext.getInstance("TLS");

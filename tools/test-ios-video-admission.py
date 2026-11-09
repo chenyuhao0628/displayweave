@@ -55,6 +55,21 @@ if not args.source_ref:
     assert "self.decodeErrorCount = 0" in source[source.index("private func decodeAndRender("):], (
         "decodeAndRender must reset decodeErrorCount on successful frame decode"
     )
+    reset_decoder_section = source[source.index("private func resetVideoDecoder()"):source.index("private func configureVideo(")]
+    assert "lastKeyframeRequest = .distantPast" in reset_decoder_section, (
+        "resetVideoDecoder must reset lastKeyframeRequest so immediate recovery is not throttled"
+    )
+    enqueue_section = source[source.index("private func enqueueFrame("):source.index("private func decodeAndRender(")]
+    assert "lastKeyframeRequest = .distantPast" in enqueue_section and "if !isKeyframe {" in enqueue_section, (
+        "display-path toggle must reset lastKeyframeRequest and allow keyframes through immediately"
+    )
+    metal_source = (root / "iOS/MetalVideoRenderer.swift").read_text()
+    draw_section = metal_source[metal_source.index("private func draw("):]
+    resize_return_idx = draw_section.index("return")
+    next_drawable_idx = draw_section.index("metalLayer.nextDrawable()")
+    assert resize_return_idx < next_drawable_idx, (
+        "MetalVideoRenderer.draw must return and wait for main-thread drawableSize resize before calling nextDrawable()"
+    )
 
 with tempfile.TemporaryDirectory(prefix="displayweave-ios-admission-") as tmp:
     path = Path(tmp)

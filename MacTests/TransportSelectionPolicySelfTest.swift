@@ -195,6 +195,27 @@ struct TransportSelectionPolicySelfTest {
         precondition(ReceiverControlPolicy.closureAction(messageType: "closing", peer: .legacyApple) == .endSession)
         precondition(ReceiverControlPolicy.closureAction(messageType: "sleeping", peer: .legacyApple) == .endSession)
         precondition(ReceiverControlPolicy.closureAction(messageType: "sleeping", peer: .android) == nil)
+
+        let existingSet = Set((1...128).map { String(format: "device-%03d", $0) })
+        var overfullSet = existingSet
+        overfullSet.insert("zzzz-new-device")
+        overfullSet.insert("")
+        let boundedSet = PersistedDeviceCollectionPolicy.boundedSet(overfullSet, previous: existingSet, maxEntries: 128)
+        check(128, boundedSet.count, "bounded set must cap at maxEntries")
+        check(true, boundedSet.contains("zzzz-new-device"), "bounded set must retain newly added entries even if they sort last")
+        check(false, boundedSet.contains(""), "bounded set must reject empty identifiers")
+
+        var existingDict: [String: String] = [:]
+        for i in 1...128 {
+            existingDict[String(format: "udid-%03d", i)] = "id-\(i)"
+        }
+        var overfullDict = existingDict
+        overfullDict["zzzz-new-udid"] = "id-new"
+        overfullDict["bad-empty"] = ""
+        let boundedDict = PersistedDeviceCollectionPolicy.boundedDictionary(overfullDict, previous: existingDict, maxEntries: 128)
+        check(128, boundedDict.count, "bounded dictionary must cap at maxEntries")
+        check("id-new", boundedDict["zzzz-new-udid"], "bounded dictionary must retain newly inserted keys even if they sort last")
+        check(nil, boundedDict["bad-empty"], "bounded dictionary must reject empty values")
         print("TransportSelectionPolicySelfTest PASS")
     }
 }

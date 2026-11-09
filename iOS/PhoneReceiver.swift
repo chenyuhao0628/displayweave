@@ -847,7 +847,8 @@ final class PhoneReceiver: ObservableObject {
         }
         waitingForKeyframe = false
         let metadata = packet.metadata.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-        enqueueFrame(packet.slices, captureMs: metadata?["cap"] as? Double,
+        enqueueFrame(packet.slices, isKeyframe: packet.keyframe,
+                     captureMs: metadata?["cap"] as? Double,
                      sendMs: metadata?["snd"] as? Double)
     }
 
@@ -856,6 +857,7 @@ final class PhoneReceiver: ObservableObject {
         formatDesc = nil
         bitstream = ReceiverVideoBitstream(codec: videoCodec)
         waitingForKeyframe = true
+        lastKeyframeRequest = .distantPast
         decodeErrorCount = 0
         displayLayer.flushAndRemoveImage()
         if let session = decompressionSession { VTDecompressionSessionInvalidate(session) }
@@ -912,7 +914,8 @@ final class PhoneReceiver: ObservableObject {
         }
     }
 
-    private func enqueueFrame(_ nalus: [Data], captureMs: Double? = nil, sendMs: Double? = nil) {
+    private func enqueueFrame(_ nalus: [Data], isKeyframe: Bool = false,
+                              captureMs: Double? = nil, sendMs: Double? = nil) {
         guard let formatDesc else { return }
 
         // Build one AVCC buffer: each NALU prefixed with 4-byte big-endian length.
@@ -963,8 +966,10 @@ final class PhoneReceiver: ObservableObject {
                 VTDecompressionSessionInvalidate(session)
                 decompressionSession = nil
             }
+            decodeErrorCount = 0
+            lastKeyframeRequest = .distantPast
             displayLayer.flushAndRemoveImage()
-            if lastFrameAt != nil {
+            if !isKeyframe {
                 waitingForKeyframe = true
                 requestKeyframeIfNeeded()
                 return

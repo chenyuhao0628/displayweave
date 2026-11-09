@@ -485,7 +485,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 if (frame.keyframe) {
                     keyframeReceivedCount++;
                 }
-                if (decoder == null || decoderAwaitingFreshConfig) {
+                if (surface == null || decoderAwaitingFreshConfig) {
                     recordDrop(surface == null
                                     ? AndroidDropReason.SURFACE_UNAVAILABLE
                                     : AndroidDropReason.CODEC_RECONFIGURE_DROP,
@@ -855,6 +855,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 return;
             }
             decoder = null;
+            decoderAwaitingFreshConfig = false;
         }
 
         // MediaCodec.stop()/release() can block in vendor code. Keep that work
@@ -868,13 +869,13 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             synchronized (OpenDisplayServer.this) {
                 if (!running || surface == null || !connectionCoordinator.isCurrent(generation)
                         || !protocolSession.matchesIdentity(sessionEpoch, configVersion)
-                        || decoder != null) {
+                        || decoder != null
+                        || decoderAwaitingFreshConfig) {
                     return;
                 }
                 next = new H264SurfaceDecoder(
                         surface, nextListener, decoderLowLatencyMode);
                 decoder = next;
-                decoderAwaitingFreshConfig = false;
             }
             next.applyStreamConfig(config.codec, config.fps, config.width, config.height);
         });

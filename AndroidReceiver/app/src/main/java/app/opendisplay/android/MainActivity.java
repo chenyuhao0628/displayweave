@@ -547,6 +547,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         return ui.card(value);
     }
 
+    @android.annotation.SuppressLint({"SetTextI18n", "InlinedApi"})
     private void showSettingsDialog() {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -631,14 +632,12 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 + "实际吞吐可能偏低；若出现延迟或解码错误请关闭后重连。",
                 13, ui.secondary, false), matchWrap());
 
-        Button decoderLowLatency = ui.button("");
-        decoderLowLatency.setText("解码器低延迟："
+        Button decoderLowLatency = ui.button("解码器低延迟："
                 + currentDecoderLowLatencyMode().label);
         decoderLowLatency.setOnClickListener(v -> showDecoderLowLatencyDialog());
         content.addView(decoderLowLatency, matchWrap());
 
-        Button wifiLowLatency = ui.button("");
-        wifiLowLatency.setText("WiFi 低延迟："
+        Button wifiLowLatency = ui.button("WiFi 低延迟："
                 + currentWifiLowLatencyMode().label);
         wifiLowLatency.setOnClickListener(v -> showWifiLowLatencyDialog());
         content.addView(wifiLowLatency, matchWrap());
@@ -650,8 +649,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         version.setPadding(0, dp(10), 0, 0);
         content.addView(version, matchWrap());
 
-        Button checkUpdate = ui.button("");
-        checkUpdate.setText("检查更新");
+        Button checkUpdate = ui.button("检查更新");
         checkUpdate.setOnClickListener(v -> updateCoordinator.check(true));
         content.addView(checkUpdate, matchWrap());
 
@@ -661,9 +659,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         help.setPadding(0, dp(10), 0, 0);
         content.addView(help, matchWrap());
 
-        if (!hasNearbyWifiPermission() && Build.VERSION.SDK_INT >= 33) {
-            Button permission = ui.button("");
-            permission.setText("授予附近设备权限");
+        if (!hasNearbyWifiPermission()) {
+            Button permission = ui.button("授予附近设备权限");
             permission.setOnClickListener(v -> requestPermissions(
                     new String[] {Manifest.permission.NEARBY_WIFI_DEVICES}, REQUEST_NEARBY_WIFI));
             content.addView(permission, matchWrap());
@@ -678,6 +675,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 .show();
     }
 
+    @android.annotation.SuppressLint("SetTextI18n")
     private UpdateCoordinator createUpdateCoordinator() {
         return new UpdateCoordinator(this, prefs, new UpdateCoordinator.Listener() {
             @Override

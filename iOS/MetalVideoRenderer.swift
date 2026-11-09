@@ -156,7 +156,9 @@ final class MetalVideoRenderer {
         let targetSize = CGSize(width: w, height: h)
         lock.lock()
         let needsDrawableResize = currentDrawableSize != targetSize
-        if needsDrawableResize { currentDrawableSize = targetSize }
+        if needsDrawableResize, pendingFrame == nil {
+            pendingFrame = (pixelBuffer, captureMs, generation)
+        }
         lock.unlock()
         if needsDrawableResize {
             DispatchQueue.main.async { [weak self] in
@@ -167,7 +169,14 @@ final class MetalVideoRenderer {
                     self.metalLayer.drawableSize = targetSize
                 }
                 CATransaction.commit()
+                self.lock.lock()
+                self.currentDrawableSize = targetSize
+                self.lock.unlock()
+                self.renderQueue.async { [weak self] in
+                    self?.drainPending()
+                }
             }
+            return
         }
 
         guard let cache = textureCache else { return }
