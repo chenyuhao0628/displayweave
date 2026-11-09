@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "zh-CN"
+tone_instructions: "Use bilingual output (Simplified Chinese 简体中文 + English) for all summaries and review comments. Keep feedback concise, actionable, and focused on real bugs, safety bounds, and contract violations."
+early_access: false
+enable_free_tier: true
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  high_level_summary_instructions: "Provide a concise bilingual PR summary in both Simplified Chinese (简体中文) and English."
+  review_status: true
+  collapse_walkthrough: false
+  sequence_diagrams: true
+  poem: false
+  in_progress_fortune: false
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        Write all review comments, summaries, and explanations bilingually in Simplified Chinese (简体中文) followed by English.
+        Enforce DisplayWeave repository contracts from AGENTS.md:
+        1. Preserve OpenSidecar project/target names, bundle/package IDs, preferences, Bonjour service (_opensidecar._tcp), wire framing, and update/signing identities unless explicitly migrating them with compatibility coverage.
+        2. Sender and receiver roles on one Mac are exclusive. Each session owns its transports and resources; stale callbacks must never mutate a replacement session.
+        3. Keep queues, allocations, frame sizes, retries, and network waits bounded. TCP connect alone is not protocol readiness.
+        4. Flag UI claims that exceed published artifacts or measured hardware evidence. Errors must provide a recovery action, and status must not depend on color alone.
+    - path: "docs/**"
+      instructions: |
+        Keep user-facing guides in English and Simplified Chinese (.zh-CN.md) pairs with reciprocal links. Record implementation, automated verification, physical verification, and deferred work separately.
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+      - "ARCHITECTURE.md"
+      - "CONTRIBUTING.md"
+      - "docs/development/workflow.md"
+      - "docs/development/ui-guidelines.md"
+
+chat:
+  auto_reply: true
