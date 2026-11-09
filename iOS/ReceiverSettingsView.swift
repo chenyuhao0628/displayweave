@@ -23,6 +23,10 @@ struct SettingsView: View {
                     LabeledContent("监听", value: "端口 9000")
                     LabeledContent("连接",
                                    value: receiver.connected ? "已连接" : "正在等待 Mac")
+                    if receiver.connected {
+                        LabeledContent("传输安全",
+                                       value: receiver.encrypted ? "已加密配对" : "OpenDisplay 兼容 · 未加密")
+                    }
                     if receiver.videoSize != .zero {
                         LabeledContent("编码 / 目标", value: "\(receiver.codecLabel) · \(receiver.requestedFps) fps")
                             .monospacedDigit()

@@ -493,7 +493,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         });
 
         ImageView logo = new ImageView(this);
-        logo.setImageResource(getResources().getIdentifier("app_logo", "drawable", getPackageName()));
+        logo.setImageResource(R.drawable.app_logo);
         logo.setAdjustViewBounds(true);
         logo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         content.addView(logo, new LinearLayout.LayoutParams(dp(80), dp(80)));
@@ -783,7 +783,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     private boolean canShowDialog() {
-        return !isFinishing() && (Build.VERSION.SDK_INT < 17 || !isDestroyed());
+        return !isFinishing() && !isDestroyed();
     }
 
     private String installedVersionLabel() {

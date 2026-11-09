@@ -10,11 +10,23 @@ struct MacReceiverPanel: View {
         _receiver = ObservedObject(wrappedValue: controller.receiver)
     }
 
+    private var hasListenerError: Bool {
+        controller.enabled && receiver.listeningPort == 0 &&
+            (receiver.status.hasPrefix("无法监听") || receiver.status.hasPrefix("监听失败"))
+    }
+
+    private var statusSymbol: String {
+        if receiver.connected && receiver.videoSize != .zero { return "checkmark.circle" }
+        if receiver.connected { return "clock" }
+        if hasListenerError { return "exclamationmark.triangle" }
+        return "antenna.radiowaves.left.and.right"
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 WorkspaceSection(title: "接收状态", symbol: "arrow.down.left.video") {
-                    Label(receiver.status, systemImage: receiver.connected ? "checkmark.circle" : "antenna.radiowaves.left.and.right")
+                    Label(receiver.status, systemImage: statusSymbol)
                         .font(.title3.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                     Text("在发送端的设备列表中选择“\(controller.name)”。")
                         .foregroundStyle(.secondary).textSelection(.enabled)
@@ -24,14 +36,22 @@ struct MacReceiverPanel: View {
                         Text("送入显示层：\(receiver.fps) fps · \(receiver.codecLabel)")
                             .font(.caption).monospacedDigit().foregroundStyle(.secondary)
                         HStack {
-                            Button("显示画面") { controller.showVideo() }.buttonStyle(.borderedProminent)
+                            Button("显示画面") { controller.showVideo() }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(receiver.videoSize == .zero)
                             Button("断开连接") { receiver.disconnect() }
                         }
                     }
-                    if controller.enabled {
-                        Button("停止接收") { controller.stop() }
-                    } else {
-                        Button("开始接收") { controller.start() }.buttonStyle(.borderedProminent)
+                    HStack {
+                        if controller.enabled {
+                            Button("停止接收") { controller.stop() }
+                            if hasListenerError {
+                                Button("重试监听") { receiver.retryListening() }
+                                    .buttonStyle(.borderedProminent)
+                            }
+                        } else {
+                            Button("开始接收") { controller.start() }.buttonStyle(.borderedProminent)
+                        }
                     }
                     Divider()
                     ConnectionModeControl(receiving: true)

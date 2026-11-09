@@ -18,7 +18,8 @@ struct TransportSecuritySettings: View {
                 Label(model.legacyReceiver ? "接收：旧版兼容，未加密" : "接收：加密且需要配对",
                       systemImage: model.legacyReceiver ? "lock.open" : "lock.shield")
                 if let error = model.error {
-                    Text(error).foregroundStyle(.red).font(.callout)
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red).font(.callout)
                     Button("重新读取安全状态") { model.retry() }
                 }
                 Text("首次连接：在接收端生成邀请，通过可信渠道复制到发送端。邀请两分钟内有效，只能成功配对一次；配对后重连不需要邀请。")
@@ -86,7 +87,9 @@ struct TransportSecuritySettings: View {
             }
         }
         .onAppear { model.refresh() }
-        .onReceive(refresh) { _ in model.refresh() }
+        .onReceive(refresh) { _ in
+            if !model.invitation.isEmpty { model.refresh() }
+        }
         .confirmationDialog("重置将断开所有连接，并撤销本机全部配对。之后需要在两端重新配对。", isPresented: $showReset) {
             Button("重置传输身份", role: .destructive) { model.resetIdentity() }
             Button("取消", role: .cancel) { }

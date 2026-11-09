@@ -19,6 +19,7 @@ struct OnboardingView: View {
                         .font(.system(size: 56, weight: .light))
                         .foregroundStyle(.tint)
                         .padding(.top, 24)
+                        .accessibilityHidden(true)
 
                     VStack(spacing: 10) {
                         Text("准备好你的 Mac")

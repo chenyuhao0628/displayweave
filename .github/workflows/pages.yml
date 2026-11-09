@@ -7,6 +7,7 @@ on:
       - "src/**"
       - "public/**"
       - "tools/prerender.mjs"
+      - "tools/check-site.mjs"
       - "index.html"
       - "package.json"
       - "pnpm-lock.yaml"

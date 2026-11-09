@@ -1,6 +1,10 @@
 import Foundation
 
-let root = "/Users/cyh/Documents/opendisplay"
+let root = ProcessInfo.processInfo.environment["DISPLAYWEAVE_ROOT"]
+    ?? URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .path
 let logPath = "\(root)/build/dev/mac/open-display-launcher.log"
 
 func runProcess(_ executable: String, _ arguments: [String]) -> Int32 {

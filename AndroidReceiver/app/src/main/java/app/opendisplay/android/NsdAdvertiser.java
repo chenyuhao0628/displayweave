@@ -4,7 +4,6 @@ import android.content.Context;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 import android.net.wifi.WifiManager;
-import android.os.Build;
 
 public final class NsdAdvertiser {
     private final Context context;
@@ -37,10 +36,8 @@ public final class NsdAdvertiser {
         info.setServiceName(serviceName);
         info.setServiceType("_opensidecar._tcp.");
         info.setPort(port);
-        if (Build.VERSION.SDK_INT >= 21) {
-            info.setAttribute("id", installId);
-            if (secure) info.setAttribute("security", "tls-v1");
-        }
+        info.setAttribute("id", installId);
+        if (secure) info.setAttribute("security", "tls-v1");
 
         registration = new NsdManager.RegistrationListener() {
             @Override

@@ -187,6 +187,17 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         }
     }
 
+    func retryListening() {
+        queue.async {
+            guard self.running else { return }
+            self.generation &+= 1
+            self.listener?.cancel()
+            self.listener = nil
+            self.admissionPool.cancelAll()
+            self.startListener()
+        }
+    }
+
     private func startListener() {
         guard running else { return }
         let token = generation
