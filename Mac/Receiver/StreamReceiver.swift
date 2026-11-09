@@ -253,10 +253,12 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         peerID = authenticatedPeer?.installID
         resetStream()
         lastReceived = Date()
+        let encrypted = authenticatedPeer != nil
         conn.stateUpdateHandler = { [weak self, weak conn] state in
             guard let self, let conn, self.connection === conn else { return }
             switch state {
             case .ready:
+                guard !encrypted else { return }
                 self.expectFirstVideo()
                 self.publish(connected: true, status: "已连接，等待画面")
                 self.sendHello(on: conn)
@@ -265,7 +267,6 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             default: break
             }
         }
-        let encrypted = authenticatedPeer != nil
         DispatchQueue.main.async { self.encrypted = encrypted }
         if encrypted {
             expectFirstVideo()

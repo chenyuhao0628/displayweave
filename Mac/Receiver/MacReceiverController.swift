@@ -32,16 +32,26 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
         super.init()
         videoView = ReceiverVideoView(receiver: receiver)
         refreshScreens()
-        receiver.$connected.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] connected in
-            guard let self else { return }
-            if connected && self.enabled && !self.sleeping {
-                self.showVideo()
-                self.activity = ProcessInfo.processInfo.beginActivity(options: [.idleDisplaySleepDisabled], reason: "DisplayWeave 接收显示")
-            } else {
-                if let activity = self.activity { ProcessInfo.processInfo.endActivity(activity); self.activity = nil }
-                self.hideVideo()
+        Publishers.CombineLatest(receiver.$connected, receiver.$videoSize)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] connected, videoSize in
+                guard let self else { return }
+                if connected && videoSize != .zero && self.enabled && !self.sleeping {
+                    self.showVideo()
+                    if self.activity == nil {
+                        self.activity = ProcessInfo.processInfo.beginActivity(
+                            options: [.idleDisplaySleepDisabled],
+                            reason: "DisplayWeave 接收显示")
+                    }
+                } else {
+                    if let activity = self.activity {
+                        ProcessInfo.processInfo.endActivity(activity)
+                        self.activity = nil
+                    }
+                    self.hideVideo()
+                }
             }
-        }.store(in: &subscriptions)
+            .store(in: &subscriptions)
         $selectedDisplayID.dropFirst().removeDuplicates().sink { [weak self] value in
             UserDefaults.standard.set(value, forKey: "receiverDisplayID")
             DispatchQueue.main.async { self?.updatePanel(); self?.placeWindow() }

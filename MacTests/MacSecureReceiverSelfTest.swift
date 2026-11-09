@@ -73,6 +73,9 @@ private final class SecureReceiverPeer {
             return client
         }.value
         try await wait { receiver.connected && receiver.encrypted }
+        try await Task.sleep(for: .milliseconds(100))
+        precondition(receiver.status == "已加密连接，等待画面",
+                     "encrypted adopt must not be overwritten by unencrypted .ready status: \(receiver.status)")
         precondition(!receiver.inputForwarding && receiver.inputGrant == nil)
         func grant(_ value: String) throws {
             let data = try JSONSerialization.data(withJSONObject: ["type": "inputConfig", "inputCaps": [DesktopInputProtocol.capability],
@@ -92,6 +95,7 @@ private final class SecureReceiverPeer {
             var messages: [[String: Any]] = []
             for _ in 0..<10 {
                 let object = try client.hello()
+                precondition(object["type"] as? String != "hello", "encrypted adopt must not emit a duplicate hello")
                 if object["type"] as? String == "desktopInput" { messages.append(object) }
                 if messages.count == 2 { return messages }
             }
