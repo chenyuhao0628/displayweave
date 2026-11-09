@@ -15,4 +15,17 @@ final class DecoderStallRecoveryPolicy {
                 && nowMs - lastFrameRenderedMs >= RENDER_STALL_MS
                 && (lastRecoveryMs == 0 || nowMs - lastRecoveryMs >= RECOVERY_COOLDOWN_MS);
     }
+
+    static boolean requiresFreshStreamConfigForStall(boolean negotiatedV2) {
+        return negotiatedV2;
+    }
+
+    static boolean requiresFreshStreamConfigForCodecFailure(
+            boolean negotiatedV2, String codec) {
+        return negotiatedV2 || "hevc".equalsIgnoreCase(codec);
+    }
+
+    static boolean shouldRecreateDecoderInPlace(boolean requireFreshConfig) {
+        return !requireFreshConfig;
+    }
 }

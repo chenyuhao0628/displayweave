@@ -485,6 +485,13 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 if (frame.keyframe) {
                     keyframeReceivedCount++;
                 }
+                if (decoder == null || decoderAwaitingFreshConfig) {
+                    recordDrop(surface == null
+                                    ? AndroidDropReason.SURFACE_UNAVAILABLE
+                                    : AndroidDropReason.CODEC_RECONFIGURE_DROP,
+                            generation, telemetry);
+                    return;
+                }
                 boolean wasAwaitingKeyframe = referenceChainRecovery.isAwaitingKeyframe();
                 if (referenceChainRecovery.shouldReject(
                         frame.keyframe, System.currentTimeMillis())) {
@@ -501,7 +508,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     for (QueuedVideoFrame dropped : pendingVideoFrames.clearAndReturn()) {
                         try (VideoFramePacket discarded = dropped.frame) {
                             recordDrop(AndroidDropReason.LATEST_SLOT_REPLACED,
-                                    dropped.generation, discarded.telemetry);
+                                     dropped.generation, discarded.telemetry);
                         }
                     }
                     queueDepthAndroid = 0;
@@ -573,7 +580,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 lease == null ? length : lease.allocatedBytes, lease != null && lease.reused);
         if (LengthPrefixedProtocol.isPureJsonControl(payload, length)) {
             handleMacJson(generation, new String(payload, 0, length, StandardCharsets.UTF_8));
-        } else if (decoder != null) {
+        } else {
             enqueueVideoFrame(generation, payload, lease);
         }
     }
@@ -859,7 +866,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             }
             H264SurfaceDecoder next;
             synchronized (OpenDisplayServer.this) {
-                if (surface == null || !connectionCoordinator.isCurrent(generation)
+                if (!running || surface == null || !connectionCoordinator.isCurrent(generation)
                         || !protocolSession.matchesIdentity(sessionEpoch, configVersion)
                         || decoder != null) {
                     return;
@@ -966,9 +973,33 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         }
         resetQueuedFrames();
         H264SurfaceDecoder activeDecoder = decoder;
+        final long sessionEpoch = decoderSessionEpoch;
+        final long configVersion = decoderConfigVersion;
+        final VideoStreamConfig config = currentStreamConfig;
+        final GenerationDecoderListener nextListener =
+                new GenerationDecoderListener(generation, sessionEpoch, configVersion);
         decoder = null;
         decoderAwaitingFreshConfig = requireFreshConfig;
-        decoderWorker.execute(activeDecoder::release);
+        decoderWorker.execute(() -> {
+            activeDecoder.release();
+            if (!DecoderStallRecoveryPolicy.shouldRecreateDecoderInPlace(requireFreshConfig)) {
+                return;
+            }
+            H264SurfaceDecoder next;
+            synchronized (OpenDisplayServer.this) {
+                if (!running || surface == null
+                        || !connectionCoordinator.isCurrent(generation)
+                        || !protocolSession.matchesIdentity(sessionEpoch, configVersion)
+                        || decoder != null
+                        || decoderAwaitingFreshConfig) {
+                    return;
+                }
+                next = new H264SurfaceDecoder(
+                        surface, nextListener, decoderLowLatencyMode);
+                decoder = next;
+            }
+            next.applyStreamConfig(config.codec, config.fps, config.width, config.height);
+        });
         return true;
     }
 
@@ -1194,7 +1225,10 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             return;
         }
         boolean negotiatedV2 = protocolSession.isNegotiatedV2();
-        if (!releaseCodecForRecovery(generation, negotiatedV2)) {
+        boolean requireFreshConfig =
+                DecoderStallRecoveryPolicy.requiresFreshStreamConfigForCodecFailure(
+                        negotiatedV2, codec);
+        if (!releaseCodecForRecovery(generation, requireFreshConfig)) {
             return;
         }
         streamingGeneration = 0;
@@ -1296,7 +1330,9 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         }
         lastDecoderRecoveryMs = nowMs;
         boolean negotiatedV2 = protocolSession.isNegotiatedV2();
-        if (!releaseCodecForRecovery(generation, negotiatedV2)) {
+        boolean requireFreshConfig =
+                DecoderStallRecoveryPolicy.requiresFreshStreamConfigForStall(negotiatedV2);
+        if (!releaseCodecForRecovery(generation, requireFreshConfig)) {
             return;
         }
         streamingGeneration = 0;

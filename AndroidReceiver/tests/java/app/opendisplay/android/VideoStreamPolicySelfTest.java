@@ -456,6 +456,21 @@ public final class VideoStreamPolicySelfTest {
                 10_000, 7_000, 7_500, 0));
         assertFalse(DecoderStallRecoveryPolicy.shouldRecover(
                 10_000, 9_500, 7_500, 9_000));
+        assertFalse(DecoderStallRecoveryPolicy.requiresFreshStreamConfigForStall(false));
+        assertTrue(DecoderStallRecoveryPolicy.requiresFreshStreamConfigForStall(true));
+        assertFalse(DecoderStallRecoveryPolicy.requiresFreshStreamConfigForCodecFailure(
+                false, "h264"));
+        assertTrue(DecoderStallRecoveryPolicy.requiresFreshStreamConfigForCodecFailure(
+                false, "hevc"));
+        assertTrue(DecoderStallRecoveryPolicy.requiresFreshStreamConfigForCodecFailure(
+                true, "h264"));
+        assertTrue(DecoderStallRecoveryPolicy.shouldRecreateDecoderInPlace(
+                DecoderStallRecoveryPolicy.requiresFreshStreamConfigForStall(false)));
+        assertFalse(DecoderStallRecoveryPolicy.shouldRecreateDecoderInPlace(
+                DecoderStallRecoveryPolicy.requiresFreshStreamConfigForStall(true)));
+        assertFalse(DecoderStallRecoveryPolicy.shouldRecreateDecoderInPlace(
+                DecoderStallRecoveryPolicy.requiresFreshStreamConfigForCodecFailure(
+                        false, "hevc")));
     }
 
     private static void testDecoderReconfigurationPolicy() {
