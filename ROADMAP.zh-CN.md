@@ -2,10 +2,11 @@
 
 # DisplayWeave 路线图
 
-更新于 2026-10-27。当前版本为 **v0.3.3（22）**。Mac 桌面匹配根据可用显示器数据估算尺寸，见[发布说明](docs/releases/v0.3.3.zh-CN.md)与[实施／验收台账](docs/verification/automatic-desktop-matching.zh-CN.md)。
+更新于 2026-11-09。当前版本为 **v0.3.4（23）**。Mac 桌面匹配根据可用显示器数据估算尺寸，见[发布说明](docs/releases/v0.3.4.zh-CN.md)与[实施／验收台账](docs/verification/automatic-desktop-matching.zh-CN.md)。
 
-## 当前 v0.3.3 正式版内容
+## 当前 v0.3.4 正式版内容
 
+- 可选启用的 Android 实验性高帧率试验与前台保活服务、符合条件的 iPad 原生分辨率高刷试验，以及 Mac 圆角图标切片。
 - 按会话隔离采集／编码恢复、健康队列码率恢复、有界 Apple／Android 解码背压、正确 Android 视频／输入比例和分辨率／帧率优先设置。
 - Mac 4K 编码/光标延迟策略、有界接收背压、100 Mbps H.264 局域网预设和上游采集/显示器恢复，见[发布说明](docs/archive/releases/release-notes-v0.3.0.zh-CN.md)。
 - 固定 Apple Development 签名与升级比较，本机已验证权限延续。

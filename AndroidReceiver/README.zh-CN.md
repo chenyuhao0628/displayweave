@@ -18,13 +18,13 @@ v0.3.4 包含[加密配对](../docs/guides/secure-transport.zh-CN.md)与[仅 Git
 
 2026-11-09：构建 23 增加实验性高帧率、活跃会话后台保活和接收端加固。旧服务器回调不能改变新会话；保留原签名证书，持续高刷性能仍未验收，见[发布说明](../docs/releases/v0.3.4.zh-CN.md)。
 
-从 [`v0.3.4`](https://github.com/chenyuhao0628/displayweave/releases) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。p5 需要手动覆盖安装一次 p6 或更新版；安装前请验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/releases/release-checklist.zh-CN.md)中的证书指纹。
+从 [`v0.3.4`](https://github.com/chenyuhao0628/displayweave/releases) 下载 `DisplayWeave-Android.apk`。它是离线 v2 签名 Release APK，无需 Google Play。将其覆盖安装到现有 `app.opendisplay.android` 包，并在安装前验证 `SHA256SUMS.txt` 与[发布检查清单](../docs/releases/release-checklist.zh-CN.md)中的证书指纹。
 
 ## 首次安装后的更新
 
 - 接收端回到前台时最多每 24 小时检查一次 HTTPS 更新源。
 - “设置与帮助 → 检查更新”不受每日节流限制。
-- p6 及以后版本从对应的 GitHub Release 获取 APK。
+- 客户端从对应的 GitHub Release 获取 APK。
 - 安装前会逐项核对字节数、SHA-256、包名、版本号、最低 SDK 与固定签名证书。
 - Android 可能要求授予“安装未知应用”权限；最终安装始终由 Android 系统界面确认，不支持静默安装。
 - 拒绝权限或安装不会停止显示接收功能。

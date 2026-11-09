@@ -53,9 +53,9 @@ Android 接收端在 9000 端口提供 TCP Server，渲染 Surface 返回时会�
 
 ## 安全边界
 
-- v0.3.1 的 Apple 与 Android 默认使用固定证书指纹的双向 TLS 和显式邀请配对；旧版兼容需主动启用且仅限可信网络。详见[配对指南](docs/guides/secure-transport.zh-CN.md)。
+- v0.3.4 的 Apple 与 Android 默认使用固定证书指纹的双向 TLS 和显式邀请配对；旧版兼容需主动启用且仅限可信网络。详见[配对指南](docs/guides/secure-transport.zh-CN.md)。
 - ADB RSA 授权会把 Mac 作为广泛调试主机信任，不只限 DisplayWeave。
-- macOS v0.3.1 使用固定 Apple Development 身份，仍未公证；首次从临时签名迁移可能需要再授权，后续构建检查签名连续性。
+- macOS v0.3.4 使用固定 Apple Development 身份，仍未公证；首次从临时签名迁移可能需要再授权，后续构建检查签名连续性。
 - Android APK 使用保存在 Git 之外的项目离线密钥库。
 - iOS 公开产物是未签名自签输入包。
 - `CGVirtualDisplay` 是私有 API，可能随 macOS 版本变化。
@@ -72,7 +72,7 @@ Mac 使用 Apple legacy 帧，不启用 Android DWV2。详见[设计](docs/refer
 
 ## 源码职责与有界任务（2026-10-16）
 
-源码应用在同一 Wi-Fi 或以太网局域网支持互斥的 Mac 发送/接收角色；v0.3.0-preview.1 将其作为实验功能打包，实机验收仍待完成。镜像捕获现有显示器，扩展创建虚拟显示器。
+源码应用在同一 Wi-Fi 或以太网局域网支持互斥的 Mac 发送/接收角色；v0.3.4 将其作为实验功能打包，实机验收仍待完成。镜像捕获现有显示器，扩展创建虚拟显示器。
 
 | 区域 | 职责 |
 | --- | --- |

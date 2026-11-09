@@ -51,7 +51,7 @@ Use [local publication](local-release.md) for the current stable release. It use
 4. Upload eight explicit files to a draft GitHub Release: four binaries, two feeds, source archive and checksums. Verify remote bytes before publishing.
 5. Publish the Release before merging the publication PR. The main-branch Pages deployment then publishes the website and feeds; compare both live feeds byte-for-byte with the Release assets.
 
-The hosted **Release** workflow has no maintainer Mac identity or previous-release baseline and deliberately stops at preflight. It also does not generate the required source archive. Do not use it as a complete publication path until these prerequisites are provisioned and that missing source step is implemented. Its Sparkle/Android secret names remain in the workflow for future setup; no new credentials are uploaded by this release.
+The hosted **Release** workflow has no maintainer Mac identity on default runners and deliberately stops at preflight. Do not use it as a complete publication path until a runner is explicitly provisioned with the pinned Mac signing identity and required secrets. Its Sparkle/Android secret names remain in the workflow for future setup; no new credentials are uploaded by this release.
 
 Never replace a published asset or use `--clobber`. Every correction receives a new higher build number.
 

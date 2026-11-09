@@ -84,7 +84,7 @@
   <div class="wrap">
     <p class="eyebrow">Privacy policy</p>
     <h1>Privacy and local data</h1>
-    <p class="updated">Updated October 27, 2026 · describes DisplayWeave v0.3.3 for Mac, iOS/iPadOS, Android and this website</p>
+    <p class="updated">Updated November 9, 2026 · describes DisplayWeave v0.3.4 for Mac, iOS/iPadOS, Android and this website</p>
   </div>
   <div class="wrap"><p><a href="privacy.html" lang="en">English</a> | <a href="privacy.zh-CN.html" lang="zh-CN">简体中文</a></p></div>
 </header>
@@ -96,7 +96,7 @@
 <p>The Mac captures the selected physical or virtual display, encodes video and sends it to the connected receiver. Touch, keyboard, pointer and performance messages return over the session where supported and enabled. A Mac receiver may also announce its system-reported screen dimensions and physical size to help the sender estimate desktop geometry. DisplayWeave does not provide a cloud relay or automatically upload screen video.</p>
 <ul><li>Apple USB uses macOS usbmuxd; Android USB uses an authorized ADB forward. These are local cable/tunnel paths.</li><li>LAN streaming goes directly between devices over Wi-Fi or Ethernet. Bonjour/NSD discovery advertises local service metadata, including names, capabilities and installation identifiers where used. Nearby devices on that network may observe discovery metadata.</li><li>Each connected receiver has its own session. Video buffers are transient; diagnostic logs and benchmark records are separate local data.</li></ul>
 <h2>Encryption and pairing</h2>
-<p>v0.3.3 uses certificate-pinned mutual TLS and invitation pairing by default on Apple and Android, including USB tunnels. Peer trust is saved locally for reconnection. Invitations are short-lived, single-use and kept in memory; do not share them publicly. See <a href="https://github.com/chenyuhao0628/displayweave/blob/main/docs/guides/secure-transport.md">pairing and revocation</a>.</p>
+<p>v0.3.4 uses certificate-pinned mutual TLS and invitation pairing by default on Apple and Android, including USB tunnels. Peer trust is saved locally for reconnection. Invitations are short-lived, single-use and kept in memory; do not share them publicly. See <a href="https://github.com/chenyuhao0628/displayweave/blob/main/docs/guides/secure-transport.md">pairing and revocation</a>.</p>
 <div class="note"><p>Explicit legacy OpenDisplay compatibility is unencrypted. Enable it only for a peer and network you trust. ADB authorization separately grants the Mac debugging access to the Android device; revoke it in Android Developer options when no longer needed.</p></div>
 <h2>Local storage</h2>
 <table><tr><th>Data</th><th>Purpose and location</th></tr>
@@ -108,7 +108,7 @@
 <p>Mac and Android update checks contact the project's GitHub Pages feeds. Package downloads use GitHub Releases and its download infrastructure over HTTPS. Those requests expose normal connection/request metadata to the hosting provider; they do not upload your display stream. iOS has no DisplayWeave automatic-update channel. See <a href="https://github.com/chenyuhao0628/displayweave/blob/main/docs/releases/automatic-updates.md">update behavior and authenticity checks</a>.</p>
 <p>This website is hosted on GitHub Pages. The site source includes no analytics/tracking scripts or cookie-based tracking. Hosting providers may process standard request data; consult <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub's privacy statement</a> for their practices. Opening external links uses the destination's own services.</p>
 <h2>Permissions</h2>
-<ul><li>Screen Recording permits capture of the chosen Mac display.</li><li>Accessibility permits supported, enabled remote input injection.</li><li>Local Network permits local discovery and connections where required by the OS.</li><li>Android USB debugging and RSA authorization enable ADB forwarding. Installing an APK update also requires Android's installation permission and confirmation.</li></ul>
+<ul><li>Screen Recording permits capture of the chosen Mac display.</li><li>Accessibility permits supported, enabled remote input injection.</li><li>Local Network permits local discovery and connections where required by the OS.</li><li>Android foreground service and notification permissions allow the receiver to display an active-session notification and keep connected streaming sessions alive during supported background transitions.</li><li>Android USB debugging and RSA authorization enable ADB forwarding. Installing an APK update also requires Android's installation permission and confirmation.</li></ul>
 <h2>Source and contact</h2>
 <p>DisplayWeave is distributed under <a href="https://github.com/chenyuhao0628/displayweave/blob/main/LICENSE">GPL-3.0</a>. Inspect the <a href="https://github.com/chenyuhao0628/displayweave">source</a>, <a href="https://github.com/chenyuhao0628/displayweave/blob/main/SECURITY.md">security policy</a> and <a href="https://github.com/chenyuhao0628/displayweave/commits/main/public/privacy.html">page history</a>. Report reproducible issues through the project tracker, following the security policy for vulnerabilities.</p>
   </div>

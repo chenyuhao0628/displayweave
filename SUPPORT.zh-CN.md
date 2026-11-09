@@ -2,7 +2,7 @@
 
 # 支持与问题反馈
 
-v0.3.1 的入口为[当前下载](docs/releases/current.zh-CN.md)、[配对指南](docs/guides/secure-transport.zh-CN.md)与[文档导航](docs/README.zh-CN.md)。按用途检查屏幕录制、输入回传需要的辅助功能以及本地网络权限。接收端保持前台；局域网连接检查是否处于同一网络、多播发现和 VPN／过滤器影响。
+v0.3.4 的入口为[当前下载](docs/releases/current.zh-CN.md)、[配对指南](docs/guides/secure-transport.zh-CN.md)与[文档导航](docs/README.zh-CN.md)。按用途检查屏幕录制、输入回传需要的辅助功能以及本地网络权限。接收端保持前台；局域网连接检查是否处于同一网络、多播发现和 VPN／过滤器影响。
 
 ## 提供可复现的问题
 
@@ -12,4 +12,4 @@ Android 同时支持局域网和有线 ADB-forward USB。USB 问题请说明是�
 
 ## 已知边界
 
-Wi-Fi 表现取决于网络条件。静态桌面可能产生较少帧，不等于连接中断。Mac-to-Mac、高刷、真实 Pencil／Intel／多设备性能和耐久仍需更广泛实机验收。Mac v0.3.1 使用 Apple Development 签名且未公证；iOS 需要个人签名，可能需要重新配置。详见[发布验证与限制](docs/releases/v0.3.1.zh-CN.md)和 [Mac 权限恢复](docs/guides/mac-permissions.zh-CN.md)。
+Wi-Fi 表现取决于网络条件。静态桌面可能产生较少帧，不等于连接中断。Mac-to-Mac、高刷、真实 Pencil／Intel／多设备性能和耐久仍需更广泛实机验收。Mac v0.3.4 使用 Apple Development 签名且未公证；iOS 需要个人签名，可能需要重新配置。详见[发布验证与限制](docs/releases/v0.3.4.zh-CN.md)和 [Mac 权限恢复](docs/guides/mac-permissions.zh-CN.md)。

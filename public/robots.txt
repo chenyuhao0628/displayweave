@@ -1,4 +1,4 @@
-# DisplayWeave Preview 2 — local cross-device second displays
+# DisplayWeave — local cross-device second displays
 User-agent: *
 Allow: /
 

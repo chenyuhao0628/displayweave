@@ -89,13 +89,6 @@ summary:focus-visible {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.mobile-language {
-  display: none;
-  font: 600 10px/1 var(--mono);
-  color: var(--muted);
-  text-decoration: none;
-  text-transform: uppercase;
-}
 .nav-shell nav a:hover,
 .language:hover,
 .github-link:hover {
@@ -818,24 +811,7 @@ footer {
     gap: 10px;
   }
   .nav-actions {
-    position: absolute;
-    right: 16px;
-    flex: none;
-    margin-left: 0;
-    gap: 10px;
-  }
-  .github-link {
     display: none;
-  }
-  .button-small {
-    display: none;
-  }
-  .language {
-    position: fixed;
-    z-index: 31;
-    top: 25px;
-    right: 16px;
-    font-size: 10px;
   }
   .brand {
     min-width: 0;
@@ -983,15 +959,6 @@ footer {
     grid-template-columns: minmax(0, 1fr);
     gap: 30px;
     align-items: start;
-  }
-}
-@media (max-width: 700px) {
-  .mobile-language {
-    display: block;
-    margin-left: auto;
-  }
-  .nav-actions {
-    display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -18,13 +18,13 @@ v0.3.4 includes [encrypted pairing](../docs/guides/secure-transport.md) and [Git
 
 2026-11-09: build 23 adds experimental high-frame-rate trials, active-session background keep-alive and receiver hardening. Old server callbacks cannot change a replacement session. The original signing certificate is retained; sustained high-refresh performance remains unverified. See the [release notes](../docs/releases/v0.3.4.md).
 
-Download `DisplayWeave-Android.apk` from [`v0.3.4`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/releases/release-checklist.md).
+Download `DisplayWeave-Android.apk` from [`v0.3.4`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/releases/release-checklist.md).
 
 ## Updates after the first install
 
 - The receiver checks the HTTPS update feed at most once per 24 hours when it resumes.
 - **Settings & Help → Check for Updates** bypasses the daily throttle.
-- p6 and later use the matching GitHub Release as the APK source.
+- Downloads use the matching GitHub Release as the APK source.
 - Before installation, it verifies exact byte count, SHA-256, package name,
   version code, minimum SDK, and the pinned signing certificate.
 - Android may ask for permission to install unknown apps. The final installation

@@ -53,9 +53,9 @@ Touch coordinates, drag state, cursor movement, and two-finger scroll are encode
 
 ## Security boundaries
 
-- v0.3.1 defaults to certificate-pinned mutual TLS and explicit invitation pairing on Apple and Android. Legacy compatibility is an explicit unencrypted choice for trusted networks. See [pairing](docs/guides/secure-transport.md).
+- v0.3.4 defaults to certificate-pinned mutual TLS and explicit invitation pairing on Apple and Android. Legacy compatibility is an explicit unencrypted choice for trusted networks. See [pairing](docs/guides/secure-transport.md).
 - ADB RSA authorization trusts the Mac as a debugging host beyond DisplayWeave.
-- The macOS v0.3.1 uses a pinned Apple Development identity and is not notarized. The first migration from an ad-hoc release may require reauthorization; later builds are checked for signing continuity.
+- The macOS v0.3.4 release uses a pinned Apple Development identity and is not notarized. The first migration from an ad-hoc release may require reauthorization; later builds are checked for signing continuity.
 - The Android APK uses an offline project keystore stored outside Git.
 - The iOS public artifact is an unsigned re-signing input.
 - `CGVirtualDisplay` is a private API and can change across macOS releases.
@@ -74,7 +74,7 @@ Android DWV2. See the [design](docs/reference/mac-to-mac-design.md).
 
 ## Source ownership and bounded work (2026-10-16)
 
-The source app supports exclusive Mac send/receive roles over the same Wi-Fi or Ethernet LAN. This is packaged as an experimental feature in v0.3.1; physical acceptance remains pending. Mirroring captures an existing display; extending creates a virtual display.
+The source app supports exclusive Mac send/receive roles over the same Wi-Fi or Ethernet LAN. This is packaged as an experimental feature in v0.3.4; physical acceptance remains pending. Mirroring captures an existing display; extending creates a virtual display.
 
 | Area | Ownership |
 | --- | --- |

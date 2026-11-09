@@ -2,10 +2,11 @@
 
 # DisplayWeave roadmap
 
-Updated 2026-10-27. The current release is **v0.3.3 (22)**. Mac desktop matching estimates size from available display data; see [release notes](docs/releases/v0.3.3.md) and the [implementation/acceptance ledger](docs/verification/automatic-desktop-matching.md).
+Updated 2026-11-09. The current release is **v0.3.4 (23)**. Mac desktop matching estimates size from available display data; see [release notes](docs/releases/v0.3.4.md) and the [implementation/acceptance ledger](docs/verification/automatic-desktop-matching.md).
 
-## Included in the current v0.3.3 stable release
+## Included in the current v0.3.4 stable release
 
+- Opt-in Android experimental high-frame-rate trial and foreground keep-alive service, opt-in iPad native-resolution high-refresh trial, and rounded Mac app icon tiles.
 - Generation-safe capture/encoder recovery, healthy-queue bitrate restoration, bounded Apple/Android decode pressure, aspect-correct Android video/input and resolution/frame-rate priority controls.
 - Mac 4K encoding/cursor latency policies, bounded receiver pressure, 100 Mbps H.264 LAN presets and upstream capture/display recovery; see [the release notes](docs/archive/releases/release-notes-v0.3.0.md).
 - Fixed Apple Development signing and upgrade comparisons; local permission continuity verified.

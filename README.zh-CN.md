@@ -65,9 +65,8 @@ Mac 保留 `app.displayweave.mac` 和既有偏好迁移。从旧临时签名版�
   “仍要打开”；不需要全局开启“任何来源”。后续版本通过 Sparkle 检查和
   验证；本版使用 Apple Development 签名，仍未公证。
 - **Android：** 先把此 APK 覆盖安装到现有包。之后接收端最多每天自动
-  检查一次，也可在“设置与帮助”手动检查。下载会校验大小、SHA-256、
-  包名、版本、最低 SDK 和固定签名证书，再打开 Android 系统安装器。p6 及以后
-  下载统一来自对应的 GitHub Release。
+  检查一次，也可在“设置与帮助”手动检查。下载统一来自对应的 GitHub Release。
+  下载会校验大小、SHA-256、包名、版本、最低 SDK 和固定签名证书，再打开 Android 系统安装器。
 - **iOS/iPadOS：** 未签名自签输入包与现有 OpenDisplay 接收协议不受
   Mac/Android 更新渠道影响。
 
@@ -119,6 +118,7 @@ cd AndroidReceiver
 - [USB/WiFi Benchmark 规程](docs/verification/usb-vs-wifi-benchmark.zh-CN.md)
 - [码率模式](docs/reference/bitrate-modes.zh-CN.md)与[自适应码率](docs/reference/adaptive-bitrate.zh-CN.md)
 - [队列分析](docs/reference/low-latency-queue-analysis.zh-CN.md)与[关键帧策略](docs/reference/keyframe-strategy.zh-CN.md)
+- [Android 解码吞吐量、参考恢复与 Surface 帧率映射](docs/reference/android-decoder-throughput-recovery.zh-CN.md)
 - [安全说明](SECURITY.zh-CN.md)
 - [贡献说明](CONTRIBUTING.zh-CN.md)
 - [第三方声明](THIRD_PARTY_NOTICES.md)
