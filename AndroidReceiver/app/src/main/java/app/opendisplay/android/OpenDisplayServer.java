@@ -105,7 +105,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
     public interface Listener {
         void onStatus(String status);
-        void onConnected(boolean connected);
+        void onConnected(OpenDisplayServer source, boolean connected);
         void onStreaming(boolean streaming);
         void onConnectionState(ReceiverConnectionStateSnapshot state);
         void onCursor(double x, double y, boolean visible);
@@ -171,7 +171,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
                     @Override
                     public void setConnected(boolean connected) {
-                        listener.onConnected(connected);
+                        listener.onConnected(OpenDisplayServer.this, connected);
                     }
 
                     @Override

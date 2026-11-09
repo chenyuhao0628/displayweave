@@ -8,7 +8,7 @@ Publish stable releases only, without public candidates or previews. An unpublis
 
 ## Prepare and build
 
-Verify `git status`, the `displayweave` remote, the highest published build number, Xcode/XcodeGen, the Android SDK and Java, pnpm, and available signing material. Choose a new immutable version/build; never replace an existing public tag or asset. The current stable release is `0.3.3`, build `22`. The `0.3.4` / `23` values below are examples for a subsequent build, not reserved or published versions; recheck GitHub first.
+Verify `git status`, the `origin` upstream and `displayweave` release remotes, the highest published build number, Xcode/XcodeGen, the Android SDK and Java, pnpm, and available signing material. Choose a new immutable version/build; never replace an existing public tag or asset. This release is `0.3.4`, build `23`; recheck GitHub before a later release. Refresh upstream and review it selectively against this product's architecture. Record accepted, already-covered and deferred items; do not merge another product's entire mainline directly.
 
 The Android keystore stays outside Git at `~/Library/Application Support/DisplayWeave/Signing/android-preview.jks`; the existing Keychain service is `app.displayweave.android-preview-signing`, account/alias `displayweave-preview`. The packaging script reads its password without printing it. Sparkle uses Keychain account `ed25519`. Run the existing Sparkle `generate_keys -p` only to inspect its public key; it must match `N9dMZV/F1ui58IsEmCv5jFVgDWiWv2yB/01KBlAHFjE=`. Stop on a mismatch instead of generating a replacement.
 

@@ -6,11 +6,11 @@
 
 DisplayWeave is an independently maintained, GPL-3.0, local-first second-display project derived from [OpenDisplay](https://github.com/peetzweg/opendisplay). It turns iPhone, iPad, and Android devices into extended or mirrored displays for a Mac.
 
-## Mac-to-Mac (experimental in v0.3.3)
+## Mac-to-Mac (experimental in v0.3.4)
 
 The same app can send or receive a one-way extended/mirrored desktop over Wi-Fi
 or Ethernet. Both Macs require macOS 14+; the app negotiates hardware HEVC with H.264 fallback, with targets up to 120fps within screen/codec limits.
-This feature is included in the `v0.3.3` downloads below.
+This feature is included in the `v0.3.4` downloads below.
 The two-Mac physical performance matrix remains unverified. See the [user guide](docs/guides/mac-to-mac.md) and
 [design/upstream assessment](docs/reference/mac-to-mac-design.md).
 
@@ -35,11 +35,11 @@ The physical-device recovery and high-refresh observations below were recorded
 during Preview 2 validation and remain prior evidence; they were not rerun on a
 second Android device for this release.
 
-## Download `v0.3.3`
+## Download `v0.3.4`
 
 [GitHub Release](https://github.com/chenyuhao0628/displayweave/releases)
 
-2026-10-27: build 22 adds automatic matching of Mac extended desktops from available sender and receiver display data. Existing installations keep their prior settings until they select automatic matching. Native 5K video is not supported; customer two-Mac acceptance remains unverified. See the [release notes](docs/releases/v0.3.3.md) for limitations and verification.
+2026-11-09: build 23 adds Android experimental high-frame-rate trials and background keep-alive, opt-in native-resolution high refresh on eligible iPads, code hardening and rounded Mac icons. Requested FPS does not prove physical refresh; Mac-to-Mac hardware acceptance remains pending. See the [release notes](docs/releases/v0.3.4.md) for limitations and verification.
 
 | Platform | Asset | Distribution boundary |
 | --- | --- | --- |
@@ -49,7 +49,7 @@ second Android device for this release.
 | iOS/iPadOS | `DisplayWeave-iOS-unsigned-resigning-input.ipa` | Unsigned re-signing input; cannot be installed directly |
 | Mac feed | `appcast.xml` | Sparkle feed authenticated by the public key embedded in the Mac app |
 | Android feed | `android-update.json` | HTTPS metadata with size, hash, version, package, and pinned certificate |
-| Source | `DisplayWeave-v0.3.3-source.tar.gz` | Tracked source at the release tag, including GPL-3.0 and build scripts |
+| Source | `DisplayWeave-v0.3.4-source.tar.gz` | Tracked source at the release tag, including GPL-3.0 and build scripts |
 | Verification | `SHA256SUMS.txt` | SHA-256 for the other seven Release files |
 
 This is the stable release. The Mac uses Apple Development signing and remains unnotarized; iOS requires re-signing. Verify the checksum before use. Android users should also compare the certificate fingerprint in the [release checklist](docs/releases/release-checklist.md).

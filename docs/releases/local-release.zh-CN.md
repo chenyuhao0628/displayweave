@@ -8,7 +8,7 @@
 
 ## 准备与构建
 
-检查 `git status`、`displayweave` 远端、最高已发行构建号、Xcode/XcodeGen、Android SDK 与 Java、pnpm 及签名材料。使用新的不可变版本／构建号，不覆盖已公开 tag 或产物。当前正式版为 `0.3.3`、构建号 `22`。下方 `0.3.4`／`23` 仅为下一次构建示例，不表示已保留或已发行；运行前重新检查 GitHub。
+检查 `git status`、`origin` 上游与 `displayweave` 发布远端、最高已发行构建号、Xcode/XcodeGen、Android SDK 与 Java、pnpm 及签名材料。使用新的不可变版本／构建号，不覆盖已公开 tag 或产物。本次正式版为 `0.3.4`、构建号 `23`；后续版本应重新检查 GitHub。刷新上游后按产品架构选择性审核，记录采纳、已覆盖和延期项，不将另一产品的整条主线直接并入。
 
 Android keystore 保存在 Git 外的 `~/Library/Application Support/DisplayWeave/Signing/android-preview.jks`；既有 Keychain 服务为 `app.displayweave.android-preview-signing`，account/alias 为 `displayweave-preview`。打包脚本读取密码但不打印。Sparkle 使用 Keychain account `ed25519`。只用现有 Sparkle 的 `generate_keys -p` 检查公钥，必须匹配 `N9dMZV/F1ui58IsEmCv5jFVgDWiWv2yB/01KBlAHFjE=`；不匹配时停止，不生成替代密钥。
 

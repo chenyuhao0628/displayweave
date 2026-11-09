@@ -74,6 +74,30 @@ def main():
             "private void stopServer() {",
             'private void stopServer() { android.util.Log.i("DisplayWeave", "Fixture stop: server=" + (server != null));'
         ))
+        # Deliver a retired server's connection callback after replacement on the
+        # real Activity UI queue. This deterministically exercises the ownership
+        # guard, independently of the timing of the socket probes below.
+        activity_source.write_text(activity_source.read_text().replace(
+            "server.stop();\n        server = null;",
+            '''OpenDisplayServer retired = server;
+        server.stop();
+        server = null;
+        uiHandler.post(() -> {
+            if (server == null || server == retired) return;
+            try {
+                java.lang.reflect.Field field = ReceiverLifecycleCoordinator.class
+                        .getDeclaredField("sessionConnected");
+                field.setAccessible(true);
+                boolean before = field.getBoolean(receiverLifecycle);
+                onConnected(retired, !before);
+                if (field.getBoolean(receiverLifecycle) != before) {
+                    throw new AssertionError("Retired server changed replacement connection state");
+                }
+                try (java.io.FileOutputStream out = openFileOutput("stale-callback.txt", MODE_PRIVATE)) {
+                    out.write("Retired server callback isolation PASS".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+            } catch (Exception error) { throw new RuntimeException(error); }
+        });'''))
         debug = project / "app/src/debug"
         source = debug / "java/app/opendisplay/android"
         source.mkdir(parents=True)
@@ -138,6 +162,9 @@ def main():
             device("shell", "cmd", "uimode", "night", "no")
             device("install", "-g", project / "app/build/outputs/apk/debug/app-debug.apk")
             activity = PACKAGE + "/app.opendisplay.android.SecurityRuntimeTestActivity"
+            device("shell", "am", "start", "-n", activity, "--es", "mode", "keep-alive-stress")
+            print(wait_until(lambda: result("keep-alive-stress.txt"), "foreground keep-alive quick disconnect regression", 30).decode(), flush=True)
+            device("shell", "am", "force-stop", PACKAGE)
             device("shell", "am", "start", "-n", activity)
             print(wait_until(lambda: result("result.txt"), "Keystore runtime suite", 60).decode(), flush=True)
             device("shell", "am", "force-stop", PACKAGE)
@@ -284,6 +311,10 @@ def main():
                     return True
             wait_until(stopped, "Android background listener close", 10)
             print("Android background listener shutdown PASS", flush=True)
+            isolation = private("stale-callback.txt")
+            if not isolation:
+                raise RuntimeError("Retired-server callback regression was not exercised")
+            print(isolation.decode(), flush=True)
             diagnostics = device("logcat", "-d", "-s", "DisplayWeave:W", "AndroidRuntime:E", "*:S", timeout=15).decode(errors="replace")
             if "Local security settings operation failed" in diagnostics or "FATAL EXCEPTION" in diagnostics:
                 raise RuntimeError("Runtime UI error: " + diagnostics[-5000:])

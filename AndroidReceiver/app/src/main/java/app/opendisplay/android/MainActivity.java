@@ -185,9 +185,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     @Override
-    public void onConnected(boolean connected) {
+    public void onConnected(OpenDisplayServer source, boolean connected) {
         runOnUiThread(() -> {
-            if (server == null) return;
+            if (server != source) return;
             receiverLifecycle.onConnectionChanged(connected);
             updateKeepAliveService(connected);
             setStatus(connected ? "Mac 已连接，等待画面…" : "等待 Mac 连接…");
@@ -903,14 +903,20 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         updateKeepAliveService(false);
     }
 
+    private boolean keepAliveRequested;
+
     private void updateKeepAliveService(boolean active) {
+        if (keepAliveRequested == active) return;
         android.content.Intent serviceIntent = new android.content.Intent(this, ReceiverKeepAliveService.class);
         try {
             if (active) {
                 startForegroundService(serviceIntent);
             } else {
-                stopService(serviceIntent);
+                // Do not cancel an unacknowledged startForegroundService request.
+                // Let the service promote before processing its ordered stop.
+                startService(serviceIntent.setAction(ReceiverKeepAliveService.ACTION_STOP));
             }
+            keepAliveRequested = active;
         } catch (RuntimeException error) {
             android.util.Log.w("OpenDisplay", "Unable to update keep-alive service: " + error.getMessage());
         }

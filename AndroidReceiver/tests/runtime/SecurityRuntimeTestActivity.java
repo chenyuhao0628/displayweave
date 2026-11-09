@@ -23,6 +23,29 @@ public final class SecurityRuntimeTestActivity extends Activity {
     private static void expect(boolean value, String message) { if (!value) throw new AssertionError(message); }
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
+        if ("keep-alive-stress".equals(getIntent().getStringExtra("mode"))) {
+            // Consecutive commands on one UI turn reproduce disconnect before
+            // the service's onCreate/onStartCommand can acknowledge promotion.
+            for (int index = 0; index < 20; index++) {
+                startForegroundService(new Intent(this, ReceiverKeepAliveService.class));
+                startService(new Intent(this, ReceiverKeepAliveService.class)
+                        .setAction(ReceiverKeepAliveService.ACTION_STOP));
+            }
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                try {
+                    android.app.ActivityManager manager = getSystemService(android.app.ActivityManager.class);
+                    for (android.app.ActivityManager.RunningServiceInfo service : manager.getRunningServices(100)) {
+                        expect(!service.service.getClassName().equals(ReceiverKeepAliveService.class.getName()),
+                                "keep-alive service survived its final stop command");
+                    }
+                    write("keep-alive-stress.txt", "Foreground keep-alive: 20 immediate start/stop pairs, process survival and service cleanup PASS");
+                    finish();
+                } catch (Throwable failure) {
+                    try { write("error.txt", failure.toString()); } catch (Exception ignored) { }
+                }
+            }, 12000);
+            return;
+        }
         if (!started.compareAndSet(false, true)) return;
         new Thread(() -> {
             try {

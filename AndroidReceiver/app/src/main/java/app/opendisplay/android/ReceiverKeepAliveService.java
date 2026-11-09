@@ -8,13 +8,20 @@ import android.os.IBinder;
 
 /** Visible, user-stoppable foreground lifetime for an active connected session. */
 public final class ReceiverKeepAliveService extends Service {
+    static final String ACTION_STOP = "app.opendisplay.android.STOP_KEEP_ALIVE";
     @Override public void onCreate() {
         super.onCreate();
         promoteToForeground();
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int id) {
+        // Every startForegroundService request must be acknowledged before an
+        // immediate disconnect can stop this instance. Commands arrive in order;
+        // stopSelfResult also protects a newer start already queued by Android.
         promoteToForeground();
+        if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            stopSelfResult(id);
+        }
         return START_NOT_STICKY;
     }
 
