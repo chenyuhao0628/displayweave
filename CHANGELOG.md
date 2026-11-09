@@ -4,6 +4,7 @@
 
 - Add an opt-in iOS/iPadOS native-resolution high-refresh trial, latched per connection, with matching H.264/HEVC native-panel envelopes and unchanged conservative defaults.
 - Validate complete native-envelope bounds and fallback-safe sender planning. Document setup and the difference between native decoding and actual presentation in the [Apple video guide](docs/guides/apple-video.md).
+- Export Mac-only rounded-square RGBA app icons with transparent padding while preserving the shared logo master and all mobile/web assets.
 
 ## DisplayWeave v0.3.1 (2026-10-26)
 

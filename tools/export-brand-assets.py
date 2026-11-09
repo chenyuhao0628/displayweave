@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Reproduce existing-mark derivatives. Never remove its background or invent artwork."""
+"""Reproduce platform derivatives while preserving the opaque artwork master."""
 import argparse
 import hashlib
 import io
 import json
+import math
 from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
@@ -19,6 +20,26 @@ def png(image):
     return output.getvalue()
 
 
+def mac_icon(icon):
+    """Legacy ICNS tile: preserve the white artwork, round only its outer tile."""
+    size, inset, scale = 1024, 100, 4
+    tile = icon.resize((size - 2 * inset,) * 2, Image.Resampling.LANCZOS)
+    image = Image.new("RGBA", (size, size), (255, 255, 255, 0))
+    image.paste(tile, (inset, inset))
+    center, radius = size / 2, size / 2 - inset
+    points = []
+    # A fifth-order superellipse keeps the sides flat with continuous corners.
+    for step in range(1024):
+        angle = 2 * math.pi * step / 1024
+        x, y = math.cos(angle), math.sin(angle)
+        points.append(((center + radius * math.copysign(abs(x) ** .4, x)) * scale,
+                       (center + radius * math.copysign(abs(y) ** .4, y)) * scale))
+    mask = Image.new("L", (size * scale,) * 2)
+    ImageDraw.Draw(mask).polygon(points, fill=255)
+    image.putalpha(mask.resize(image.size, Image.Resampling.LANCZOS))
+    return image
+
+
 def generate(root):
     spec = json.loads((root / "tools/brand-assets.json").read_text())
     source = (root / spec["master"]).read_bytes()
@@ -28,10 +49,19 @@ def generate(root):
     if icon.size != (1024, 1024):
         raise ValueError("Expected the existing 1024px icon master")
     outputs = {}
+    mac = mac_icon(icon)
+    mac_rgb, mac_alpha = mac.convert("RGB"), mac.getchannel("A")
     for folder in ("Mac/Assets.xcassets/AppIcon.appiconset", "iOS/Assets.xcassets/AppIcon.appiconset"):
         for item in json.loads((root / folder / "Contents.json").read_text())["images"]:
             size = round(float(item["size"].split("x")[0]) * float(item["scale"].rstrip("x")))
-            outputs[folder + "/" + item["filename"]] = source if size == 1024 else png(icon.resize((size, size), Image.Resampling.LANCZOS))
+            if folder.startswith("Mac/"):
+                rendered = mac if size == 1024 else mac_rgb.resize((size, size), Image.Resampling.LANCZOS)
+                if size != 1024:
+                    # Area-filter alpha: Lanczos ringing otherwise reaches the 16/32px canvas edge.
+                    rendered.putalpha(mac_alpha.resize((size, size), Image.Resampling.BOX))
+                outputs[folder + "/" + item["filename"]] = png(rendered)
+            else:
+                outputs[folder + "/" + item["filename"]] = source if size == 1024 else png(icon.resize((size, size), Image.Resampling.LANCZOS))
     sizes = {"public/icon-256.png": 256, "iOS/Assets.xcassets/AppLogo.imageset/applogo.png": 512,
              "AndroidReceiver/app/src/main/res/drawable/app_logo.png": 512}
     for density, size in [("mdpi", 48), ("hdpi", 72), ("xhdpi", 96), ("xxhdpi", 144), ("xxxhdpi", 192)]:
@@ -53,6 +83,28 @@ def generate(root):
 <resources><color name="launcher_background">{spec["background"]}</color></resources>
 '''.encode()
     return outputs, foreground
+
+
+def verify_mac_icons(outputs):
+    """Reject opaque corners, missing padding, or artwork clipped by the tile."""
+    for path, data in outputs.items():
+        if not path.startswith("Mac/Assets.xcassets/AppIcon.appiconset/"):
+            continue
+        image = Image.open(io.BytesIO(data))
+        if image.mode != "RGBA":
+            raise ValueError("Mac app icons must retain transparent outer padding")
+        size = image.width
+        alpha = image.getchannel("A")
+        corners = ((0, 0), (size - 1, 0), (0, size - 1), (size - 1, size - 1))
+        bounds = alpha.getbbox()
+        if any(alpha.getpixel(point) for point in corners) or alpha.getpixel((size // 2,) * 2) != 255:
+            raise ValueError("Mac app icon must have transparent corners and an opaque tile center")
+        if bounds is None or min(bounds[:2]) <= 0 or max(bounds[2:]) >= size:
+            raise ValueError("Mac app icon tile must remain inset from the canvas")
+        if size == 1024:
+            for r, g, b, a in image.get_flattened_data():
+                if max(r, g, b) - min(r, g, b) > 32 and a != 255:
+                    raise ValueError("Mac tile clips the colored brand mark")
 
 
 def verify_safe_area(foreground):
@@ -99,6 +151,7 @@ def main():
         parser.error("Install tools/brand-requirements.txt for reproducible PNG bytes")
     try:
         outputs, foreground = generate(ROOT)
+        verify_mac_icons(outputs)
         verify_safe_area(foreground)
         drift = []
         for relative, data in outputs.items():
@@ -120,7 +173,7 @@ def main():
             raise ValueError("Brand export drift; inspect then use --write:\n" + "\n".join(drift))
         if args.preview:
             preview(foreground, args.preview)
-        print(f"Brand exports PASS: {len(outputs)} assets; colored mark stays inside 66dp safe area")
+        print(f"Brand exports PASS: {len(outputs)} assets; Mac RGBA tiles and Android 66dp safe area")
         return 0
     except (ValueError, OSError) as error:
         print(error, file=sys.stderr); return 1
