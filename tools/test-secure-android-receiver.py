@@ -162,6 +162,9 @@ def main():
             device("shell", "cmd", "uimode", "night", "no")
             device("install", "-g", project / "app/build/outputs/apk/debug/app-debug.apk")
             activity = PACKAGE + "/app.opendisplay.android.SecurityRuntimeTestActivity"
+            device("shell", "am", "start", "-n", activity, "--es", "mode", "keep-alive-stress")
+            print(wait_until(lambda: result("keep-alive-stress.txt"), "foreground keep-alive quick disconnect regression", 30).decode(), flush=True)
+            device("shell", "am", "force-stop", PACKAGE)
             device("shell", "am", "start", "-n", activity)
             print(wait_until(lambda: result("result.txt"), "Keystore runtime suite", 60).decode(), flush=True)
             device("shell", "am", "force-stop", PACKAGE)
