@@ -95,7 +95,7 @@ final class PhoneReceiver: ObservableObject {
     // so the listener can accept a fresh one.
     private var lastDataReceived = Date()
     private var port: UInt16 = 9000
-    private var monitorsStarted = false
+    private var monitorSchedule = ReceiverMonitorSchedule()
 
     private var framesThisWindow = 0
     private var fpsWindowStart = Date()
@@ -293,11 +293,7 @@ final class PhoneReceiver: ObservableObject {
             self.running = true
             self.listenerGeneration &+= 1
             self.restartListener()
-            if !self.monitorsStarted {
-                self.monitorsStarted = true
-                self.schedulePing()
-                self.scheduleWatchdog()
-            }
+            self.startMonitorsIfNeeded()
         }
     }
 
@@ -305,6 +301,7 @@ final class PhoneReceiver: ObservableObject {
         queue.async {
             if !self.running { self.listenerGeneration &+= 1 }
             self.running = true
+            self.startMonitorsIfNeeded()
             guard !self.listenerHealthy else { return }
             self.restartListener()
         }
@@ -313,6 +310,7 @@ final class PhoneReceiver: ObservableObject {
     func stop() {
         queue.async {
             self.running = false
+            self.monitorSchedule.deactivate()
             self.listenerGeneration &+= 1
             let oldListener = self.listener
             self.listener = nil
@@ -332,6 +330,12 @@ final class PhoneReceiver: ObservableObject {
                 self.queue.asyncAfter(deadline: .now() + 0.25) { old.cancel() }
             }
         }
+    }
+
+    private func startMonitorsIfNeeded() {
+        guard let generation = monitorSchedule.activateIfNeeded() else { return }
+        schedulePing(generation: generation)
+        scheduleWatchdog(generation: generation)
     }
 
     private func restartListener() {
@@ -455,13 +459,13 @@ final class PhoneReceiver: ObservableObject {
 
     // MARK: - Liveness (ping + watchdog)
 
-    private func schedulePing() {
+    private func schedulePing(generation: UInt64) {
         queue.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            guard let self, self.running else { return }
+            guard let self, self.running, self.monitorSchedule.isCurrent(generation) else { return }
             if self.connection?.state == .ready {
                 self.sendControl(["type": "ping", "t": self.nowMs])
             }
-            self.schedulePing()
+            self.schedulePing(generation: generation)
         }
     }
 
@@ -539,9 +543,9 @@ final class PhoneReceiver: ObservableObject {
         }
     }
 
-    private func scheduleWatchdog() {
+    private func scheduleWatchdog(generation: UInt64) {
         queue.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            guard let self, self.running else { return }
+            guard let self, self.running, self.monitorSchedule.isCurrent(generation) else { return }
             if let conn = self.connection, conn.state == .ready,
                Date().timeIntervalSince(self.lastDataReceived) > 5 {
                 Log.info("watchdog: nothing from the Mac for >5s — dropping connection")
@@ -553,7 +557,7 @@ final class PhoneReceiver: ObservableObject {
             if self.connection != nil, self.firstVideoDeadline.expired(at: ProcessInfo.processInfo.systemUptime) {
                 self.rejectVideo("连接已建立但未收到画面，请在 Mac 检查屏幕录制权限后重新连接")
             }
-            self.scheduleWatchdog()
+            self.scheduleWatchdog(generation: generation)
         }
     }
 
