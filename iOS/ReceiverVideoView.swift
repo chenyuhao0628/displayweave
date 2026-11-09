@@ -264,7 +264,7 @@ struct VideoLayerView: UIViewRepresentable {
             if resetGestures {
                 tapEvents = PencilGestureDeduplicator()
                 squeezeEvents = PencilGestureDeduplicator()
-                metalRenderer?.reset()
+                metalRenderer?.reset(forGeneration: receiver?.inputGeneration)
             }
             holdTimer?.cancel(); holdTimer = nil
             _ = press.cancel()

@@ -26,8 +26,10 @@ final class MetalVideoRenderer {
 
     private let renderQueue = DispatchQueue(label: "metal.render", qos: .userInteractive)
     private let lock = NSLock()
-    private var pendingFrame: (buffer: CVPixelBuffer, captureMs: Double?, generation: UInt64)?
+    private var pendingFrame: (buffer: CVPixelBuffer, captureMs: Double?, generation: UInt64, resetGeneration: UInt64)?
     private var currentDrawableSize: CGSize = .zero
+    private var resetGeneration: UInt64 = 0
+    private var latestGeneration: UInt64 = 0
 
     /// presentedTime (CACurrentMediaTime base) + the capture timestamp that
     /// was threaded through render(_:captureMs:).
@@ -117,8 +119,16 @@ final class MetalVideoRenderer {
         }
     }
 
-    func reset() {
+    func reset(forGeneration generation: UInt64? = nil) {
         lock.lock()
+        if let generation {
+            guard latestGeneration < generation else {
+                lock.unlock()
+                return
+            }
+            latestGeneration = generation
+        }
+        resetGeneration &+= 1
         pendingFrame = nil
         currentDrawableSize = .zero
         lock.unlock()
@@ -131,47 +141,69 @@ final class MetalVideoRenderer {
     /// Called on the receiver's queue — returns immediately.
     func render(_ pixelBuffer: CVPixelBuffer, captureMs: Double?, generation: UInt64) {
         lock.lock()
-        let hadPending = pendingFrame != nil
-        pendingFrame = (pixelBuffer, captureMs, generation)
+        guard generation >= latestGeneration else {
+            lock.unlock()
+            return
+        }
+        let sameEpoch = pendingFrame?.generation == generation && pendingFrame?.resetGeneration == resetGeneration
+        latestGeneration = generation
+        let resetGen = resetGeneration
+        pendingFrame = (pixelBuffer, captureMs, generation, resetGen)
         lock.unlock()
-        // A pending frame means a drain is already queued and will pick up
-        // the newer buffer we just stored.
-        if !hadPending {
+        // A pending frame for the same epoch means a drain is already queued
+        // and will pick up the newer buffer we just stored.
+        if !sameEpoch {
             renderQueue.async { [weak self] in self?.drainPending() }
         }
     }
 
     private func drainPending() {
         lock.lock()
-        let frame = pendingFrame
+        guard let frame = pendingFrame else {
+            lock.unlock()
+            return
+        }
         pendingFrame = nil
+        let isCurrent = frame.resetGeneration == resetGeneration && frame.generation == latestGeneration
         lock.unlock()
-        guard let frame else { return }
-        draw(frame.buffer, captureMs: frame.captureMs, generation: frame.generation)
+        guard isCurrent else { return }
+        draw(frame.buffer, captureMs: frame.captureMs, generation: frame.generation, resetGeneration: frame.resetGeneration)
     }
 
-    private func draw(_ pixelBuffer: CVPixelBuffer, captureMs: Double?, generation: UInt64) {
+    private func draw(_ pixelBuffer: CVPixelBuffer, captureMs: Double?, generation: UInt64, resetGeneration: UInt64) {
         let w = CVPixelBufferGetWidth(pixelBuffer)
         let h = CVPixelBufferGetHeight(pixelBuffer)
         let targetSize = CGSize(width: w, height: h)
         lock.lock()
+        guard self.resetGeneration == resetGeneration, self.latestGeneration == generation else {
+            lock.unlock()
+            return
+        }
         let needsDrawableResize = currentDrawableSize != targetSize
         if needsDrawableResize, pendingFrame == nil {
-            pendingFrame = (pixelBuffer, captureMs, generation)
+            pendingFrame = (pixelBuffer, captureMs, generation, resetGeneration)
         }
         lock.unlock()
         if needsDrawableResize {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                self.lock.lock()
+                guard self.resetGeneration == resetGeneration, self.latestGeneration == generation else {
+                    let shouldDrain = self.resetGeneration == resetGeneration && self.pendingFrame != nil
+                    self.lock.unlock()
+                    if shouldDrain {
+                        self.renderQueue.async { [weak self] in self?.drainPending() }
+                    }
+                    return
+                }
+                self.currentDrawableSize = targetSize
+                self.lock.unlock()
                 CATransaction.begin()
                 CATransaction.setDisableActions(true)
                 if self.metalLayer.drawableSize != targetSize {
                     self.metalLayer.drawableSize = targetSize
                 }
                 CATransaction.commit()
-                self.lock.lock()
-                self.currentDrawableSize = targetSize
-                self.lock.unlock()
                 self.renderQueue.async { [weak self] in
                     self?.drainPending()
                 }
@@ -190,7 +222,11 @@ final class MetalVideoRenderer {
               let texY = CVMetalTextureGetTexture(cvY),
               let texCbCr = CVMetalTextureGetTexture(cvCbCr) else { return }
 
-        guard let drawable = metalLayer.nextDrawable(),
+        lock.lock()
+        let stillCurrent = self.resetGeneration == resetGeneration && self.latestGeneration == generation
+        lock.unlock()
+        guard stillCurrent,
+              let drawable = metalLayer.nextDrawable(),
               let cmd = commandQueue.makeCommandBuffer() else { return }
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = drawable.texture
@@ -208,7 +244,14 @@ final class MetalVideoRenderer {
         // glass-time telemetry, so skipping it in the Simulator is harmless.
         #if !targetEnvironment(simulator)
         drawable.addPresentedHandler { [weak self] d in
-            self?.onPresented?(d.presentedTime, captureMs, generation)
+            guard let self else { return }
+            self.lock.lock()
+            let current = self.resetGeneration == resetGeneration && self.latestGeneration == generation
+            let handler = self.presentedHandler
+            self.lock.unlock()
+            if current {
+                handler?(d.presentedTime, captureMs, generation)
+            }
         }
         #endif
         // Keep the source textures alive until the GPU is done with them.
