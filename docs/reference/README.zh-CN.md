@@ -13,6 +13,7 @@
 - [Android 解码吞吐与恢复](android-decoder-throughput-recovery.zh-CN.md)
 - [Android Drop 原因与自适应码率策略](android-drop-reason-policy.zh-CN.md)
 - [Android Protocol V2 协商](android-protocol-v2-negotiation.zh-CN.md)
+- [Android 接收端高帧率试验与后台会话保留](android-receiver-session-controls.zh-CN.md)
 - [Android 热状态与功耗指标](android-thermal-power-metrics.zh-CN.md)
 - [Android WiFi 低延迟与 Surface 帧率](android-wifi-low-latency-surface-frame-rate.zh-CN.md)
 - [码率模式](bitrate-modes.zh-CN.md)

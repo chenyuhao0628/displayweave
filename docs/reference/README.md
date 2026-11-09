@@ -13,6 +13,7 @@ Current protocol, transport, video and recovery contracts. Dated sections retain
 - [Android Decoder Throughput and Recovery](android-decoder-throughput-recovery.md)
 - [Android drop-reason and adaptive-bitrate policy](android-drop-reason-policy.md)
 - [Android Protocol V2 Negotiation](android-protocol-v2-negotiation.md)
+- [Android receiver high-FPS trial and background session preservation](android-receiver-session-controls.md)
 - [Android thermal and power metrics](android-thermal-power-metrics.md)
 - [Android WiFi low latency and Surface frame rate](android-wifi-low-latency-surface-frame-rate.md)
 - [Bitrate modes](bitrate-modes.md)
