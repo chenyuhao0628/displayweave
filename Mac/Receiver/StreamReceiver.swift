@@ -260,9 +260,11 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     }
 
     private func adopt(_ conn: NWConnection, authenticatedPeer: SecurePeerRecord? = nil) {
-        connection = conn
+        connection?.cancel()
+        connection = nil
         peerID = authenticatedPeer?.installID
         resetStream()
+        connection = conn
         lastReceived = Date()
         let encrypted = authenticatedPeer != nil
         conn.stateUpdateHandler = { [weak self, weak conn] state in
