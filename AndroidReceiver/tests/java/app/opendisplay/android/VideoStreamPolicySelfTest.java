@@ -1220,6 +1220,29 @@ public final class VideoStreamPolicySelfTest {
     }
 
     private static void testDecoderWorkerShutdownRejectionGuard() throws Exception {
+        java.util.concurrent.ExecutorService worker =
+                java.util.concurrent.Executors.newSingleThreadExecutor();
+        AtomicInteger executed = new AtomicInteger();
+        AtomicInteger rejectedFallback = new AtomicInteger();
+        CountDownLatch firstRan = new CountDownLatch(1);
+        assertTrue(OpenDisplayServer.executeDecoderTask(worker, () -> {
+            executed.incrementAndGet();
+            firstRan.countDown();
+        }, rejectedFallback::incrementAndGet));
+        assertTrue(firstRan.await(2, TimeUnit.SECONDS));
+        assertEquals(1, executed.get());
+        assertEquals(0, rejectedFallback.get());
+
+        worker.shutdown();
+        assertTrue(worker.awaitTermination(2, TimeUnit.SECONDS));
+        assertFalse(OpenDisplayServer.executeDecoderTask(
+                worker, executed::incrementAndGet, rejectedFallback::incrementAndGet));
+        assertEquals(1, executed.get());
+        assertEquals(1, rejectedFallback.get());
+        assertFalse(OpenDisplayServer.executeDecoderTask(
+                worker, executed::incrementAndGet, null));
+        assertEquals(1, executed.get());
+
         java.nio.file.Path serverPath = java.nio.file.Paths.get(
                 "src/main/java/app/opendisplay/android/OpenDisplayServer.java");
         if (!java.nio.file.Files.exists(serverPath)) {
@@ -1231,19 +1254,18 @@ public final class VideoStreamPolicySelfTest {
                     "AndroidReceiver/app/src/main/java/app/opendisplay/android/OpenDisplayServer.java");
         }
         String source = new String(java.nio.file.Files.readAllBytes(serverPath), StandardCharsets.UTF_8);
-        int executeCount = 0;
+        assertEquals(-1, source.indexOf("decoderWorker.execute("));
+        int helperCalls = 0;
         int searchFrom = 0;
         while (true) {
-            int idx = source.indexOf("decoderWorker.execute(", searchFrom);
+            int idx = source.indexOf("executeDecoderTask(decoderWorker,", searchFrom);
             if (idx < 0) {
                 break;
             }
-            executeCount++;
-            String preceding = source.substring(Math.max(0, idx - 80), idx);
-            assertTrue(preceding.contains("try {"));
-            searchFrom = idx + "decoderWorker.execute(".length();
+            helperCalls++;
+            searchFrom = idx + "executeDecoderTask(decoderWorker,".length();
         }
-        assertEquals(4, executeCount);
+        assertEquals(4, helperCalls);
     }
 
     private static byte[] annexB(byte... nalHeaders) {

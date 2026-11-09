@@ -369,7 +369,9 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     }
 
     public void stop() {
-        running = false;
+        synchronized (this) {
+            running = false;
+        }
         AndroidSecurityStore.stopPairingIfLoaded();
         listeningPort = 0;
         advertiser.stop();
@@ -529,12 +531,21 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         }
     }
 
-    private void scheduleFrameDrain() {
+    static boolean executeDecoderTask(
+            java.util.concurrent.Executor worker, Runnable task, Runnable onRejected) {
         try {
-            decoderWorker.execute(this::drainLatestVideoFrames);
+            worker.execute(task);
+            return true;
         } catch (java.util.concurrent.RejectedExecutionException ignored) {
-            resetQueuedFrames();
+            if (onRejected != null) {
+                onRejected.run();
+            }
+            return false;
         }
+    }
+
+    private void scheduleFrameDrain() {
+        executeDecoderTask(decoderWorker, this::drainLatestVideoFrames, this::resetQueuedFrames);
     }
 
     private void drainLatestVideoFrames() {
@@ -861,30 +872,28 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         // MediaCodec.stop()/release() can block in vendor code. Keep that work
         // off the serialized transport-event executor so Ack, ping and newer
         // stream configurations remain observable and bounded.
-        try {
-            decoderWorker.execute(() -> {
-                if (previous != null) {
-                    previous.release();
-                }
-                H264SurfaceDecoder next;
-                synchronized (OpenDisplayServer.this) {
-                    if (!running || surface == null || !connectionCoordinator.isCurrent(generation)
-                            || !protocolSession.matchesIdentity(sessionEpoch, configVersion)
-                            || decoder != null
-                            || decoderAwaitingFreshConfig) {
-                        return;
-                    }
-                    next = new H264SurfaceDecoder(
-                            surface, nextListener, decoderLowLatencyMode);
-                    decoder = next;
-                }
-                next.applyStreamConfig(config.codec, config.fps, config.width, config.height);
-            });
-        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+        executeDecoderTask(decoderWorker, () -> {
             if (previous != null) {
                 previous.release();
             }
-        }
+            H264SurfaceDecoder next;
+            synchronized (OpenDisplayServer.this) {
+                if (!running || surface == null || !connectionCoordinator.isCurrent(generation)
+                        || !protocolSession.matchesIdentity(sessionEpoch, configVersion)
+                        || decoder != null
+                        || decoderAwaitingFreshConfig) {
+                    return;
+                }
+                next = new H264SurfaceDecoder(
+                        surface, nextListener, decoderLowLatencyMode);
+                decoder = next;
+            }
+            next.applyStreamConfig(config.codec, config.fps, config.width, config.height);
+        }, () -> {
+            if (previous != null) {
+                previous.release();
+            }
+        });
     }
 
     private void releaseDecoder() {
@@ -893,11 +902,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             activeDecoder = detachDecoder();
         }
         if (activeDecoder != null) {
-            try {
-                decoderWorker.execute(activeDecoder::release);
-            } catch (java.util.concurrent.RejectedExecutionException ignored) {
-                activeDecoder.release();
-            }
+            executeDecoderTask(decoderWorker, activeDecoder::release, activeDecoder::release);
         }
     }
 
@@ -914,6 +919,9 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
     private synchronized void queueFrameIfCurrentDecoder(
             long generation, VideoFramePacket frame) {
+        if (!running) {
+            return;
+        }
         VideoFrameTelemetry telemetry = frame.telemetry;
         H264SurfaceDecoder activeDecoder = decoder;
         if (activeDecoder == null) {
@@ -981,32 +989,26 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 new GenerationDecoderListener(generation, sessionEpoch, configVersion);
         decoder = null;
         decoderAwaitingFreshConfig = requireFreshConfig;
-        try {
-            decoderWorker.execute(() -> {
-                activeDecoder.release();
-                if (!DecoderStallRecoveryPolicy.shouldRecreateDecoderInPlace(requireFreshConfig)) {
+        return executeDecoderTask(decoderWorker, () -> {
+            activeDecoder.release();
+            if (!DecoderStallRecoveryPolicy.shouldRecreateDecoderInPlace(requireFreshConfig)) {
+                return;
+            }
+            H264SurfaceDecoder next;
+            synchronized (OpenDisplayServer.this) {
+                if (!running || surface == null
+                        || !connectionCoordinator.isCurrent(generation)
+                        || !protocolSession.matchesIdentity(sessionEpoch, configVersion)
+                        || decoder != null
+                        || decoderAwaitingFreshConfig) {
                     return;
                 }
-                H264SurfaceDecoder next;
-                synchronized (OpenDisplayServer.this) {
-                    if (!running || surface == null
-                            || !connectionCoordinator.isCurrent(generation)
-                            || !protocolSession.matchesIdentity(sessionEpoch, configVersion)
-                            || decoder != null
-                            || decoderAwaitingFreshConfig) {
-                        return;
-                    }
-                    next = new H264SurfaceDecoder(
-                            surface, nextListener, decoderLowLatencyMode);
-                    decoder = next;
-                }
-                next.applyStreamConfig(config.codec, config.fps, config.width, config.height);
-            });
-            return true;
-        } catch (java.util.concurrent.RejectedExecutionException ignored) {
-            activeDecoder.release();
-            return false;
-        }
+                next = new H264SurfaceDecoder(
+                        surface, nextListener, decoderLowLatencyMode);
+                decoder = next;
+            }
+            next.applyStreamConfig(config.codec, config.fps, config.width, config.height);
+        }, activeDecoder::release);
     }
 
     private final class GenerationDecoderListener implements H264SurfaceDecoder.Listener {

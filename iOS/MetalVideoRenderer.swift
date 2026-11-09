@@ -30,6 +30,7 @@ final class MetalVideoRenderer {
     private var currentDrawableSize: CGSize = .zero
     private var resetGeneration: UInt64 = 0
     private var latestGeneration: UInt64 = 0
+    private var needsTextureCacheFlush = false
 
     /// presentedTime (CACurrentMediaTime base) + the capture timestamp that
     /// was threaded through render(_:captureMs:).
@@ -131,6 +132,7 @@ final class MetalVideoRenderer {
         resetGeneration &+= 1
         pendingFrame = nil
         currentDrawableSize = .zero
+        needsTextureCacheFlush = false
         lock.unlock()
         renderQueue.async { [weak self] in
             guard let cache = self?.textureCache else { return }
@@ -145,9 +147,16 @@ final class MetalVideoRenderer {
             lock.unlock()
             return
         }
-        let sameEpoch = pendingFrame?.generation == generation && pendingFrame?.resetGeneration == resetGeneration
-        latestGeneration = generation
+        if generation > latestGeneration {
+            if latestGeneration > 0 {
+                resetGeneration &+= 1
+                currentDrawableSize = .zero
+                needsTextureCacheFlush = true
+            }
+            latestGeneration = generation
+        }
         let resetGen = resetGeneration
+        let sameEpoch = pendingFrame?.generation == generation && pendingFrame?.resetGeneration == resetGen
         pendingFrame = (pixelBuffer, captureMs, generation, resetGen)
         lock.unlock()
         // A pending frame for the same epoch means a drain is already queued
@@ -163,10 +172,19 @@ final class MetalVideoRenderer {
             lock.unlock()
             return
         }
-        pendingFrame = nil
         let isCurrent = frame.resetGeneration == resetGeneration && frame.generation == latestGeneration
+        guard isCurrent else {
+            pendingFrame = nil
+            lock.unlock()
+            return
+        }
+        pendingFrame = nil
+        let flushCache = needsTextureCacheFlush
+        needsTextureCacheFlush = false
         lock.unlock()
-        guard isCurrent else { return }
+        if flushCache, let cache = textureCache {
+            CVMetalTextureCacheFlush(cache, 0)
+        }
         draw(frame.buffer, captureMs: frame.captureMs, generation: frame.generation, resetGeneration: frame.resetGeneration)
     }
 
@@ -189,11 +207,7 @@ final class MetalVideoRenderer {
                 guard let self else { return }
                 self.lock.lock()
                 guard self.resetGeneration == resetGeneration, self.latestGeneration == generation else {
-                    let shouldDrain = self.resetGeneration == resetGeneration && self.pendingFrame != nil
                     self.lock.unlock()
-                    if shouldDrain {
-                        self.renderQueue.async { [weak self] in self?.drainPending() }
-                    }
                     return
                 }
                 self.currentDrawableSize = targetSize
@@ -238,6 +252,11 @@ final class MetalVideoRenderer {
         encoder.setFragmentTexture(texCbCr, index: 1)
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         encoder.endEncoding()
+
+        lock.lock()
+        let canPresent = self.resetGeneration == resetGeneration && self.latestGeneration == generation
+        lock.unlock()
+        guard canPresent else { return }
 
         // CAMetalDrawable's presented handler is device-only; the Simulator
         // SDK omits it. The handler only feeds the experimental Metal path's

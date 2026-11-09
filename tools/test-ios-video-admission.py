@@ -191,6 +191,18 @@ func runConfigureVideoAndMetalTests() {{
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         precondition(renderer.metalLayer.drawableSize == CGSize(width: 320, height: 180),
                      "reset(forGeneration: 3) must cancel pending generation 2 main-thread resize")
+
+        // When a replacement session's first frame (generation 4) arrives on the video queue
+        // BEFORE the main thread drains reset(forGeneration: 4) or a pending generation 3 resize:
+        renderer.render(pb4, captureMs: 45, generation: 3)
+        Thread.sleep(forTimeInterval: 0.05)
+        renderer.render(pb2, captureMs: 50, generation: 4)
+        Thread.sleep(forTimeInterval: 0.05)
+        renderer.reset(forGeneration: 4)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        Thread.sleep(forTimeInterval: 0.05)
+        precondition(renderer.metalLayer.drawableSize == CGSize(width: 256, height: 128),
+                     "generation 4 frame arriving before reset(forGeneration: 4) must advance resetGeneration, cancel generation 3 resize, and preserve generation 4 resize")
     }}
 }}
 """
