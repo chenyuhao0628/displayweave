@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "packageName": "app.opendisplay.android",
-  "versionCode": 22,
-  "versionName": "0.3.3",
+  "versionCode": 23,
+  "versionName": "0.3.4",
   "minimumSdk": 26,
-  "apkUrl": "https://github.com/chenyuhao0628/displayweave/releases/download/v0.3.3/DisplayWeave-Android.apk",
-  "apkSize": 310840,
-  "sha256": "0945b4746f06ca0bce2720bb7ce048f6e61e2f76ffce5a147f574f174313f5fb",
+  "apkUrl": "https://github.com/chenyuhao0628/displayweave/releases/download/v0.3.4/DisplayWeave-Android.apk",
+  "apkSize": 314580,
+  "sha256": "30d06443d73c0b39157fb17e4a8ec97d2d56009fda2ad184a5a8c03e19230d4b",
   "signingCertificateSha256": "89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d",
-  "publishedAt": "2026-10-27T04:03:55Z",
-  "releaseNotesUrl": "https://github.com/chenyuhao0628/displayweave/releases/tag/v0.3.3"
+  "publishedAt": "2026-11-09T02:55:18Z",
+  "releaseNotesUrl": "https://github.com/chenyuhao0628/displayweave/releases/tag/v0.3.4"
 }

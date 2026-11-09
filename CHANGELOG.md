@@ -2,11 +2,17 @@
 
 ## Unreleased
 
+## DisplayWeave v0.3.4 (2026-11-09)
+
+Stable release, build 23. See [English release notes](docs/releases/v0.3.4.md) / [简体中文发布说明](docs/releases/v0.3.4.zh-CN.md) for signed assets, automated verification and hardware limits.
+
 - Add an opt-in iOS/iPadOS native-resolution high-refresh trial, latched per connection, with matching H.264/HEVC native-panel envelopes and unchanged conservative defaults.
 - Validate complete native-envelope bounds and fallback-safe sender planning. Document setup and the difference between native decoding and actual presentation in the [Apple video guide](docs/guides/apple-video.md).
 - Add an opt-in Android experimental high-FPS trial (`30` / `60` / `90` / `120` fps), connected-session background preservation with a low-priority foreground keep-alive notification, idle background listener shutdown, and a persistent low-opacity settings button; see [Android receiver session controls](docs/reference/android-receiver-session-controls.md).
 - Harden unnegotiated frame size bounds (`16 MiB` ceiling), `DeviceCapabilities` and `OpenDisplayServer` dimension/FPS upper bounds, observer cleanup in `MacReceiverController` and `SenderController`, stale-session callback guards, iOS black-bar touch/Pencil filtering, and Metal mid-stream keyframe synchronization.
 - Export Mac-only rounded-square RGBA app icons with transparent padding while preserving the shared logo master and all mobile/web assets.
+- Serialize foreground keep-alive stop commands after promotion, preventing quick-disconnect crashes; exercise 20 immediate start/stop pairs in the isolated Android runtime.
+- Reject connection callbacks from retired Android server instances before they can mutate replacement lifecycle or foreground-service state; cover delayed delivery in the isolated runtime fixture.
 
 ## DisplayWeave v0.3.3 (2026-10-27)
 

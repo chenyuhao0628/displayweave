@@ -1,7 +1,7 @@
 export type Locale = "en" | "zh"
 export type EvidenceState = "verified" | "experimental" | "deferred"
 
-export const releaseTag = "v0.3.3"
+export const releaseTag = "v0.3.4"
 export const releaseBase = `https://github.com/chenyuhao0628/displayweave/releases/download/${releaseTag}`
 
 export type ReleaseAsset = {
@@ -179,7 +179,7 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} release`,
       title: "Download the stable release.",
       intro:
-        "Automatic Mac desktop matching estimates size from available displays. Existing settings are preserved; native 5K video is not supported and two-Mac hardware acceptance remains unverified. Android and macOS verify updates before installation.",
+        "Build 23 adds Android high-frame-rate trials and background keep-alive, opt-in native-resolution high refresh on eligible iPads, code hardening and rounded Mac icons. High-refresh performance remains experimental. Android and macOS verify updates before installation.",
       warning:
         "Pair DisplayWeave devices or choose the main-screen OpenDisplay compatibility mode. Mac uses a fixed Apple Development signature and remains unnotarized; iOS requires re-signing.",
       checksum: "Verify all downloads with SHA256SUMS.txt",
@@ -396,7 +396,7 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} 发布`,
       title: "下载正式版。",
       intro:
-        "Mac 桌面自动匹配根据可用显示器数据估算尺寸，并保留已有设置。目前不支持原生 5K 视频，双 Mac 实机验收尚未完成；Android 与 macOS 在安装更新前校验下载。",
+        "构建 23 增加 Android 高帧率试验与后台保活、符合条件 iPad 的可选原生分辨率高刷、代码加固和 Mac 圆角图标。高刷性能仍属实验性；Android 与 macOS 在安装更新前校验下载。",
       warning:
         "DisplayWeave 使用邀请配对；OpenDisplay 可从主界面选择兼容连接。Mac 使用固定 Apple Development 签名且未公证；iOS 需自行签名。",
       checksum: "使用 SHA256SUMS.txt 验证全部下载",

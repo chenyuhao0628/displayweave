@@ -2,19 +2,22 @@
 
 # 正式版发布检查清单
 
-当前版本：**v0.3.3 / 构建 22**。[发布说明](v0.3.3.zh-CN.md)、[准确文件与哈希](current.zh-CN.md)、[本地命令](local-release.zh-CN.md)。
+当前版本：**v0.3.4 / 构建 23**。[发布说明](v0.3.4.zh-CN.md)、[准确文件与哈希](current.zh-CN.md)、[本地命令](local-release.zh-CN.md)。
 
 ## 发行记录
 
-- [x] 经维护者授权自审原生源码 `bc928c3`，源码 CI `40447026849` 三项任务通过；未宣称独立审批。
-- [x] 本地自动检查和合成显示器证据见[匹配证据](../verification/automatic-desktop-matching.zh-CN.md)。首次两项 iOS 模拟器失败和隔离重跑通过均记录在[发布说明](v0.3.3.zh-CN.md)。
-- [x] 构建 22 的 Mac universal 签名、加固运行时、与准确下载构建 21 的身份连续性、独立 Sparkle Ed25519、原 Android 证书和无签名 arm64 iOS 均已验证。
+- [x] 维护者已授权本地签名与发布。工作从干净 `main` 开始；`displayweave/main` 从 `bfbe62e` 快进到 `3d5a97c`，包含已合并的 PR #25、#27、#28 和 #29。PR #29 的四项 CI 均通过。
+- [x] `origin/main` 已刷新到 `0f44853`。上游产品树与共同祖先相比有 417 个路径变更；整体整合延期，待单独兼容性审核。
+- [x] Mac ZIP/DMG 使用固定 Apple Development 身份签名；与准确下载的 v0.3.3 应用通过 designated requirement 连续性比较。已验证 universal arm64/x86_64 和加固运行时。未公证。
+- [x] iOS 设备 IPA 为无签名 arm64，包身份不变。Android Release 自测通过，APK 证书 SHA-256 与项目固定指纹一致。
+- [x] 已生成 Sparkle EdDSA 更新源和 Android 更新元数据；六项产物／更新源哈希以及归档、签名、身份检查通过。
+- [x] 完整本地门禁通过：65 组 Swift 套件及生产方法夹具、Mac universal Debug 与 iOS Simulator、Android `test assembleDebug lintDebug`、Apple 分发/签名/目录清理/文档/打包回归、36 项品牌导出、网站构建、双语文档、发行链接和 diff 检查。
+- [x] Apple↔Java 双向 TLS、Mac/iOS Keychain、安全 iOS runtime 与安全 Android runtime 通过。修复旧服务器回调和服务启停顺序后，Android runtime 连续验证三轮连接模式替换和后台监听关闭，确定性夹具检查旧回调及 20 次立即启停；扩展合成视频、指标与触控检查通过。
+- [ ] 草稿 Release 附件核验、匿名在线下载、Pages 更新源核验及发行 PR 合并结果，完成后记录。
 
-[发行 PR #24](https://github.com/chenyuhao0628/displayweave/pull/24)作为最终 CI、发布和 Pages 验证的合并记录。[v0.3.2 说明](v0.3.2.zh-CN.md)保留上一版本发行回执。
+Android 签名证书 SHA-256：`89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d`。高刷行为仍属实验性，不宣称实体性能。对应 Release 公开前，不将发行二进制标记为可下载。
 
-Android 签名证书 SHA-256：`89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d`。Mac 沿用 Apple Development 签名且未公证，iOS 需要重签。未交互重测 21 → 22 隐私权限；客户双 Mac 匹配、原生 5K 视频、Intel 运行和耐久仍待验收。
-
-本地安装包：`artifacts/releases/v0.3.3/`。[v0.3.1 说明](v0.3.1.zh-CN.md)与[早期清单](../archive/releases/release-checklist-through-v0.3.1.zh-CN.md)保留历史验证范围。
+上一版记录见 [v0.3.3](v0.3.3.zh-CN.md)、[v0.3.2](v0.3.2.zh-CN.md) 和[早期检查清单](../archive/releases/release-checklist-through-v0.3.1.zh-CN.md)。
 
 ## 后续每次发行
 

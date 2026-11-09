@@ -6,7 +6,7 @@ The Android receiver accepts DisplayWeave video over local WiFi or a Mac-managed
 
 The waiting screen follows the system light/dark theme. Settings scroll on small displays; the top-right Settings button remains available while streaming even when the status overlay is hidden.
 
-v0.3.3 includes [encrypted pairing](../docs/guides/secure-transport.md) and [GitHub-only updates](../docs/releases/automatic-updates.md). First generate an invitation under **Settings & Help → Security and pairing**, import it on the Mac, then select the device. LAN and ADB-forwarded USB use the same authenticated stream.
+v0.3.4 includes [encrypted pairing](../docs/guides/secure-transport.md) and [GitHub-only updates](../docs/releases/automatic-updates.md). First generate an invitation under **Settings & Help → Security and pairing**, import it on the Mac, then select the device. LAN and ADB-forwarded USB use the same authenticated stream.
 
 ## Requirements
 
@@ -14,11 +14,11 @@ v0.3.3 includes [encrypted pairing](../docs/guides/secure-transport.md) and [Git
 - WiFi: Mac and Android on the same trusted LAN with Nearby WiFi/Local Network discovery permission where required.
 - USB: a data-capable cable, Developer options, USB debugging, and approval of the Mac's RSA identity.
 
-## Install `v0.3.3`
+## Install `v0.3.4`
 
-2026-10-27: build 22 accompanies Mac automatic desktop matching. Android retains its existing behavior and original signing certificate. See the [release notes](../docs/releases/v0.3.3.md).
+2026-11-09: build 23 adds experimental high-frame-rate trials, active-session background keep-alive and receiver hardening. Old server callbacks cannot change a replacement session. The original signing certificate is retained; sustained high-refresh performance remains unverified. See the [release notes](../docs/releases/v0.3.4.md).
 
-Download `DisplayWeave-Android.apk` from [`v0.3.3`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/releases/release-checklist.md).
+Download `DisplayWeave-Android.apk` from [`v0.3.4`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/releases/release-checklist.md).
 
 ## Updates after the first install
 
