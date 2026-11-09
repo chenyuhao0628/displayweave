@@ -56,6 +56,7 @@ android {
     lint {
         disable += setOf(
             "AndroidGradlePluginVersion",
+            "CustomX509TrustManager",
             "IconLauncherShape",
             "IconLocation",
             "MonochromeLauncherIcon",
