@@ -63,6 +63,7 @@ public final class VideoStreamPolicySelfTest {
         testWifiTransportReplacesBlockedConnection();
         testWifiTransportDisconnectsOnControlBackpressure();
         testWifiTransportIgnoresSendAfterStop();
+        testDecoderWorkerShutdownRejectionGuard();
         System.out.println("VideoStreamPolicySelfTest PASS");
     }
 
@@ -1216,6 +1217,33 @@ public final class VideoStreamPolicySelfTest {
         } catch (RuntimeException error) {
             throw new AssertionError("send after stop must be a no-op", error);
         }
+    }
+
+    private static void testDecoderWorkerShutdownRejectionGuard() throws Exception {
+        java.nio.file.Path serverPath = java.nio.file.Paths.get(
+                "src/main/java/app/opendisplay/android/OpenDisplayServer.java");
+        if (!java.nio.file.Files.exists(serverPath)) {
+            serverPath = java.nio.file.Paths.get(
+                    "app/src/main/java/app/opendisplay/android/OpenDisplayServer.java");
+        }
+        if (!java.nio.file.Files.exists(serverPath)) {
+            serverPath = java.nio.file.Paths.get(
+                    "AndroidReceiver/app/src/main/java/app/opendisplay/android/OpenDisplayServer.java");
+        }
+        String source = new String(java.nio.file.Files.readAllBytes(serverPath), StandardCharsets.UTF_8);
+        int executeCount = 0;
+        int searchFrom = 0;
+        while (true) {
+            int idx = source.indexOf("decoderWorker.execute(", searchFrom);
+            if (idx < 0) {
+                break;
+            }
+            executeCount++;
+            String preceding = source.substring(Math.max(0, idx - 80), idx);
+            assertTrue(preceding.contains("try {"));
+            searchFrom = idx + "decoderWorker.execute(".length();
+        }
+        assertEquals(4, executeCount);
     }
 
     private static byte[] annexB(byte... nalHeaders) {
