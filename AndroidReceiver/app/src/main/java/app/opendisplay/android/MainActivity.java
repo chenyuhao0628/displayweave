@@ -493,7 +493,11 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         });
 
         ImageView logo = new ImageView(this);
-        logo.setImageResource(R.drawable.app_logo);
+        @SuppressWarnings("DiscouragedApi")
+        int logoRes = getResources().getIdentifier("app_logo", "drawable", getPackageName());
+        if (logoRes != 0) {
+            logo.setImageResource(logoRes);
+        }
         logo.setAdjustViewBounds(true);
         logo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         content.addView(logo, new LinearLayout.LayoutParams(dp(80), dp(80)));
