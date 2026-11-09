@@ -102,4 +102,4 @@ Keystore 保存在 Git 之外，密码从 macOS Keychain 读取。除非明确�
 
 本版默认使用固定证书指纹的双向 TLS 与邀请配对；不安全的旧版兼容需要在本机显式开启。传输私钥保存在 Android Keystore，与 APK 签名独立。ADB 授权会把 Mac 作为超出本应用范围的调试主机信任。参见[配对指南](../docs/guides/secure-transport.zh-CN.md)与 [SECURITY.zh-CN.md](../SECURITY.zh-CN.md)。
 
-[拟议会话控制及验证缺口](../docs/reference/android-receiver-session-controls.zh-CN.md)
+[Android 接收端会话控制及验证缺口](../docs/reference/android-receiver-session-controls.zh-CN.md)
