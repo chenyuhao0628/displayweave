@@ -2,7 +2,7 @@
 
 # 构建与安装 iOS 接收端
 
-v0.3.1 提供 `DisplayWeave-iOS-unsigned-resigning-input.ipa` 作为设备重签名输入。这是未签名的 arm64 设备构建，不是模拟器包，也不能直接安装。源码开发者通常可用 Xcode 和自己的有效签名身份构建，参见[当前产物](../releases/current.zh-CN.md)。
+v0.3.4 提供 `DisplayWeave-iOS-unsigned-resigning-input.ipa` 作为设备重签名输入。这是未签名的 arm64 设备构建，不是模拟器包，也不能直接安装。源码开发者通常可用 Xcode 和自己的有效签名身份构建，参见[当前产物](../releases/current.zh-CN.md)。
 
 ## 从源码构建
 

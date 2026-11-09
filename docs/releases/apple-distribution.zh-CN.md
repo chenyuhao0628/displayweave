@@ -40,7 +40,7 @@ python3 tools/apple-distribution.py preflight ios \
 以下仅为示例，先核对 GitHub 并选择未使用版本／构建号。将 `preflight` 换成 `build`，保留其余参数并追加：
 
 ```text
---version 0.3.4 --build-number 23 --output build/apple-distribution/v0.3.4
+--version 0.3.5 --build-number 24 --output build/apple-distribution/v0.3.5
 ```
 
 以上数字仅为示例，不代表预约或发行版本。输出必须是 `build/` 下的新目录，以私有权限创建并写入 `INCOMPLETE`。不会覆盖或删除既有目录。失败时保留日志和 archive，下次构建使用新目录。日志/profile 可能包含本地标识，整个目录不得提交 Git 或公开上传。

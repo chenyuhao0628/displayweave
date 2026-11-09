@@ -40,7 +40,7 @@ python3 tools/apple-distribution.py preflight ios \
 Example only: recheck GitHub and choose unused version/build values. Replace `preflight` with `build`, keeping all other arguments, and add:
 
 ```text
---version 0.3.4 --build-number 23 --output build/apple-distribution/v0.3.4
+--version 0.3.5 --build-number 24 --output build/apple-distribution/v0.3.5
 ```
 
 These are example numbers, not a reserved or released version. The output must be new and below `build/`. It is created with private directory permissions and an `INCOMPLETE` marker. Existing output is never overwritten or removed. Failed candidates retain logs and archives; choose a new directory for a new build. Logs and profiles can contain local identifiers; keep the whole directory out of Git and public uploads.

@@ -9,4 +9,4 @@ Keep these records for provenance. Their commands, limits, test counts, “curre
 - [Original designs](designs/README.md)
 - [Prior release notes and checklists](releases/README.md)
 
-Return to [current documentation](../README.md) or [v0.3.1 downloads](../releases/current.md). Git history and published releases are retained.
+Return to [current documentation](../README.md) or [v0.3.4 downloads](../releases/current.md). Git history and published releases are retained.

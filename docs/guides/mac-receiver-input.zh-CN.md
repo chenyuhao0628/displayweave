@@ -2,7 +2,7 @@
 
 # Mac 接收端键盘与鼠标
 
-v0.3.1 已包含。实施和证据记录于[功能台账](../archive/plans/feature-completion.zh-CN.md)。
+v0.3.4 已包含。实施和证据记录于[功能台账](../archive/plans/feature-completion.zh-CN.md)。
 
 ## 许可与范围
 

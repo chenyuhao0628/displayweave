@@ -2,7 +2,7 @@
 
 # Mac receiver keyboard and mouse
 
-Included in v0.3.1. Implementation and evidence are tracked in [the feature ledger](../archive/plans/feature-completion.md).
+Included in v0.3.4. Implementation and evidence are tracked in [the feature ledger](../archive/plans/feature-completion.md).
 
 ## Consent and scope
 

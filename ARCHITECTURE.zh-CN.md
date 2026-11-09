@@ -110,3 +110,7 @@ Mac HEVC 同时要求硬件编码器与接收端明确声明的硬件解码能�
 ## 桌面自动匹配（v0.3.3）
 
 Mac 接收端的逻辑桌面根据可用的发送端参考屏和经过校验的系统报告物理尺寸估算。尺寸缺失时按比例回退；移动接收端保留原有几何，已有偏好保持不变。屏幕变化按会话防抖，采用冷却和过期状态检查。Apple 视频范围仍为 4096×2304，见[匹配证据](docs/verification/automatic-desktop-matching.zh-CN.md)。
+
+## 高刷试验、解码器恢复与 Android 前台保活（v0.3.4）
+
+Android 与符合条件的 iOS/iPadOS 接收端提供可选的原生分辨率高刷能力范围，不扩大默认保守上限。Android 端通过 `ReceiverKeepAliveService` 在活动会话期间提升为用户可停止的 `connectedDevice` 前台通知，并将停止命令排在前台提升确认之后，避免快速重连触发 `ForegroundServiceDidNotStartInTimeException`。`DecoderStallRecoveryPolicy` 在 V2 会话中请求新的 `streamConfig`（`streamConfigRequired`），在旧版 V1 会话中就地重建 `H264SurfaceDecoder`。所有 `OpenDisplayServer.Listener` 回调均携带来源实例引用，防止旧实例异步回调污染当前 UI 状态。详见 [v0.3.4 发布说明](docs/releases/v0.3.4.zh-CN.md)与[Android 解码吞吐与恢复](docs/reference/android-decoder-throughput-recovery.zh-CN.md)。
