@@ -17,6 +17,8 @@ struct PhoneInfo: Decodable {
     let capabilities: [String]?
     let inputCaps: [String]?
     let maxFrameBytes: Int?
+    let udpMediaV1: Bool?
+    let udpPort: Int?
 
     let panel: PanelAnnouncement?
     let videoCaps: [VideoCapability]?
@@ -102,6 +104,13 @@ struct PhoneInfo: Decodable {
             supportsProtocolV2: supportsProtocolV2,
             capabilities: capabilities ?? [],
             advertisedBytes: maxFrameBytes)
+    }
+    var supportsUDPMediaV1: Bool {
+        udpMediaV1 == true || Set(capabilities ?? []).contains("udpMediaV1")
+    }
+    var advertisedUDPPort: UInt16? {
+        guard let udpPort, (1...65535).contains(udpPort) else { return nil }
+        return UInt16(udpPort)
     }
 
     private static func supportedFpsBucket(_ value: Int) -> Int {
