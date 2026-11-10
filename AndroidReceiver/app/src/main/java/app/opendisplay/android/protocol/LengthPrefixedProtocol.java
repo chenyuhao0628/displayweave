@@ -35,6 +35,17 @@ public final class LengthPrefixedProtocol {
             "maxFrameBytes",
             "binaryFrameHeaderV2"
     };
+    public static final String[] NEGOTIATED_WIFI_CAPABILITIES = new String[] {
+            "streamConfigAck",
+            "decoderReady",
+            "firstFrameRendered",
+            "sessionEpoch",
+            "configVersion",
+            "frameSequence",
+            "maxFrameBytes",
+            "binaryFrameHeaderV2",
+            "udpMediaV1"
+    };
 
     public enum FrameLengthFailure {
         INVALID_LENGTH,
@@ -232,7 +243,9 @@ public final class LengthPrefixedProtocol {
                 escape(installId),
                 NEGOTIATED_PROTOCOL_VERSION,
                 V2_DEFAULT_MAX_FRAME_BYTES,
-                stringArrayJson(NEGOTIATED_CAPABILITIES));
+                stringArrayJson("wifi".equalsIgnoreCase(transport)
+                        ? NEGOTIATED_WIFI_CAPABILITIES
+                        : NEGOTIATED_CAPABILITIES));
     }
 
     public static String touchJson(String phase, double x, double y, Double macClockMs) {

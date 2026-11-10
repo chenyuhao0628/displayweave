@@ -96,6 +96,10 @@ final class ReceiverProtocolSession {
         return configVersion;
     }
 
+    synchronized long lastFrameSequence() {
+        return lastFrameSequence;
+    }
+
     synchronized boolean matchesCurrentFrame(VideoFrameTelemetry telemetry) {
         if (!negotiatedV2) {
             return configured;

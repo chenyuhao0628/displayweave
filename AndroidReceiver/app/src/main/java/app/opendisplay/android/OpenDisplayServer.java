@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 import app.opendisplay.android.protocol.LengthPrefixedProtocol;
 import app.opendisplay.android.protocol.MacControlMessage;
 import app.opendisplay.android.protocol.BinaryFrameHeaderV2;
+import app.opendisplay.android.protocol.UdpMediaProtocol;
 
 public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private static final int PORT = 9000;
@@ -92,6 +93,9 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private volatile long lastVideoReceivedMs;
     private volatile long lastFrameRenderedMs;
     private volatile long lastDecoderRecoveryMs;
+    private volatile String lastConnectedPeerHost;
+    private volatile UdpMediaReceiverSession udpMediaReceiverSession;
+    private long udpFrameSequenceOffset;
 
     private static final class QueuedVideoFrame {
         final long generation;
@@ -258,6 +262,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     if (!connectionCoordinator.onConnected(generation, "socketAccepted")) {
                         return;
                     }
+                    stopUdpMediaSession();
+                    lastConnectedPeerHost = peer;
                     protocolSession.onConnected(generation);
                     frameSizeMetrics.resetCurrent();
                     resetClockSynchronization();
@@ -342,6 +348,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     if (!connectionCoordinator.onDisconnected(generation, "readerExited")) {
                         return;
                     }
+                    stopUdpMediaSession();
                     resetClockSynchronization();
                     lastVideoReceivedMs = 0;
                 });
@@ -375,6 +382,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         AndroidSecurityStore.stopPairingIfLoaded();
         listeningPort = 0;
         advertiser.stop();
+        stopUdpMediaSession();
         transport.stop(LengthPrefixedProtocol.goodbyeJson().getBytes(StandardCharsets.UTF_8));
         resetQueuedFrames();
         for (Runnable pending : transportEvents.shutdownNow()) {
@@ -699,6 +707,10 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                                 + " configVersion=" + configVersion);
                         return;
                     }
+                    if (udpMediaReceiverSession != null
+                            && udpMediaReceiverSession.sessionEpoch != sessionEpoch) {
+                        stopUdpMediaSession();
+                    }
                     streamConfigCommitted = true;
                     transport.setMaxFrameBytes(generation, negotiatedMaxFrameBytes);
                     resetQueuedFrames();
@@ -747,6 +759,45 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                             configVersion);
                     configureDecoderForIdentity(
                             generation, sessionEpoch, configVersion, previousConfig, config);
+            } else if ("udpMediaConfig".equals(type)) {
+                UdpMediaProtocol.ConfigMessage udpCfg = UdpMediaProtocol.ConfigMessage.parseJson(json);
+                if (udpCfg != null
+                        && "wifi".equalsIgnoreCase(transport.name())
+                        && protocolSession.sessionEpoch() == udpCfg.sessionEpoch) {
+                    stopUdpMediaSession();
+                    try {
+                        UdpMediaReceiverSession session = UdpMediaReceiverSession.start(
+                                generation,
+                                udpCfg,
+                                lastConnectedPeerHost,
+                                new UdpMediaReceiverSession.Listener() {
+                                    @Override
+                                    public void onFrameReady(
+                                            long gen,
+                                            long epoch,
+                                            UdpMediaProtocol.FrameEnvelope frame) {
+                                        executeTransportEvent(() ->
+                                                handleUdpFrame(gen, epoch, frame));
+                                    }
+
+                                    @Override
+                                    public void onKeyframeNeeded(
+                                            long gen, long epoch, String reason) {
+                                        executeTransportEvent(() -> {
+                                            if (connectionCoordinator.isCurrent(gen)
+                                                    && protocolSession.sessionEpoch() == epoch) {
+                                                requestKeyframe();
+                                            }
+                                        });
+                                    }
+                                });
+                        udpMediaReceiverSession = session;
+                        sendJson(UdpMediaProtocol.ConfigMessage.readyJson(
+                                udpCfg.sessionEpoch, session.localPort()));
+                    } catch (java.io.IOException error) {
+                        android.util.Log.w("DisplayWeave", "UDP media receiver start failed", error);
+                    }
+                }
             }
         } catch (Exception error) {
             android.util.Log.e(
@@ -793,6 +844,55 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
     private void sendPingIfConnected() {
         sendJson(LengthPrefixedProtocol.pingJson(LengthPrefixedProtocol.nowMs()));
+    }
+
+    private void stopUdpMediaSession() {
+        UdpMediaReceiverSession active = udpMediaReceiverSession;
+        udpMediaReceiverSession = null;
+        udpFrameSequenceOffset = 0;
+        if (active != null) {
+            active.close();
+        }
+    }
+
+    private void handleUdpFrame(
+            long generation,
+            long sessionEpoch,
+            UdpMediaProtocol.FrameEnvelope envelope) {
+        if (!connectionCoordinator.isCurrent(generation)
+                || protocolSession.sessionEpoch() != sessionEpoch) {
+            return;
+        }
+        VideoStreamConfig activeConfig = currentStreamConfig;
+        int flags = (activeConfig != null && activeConfig.isHevc())
+                ? BinaryFrameHeaderV2.FLAG_HEVC
+                : BinaryFrameHeaderV2.FLAG_H264;
+        if (envelope.isKeyframe) {
+            flags |= BinaryFrameHeaderV2.FLAG_KEYFRAME | BinaryFrameHeaderV2.FLAG_CODEC_CONFIG;
+        }
+        long lastSeq = protocolSession.lastFrameSequence();
+        long candidateSeq = envelope.frameId + udpFrameSequenceOffset;
+        if (candidateSeq <= lastSeq) {
+            udpFrameSequenceOffset = (lastSeq - envelope.frameId) + 1L;
+            candidateSeq = envelope.frameId + udpFrameSequenceOffset;
+        }
+        long configVer = envelope.configVersion > 0
+                ? envelope.configVersion
+                : Math.max(1L, protocolSession.configVersion());
+        long capMs = Math.max(0L, envelope.captureTimestampMs);
+        long sndMs = Math.max(capMs, System.currentTimeMillis());
+        try {
+            byte[] dwv2 = BinaryFrameHeaderV2.encode(
+                    flags,
+                    sessionEpoch,
+                    configVer,
+                    candidateSeq,
+                    capMs,
+                    sndMs,
+                    envelope.annexB);
+            enqueueVideoFrame(generation, dwv2, null);
+        } catch (IllegalArgumentException ignored) {
+        }
     }
 
     private synchronized void resetClockSynchronization() {
@@ -1370,6 +1470,10 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             int renderedFps = (int) Math.round(renderedFrames * 1000.0 / elapsed);
             int decodedFps = (int) Math.round(decodedFrames * 1000.0 / elapsed);
             int receivedFps = (int) Math.round(receivedFrames * 1000.0 / elapsed);
+            UdpMediaReceiverSession activeUdp = udpMediaReceiverSession;
+            if (activeUdp != null) {
+                activeUdp.updateTelemetry(lastRttMs, queueDepthAndroid * 8, renderedFps);
+            }
             AndroidDropTracker.Snapshot dropSnapshot =
                     androidDropTracker.snapshotAndResetWindow();
             int dropped = (int) Math.min(
