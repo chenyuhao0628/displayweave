@@ -68,6 +68,26 @@ class ReleasePackagingTests(unittest.TestCase):
         text = f'| `DisplayWeave-macOS.zip` | `{"a" * 64}` |'
         self.assertEqual(integrity.check_table(text, expected), [])
 
+    def test_corrupt_android_feed_json_reports_error(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "public").mkdir()
+            appcast_bytes = b"<rss></rss>"
+            corrupt_bytes = b"{corrupt json"
+            (root / "public/appcast.xml").write_bytes(appcast_bytes)
+            (root / "public/android-update.json").write_bytes(corrupt_bytes)
+            errors = integrity.check_public_feeds(
+                root,
+                {
+                    "appcast.xml": hashlib.sha256(appcast_bytes).hexdigest(),
+                    "android-update.json": hashlib.sha256(corrupt_bytes).hexdigest(),
+                    "DisplayWeave-Android.apk": "b" * 64,
+                },
+            )
+            self.assertEqual(len(errors), 1)
+            self.assertIn("public/android-update.json: invalid JSON", errors[0])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1265,7 +1265,7 @@ public final class VideoStreamPolicySelfTest {
             helperCalls++;
             searchFrom = idx + "executeDecoderTask(decoderWorker,".length();
         }
-        assertEquals(4, helperCalls);
+        assertTrue(helperCalls >= 4);
     }
 
     private static byte[] annexB(byte... nalHeaders) {

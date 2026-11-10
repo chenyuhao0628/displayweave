@@ -35,16 +35,20 @@ adaptive bitrate controller.
 
 ## Stall and Codec Failure Recovery (v0.3.4 – v0.3.5)
 
-When `DecoderStallRecoveryPolicy` detects a render stall (`>= 2200 ms` since the
-last rendered frame while video packets continue arriving, with a `4000 ms`
-cooldown) or `H264SurfaceDecoder` reports a codec failure, negotiated V2 sessions
-set `decoderAwaitingFreshConfig = true` on `decoderWorker` and send `{"type":"kf","streamConfigRequired":true}`
-so the Mac resends `streamConfig` before forcing an IDR keyframe. Legacy V1
-sessions (`!negotiatedV2`) recreate `H264SurfaceDecoder` in place on
-`decoderWorker` using the active `VideoStreamConfig` and request an IDR keyframe
-without permanently dropping subsequent frames. During `onSurfaceLost()`,
-`decoder.release()` also runs on `decoderWorker` so release and recovery stay
-serialized.
+When `DecoderStallRecoveryPolicy` detects a render stall (`>= 2000 ms` since the
+last rendered frame while video packets arrived within `1500 ms`, with a `5000 ms`
+cooldown) or `H264SurfaceDecoder` reports a codec failure, `releaseCodecForRecovery`
+sets `decoderAwaitingFreshConfig = requireFreshConfig` under `synchronized (this)` on
+the calling thread and dispatches `activeDecoder.release()` on `decoderWorker`.
+Negotiated V2 render stalls and H.264 codec failures set `decoderAwaitingFreshConfig = true`
+and send `{"type":"kf","reason":"decoderReset","streamConfigRequired":true}` so the Mac
+resends `streamConfig` before forcing an IDR keyframe; HEVC codec failures also require
+a fresh config and send `{"type":"codecFailure","codec":"hevc","message":"..."}` to
+trigger H.264 fallback. Legacy V1 render stalls and H.264 codec failures (`!negotiatedV2`
+and non-HEVC) recreate `H264SurfaceDecoder` in place on `decoderWorker` using the active
+`VideoStreamConfig` and send `{"type":"kf"}` without permanently dropping subsequent
+frames. During `onSurfaceLost()`, `decoder.release()` also runs on `decoderWorker` so
+release and recovery stay serialized.
 
 ## Surface Refresh Mapping
 

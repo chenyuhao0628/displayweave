@@ -32,9 +32,13 @@ def check_public_feeds(root, expected):
             errors.append(f"public/{name}: SHA-256 {actual} != expected {expected[name]}")
     android_feed = root / "public" / "android-update.json"
     if android_feed.is_file():
-        payload = json.loads(android_feed.read_text())
-        if payload.get("sha256") != expected["DisplayWeave-Android.apk"]:
-            errors.append("public/android-update.json: embedded APK sha256 mismatch")
+        try:
+            payload = json.loads(android_feed.read_text())
+        except json.JSONDecodeError as exc:
+            errors.append(f"public/android-update.json: invalid JSON ({exc})")
+        else:
+            if payload.get("sha256") != expected["DisplayWeave-Android.apk"]:
+                errors.append("public/android-update.json: embedded APK sha256 mismatch")
     return errors
 
 

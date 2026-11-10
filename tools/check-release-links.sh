@@ -71,6 +71,8 @@ grep -Fq "\"sha256\": \"${hashes[0]}\"" public/android-update.json || {
   exit 1
 }
 
+# Indices 0..5 in `hashes` match `ASSETS` order in tools/check-release-integrity.py:
+# 0: DisplayWeave-Android.apk, 4: appcast.xml, 5: android-update.json.
 appcast_sha="$(shasum -a 256 public/appcast.xml | awk '{ print $1 }')"
 [[ "$appcast_sha" == "${hashes[4]}" ]] || {
   echo "public/appcast.xml SHA-256 ($appcast_sha) does not match release table (${hashes[4]})" >&2

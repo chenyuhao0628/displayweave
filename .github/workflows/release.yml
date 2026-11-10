@@ -101,6 +101,10 @@ jobs:
               -p "DisplayWeave-macOS.zip" \
               -D "$baseline_dir"
             ditto -x -k "$baseline_dir/DisplayWeave-macOS.zip" "$baseline_dir"
+            test -d "$baseline_dir/DisplayWeave.app" || {
+              echo "baseline $baseline_tag: DisplayWeave.app not found after unpack" >&2
+              exit 1
+            }
             echo "DISPLAYWEAVE_MAC_BASELINE_APP=$baseline_dir/DisplayWeave.app" >> "$GITHUB_ENV"
           fi
           keystore="$RUNNER_TEMP/displayweave-android-release.jks"

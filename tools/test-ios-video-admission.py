@@ -65,9 +65,10 @@ if not args.source_ref:
     )
     metal_source = (root / "iOS/MetalVideoRenderer.swift").read_text()
     draw_section = metal_source[metal_source.index("private func draw("):]
-    resize_return_idx = draw_section.index("return")
+    resize_block_idx = draw_section.index("if needsDrawableResize {")
+    resize_drain_idx = draw_section.index("self?.drainPending()", resize_block_idx)
     next_drawable_idx = draw_section.index("metalLayer.nextDrawable()")
-    assert resize_return_idx < next_drawable_idx, (
+    assert resize_block_idx < resize_drain_idx < next_drawable_idx, (
         "MetalVideoRenderer.draw must return and wait for main-thread drawableSize resize before calling nextDrawable()"
     )
     assert "resetGeneration" in metal_source and "latestGeneration" in metal_source, (
@@ -203,6 +204,8 @@ func runConfigureVideoAndMetalTests() {{
         Thread.sleep(forTimeInterval: 0.05)
         precondition(renderer.metalLayer.drawableSize == CGSize(width: 256, height: 128),
                      "generation 4 frame arriving before reset(forGeneration: 4) must advance resetGeneration, cancel generation 3 resize, and preserve generation 4 resize")
+    }} else {{
+        print("SKIP: MetalVideoRenderer unavailable; Metal generation tests not run")
     }}
 }}
 """
