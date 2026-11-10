@@ -19,8 +19,8 @@ public final class ReceiverExperienceSelfTest {
         require(!CursorImagePolicy.accepts(600000, 32, 32, 0, 0, .02, .03), "compressed size bound");
         require(!CursorImagePolicy.accepts(1024, 32, 32, 0, Double.NaN, .02, .03), "invalid anchor rejected");
         require(!CursorImagePolicy.accepts(1024, 32, 32, 0, 0, 2, .03), "cursor cannot cover more than the video");
-        require(!FrameQueuePolicy.expired(100, 100 + 149_000_000), "short scheduling bursts remain admissible");
-        require(FrameQueuePolicy.expired(100, 100 + 150_000_000), "both FIFOs share one 150 ms age budget");
+        require(!FrameQueuePolicy.expired(100, 100 + 74_000_000), "short scheduling bursts remain admissible");
+        require(FrameQueuePolicy.expired(100, 100 + 75_000_000), "both FIFOs share one 75 ms age budget");
         ReferenceChainRecovery chain = new ReferenceChainRecovery();
         require(chain.breakChain(1), "expired predictive frame starts recovery");
         require(chain.shouldReject(false, 2), "dependent frame cannot bypass expired reference");
