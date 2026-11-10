@@ -11,15 +11,15 @@ DisplayWeave publishes immutable Mac and Android artifacts in GitHub Releases an
 - Android artifact: `DisplayWeave-Android.apk`
 
 This release is
-[`v0.3.4`](https://github.com/chenyuhao0628/displayweave/releases).
+[`v0.3.5`](https://github.com/chenyuhao0628/displayweave/releases).
 Install a current APK manually once; later builds use the in-app channel automatically.
 This release includes both the guided DMG and the Sparkle ZIP payload.
 
-The v0.3.4 Mac build uses a pinned Apple Development identity and is not notarized. Sparkle authenticates the ZIP with the unchanged embedded EdDSA key. Update authenticity and permission continuity are separate: packaging checks the Mac signing identity, while Sparkle verifies the update signature. Neither makes this a Developer ID notarized release.
+The v0.3.5 Mac build uses a pinned Apple Development identity and is not notarized. Sparkle authenticates the ZIP with the unchanged embedded EdDSA key. Update authenticity and permission continuity are separate: packaging checks the Mac signing identity, while Sparkle verifies the update signature. Neither makes this a Developer ID notarized release.
 
-2026-11-09: build 23 adds opt-in high-refresh trials on Android and eligible iPad receivers, hardening fixes and rounded Mac icon tiles. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](v0.3.4.md) for changes, permission continuity and verification limits.
+2026-11-10: build 24 hardens Android legacy V1 decoder recovery and asynchronous codec release, iOS Metal drawable/generation synchronization and rotated video admission, Mac receiver decoded-frame window gating, ADB/usbmux pipe and handshake bounds, and bilingual documentation. Downloads use GitHub Releases only; Mac and Android update metadata uses the project GitHub Pages site. See the [release notes](v0.3.5.md) for changes, permission continuity and verification limits.
 
-The source workflow requires a pinned Apple signing identity and an upgrade comparison; see [permission continuity](../guides/mac-permissions.md). Previous release assets remain immutable; v0.3.4 was compared against the exact downloaded v0.3.3 app and retains its signing identity. See [local releases](local-release.md) for reproducible commands and validation requirements.
+The source workflow requires a pinned Apple signing identity and an upgrade comparison; see [permission continuity](../guides/mac-permissions.md). Previous release assets remain immutable; v0.3.5 was compared against the v0.3.4 app and retains its signing identity. See [local releases](local-release.md) for reproducible commands and validation requirements.
 
 ## One-time user migration
 
@@ -51,7 +51,7 @@ Use [local publication](local-release.md) for the current stable release. It use
 4. Upload eight explicit files to a draft GitHub Release: four binaries, two feeds, source archive and checksums. Verify remote bytes before publishing.
 5. Publish the Release before merging the publication PR. The main-branch Pages deployment then publishes the website and feeds; compare both live feeds byte-for-byte with the Release assets.
 
-The hosted **Release** workflow has no maintainer Mac identity or previous-release baseline and deliberately stops at preflight. It also does not generate the required source archive. Do not use it as a complete publication path until these prerequisites are provisioned and that missing source step is implemented. Its Sparkle/Android secret names remain in the workflow for future setup; no new credentials are uploaded by this release.
+The hosted **Release** workflow has no maintainer Mac identity on default runners and deliberately stops at preflight. Do not use it as a complete publication path until a runner is explicitly provisioned with the pinned Mac signing identity and required secrets. Its Sparkle/Android secret names remain in the workflow for future setup; no new credentials are uploaded by this release.
 
 Never replace a published asset or use `--clobber`. Every correction receives a new higher build number.
 

@@ -85,6 +85,7 @@ struct VideoLayerView: UIViewRepresentable {
             cancelPress()
             stopDisplayLink()
             metalRenderer?.onPresented = nil
+            metalRenderer?.reset()
             metalRenderer?.metalLayer.removeFromSuperlayer()
             metalRenderer = nil
             if sampleBufferLayer?.superlayer === layer { sampleBufferLayer?.removeFromSuperlayer() }
@@ -147,12 +148,13 @@ struct VideoLayerView: UIViewRepresentable {
 
         override func layoutSubviews() {
             super.layoutSubviews()
+            let video = receiver?.videoSize ?? .zero
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             if let renderer = metalRenderer {
                 // The metal layer scales its drawable to fill its frame, so
                 // the frame itself must be the aspect-fit rect.
-                renderer.metalLayer.frame = videoRect() ?? bounds
+                renderer.updateLayout(frame: videoRect() ?? bounds, drawableSize: video)
             } else {
                 // AVSBDL aspect-fits internally (videoGravity) — full bounds.
                 layer.sublayers?.first?.frame = bounds
@@ -161,7 +163,6 @@ struct VideoLayerView: UIViewRepresentable {
             updateCursorLayout()
             CATransaction.commit()
             // Rotation diagnostics — one line per layout change.
-            let video = receiver?.videoSize ?? .zero
             let line = "layout: bounds=\(Int(bounds.width))x\(Int(bounds.height))"
                 + " video=\(Int(video.width))x\(Int(video.height))"
                 + " layer=\(Int(layer.sublayers?.first?.frame.width ?? -1))x\(Int(layer.sublayers?.first?.frame.height ?? -1))"
@@ -183,7 +184,7 @@ struct VideoLayerView: UIViewRepresentable {
         }
 
         func moveCursor(x: Double, y: Double, visible: Bool) {
-            cursorNorm = CGPoint(x: x, y: y)
+            cursorNorm = CGPoint(x: min(max(x, 0), 1), y: min(max(y, 0), 1))
             cursorVisible = visible
             cursorDirty = true
             if displayLink == nil { presentCursor() }
@@ -193,8 +194,8 @@ struct VideoLayerView: UIViewRepresentable {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             cursorLayer.contents = image.cgImage
-            cursorLayer.anchorPoint = anchor
-            cursorNormSize = normSize
+            cursorLayer.anchorPoint = CGPoint(x: min(max(anchor.x, 0), 1), y: min(max(anchor.y, 0), 1))
+            cursorNormSize = CGSize(width: min(max(normSize.width, 0), 1), height: min(max(normSize.height, 0), 1))
             cursorLayer.isHidden = !cursorVisible
             updateCursorLayout()
             CATransaction.commit()
@@ -260,7 +261,11 @@ struct VideoLayerView: UIViewRepresentable {
 
         /// A new connection owns a new gesture epoch; old touches cannot cross it.
         func resetInput(resetGestures: Bool = true) {
-            if resetGestures { tapEvents = PencilGestureDeduplicator(); squeezeEvents = PencilGestureDeduplicator() }
+            if resetGestures {
+                tapEvents = PencilGestureDeduplicator()
+                squeezeEvents = PencilGestureDeduplicator()
+                metalRenderer?.reset(forGeneration: receiver?.inputGeneration)
+            }
             holdTimer?.cancel(); holdTimer = nil
             _ = press.cancel()
             touchGeneration = nil; pencilTouch = nil; pencilGeneration = nil
@@ -352,7 +357,17 @@ struct VideoLayerView: UIViewRepresentable {
             switch recognizer.state {
             case .began, .changed:
                 let point = recognizer.location(in: self)
-                guard pencilTouch == nil, isInsideVideoRect(point), let norm = normalized(point) else { return }
+                guard pencilTouch == nil else { return }
+                guard isInsideVideoRect(point), let norm = normalized(point) else {
+                    if pencilHoverActive {
+                        if let generation = hoverGeneration {
+                            receiver?.endPencilProximity(x: lastPencil?.x ?? 0.5, y: lastPencil?.y ?? 0.5, generation: generation)
+                        }
+                        hoverGeneration = nil
+                        pencilHoverActive = false
+                    }
+                    return
+                }
                 cancelFingerPress()
                 pencilHoverActive = true
                 if hoverGeneration == nil { hoverGeneration = receiver?.inputGeneration }

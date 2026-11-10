@@ -2,7 +2,7 @@
 
 # Advanced Pencil input
 
-Included in v0.3.1. Actual Pencil hardware and drawing-application acceptance remain pending.
+Included in v0.3.5. Actual Pencil hardware and drawing-application acceptance remain pending.
 
 ## Behavior and boundaries
 

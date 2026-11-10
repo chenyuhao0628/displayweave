@@ -2,7 +2,7 @@
 
 # Support
 
-For v0.3.1, use the [current downloads](docs/releases/current.md), [pairing guide](docs/guides/secure-transport.md) and [troubleshooting paths](docs/README.md). Check Screen Recording, Accessibility when returning input, and Local Network permissions as applicable. Keep the receiving app in the foreground. For LAN connections, check the same network, multicast discovery and VPN/filter behavior.
+For v0.3.5, use the [current downloads](docs/releases/current.md), [pairing guide](docs/guides/secure-transport.md) and [troubleshooting paths](docs/README.md). Check Screen Recording, Accessibility when returning input, and Local Network permissions as applicable. Keep the receiving app in the foreground. For LAN connections, check the same network, multicast discovery and VPN/filter behavior.
 
 ## Report a reproducible issue
 
@@ -12,4 +12,4 @@ Android supports both LAN and wired ADB-forward USB. For USB, record whether the
 
 ## Known boundaries
 
-Wi-Fi performance depends on network conditions. Static desktops can produce fewer frames without indicating a disconnect. Mac-to-Mac, high refresh, real Pencil/Intel/multi-device performance and endurance still need broader physical acceptance. Mac v0.3.1 uses Apple Development signing and is unnotarized; iOS needs personal signing and may need reprovisioning. See [release verification and limits](docs/releases/v0.3.1.md) and [Mac permission recovery](docs/guides/mac-permissions.md).
+Wi-Fi performance depends on network conditions. Static desktops can produce fewer frames without indicating a disconnect. Mac-to-Mac, high refresh, real Pencil/Intel/multi-device performance and endurance still need broader physical acceptance. Mac v0.3.5 uses Apple Development signing and is unnotarized; iOS needs personal signing and may need reprovisioning. See [release verification and limits](docs/releases/v0.3.5.md) and [Mac permission recovery](docs/guides/mac-permissions.md).

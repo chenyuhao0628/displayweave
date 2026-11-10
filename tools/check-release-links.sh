@@ -4,7 +4,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
-tag="v0.3.4"
+tag="v0.3.5"
 assets=(
   "DisplayWeave-Android.apk"
   "DisplayWeave-macOS.zip"
@@ -12,31 +12,43 @@ assets=(
   "DisplayWeave-iOS-unsigned-resigning-input.ipa"
   "appcast.xml"
   "android-update.json"
-  "DisplayWeave-v0.3.4-source.tar.gz"
+  "DisplayWeave-v0.3.5-source.tar.gz"
   "SHA256SUMS.txt"
 )
 hashes=(
-  "30d06443d73c0b39157fb17e4a8ec97d2d56009fda2ad184a5a8c03e19230d4b"
-  "0b5d6e4c97bf77e2c0354b258e36950711e5a2ef35b1279c8bb191426c5c4db6"
-  "afb5f775f2dcee8765a5f1bb490659b6b85d9f4d10112fc5f1f2d8e44538a6c6"
-  "a23e19b9d34d340396439fa6833d8ec842c78f9c40121f088e66c18ba0ed12e9"
-  "205ab46a6695207c7fef66cd8950c208e2e47d66a37967f8106e69c9bcc73e4e"
-  "1d0684da22defbfdbd4c82cc9844d71426611525b7660412ad05d9c9d5105a50"
+  "25387fafb821321797a3d6a4ef79101ce89225b613edb63c9e65f642912e1db6"
+  "eb88bf026dba990b0f1d3bc89dfcd7963884be79f6409b33206d43b8675aa6bc"
+  "ddcbe28b170d2efa9f160ad1d376986cbf137f0a5af7bcba9352266db2a7ec70"
+  "b79c1bbbe23c8a07b57df9be52d808ac68aee9471edd716251c81681253560b1"
+  "894dd68e7ad5cf4496f434544d903ecf83208e4a61a49f42c3159782d2694487"
+  "b69f767496ebbfdc7e7a75c54d15b78ddd7f77738cbd3056509b9009175d75ba"
 )
 sources=(
   src index.html README.md README.zh-CN.md
   AndroidReceiver/README.md AndroidReceiver/README.zh-CN.md
   docs/releases/current.md docs/releases/current.zh-CN.md
-  docs/releases/v0.3.4.md
-  docs/releases/v0.3.4.zh-CN.md
+  docs/releases/v0.3.5.md
+  docs/releases/v0.3.5.zh-CN.md
   docs/releases/release-checklist.md docs/releases/release-checklist.zh-CN.md
   docs/releases/automatic-updates.md docs/releases/automatic-updates.zh-CN.md
 )
 
-grep -R -Fq "$tag" "${sources[@]}" || {
-  echo "missing release tag: $tag" >&2
-  exit 1
-}
+tag_sources=(
+  src README.md README.zh-CN.md
+  AndroidReceiver/README.md AndroidReceiver/README.zh-CN.md
+  docs/releases/current.md docs/releases/current.zh-CN.md
+  "docs/releases/$tag.md"
+  "docs/releases/$tag.zh-CN.md"
+  docs/releases/release-checklist.md docs/releases/release-checklist.zh-CN.md
+  docs/releases/automatic-updates.md docs/releases/automatic-updates.zh-CN.md
+)
+
+for source in "${tag_sources[@]}"; do
+  grep -R -Fq "$tag" "$source" || {
+    echo "missing release tag $tag in $source" >&2
+    exit 1
+  }
+done
 
 grep -Fq "export const releaseTag = \"$tag\"" src/content.ts || {
   echo "site releaseTag does not match current release: $tag" >&2
@@ -52,6 +64,21 @@ grep -Fq "\"versionName\": \"${tag#v}\"" public/android-update.json || {
 }
 grep -Fq "<sparkle:shortVersionString>${tag#v}</sparkle:shortVersionString>" public/appcast.xml || {
   echo "checked-in Sparkle feed does not match current release: $tag" >&2
+  exit 1
+}
+grep -Fq "\"sha256\": \"${hashes[0]}\"" public/android-update.json || {
+  echo "checked-in Android feed APK sha256 does not match current release: ${hashes[0]}" >&2
+  exit 1
+}
+
+appcast_sha="$(shasum -a 256 public/appcast.xml | awk '{ print $1 }')"
+[[ "$appcast_sha" == "${hashes[4]}" ]] || {
+  echo "public/appcast.xml SHA-256 ($appcast_sha) does not match release table (${hashes[4]})" >&2
+  exit 1
+}
+android_feed_sha="$(shasum -a 256 public/android-update.json | awk '{ print $1 }')"
+[[ "$android_feed_sha" == "${hashes[5]}" ]] || {
+  echo "public/android-update.json SHA-256 ($android_feed_sha) does not match release table (${hashes[5]})" >&2
   exit 1
 }
 
@@ -73,11 +100,19 @@ if grep -Fq 'apkFallbackUrl' public/android-update.json; then
   exit 1
 fi
 
-for asset in "${assets[@]}"; do
-  grep -R -Fq "$asset" "${sources[@]}" || {
-    echo "missing release asset reference: $asset" >&2
-    exit 1
-  }
+asset_docs=(
+  docs/releases/current.md
+  docs/releases/current.zh-CN.md
+  "docs/releases/$tag.md"
+  "docs/releases/$tag.zh-CN.md"
+)
+for doc in "${asset_docs[@]}"; do
+  for asset in "${assets[@]}"; do
+    grep -Fq "$asset" "$doc" || {
+      echo "missing release asset reference $asset in $doc" >&2
+      exit 1
+    }
+  done
 done
 
 for hash in "${hashes[@]}"; do
@@ -110,6 +145,7 @@ workflow_contract=(
   "DISPLAYWEAVE_ANDROID_STORE_PASSWORD"
   "DISPLAYWEAVE_ANDROID_KEY_ALIAS"
   "DISPLAYWEAVE_ANDROID_KEY_PASSWORD"
+  "DISPLAYWEAVE_MAC_BASELINE_APP"
   "Mac/OpenSidecarMac.entitlements"
   "mac_signing.py xcode-settings"
   "DisplayWeave-macOS.zip"
@@ -117,6 +153,7 @@ workflow_contract=(
   "DisplayWeave-Android.apk"
   "appcast.xml"
   "android-update.json"
+  "-source.tar.gz"
   "apksigner"
   "CODE_SIGNING_ALLOWED=NO"
   "if: always()"
@@ -126,7 +163,7 @@ workflow_contract=(
   "needs.build_updates.result == 'success'"
 )
 for marker in "${workflow_contract[@]}"; do
-  grep -Fq "$marker" "$workflow" || {
+  grep -Fq -- "$marker" "$workflow" || {
     echo "release workflow is missing update contract marker: $marker" >&2
     exit 1
   }

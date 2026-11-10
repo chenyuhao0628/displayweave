@@ -38,6 +38,7 @@ knowledge_base:
       - "AGENTS.md"
       - "ARCHITECTURE.md"
       - "CONTRIBUTING.md"
+      - "docs/README.md"
       - "docs/development/workflow.md"
       - "docs/development/ui-guidelines.md"
 

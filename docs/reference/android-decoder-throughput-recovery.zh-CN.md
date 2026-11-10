@@ -1,4 +1,4 @@
-[English](android-decoder-throughput-recovery.md) | 简体中文
+[English](android-decoder-throughput-recovery.md) | [简体中文](android-decoder-throughput-recovery.zh-CN.md)
 
 # Android 解码吞吐与恢复
 
@@ -17,6 +17,10 @@ MediaCodec 输入和输出改用异步 Callback。Codec Input Buffer 可用前�
 ## 参考链安全
 
 如果已编码的预测帧在解码前被替换，Receiver 会标记参考链已断裂、请求关键帧，并在关键帧到达前拒绝依赖旧参考的普通帧。新增非拥塞 Drop 原因 `referenceChainBroken`；自适应码率控制器不得把它解释为网络拥塞。
+
+## 停滞与编解码失败恢复（v0.3.4 – v0.3.5）
+
+当 `DecoderStallRecoveryPolicy` 检测到渲染停滞（持续收到视频包但距上次渲染帧 `>= 2200 ms`，冷却时间 `4000 ms`）或 `H264SurfaceDecoder` 上报编解码失败时，已协商 V2 的会话会在 `decoderWorker` 上标记 `decoderAwaitingFreshConfig = true` 并发送 `{"type":"kf","streamConfigRequired":true}`，由 Mac 先重发 `streamConfig` 再强制输出 IDR 关键帧；旧版 V1 会话（`!negotiatedV2`）则在 `decoderWorker` 上使用当前 `VideoStreamConfig` 就地重建 `H264SurfaceDecoder` 并请求 IDR 关键帧，避免恢复后永久丢弃后续视频帧。`onSurfaceLost()` 期间的 `decoder.release()` 同样派发至 `decoderWorker` 串行执行。
 
 ## Surface 刷新率映射
 

@@ -2,7 +2,7 @@
 
 # Secure connections and pairing
 
-Included in v0.3.1 on Apple and Android. Update sender and receiver, then follow the invitation workflow below. Older applications require an explicit insecure legacy choice; see [release notes](../releases/v0.3.1.md).
+Included in v0.3.5 on Apple and Android. Update sender and receiver, then follow the invitation workflow below. Older applications require an explicit insecure legacy choice; see [release notes](../releases/v0.3.5.md).
 
 ## Connect for the first time
 

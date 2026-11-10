@@ -53,9 +53,9 @@ Android 接收端在 9000 端口提供 TCP Server，渲染 Surface 返回时会�
 
 ## 安全边界
 
-- v0.3.1 的 Apple 与 Android 默认使用固定证书指纹的双向 TLS 和显式邀请配对；旧版兼容需主动启用且仅限可信网络。详见[配对指南](docs/guides/secure-transport.zh-CN.md)。
+- v0.3.5 的 Apple 与 Android 默认使用固定证书指纹的双向 TLS 和显式邀请配对；旧版兼容需主动启用且仅限可信网络。详见[配对指南](docs/guides/secure-transport.zh-CN.md)。
 - ADB RSA 授权会把 Mac 作为广泛调试主机信任，不只限 DisplayWeave。
-- macOS v0.3.1 使用固定 Apple Development 身份，仍未公证；首次从临时签名迁移可能需要再授权，后续构建检查签名连续性。
+- macOS v0.3.5 使用固定 Apple Development 身份，仍未公证；首次从临时签名迁移可能需要再授权，后续构建检查签名连续性。
 - Android APK 使用保存在 Git 之外的项目离线密钥库。
 - iOS 公开产物是未签名自签输入包。
 - `CGVirtualDisplay` 是私有 API，可能随 macOS 版本变化。
@@ -72,7 +72,7 @@ Mac 使用 Apple legacy 帧，不启用 Android DWV2。详见[设计](docs/refer
 
 ## 源码职责与有界任务（2026-10-16）
 
-源码应用在同一 Wi-Fi 或以太网局域网支持互斥的 Mac 发送/接收角色；v0.3.0-preview.1 将其作为实验功能打包，实机验收仍待完成。镜像捕获现有显示器，扩展创建虚拟显示器。
+源码应用在同一 Wi-Fi 或以太网局域网支持互斥的 Mac 发送/接收角色；v0.3.5 将其作为实验功能打包，实机验收仍待完成。镜像捕获现有显示器，扩展创建虚拟显示器。
 
 | 区域 | 职责 |
 | --- | --- |
@@ -110,3 +110,7 @@ Mac HEVC 同时要求硬件编码器与接收端明确声明的硬件解码能�
 ## 桌面自动匹配（v0.3.3）
 
 Mac 接收端的逻辑桌面根据可用的发送端参考屏和经过校验的系统报告物理尺寸估算。尺寸缺失时按比例回退；移动接收端保留原有几何，已有偏好保持不变。屏幕变化按会话防抖，采用冷却和过期状态检查。Apple 视频范围仍为 4096×2304，见[匹配证据](docs/verification/automatic-desktop-matching.zh-CN.md)。
+
+## 高刷试验、解码器恢复与 Android 前台保活（v0.3.4 – v0.3.5）
+
+Android 与符合条件的 iOS/iPadOS 接收端提供可选的原生分辨率高刷能力范围，不扩大默认保守上限。Android 端通过 `ReceiverKeepAliveService` 在活动会话期间提升为用户可停止的 `connectedDevice` 前台通知，并将停止命令排在前台提升确认之后，避免快速重连触发 `ForegroundServiceDidNotStartInTimeException`。`DecoderStallRecoveryPolicy` 在 V2 会话中请求新的 `streamConfig`（`streamConfigRequired`），在旧版 V1 会话（`!negotiatedV2`）中就地重建 `H264SurfaceDecoder`；`OpenDisplayServer.stop()` 与 `decoderWorker` 同步并在独立线程异步释放 `MediaCodec`。所有 `OpenDisplayServer.Listener`、`NsdAdvertiser.Listener` 与 `WifiTcpReceiverTransport` 回调均携带来源实例引用，防止旧实例异步回调污染当前 UI 状态。iOS/iPadOS 的 `MetalVideoRenderer` 在重置与代次切换间保护纹理提交并缓存 `MTKView.drawableSize`；Mac 接收端以解码出 `videoSize` 作为窗口展示与连接状态的门禁。详见 [v0.3.5 发布说明](docs/releases/v0.3.5.zh-CN.md)、[v0.3.4 发布说明](docs/releases/v0.3.4.zh-CN.md)与[Android 解码吞吐与恢复](docs/reference/android-decoder-throughput-recovery.zh-CN.md)。

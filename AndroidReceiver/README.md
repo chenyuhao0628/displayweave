@@ -6,7 +6,7 @@ The Android receiver accepts DisplayWeave video over local WiFi or a Mac-managed
 
 The waiting screen follows the system light/dark theme. Settings scroll on small displays; the top-right Settings button remains available while streaming even when the status overlay is hidden.
 
-v0.3.4 includes [encrypted pairing](../docs/guides/secure-transport.md) and [GitHub-only updates](../docs/releases/automatic-updates.md). First generate an invitation under **Settings & Help → Security and pairing**, import it on the Mac, then select the device. LAN and ADB-forwarded USB use the same authenticated stream.
+v0.3.5 includes [encrypted pairing](../docs/guides/secure-transport.md) and [GitHub-only updates](../docs/releases/automatic-updates.md). First generate an invitation under **Settings & Help → Security and pairing**, import it on the Mac, then select the device. LAN and ADB-forwarded USB use the same authenticated stream.
 
 ## Requirements
 
@@ -14,17 +14,17 @@ v0.3.4 includes [encrypted pairing](../docs/guides/secure-transport.md) and [Git
 - WiFi: Mac and Android on the same trusted LAN with Nearby WiFi/Local Network discovery permission where required.
 - USB: a data-capable cable, Developer options, USB debugging, and approval of the Mac's RSA identity.
 
-## Install `v0.3.4`
+## Install `v0.3.5`
 
-2026-11-09: build 23 adds experimental high-frame-rate trials, active-session background keep-alive and receiver hardening. Old server callbacks cannot change a replacement session. The original signing certificate is retained; sustained high-refresh performance remains unverified. See the [release notes](../docs/releases/v0.3.4.md).
+2026-11-10: build 24 hardens legacy V1 decoder recovery, synchronizes `OpenDisplayServer.stop()` with `decoderWorker`, releases `MediaCodec` asynchronously, enforces `ControlMessageWriter` queue/payload bounds, and guards all server, NSD and transport callbacks by source instance. The original signing certificate is retained; sustained high-refresh performance remains unverified. See the [release notes](../docs/releases/v0.3.5.md).
 
-Download `DisplayWeave-Android.apk` from [`v0.3.4`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Android p5 must install p6 or newer manually once. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/releases/release-checklist.md).
+Download `DisplayWeave-Android.apk` from [`v0.3.5`](https://github.com/chenyuhao0628/displayweave/releases). It is an offline v2-signed release APK and does not require Google Play. Install it over the existing `app.opendisplay.android` package and verify `SHA256SUMS.txt` plus the certificate fingerprint in [the release checklist](../docs/releases/release-checklist.md).
 
 ## Updates after the first install
 
 - The receiver checks the HTTPS update feed at most once per 24 hours when it resumes.
 - **Settings & Help → Check for Updates** bypasses the daily throttle.
-- p6 and later use the matching GitHub Release as the APK source.
+- Downloads use the matching GitHub Release as the APK source.
 - Before installation, it verifies exact byte count, SHA-256, package name,
   version code, minimum SDK, and the pinned signing certificate.
 - Android may ask for permission to install unknown apps. The final installation
@@ -104,4 +104,4 @@ Two simultaneous Android devices, controlled USB/WiFi benchmark, and 30-minute/2
 
 This version defaults to pinned mutual TLS and invitation pairing; insecure legacy mode requires an explicit local choice. Private transport keys remain in Android Keystore and are separate from APK signing. ADB authorization trusts the Mac as a debugging host beyond this application. See [the pairing guide](../docs/guides/secure-transport.md) and [SECURITY.md](../SECURITY.md).
 
-[Proposed session controls and validation gaps](../docs/reference/android-receiver-session-controls.md)
+[Android receiver session controls and validation gaps](../docs/reference/android-receiver-session-controls.md)

@@ -6,7 +6,7 @@
 
 ## 就绪状态与边界
 
-2026-10-16 本机 **Developer ID Application** 与 **Apple Distribution** 可用身份均为零；Apple Development 身份不足以完成这些导出。正式签名、公证仍**阻塞于外部凭据**。离线测试只证明校验与失败流程，不能代替已公证产物。v0.3.2 正式版（21）采用 Mac Apple Development 签名，仍未公证；iOS 保持无签名。正式版渠道与 Developer ID 公证分别记录，见[发行分发](current.zh-CN.md)。
+2026-10-16 本机 **Developer ID Application** 与 **Apple Distribution** 可用身份均为零；Apple Development 身份不足以完成这些导出。正式签名、公证仍**阻塞于外部凭据**。离线测试只证明校验与失败流程，不能代替已公证产物。v0.3.5 正式版（24）采用 Mac Apple Development 签名，仍未公证；iOS 保持无签名。正式版渠道与 Developer ID 公证分别记录，见[发行分发](current.zh-CN.md)。
 
 原本地打包脚本也支持未公证的正式版发行。正式工作流不会使用预览的关闭库验证 entitlement，Mac 使用空的 `Mac/OpenSidecarMac.entitlements` 与 hardened runtime。不会生成/导出密钥、自动申请 provisioning 或上传开发者门户。
 
@@ -40,7 +40,7 @@ python3 tools/apple-distribution.py preflight ios \
 以下仅为示例，先核对 GitHub 并选择未使用版本／构建号。将 `preflight` 换成 `build`，保留其余参数并追加：
 
 ```text
---version 0.3.2 --build-number 21 --output artifacts/apple-distribution/v0.3.2
+--version 0.3.6 --build-number 25 --output build/apple-distribution/v0.3.6
 ```
 
 以上数字仅为示例，不代表预约或发行版本。输出必须是 `build/` 下的新目录，以私有权限创建并写入 `INCOMPLETE`。不会覆盖或删除既有目录。失败时保留日志和 archive，下次构建使用新目录。日志/profile 可能包含本地标识，整个目录不得提交 Git 或公开上传。

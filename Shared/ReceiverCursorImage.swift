@@ -13,7 +13,7 @@ struct ReceiverCursorImage {
               let width = object["nw"] as? Double, let height = object["nh"] as? Double,
               width.isFinite, height.isFinite, width > 0, height > 0, width <= 1, height <= 1 else { return nil }
         let ax = object["ax"] as? Double ?? 0, ay = object["ay"] as? Double ?? 0
-        guard ax.isFinite, ay.isFinite,
+        guard ax.isFinite, ay.isFinite, ax >= 0, ax <= 1, ay >= 0, ay <= 1,
               let png = Data(base64Encoded: base64),
               let source = CGImageSourceCreateWithData(png as CFData, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],

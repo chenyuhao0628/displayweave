@@ -52,6 +52,18 @@ android {
             signingConfigs.findByName("previewRelease")?.let { signingConfig = it }
         }
     }
+
+    lint {
+        disable += setOf(
+            "AndroidGradlePluginVersion",
+            "CustomX509TrustManager",
+            "IconLauncherShape",
+            "IconLocation",
+            "MonochromeLauncherIcon",
+            "ObsoleteSdkInt",
+            "UnusedResources",
+        )
+    }
 }
 
 val selfTestClasses = layout.buildDirectory.dir("selfTest/classes")

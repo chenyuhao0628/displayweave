@@ -179,7 +179,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private let cursorEcho = CursorEcho()
     private var cursorImageTimer: DispatchSourceTimer?
     private let cursorImageLock = NSLock()
-    private var cursorImageContext: (displayID: CGDirectDisplayID, wire: UInt64, encoder: UInt64, hash: Int)?
+    private var cursorImageContext: (displayID: CGDirectDisplayID, wire: UInt64, encoder: UInt64, hash: Int, imageID: ObjectIdentifier?, hotSpot: NSPoint, displaySize: CGSize)?
     private let cursorImages = LatestValueRelay<(json: String, wire: UInt64, encoder: UInt64)>()
     private var captureDisplayID: CGDirectDisplayID = 0
 
@@ -1113,6 +1113,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         pencilNegotiated = false
         macCodecFallback.beginConnection()
         inputInjector?.cancelPress()
+        pendingSends = 0
+        pendingSendStartedAt.removeAll()
         connectionGeneration &+= 1
         connection = conn
         return connectionGeneration
@@ -1134,6 +1136,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         pencilActions.reset(); pencilExtendedNegotiated = false
         pencilNegotiated = false
         inputInjector?.cancelPress()
+        pendingSends = 0
+        pendingSendStartedAt.removeAll()
         connectionGeneration &+= 1
         let previous = connection
         connection = nil
@@ -1202,6 +1206,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         dialGeneration += 1
         cancelPendingReconnect()
         invalidateConnection()
+        helloContinuation?.resume(throwing: CancellationError())
+        helloContinuation = nil
         Task { @MainActor in self.onSecurityError?(message) }
     }
 
@@ -1366,28 +1372,33 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         pencilActions.reset(); pencilExtendedNegotiated = false
         inputInjector?.cancelPress()
         pencilNegotiated = false
-        if everConnected {
-            let now = Date()
-            let since = DisconnectGracePolicy.startedAt(
-                existing: disconnectedSince,
-                failureObservedAt: failureObservedAt)
-            if disconnectedSince == nil {
-                disconnectedSince = since
+        let now = Date()
+        let grace = DisconnectGracePolicy.graceSeconds(
+            everConnected: everConnected,
+            reconnectGraceSeconds: disconnectGraceSeconds)
+        let since = DisconnectGracePolicy.startedAt(
+            existing: disconnectedSince,
+            failureObservedAt: failureObservedAt)
+        if disconnectedSince == nil {
+            disconnectedSince = since
+            if everConnected {
                 let remaining = DisconnectGracePolicy.remainingSeconds(
                     startedAt: since, now: now,
-                    graceSeconds: disconnectGraceSeconds)
+                    graceSeconds: grace)
                 Task { await status("连接已断开，最多重试 \(remaining) 秒…") }
             }
-            if DisconnectGracePolicy.hasExpired(
-                startedAt: since, now: now,
-                graceSeconds: disconnectGraceSeconds) {
-                if !disconnectCallbackPending {
-                    disconnectCallbackPending = true
-                    Log.info("device gone for >\(Int(disconnectGraceSeconds))s — ending session")
-                    Task { @MainActor in self.onDisconnected?(.connectionLost) }
-                }
-                return
+        }
+        if DisconnectGracePolicy.hasExpired(
+            startedAt: since, now: now,
+            graceSeconds: grace) {
+            helloContinuation?.resume(throwing: CancellationError())
+            helloContinuation = nil
+            if !disconnectCallbackPending {
+                disconnectCallbackPending = true
+                Log.info("device gone for >\(Int(grace))s — ending session")
+                Task { @MainActor in self.onDisconnected?(.connectionLost) }
             }
+            return
         }
         guard reconnectWorkItem == nil else {
             Log.info("reconnect already scheduled — coalescing duplicate request")
@@ -1629,7 +1640,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         let displayID = captureDisplayID
         cursorImages.reset()
         cursorImageLock.withLock {
-            cursorImageContext = (displayID, wireConnectionGeneration, encoderGeneration, 0)
+            cursorImageContext = (displayID, wireConnectionGeneration, encoderGeneration, 0, nil, .zero, .zero)
         }
         cursorEcho.start(sample: { CursorPosition.sample(displayID: displayID) },
                          write: CursorEcho.writer(on: connection),
@@ -1669,14 +1680,27 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         let displaySize = CGDisplayBounds(context.displayID).size   // points, current mode
         guard displaySize.width > 0, displaySize.height > 0 else { return }
         let image = cursor.image
+        let imageID = ObjectIdentifier(image)
+        let hot = cursor.hotSpot
+        if context.imageID == imageID, context.hotSpot == hot, context.displaySize == displaySize {
+            return
+        }
         guard let tiff = image.tiffRepresentation else { return }
-        let hash = tiff.hashValue ^ Int(displaySize.width) &* 31
-        guard hash != context.hash else { return }
+        let hash = tiff.hashValue ^ (Int(displaySize.width) &* 31) ^ (Int(displaySize.height) &* 17)
+        if hash == context.hash {
+            cursorImageLock.withLock {
+                guard let active = cursorImageContext, active.displayID == context.displayID,
+                      active.wire == context.wire, active.encoder == context.encoder else { return }
+                cursorImageContext?.imageID = imageID
+                cursorImageContext?.hotSpot = hot
+                cursorImageContext?.displaySize = displaySize
+            }
+            return
+        }
         guard let rep = NSBitmapImageRep(data: tiff),
               let png = rep.representation(using: .png, properties: [:]),
               png.count < 24_000 else { return }
         let size = image.size            // Mac points
-        let hot = cursor.hotSpot
         // Normalized against the display so the phone can size/anchor the
         // sprite without knowing capture scale or HiDPI factor.
         let msg = String(format:
@@ -1691,6 +1715,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                   active.wire == context.wire, active.encoder == context.encoder,
                   active.hash != hash else { return false }
             cursorImageContext?.hash = hash
+            cursorImageContext?.imageID = imageID
+            cursorImageContext?.hotSpot = hot
+            cursorImageContext?.displaySize = displaySize
             return true
         }
         guard current else { return }
@@ -1979,6 +2006,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private func finishSessionAfterReceiverExit() {
         connectionReady = false
         invalidateConnection()
+        helloContinuation?.resume(throwing: CancellationError())
+        helloContinuation = nil
         Task { @MainActor in self.onDisconnected?(.receiverExit) }
     }
 
@@ -1989,6 +2018,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         stopCursorEcho()
         cancelPendingReconnect()
         invalidateConnection()
+        helloContinuation?.resume(throwing: error)
+        helloContinuation = nil
         Log.info("sender pipeline failed: \(error.localizedDescription)")
         // Do not await cleanup on the video queue or from the reconfiguration
         // task: stop() must be able to join that task before releasing its display.
@@ -2136,7 +2167,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private func waitForHello() async throws -> PhoneInfo {
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
-                if let hello = self.lastHello {
+                if self.stopped || self.pipelineFailureReported {
+                    continuation.resume(throwing: CancellationError())
+                } else if let hello = self.lastHello {
                     continuation.resume(returning: hello)
                 } else {
                     self.helloContinuation = continuation
@@ -2810,10 +2843,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         nextPendingSendID &+= 1
         let pendingSendID = nextPendingSendID
         let sendStartedAt = ProcessInfo.processInfo.systemUptime
+        let generation = connectionGeneration
         pendingSendStartedAt[pendingSendID] = sendStartedAt
         pendingSends += 1
-        connection.send(content: frame, completion: .contentProcessed { [weak self] error in
-            guard let self else { return }
+        connection.send(content: frame, completion: .contentProcessed { [weak self, weak connection] error in
+            guard let self, let connection,
+                  self.isCurrentConnection(connection, generation: generation) else { return }
             let completedAt = ProcessInfo.processInfo.systemUptime
             guard let startedAt = self.pendingSendStartedAt.removeValue(
                 forKey: pendingSendID) else { return }

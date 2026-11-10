@@ -40,7 +40,7 @@ jobs:
           else
             echo "android=false" >> "$GITHUB_OUTPUT"
           fi
-          if echo "$CHANGED" | grep -Eq '^(Mac/|Shared/|iOS/|Tests/|project\.yml|tools/|\.github/workflows/ci\.yml)'; then
+          if echo "$CHANGED" | grep -Eq '^(Mac/|Shared/|iOS/|MacTests/|project\.yml|tools/|\.github/workflows/ci\.yml)'; then
             echo "apple=true" >> "$GITHUB_OUTPUT"
           else
             echo "apple=false" >> "$GITHUB_OUTPUT"

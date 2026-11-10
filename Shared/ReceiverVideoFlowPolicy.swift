@@ -35,3 +35,28 @@ struct ReceiverFirstVideoDeadline {
         startedAt.map { now - $0 >= 15 } ?? false
     }
 }
+
+/// Tracks generation-scoped liveness monitor loops across start/stop/resume
+/// transitions so backgrounding neither strands monitors permanently nor spawns
+/// duplicate timer chains when foregrounded within a timer interval.
+struct ReceiverMonitorSchedule {
+    private(set) var generation: UInt64 = 0
+    private(set) var active = false
+
+    mutating func activateIfNeeded() -> UInt64? {
+        guard !active else { return nil }
+        generation &+= 1
+        active = true
+        return generation
+    }
+
+    mutating func deactivate() {
+        guard active else { return }
+        generation &+= 1
+        active = false
+    }
+
+    func isCurrent(_ candidate: UInt64) -> Bool {
+        active && generation == candidate
+    }
+}

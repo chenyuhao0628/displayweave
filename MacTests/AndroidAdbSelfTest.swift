@@ -130,6 +130,14 @@ struct AndroidAdbSelfTest {
             // Expected.
         }
 
+        let largeOutput = try await processRunner.run(
+            executable: URL(fileURLWithPath: "/usr/bin/head"),
+            arguments: ["-c", "307200", "/dev/zero"],
+            timeout: .seconds(2))
+        expect(largeOutput.exitCode == 0
+               && largeOutput.stdout.utf8.count == FoundationAdbProcessRunner.maxOutputBytes,
+               "production runner must drain >64KiB pipe output without deadlocking and cap output at maxOutputBytes")
+
         let missingPresentation = AndroidAdbPresentation.make(
             executableFound: false, devices: [])
         expect(missingPresentation.message.contains("未找到 ADB")

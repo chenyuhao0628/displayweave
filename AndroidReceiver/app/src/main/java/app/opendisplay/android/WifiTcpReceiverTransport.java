@@ -381,8 +381,11 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
 
     private static void applyNegotiatedFrameLimit(
             ConnectionContext context, byte[] payload, int length) {
+        if (length <= 0 || length > 32768 || payload[0] != '{') {
+            return;
+        }
         int negotiatedLimit = LengthPrefixedProtocol.streamConfigFrameLimit(payload, length);
-        if (negotiatedLimit > 0) {
+        if (negotiatedLimit > context.maxFrameBytes) {
             context.maxFrameBytes = negotiatedLimit;
         }
     }

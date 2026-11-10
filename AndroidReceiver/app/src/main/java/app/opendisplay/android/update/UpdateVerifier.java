@@ -59,7 +59,7 @@ public final class UpdateVerifier {
             require(versionCode == manifest.versionCode, "Downloaded APK version mismatch");
             require(manifest.minimumSdk <= Build.VERSION.SDK_INT,
                     "Downloaded APK requires a newer Android version");
-            if (info.applicationInfo != null && Build.VERSION.SDK_INT >= 24) {
+            if (info.applicationInfo != null) {
                 require(info.applicationInfo.minSdkVersion == manifest.minimumSdk,
                         "Downloaded APK minimum SDK mismatch");
             }

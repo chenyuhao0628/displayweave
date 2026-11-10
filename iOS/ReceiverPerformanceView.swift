@@ -70,6 +70,7 @@ struct PerfOverlay: View {
         .padding(.vertical, 9)
         .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal, 8)
+        .accessibilityHidden(true)
     }
 
     @ViewBuilder

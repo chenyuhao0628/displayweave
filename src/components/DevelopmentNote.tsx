@@ -10,7 +10,7 @@ export default function DevelopmentNote({ locale }: { locale: Locale }) {
       <div className="shell development-layout">
         <div>
           <span className="section-label">
-            {chinese ? "v0.3.4 实验功能" : "Experimental in v0.3.4"}
+            {chinese ? "v0.3.5 实验功能" : "Experimental in v0.3.5"}
           </span>
           <h2>
             {chinese

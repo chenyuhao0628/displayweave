@@ -89,13 +89,6 @@ summary:focus-visible {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.mobile-language {
-  display: none;
-  font: 600 10px/1 var(--mono);
-  color: var(--muted);
-  text-decoration: none;
-  text-transform: uppercase;
-}
 .nav-shell nav a:hover,
 .language:hover,
 .github-link:hover {
@@ -757,9 +750,89 @@ footer {
   color: #5e7485;
   font: 600 10px/1 var(--mono);
 }
+/* Navigation and source-development information use the same spacing scale. */
+section[id] {
+  scroll-margin-top: 88px;
+}
+.nav-shell nav a,
+.language,
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.mobile-menu {
+  display: none;
+}
+.development-note {
+  border-bottom: 1px solid var(--line);
+  background: var(--ink-2);
+}
+.development-layout {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding-block: 40px;
+}
+.development-layout > div {
+  flex: 1;
+  min-width: 0;
+}
+.development-layout h2 {
+  margin: 12px 0;
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1.2;
+}
+.development-layout p {
+  max-width: 850px;
+  margin: 0;
+  color: var(--muted);
+}
+.development-layout > a {
+  flex-shrink: 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
 @media (max-width: 1050px) {
   .nav-shell nav {
     display: none;
+  }
+  .nav-actions {
+    margin-left: auto;
+  }
+  .mobile-menu {
+    display: block;
+  }
+  .mobile-menu summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 44px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .mobile-menu summary::-webkit-details-marker {
+    display: none;
+  }
+  .mobile-menu[open] summary span {
+    transform: rotate(45deg);
+  }
+  .nav-shell .mobile-menu nav {
+    position: absolute;
+    right: 24px;
+    top: 68px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 220px;
+    max-height: calc(100dvh - 90px);
+    overflow-y: auto;
+    padding: 12px 20px;
+    background: var(--ink-2);
+    border: 1px solid var(--line);
+    box-shadow: 0 12px 40px #0006;
   }
   .hero-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -771,6 +844,11 @@ footer {
   }
   .hero-section::before {
     display: none;
+  }
+  .development-layout {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 20px;
   }
   .release-item {
     grid-template-columns: 45px 125px minmax(0, 1fr);
@@ -818,24 +896,14 @@ footer {
     gap: 10px;
   }
   .nav-actions {
-    position: absolute;
-    right: 16px;
-    flex: none;
-    margin-left: 0;
-    gap: 10px;
-  }
-  .github-link {
     display: none;
   }
-  .button-small {
-    display: none;
-  }
-  .language {
-    position: fixed;
-    z-index: 31;
-    top: 25px;
+  .nav-shell .mobile-menu nav {
     right: 16px;
-    font-size: 10px;
+    top: 62px;
+  }
+  .mobile-menu summary {
+    font-size: 14px;
   }
   .brand {
     min-width: 0;
@@ -847,9 +915,6 @@ footer {
     min-height: auto;
     padding: 68px 0 54px;
     gap: 42px;
-  }
-  .version-line {
-    font-size: 9px;
   }
   .hero-copy,
   .hero-map {
@@ -879,6 +944,10 @@ footer {
   .compat-line {
     margin-top: 35px;
   }
+  .compat-line,
+  .version-line {
+    font-size: 11px;
+  }
   .compat-line span:not(:last-child)::after {
     display: none;
   }
@@ -886,6 +955,10 @@ footer {
     width: calc(100vw - 32px);
     max-width: calc(100vw - 32px);
     height: 500px;
+  }
+  .topology .map-label,
+  .topology figcaption {
+    font-size: 10px;
   }
   .topology-lines {
     transform: rotate(90deg) scale(0.84);
@@ -948,6 +1021,9 @@ footer {
     grid-column: 2;
     min-width: 0;
   }
+  .release-copy code {
+    font-size: 12px;
+  }
   .button-release {
     grid-column: 2;
     min-width: 0;
@@ -985,15 +1061,6 @@ footer {
     align-items: start;
   }
 }
-@media (max-width: 700px) {
-  .mobile-language {
-    display: block;
-    margin-left: auto;
-  }
-  .nav-actions {
-    display: none;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -1004,114 +1071,6 @@ footer {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-  }
-}
-
-/* Navigation and source-development information use the same spacing scale. */
-section[id] {
-  scroll-margin-top: 88px;
-}
-.nav-shell nav a,
-.language,
-.github-link {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-}
-.mobile-menu {
-  display: none;
-}
-.development-note {
-  border-bottom: 1px solid var(--line);
-  background: var(--ink-2);
-}
-.development-layout {
-  display: flex;
-  align-items: center;
-  gap: 32px;
-  padding-block: 40px;
-}
-.development-layout > div {
-  flex: 1;
-  min-width: 0;
-}
-.development-layout h2 {
-  margin: 12px 0;
-  font-size: clamp(24px, 3vw, 34px);
-  line-height: 1.2;
-}
-.development-layout p {
-  max-width: 850px;
-  margin: 0;
-  color: var(--muted);
-}
-.development-layout > a {
-  flex-shrink: 0;
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-}
-@media (max-width: 1050px) {
-  .nav-actions {
-    margin-left: auto;
-  }
-  .mobile-menu {
-    display: block;
-  }
-  .mobile-menu summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    min-height: 44px;
-    cursor: pointer;
-    list-style: none;
-  }
-  .mobile-menu summary::-webkit-details-marker {
-    display: none;
-  }
-  .mobile-menu[open] summary span {
-    transform: rotate(45deg);
-  }
-  .nav-shell .mobile-menu nav {
-    position: absolute;
-    right: 24px;
-    top: 68px;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    min-width: 220px;
-    max-height: calc(100dvh - 90px);
-    overflow-y: auto;
-    padding: 12px 20px;
-    background: var(--ink-2);
-    border: 1px solid var(--line);
-    box-shadow: 0 12px 40px #0006;
-  }
-  .development-layout {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 20px;
-  }
-}
-@media (max-width: 700px) {
-  .nav-shell .mobile-menu nav {
-    right: 16px;
-    top: 62px;
-  }
-  .mobile-menu summary {
-    font-size: 14px;
-  }
-  .release-copy code {
-    font-size: 12px;
-  }
-  .compat-line,
-  .version-line {
-    font-size: 11px;
-  }
-  .topology .map-label,
-  .topology figcaption {
-    font-size: 10px;
   }
 }
 @media (forced-colors: active) {

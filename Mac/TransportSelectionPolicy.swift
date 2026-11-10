@@ -86,6 +86,13 @@ enum ReconnectPeerReadinessPolicy {
 }
 
 enum DisconnectGracePolicy {
+    static let initialConnectGraceSeconds: TimeInterval = 30
+
+    static func graceSeconds(everConnected: Bool,
+                             reconnectGraceSeconds: TimeInterval) -> TimeInterval {
+        everConnected ? reconnectGraceSeconds : max(reconnectGraceSeconds, initialConnectGraceSeconds)
+    }
+
     static func startedAt(existing: Date?, failureObservedAt: Date) -> Date {
         existing ?? failureObservedAt
     }
@@ -207,5 +214,56 @@ struct AndroidUsbRecoveryMachine: Sendable {
 
     private var exhaustedState: AndroidUsbRecoveryState {
         mode == .auto ? .awaitingWifi : .failed
+    }
+}
+
+enum PersistedDeviceCollectionPolicy {
+    static let defaultMaxEntries = 128
+    static let maxIdentifierUTF8Bytes = 256
+
+    static func isValidIdentifier(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.count <= maxIdentifierUTF8Bytes
+    }
+
+    static func boundedSet(
+        _ values: Set<String>,
+        previous: Set<String> = [],
+        maxEntries: Int = defaultMaxEntries
+    ) -> Set<String> {
+        let valid = values.filter(isValidIdentifier)
+        guard valid.count > maxEntries else { return valid }
+        let added = valid.subtracting(previous).sorted().prefix(maxEntries)
+        var result = Set(added)
+        if result.count < maxEntries {
+            for existing in valid.intersection(previous).sorted() {
+                result.insert(existing)
+                if result.count >= maxEntries { break }
+            }
+        }
+        return result
+    }
+
+    static func boundedDictionary(
+        _ values: [String: String],
+        previous: [String: String] = [:],
+        maxEntries: Int = defaultMaxEntries
+    ) -> [String: String] {
+        let valid = values.filter { isValidIdentifier($0.key) && isValidIdentifier($0.value) }
+        guard valid.count > maxEntries else { return valid }
+        let updatedKeys = valid.keys
+            .filter { previous[$0] != valid[$0] }
+            .sorted()
+            .prefix(maxEntries)
+        var result: [String: String] = [:]
+        for key in updatedKeys {
+            result[key] = valid[key]
+        }
+        if result.count < maxEntries {
+            for key in valid.keys.sorted() where result[key] == nil {
+                result[key] = valid[key]
+                if result.count >= maxEntries { break }
+            }
+        }
+        return result
     }
 }

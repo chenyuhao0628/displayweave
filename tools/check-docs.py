@@ -55,7 +55,7 @@ def check(root, files):
                         failures.append(f"{source.relative_to(root)}: missing reciprocal link to {target.name}")
         for link in links:
             target = local_target(root, path, link)
-            if target is not None and not target.exists():
+            if target is not None and (not target.is_relative_to(root.resolve()) or not target.exists()):
                 failures.append(f"{name}: broken link {link}")
     # Include current GitHub doc links in website templates; expand the bilingual suffix.
     for path in files:
@@ -65,7 +65,7 @@ def check(root, files):
             text = re.sub(r'\$\{[^}]+\?\s*"\.zh-CN"\s*:\s*""\}', suffix, path.read_text())
             for link in re.findall(re.escape(GITHUB_ROOT) + r'[^\s"`<>]+', text):
                 target = local_target(root, path, link)
-                if not target.is_file():
+                if target is None or not target.is_relative_to(root.resolve()) or not target.is_file():
                     failures.append(f"{path.relative_to(root)}: broken GitHub main link {link}")
     return pairs, failures
 

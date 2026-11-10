@@ -106,24 +106,61 @@ final class SenderController: ObservableObject {
     //  - WiFi devices the user connected before (wifiRemembered) reconnect
     //    in a short window at LAUNCH only — never mid-session.
     // `-autostart NO` disables all auto-connecting.
-    private var usbDisabled = Set(UserDefaults.standard.stringArray(forKey: "usbDisabled") ?? []) {
-        didSet { UserDefaults.standard.set(Array(usbDisabled), forKey: "usbDisabled") }
+    private static let maxPersistedEntries = PersistedDeviceCollectionPolicy.defaultMaxEntries
+
+    private var usbDisabled = PersistedDeviceCollectionPolicy.boundedSet(
+        Set(UserDefaults.standard.stringArray(forKey: "usbDisabled") ?? [])
+    ) {
+        didSet(oldValue) {
+            let bounded = PersistedDeviceCollectionPolicy.boundedSet(
+                usbDisabled, previous: oldValue, maxEntries: Self.maxPersistedEntries)
+            if bounded != usbDisabled {
+                usbDisabled = bounded
+            }
+            UserDefaults.standard.set(bounded.sorted(), forKey: "usbDisabled")
+        }
     }
-    private var wifiRemembered = Set(UserDefaults.standard.stringArray(forKey: "wifiRemembered") ?? []) {
-        didSet { UserDefaults.standard.set(Array(wifiRemembered), forKey: "wifiRemembered") }
+    private var wifiRemembered = PersistedDeviceCollectionPolicy.boundedSet(
+        Set(UserDefaults.standard.stringArray(forKey: "wifiRemembered") ?? [])
+    ) {
+        didSet(oldValue) {
+            let bounded = PersistedDeviceCollectionPolicy.boundedSet(
+                wifiRemembered, previous: oldValue, maxEntries: Self.maxPersistedEntries)
+            if bounded != wifiRemembered {
+                wifiRemembered = bounded
+            }
+            UserDefaults.standard.set(bounded.sorted(), forKey: "wifiRemembered")
+        }
     }
     // Install id learned from each USB device's hello, persisted, so the
     // same hardware is recognized across transports even when the user
     // renamed the advertised service. @Published so the device list regroups
     // the moment an identity is learned.
     @Published private var installIDByUDID: [String: String] =
-        UserDefaults.standard.dictionary(forKey: "installIDByUDID") as? [String: String] ?? [:] {
-        didSet { UserDefaults.standard.set(installIDByUDID, forKey: "installIDByUDID") }
+        PersistedDeviceCollectionPolicy.boundedDictionary(
+            UserDefaults.standard.dictionary(forKey: "installIDByUDID") as? [String: String] ?? [:]
+        ) {
+        didSet(oldValue) {
+            let bounded = PersistedDeviceCollectionPolicy.boundedDictionary(
+                installIDByUDID, previous: oldValue, maxEntries: Self.maxPersistedEntries)
+            if bounded != installIDByUDID {
+                installIDByUDID = bounded
+            }
+            UserDefaults.standard.set(bounded, forKey: "installIDByUDID")
+        }
     }
     @Published private var installIDByAndroidSerial: [String: String] =
-        UserDefaults.standard.dictionary(forKey: "installIDByAndroidSerial") as? [String: String] ?? [:] {
-        didSet { UserDefaults.standard.set(installIDByAndroidSerial,
-                                           forKey: "installIDByAndroidSerial") }
+        PersistedDeviceCollectionPolicy.boundedDictionary(
+            UserDefaults.standard.dictionary(forKey: "installIDByAndroidSerial") as? [String: String] ?? [:]
+        ) {
+        didSet(oldValue) {
+            let bounded = PersistedDeviceCollectionPolicy.boundedDictionary(
+                installIDByAndroidSerial, previous: oldValue, maxEntries: Self.maxPersistedEntries)
+            if bounded != installIDByAndroidSerial {
+                installIDByAndroidSerial = bounded
+            }
+            UserDefaults.standard.set(bounded, forKey: "installIDByAndroidSerial")
+        }
     }
     private let autoConnectEnabled = UserDefaults.standard.object(forKey: "autostart") == nil
         || UserDefaults.standard.bool(forKey: "autostart")

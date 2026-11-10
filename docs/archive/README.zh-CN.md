@@ -9,4 +9,4 @@
 - [原始设计](designs/README.zh-CN.md)
 - [旧版发布说明与检查记录](releases/README.zh-CN.md)
 
-返回[当前文档](../README.zh-CN.md)或 [v0.3.1 下载](../releases/current.zh-CN.md)。Git 历史与公开发行记录均保留。
+返回[当前文档](../README.zh-CN.md)或 [v0.3.5 下载](../releases/current.zh-CN.md)。Git 历史与公开发行记录均保留。

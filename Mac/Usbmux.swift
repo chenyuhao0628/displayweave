@@ -45,11 +45,14 @@ enum Usbmux {
     // lockdownd, the device-side service that answers GetValue queries.
     static let lockdownPort: UInt16 = 62078
 
-    enum Failure: Error, LocalizedError {
+    static let defaultHandshakeTimeout: Duration = .seconds(5)
+
+    enum Failure: Error, LocalizedError, Equatable {
         case noDevice          // nothing attached (or the chosen udid is gone)
         case refused           // device present, nothing listening on the port
         case result(Int)       // other usbmuxd result code
         case protocolError(String)
+        case timedOut
 
         var errorDescription: String? {
             switch self {
@@ -57,6 +60,7 @@ enum Usbmux {
             case .refused: return "设备端尚未监听该端口"
             case .result(let code): return "usbmuxd 返回结果 \(code)"
             case .protocolError(let detail): return "usbmuxd 协议错误：\(detail)"
+            case .timedOut: return "usbmuxd 握手超时"
             }
         }
     }
@@ -151,27 +155,36 @@ enum Usbmux {
 
     // MARK: - Socket plumbing
 
-    static func open(queue: DispatchQueue) async throws -> NWConnection {
+    static func open(
+        queue: DispatchQueue,
+        timeout: Duration? = defaultHandshakeTimeout
+    ) async throws -> NWConnection {
         let conn = NWConnection(to: .unix(path: socketPath), using: .tcp)
         try await withTaskCancellationHandler {
             try Task.checkCancellation()
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
                 let gate = OneShotResume()
+                let timerTask = scheduleTimeout(timeout, on: conn, gate: gate, continuation: cont)
                 conn.stateUpdateHandler = { state in
                     switch state {
                     case .ready:
                         gate.resume {
+                            timerTask?.cancel()
                             cont.resume()
                         }
                     case .failed(let error), .waiting(let error):
                         // No path updates on a Unix socket — .waiting would hang
                         // forever, so treat it as failure and let callers retry.
                         gate.resume {
+                            timerTask?.cancel()
                             conn.cancel()
                             cont.resume(throwing: error)
                         }
                     case .cancelled:
-                        gate.resume { cont.resume(throwing: CancellationError()) }
+                        gate.resume {
+                            timerTask?.cancel()
+                            cont.resume(throwing: CancellationError())
+                        }
                     default:
                         break
                     }
@@ -183,7 +196,11 @@ enum Usbmux {
         return conn
     }
 
-    static func send(_ message: [String: Any], on conn: NWConnection) async throws {
+    static func send(
+        _ message: [String: Any],
+        on conn: NWConnection,
+        timeout: Duration? = defaultHandshakeTimeout
+    ) async throws {
         var message = message
         message["ProgName"] = "DisplayWeave"
         message["ClientVersionString"] = "DisplayWeave"
@@ -194,17 +211,20 @@ enum Usbmux {
             withUnsafeBytes(of: field.littleEndian) { packet.append(contentsOf: $0) }
         }
         packet.append(body)
-        try await send(raw: packet, on: conn)
+        try await send(raw: packet, on: conn, timeout: timeout)
     }
 
-    static func readMessage(on conn: NWConnection) async throws -> [String: Any] {
-        let header = try await receive(exactly: 16, on: conn)
+    static func readMessage(
+        on conn: NWConnection,
+        timeout: Duration? = defaultHandshakeTimeout
+    ) async throws -> [String: Any] {
+        let header = try await receive(exactly: 16, on: conn, timeout: timeout)
         let total = Int(UInt32(littleEndian: header.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }))
         guard total >= 16, total < 1 << 20 else {
             throw Failure.protocolError("bad message length \(total)")
         }
         guard total > 16 else { return [:] }
-        let body = try await receive(exactly: total - 16, on: conn)
+        let body = try await receive(exactly: total - 16, on: conn, timeout: timeout)
         guard let plist = try? PropertyListSerialization.propertyList(from: body, format: nil)
                 as? [String: Any] else {
             throw Failure.protocolError("non-dictionary message")
@@ -212,30 +232,69 @@ enum Usbmux {
         return plist
     }
 
-    private static func send(raw data: Data, on conn: NWConnection) async throws {
+    private static func send(
+        raw data: Data,
+        on conn: NWConnection,
+        timeout: Duration? = defaultHandshakeTimeout
+    ) async throws {
         try await withTaskCancellationHandler {
             try Task.checkCancellation()
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                let gate = OneShotResume()
+                let timerTask = scheduleTimeout(timeout, on: conn, gate: gate, continuation: cont)
                 conn.send(content: data, completion: .contentProcessed { error in
-                    if let error { cont.resume(throwing: error) } else { cont.resume() }
+                    gate.resume {
+                        timerTask?.cancel()
+                        if let error {
+                            cont.resume(throwing: error)
+                        } else {
+                            cont.resume()
+                        }
+                    }
                 })
             }
         } onCancel: { conn.cancel() }
     }
 
-    private static func receive(exactly count: Int, on conn: NWConnection) async throws -> Data {
+    private static func receive(
+        exactly count: Int,
+        on conn: NWConnection,
+        timeout: Duration? = defaultHandshakeTimeout
+    ) async throws -> Data {
         try await withTaskCancellationHandler {
             try Task.checkCancellation()
-            return try await withCheckedThrowingContinuation { cont in
+            return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
+                let gate = OneShotResume()
+                let timerTask = scheduleTimeout(timeout, on: conn, gate: gate, continuation: cont)
                 conn.receive(minimumIncompleteLength: count, maximumLength: count) { data, _, _, error in
-                    if let data, data.count == count {
-                        cont.resume(returning: data)
-                    } else {
-                        cont.resume(throwing: error ?? Failure.protocolError("socket closed"))
+                    gate.resume {
+                        timerTask?.cancel()
+                        if let data, data.count == count {
+                            cont.resume(returning: data)
+                        } else {
+                            cont.resume(throwing: error ?? Failure.protocolError("socket closed"))
+                        }
                     }
                 }
             }
         } onCancel: { conn.cancel() }
+    }
+
+    private static func scheduleTimeout<T: Sendable>(
+        _ timeout: Duration?,
+        on conn: NWConnection,
+        gate: OneShotResume,
+        continuation: CheckedContinuation<T, Error>
+    ) -> Task<Void, Never>? {
+        guard let timeout else { return nil }
+        return Task {
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled else { return }
+            gate.resume {
+                conn.cancel()
+                continuation.resume(throwing: Failure.timedOut)
+            }
+        }
     }
 }
 
@@ -273,10 +332,10 @@ final class UsbmuxDeviceWatcher {
                 guard !stopped, !Task.isCancelled else { return }
                 activeConnection = conn
                 try await Usbmux.send(["MessageType": "Listen"], on: conn)
+                // First reply is the Result for Listen itself; validate it within the handshake timeout.
+                handle(try await Usbmux.readMessage(on: conn))
                 while !Task.isCancelled && !stopped {
-                    // First reply is the Result for Listen itself; it has no
-                    // Properties so handle() ignores it.
-                    handle(try await Usbmux.readMessage(on: conn))
+                    handle(try await Usbmux.readMessage(on: conn, timeout: nil))
                 }
             } catch {
                 guard !stopped, !Task.isCancelled else { return }

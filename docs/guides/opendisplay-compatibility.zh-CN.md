@@ -2,7 +2,7 @@
 
 # OpenDisplay 与 DisplayWeave 互连
 
-DisplayWeave 在主界面直接提供两种连接入口。已有 OpenDisplay 不需要改名或重装，即可使用其支持的串流协议。这些连接入口从 v0.3.0-preview.2（17）引入，并保留在 v0.3.1（20）中。
+DisplayWeave 在主界面直接提供两种连接入口。已有 OpenDisplay 不需要改名或重装，即可使用其支持的串流协议。这些连接入口从 v0.3.0-preview.2（17）引入，并保留在 v0.3.5（24）中。
 
 | 发送端 → 接收端 | 如何选择 |
 | --- | --- |

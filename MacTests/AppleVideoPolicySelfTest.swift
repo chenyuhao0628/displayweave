@@ -95,6 +95,14 @@ import Foundation
                      && acceptedPortrait?.fps == 120, "native admission follows the announced orientation")
         precondition(AppleVideoConfiguration(rotated, maxWidth: 2304, maxHeight: 4096, maxFps: 120,
                                             nativeEnvelope: native) == nil, "alternative rectangles cannot be combined")
+        let swappedFromPortrait = AppleVideoPolicy.nativeHighRefreshEnvelope(
+            width: portrait.height, height: portrait.width, maxFps: portrait.fps)
+        let swappedAccepted = AppleVideoConfiguration(object, maxWidth: 2304, maxHeight: 4096, maxFps: 120,
+                                                      nativeEnvelope: portrait)
+            ?? AppleVideoConfiguration(object, maxWidth: 4096, maxHeight: 2304, maxFps: 120,
+                                       nativeEnvelope: swappedFromPortrait)
+        precondition(swappedAccepted?.width == 2752 && swappedAccepted?.height == 2064 && swappedAccepted?.fps == 120,
+                     "PhoneReceiver.configureVideo orientation-swap fallback must admit rotated native high-refresh config")
         precondition(AppleVideoPolicy.nativeHighRefreshEnvelope(width: Int.max, height: 2064, maxFps: 120) == nil)
         precondition(AppleVideoPolicy.nativeHighRefreshEnvelope(width: 2751, height: 2064, maxFps: 120) == nil)
         precondition(AppleVideoPolicy.nativeHighRefreshEnvelope(width: 2752, height: 2064, maxFps: 60) == nil)

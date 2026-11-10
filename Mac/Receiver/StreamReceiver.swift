@@ -187,6 +187,17 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         }
     }
 
+    func retryListening() {
+        queue.async {
+            guard self.running else { return }
+            self.generation &+= 1
+            self.listener?.cancel()
+            self.listener = nil
+            self.admissionPool.cancelAll()
+            self.startListener()
+        }
+    }
+
     private func startListener() {
         guard running else { return }
         let token = generation
@@ -249,14 +260,18 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     }
 
     private func adopt(_ conn: NWConnection, authenticatedPeer: SecurePeerRecord? = nil) {
-        connection = conn
+        connection?.cancel()
+        connection = nil
         peerID = authenticatedPeer?.installID
         resetStream()
+        connection = conn
         lastReceived = Date()
+        let encrypted = authenticatedPeer != nil
         conn.stateUpdateHandler = { [weak self, weak conn] state in
             guard let self, let conn, self.connection === conn else { return }
             switch state {
             case .ready:
+                guard !encrypted else { return }
                 self.expectFirstVideo()
                 self.publish(connected: true, status: "已连接，等待画面")
                 self.sendHello(on: conn)
@@ -265,7 +280,6 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             default: break
             }
         }
-        let encrypted = authenticatedPeer != nil
         DispatchQueue.main.async { self.encrypted = encrypted }
         if encrypted {
             expectFirstVideo()
@@ -458,11 +472,15 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                 if codec == .hevc, !supportsHEVC { failVideo(on: conn); return }
                 fallbackDeadline = nil
             case "cursor":
-                if let seq = (obj["s"] as? NSNumber)?.uint64Value {
-                    guard seq > lastCursorSequence else { return }; lastCursorSequence = seq
-                }
                 let x = obj["x"] as? Double ?? 0, y = obj["y"] as? Double ?? 0
-                guard x.isFinite, y.isFinite else { return }
+                guard x.isFinite, y.isFinite, x >= 0, x <= 1, y >= 0, y <= 1 else { return }
+                if let rawSeq = obj["s"] {
+                    guard let signedSeq = (rawSeq as? NSNumber)?.int64Value,
+                          signedSeq > 0,
+                          let seq = UInt64(exactly: signedSeq),
+                          seq > lastCursorSequence else { return }
+                    lastCursorSequence = seq
+                }
                 let visible = (obj["v"] as? Int ?? 0) == 1
                 if let token = cursorDelivery.offer((x, y, visible)) { deliverCursor(token) }
             case "cursorImg", "cursorImage":

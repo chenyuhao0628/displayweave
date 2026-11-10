@@ -23,12 +23,13 @@ final class CheckForUpdatesViewModel: ObservableObject {
 }
 
 struct CheckForUpdatesView: View {
-    @ObservedObject private var viewModel: CheckForUpdatesViewModel
+    @StateObject private var viewModel: CheckForUpdatesViewModel
     private let updater: SPUUpdater
 
     init(updater: SPUStandardUpdaterController) {
-        self.updater = updater.updater
-        self.viewModel = CheckForUpdatesViewModel(updater: updater.updater)
+        let sparkleUpdater = updater.updater
+        self.updater = sparkleUpdater
+        self._viewModel = StateObject(wrappedValue: CheckForUpdatesViewModel(updater: sparkleUpdater))
     }
 
     var body: some View {

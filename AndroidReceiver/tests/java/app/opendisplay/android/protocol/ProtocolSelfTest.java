@@ -538,14 +538,50 @@ public final class ProtocolSelfTest {
 
     private static void testControlMessageWriterDoesNotWriteOnCallerThread() throws Exception {
         List<Runnable> queued = new ArrayList<>();
-        ControlMessageWriter writer = new ControlMessageWriter(queued::add);
+        List<IOException> errors = new ArrayList<>();
+        ControlMessageWriter writer = new ControlMessageWriter(queued::add, errors::add);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        writer.send(out, "{\"type\":\"touch\"}");
+        assertTrue(writer.send(out, "{\"type\":\"touch\"}"));
         assertEquals(0, out.size());
         assertEquals(1, queued.size());
         queued.get(0).run();
         byte[] decoded = LengthPrefixedProtocol.read(new ByteArrayInputStream(out.toByteArray()));
         assertEquals("{\"type\":\"touch\"}", new String(decoded, "UTF-8"));
+        assertEquals(0, errors.size());
+
+        // Null, empty, and oversize (> MAX_CONTROL_BYTES) payloads must be rejected before queueing.
+        queued.clear();
+        assertFalse(writer.send(null, "{\"type\":\"touch\"}"));
+        assertFalse(writer.send(out, null));
+        assertFalse(writer.send(out, ""));
+        assertEquals(1, errors.size());
+        StringBuilder oversize = new StringBuilder(ControlMessageWriter.MAX_CONTROL_BYTES + 32);
+        oversize.append("{\"type\":\"");
+        while (oversize.length() <= ControlMessageWriter.MAX_CONTROL_BYTES) {
+            oversize.append('x');
+        }
+        oversize.append("\"}");
+        assertFalse(writer.send(out, oversize.toString()));
+        assertEquals(0, queued.size());
+        assertEquals(2, errors.size());
+
+        // IOException during write and RejectedExecutionException on executor must surface to errorHandler.
+        java.io.OutputStream failingOut = new java.io.OutputStream() {
+            @Override
+            public void write(int b) throws IOException {
+                throw new IOException("simulated write failure");
+            }
+        };
+        assertTrue(writer.send(failingOut, "{\"type\":\"touch\"}"));
+        assertEquals(1, queued.size());
+        queued.get(0).run();
+        assertEquals(3, errors.size());
+
+        ControlMessageWriter rejectingWriter = new ControlMessageWriter(command -> {
+            throw new java.util.concurrent.RejectedExecutionException("shut down");
+        }, errors::add);
+        assertFalse(rejectingWriter.send(out, "{\"type\":\"touch\"}"));
+        assertEquals(4, errors.size());
     }
 
     private static byte[] buildBaselineSps(int width, int height) {

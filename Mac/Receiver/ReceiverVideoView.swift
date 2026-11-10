@@ -97,7 +97,9 @@ final class ReceiverVideoView: NSView {
     }
 
     private func moveCursor(x: Double, y: Double, visible: Bool) {
-        cursorNorm = CGPoint(x: x, y: y)
+        let clampedX = min(max(x, 0), 1)
+        let clampedY = min(max(y, 0), 1)
+        cursorNorm = CGPoint(x: clampedX, y: clampedY)
         cursorVisible = visible
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -112,8 +114,12 @@ final class ReceiverVideoView: NSView {
         cursorLayer.contents = image
         // The wire anchor is the hotspot from the image's TOP-left; AppKit
         // layer unit coords run bottom-up — flip y once here.
-        cursorLayer.anchorPoint = CGPoint(x: anchor.x, y: 1 - anchor.y)
-        cursorNormSize = normSize
+        let clampedAnchorX = min(max(anchor.x, 0), 1)
+        let clampedAnchorY = min(max(anchor.y, 0), 1)
+        cursorLayer.anchorPoint = CGPoint(x: clampedAnchorX, y: 1 - clampedAnchorY)
+        cursorNormSize = CGSize(
+            width: min(max(normSize.width, 0), 1),
+            height: min(max(normSize.height, 0), 1))
         cursorLayer.isHidden = !cursorVisible
         updateCursorLayout()
         CATransaction.commit()

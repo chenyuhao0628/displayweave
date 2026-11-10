@@ -81,6 +81,12 @@ private final class ReceiverLogProbe: @unchecked Sendable {
         let cursorBurst = Task.detached {
             defer { cursorFence.signal() }
             var batch = Data()
+            let badNegativeSeq = try JSONSerialization.data(withJSONObject:
+                ["type": "cursor", "x": 0.25, "y": 0.5, "v": 1, "s": -1])
+            let badOutOfRangeCoord = try JSONSerialization.data(withJSONObject:
+                ["type": "cursor", "x": 1.5, "y": 0.5, "v": 1, "s": 9999])
+            batch.append(ReceiverFrameDecoder.frame(badNegativeSeq))
+            batch.append(ReceiverFrameDecoder.frame(badOutOfRangeCoord))
             for index in 1...240 {
                 let cursor = try JSONSerialization.data(withJSONObject:
                     ["type": "cursor", "x": Double(index) / 240, "y": 0.5, "v": 1, "s": index])

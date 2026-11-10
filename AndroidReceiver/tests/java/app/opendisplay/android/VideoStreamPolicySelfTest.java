@@ -63,6 +63,7 @@ public final class VideoStreamPolicySelfTest {
         testWifiTransportReplacesBlockedConnection();
         testWifiTransportDisconnectsOnControlBackpressure();
         testWifiTransportIgnoresSendAfterStop();
+        testDecoderWorkerShutdownRejectionGuard();
         System.out.println("VideoStreamPolicySelfTest PASS");
     }
 
@@ -456,6 +457,21 @@ public final class VideoStreamPolicySelfTest {
                 10_000, 7_000, 7_500, 0));
         assertFalse(DecoderStallRecoveryPolicy.shouldRecover(
                 10_000, 9_500, 7_500, 9_000));
+        assertFalse(DecoderStallRecoveryPolicy.requiresFreshStreamConfigForStall(false));
+        assertTrue(DecoderStallRecoveryPolicy.requiresFreshStreamConfigForStall(true));
+        assertFalse(DecoderStallRecoveryPolicy.requiresFreshStreamConfigForCodecFailure(
+                false, "h264"));
+        assertTrue(DecoderStallRecoveryPolicy.requiresFreshStreamConfigForCodecFailure(
+                false, "hevc"));
+        assertTrue(DecoderStallRecoveryPolicy.requiresFreshStreamConfigForCodecFailure(
+                true, "h264"));
+        assertTrue(DecoderStallRecoveryPolicy.shouldRecreateDecoderInPlace(
+                DecoderStallRecoveryPolicy.requiresFreshStreamConfigForStall(false)));
+        assertFalse(DecoderStallRecoveryPolicy.shouldRecreateDecoderInPlace(
+                DecoderStallRecoveryPolicy.requiresFreshStreamConfigForStall(true)));
+        assertFalse(DecoderStallRecoveryPolicy.shouldRecreateDecoderInPlace(
+                DecoderStallRecoveryPolicy.requiresFreshStreamConfigForCodecFailure(
+                        false, "hevc")));
     }
 
     private static void testDecoderReconfigurationPolicy() {
@@ -1201,6 +1217,55 @@ public final class VideoStreamPolicySelfTest {
         } catch (RuntimeException error) {
             throw new AssertionError("send after stop must be a no-op", error);
         }
+    }
+
+    private static void testDecoderWorkerShutdownRejectionGuard() throws Exception {
+        java.util.concurrent.ExecutorService worker =
+                java.util.concurrent.Executors.newSingleThreadExecutor();
+        AtomicInteger executed = new AtomicInteger();
+        AtomicInteger rejectedFallback = new AtomicInteger();
+        CountDownLatch firstRan = new CountDownLatch(1);
+        assertTrue(OpenDisplayServer.executeDecoderTask(worker, () -> {
+            executed.incrementAndGet();
+            firstRan.countDown();
+        }, rejectedFallback::incrementAndGet));
+        assertTrue(firstRan.await(2, TimeUnit.SECONDS));
+        assertEquals(1, executed.get());
+        assertEquals(0, rejectedFallback.get());
+
+        worker.shutdown();
+        assertTrue(worker.awaitTermination(2, TimeUnit.SECONDS));
+        assertFalse(OpenDisplayServer.executeDecoderTask(
+                worker, executed::incrementAndGet, rejectedFallback::incrementAndGet));
+        assertEquals(1, executed.get());
+        assertEquals(1, rejectedFallback.get());
+        assertFalse(OpenDisplayServer.executeDecoderTask(
+                worker, executed::incrementAndGet, null));
+        assertEquals(1, executed.get());
+
+        java.nio.file.Path serverPath = java.nio.file.Paths.get(
+                "src/main/java/app/opendisplay/android/OpenDisplayServer.java");
+        if (!java.nio.file.Files.exists(serverPath)) {
+            serverPath = java.nio.file.Paths.get(
+                    "app/src/main/java/app/opendisplay/android/OpenDisplayServer.java");
+        }
+        if (!java.nio.file.Files.exists(serverPath)) {
+            serverPath = java.nio.file.Paths.get(
+                    "AndroidReceiver/app/src/main/java/app/opendisplay/android/OpenDisplayServer.java");
+        }
+        String source = new String(java.nio.file.Files.readAllBytes(serverPath), StandardCharsets.UTF_8);
+        assertEquals(-1, source.indexOf("decoderWorker.execute("));
+        int helperCalls = 0;
+        int searchFrom = 0;
+        while (true) {
+            int idx = source.indexOf("executeDecoderTask(decoderWorker,", searchFrom);
+            if (idx < 0) {
+                break;
+            }
+            helperCalls++;
+            searchFrom = idx + "executeDecoderTask(decoderWorker,".length();
+        }
+        assertEquals(4, helperCalls);
     }
 
     private static byte[] annexB(byte... nalHeaders) {

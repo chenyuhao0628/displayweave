@@ -63,7 +63,7 @@ signing_options=()
 while IFS= read -r option; do signing_options+=("$option"); done <<< "$signing_output"
 
 app_process stop
-xcodegen generate
+./generate.sh
 
 log_step "开始构建 $SCHEME ($CONFIGURATION)"
 xcodebuild \

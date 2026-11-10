@@ -1,9 +1,9 @@
 // Snapshot reproducer: see docs/archive/audits/code-and-experience-audit-2026-10-26.md.
 import Foundation
-final class VirtualDisplay { let displayID: UInt32 = 1; let actualRefreshRate = 60 }
+final class VirtualDisplay: Sendable { let displayID: UInt32 = 1; let actualRefreshRate = 60 }
 enum DisplayTopology { static func isOnline(_ id: UInt32) -> Bool { true } }
 enum Log { static func info(_ value: String) {} }
-final class RecoveryProbe {
+final class RecoveryProbe: @unchecked Sendable {
     let queue = DispatchQueue(label: "review.recovery")
     let displayCoordinator: DisplayUnitCoordinator
     var stopped = false

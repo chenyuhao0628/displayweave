@@ -24,7 +24,11 @@ struct ReceiverCursorImageSelfTest {
             "Reject oversized dimensions before pixel allocation")
         precondition(ReceiverCursorImage.decode(sprite(width: 1, height: 513)) == nil)
         precondition(ReceiverCursorImage.decode(sprite(width: 512, height: 512)) != nil)
-        for (key, value) in [("nw", 0.0), ("nh", 2.0), ("nw", Double.nan), ("ax", Double.infinity)] {
+        for (key, value) in [
+            ("nw", 0.0), ("nh", 2.0), ("nw", Double.nan),
+            ("ax", Double.infinity), ("ax", -0.1), ("ax", 1.1),
+            ("ay", -0.01), ("ay", 1.5),
+        ] {
             var invalid = valid; invalid[key] = value
             precondition(ReceiverCursorImage.decode(invalid) == nil)
         }

@@ -46,6 +46,21 @@ private final class FirstVideoProbe: MacVideoRendering, @unchecked Sendable {
     }
 
     @MainActor static func main() async throws {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let roleViews = try String(contentsOf: root.appendingPathComponent("Mac/MacRoleViews.swift"), encoding: .utf8)
+        precondition(roleViews.contains("sender.running || (receiver.connected && receiver.videoSize != .zero)"),
+                     "MacConnectionIcon must require decoded videoSize != .zero before showing receiver as connected")
+        let streamReceiverSource = try String(contentsOf: root.appendingPathComponent("Mac/Receiver/StreamReceiver.swift"), encoding: .utf8)
+        if let adoptRange = streamReceiverSource.range(of: "private func adopt(") {
+            let adoptBody = String(streamReceiverSource[adoptRange.lowerBound...])
+            let clearIdx = adoptBody.range(of: "connection = nil")?.lowerBound
+            let resetIdx = adoptBody.range(of: "resetStream()")?.lowerBound
+            let bindIdx = adoptBody.range(of: "connection = conn")?.lowerBound
+            precondition(clearIdx != nil && resetIdx != nil && bindIdx != nil && clearIdx! < resetIdx! && resetIdx! < bindIdx!,
+                         "StreamReceiver.adopt must clear connection and call resetStream() before assigning connection = conn")
+        } else {
+            preconditionFailure("StreamReceiver.adopt not found")
+        }
         let probe = FirstVideoProbe()
         let receiver = StreamReceiver(hardwareHEVCDecode: false, videoRenderer: probe,
             monotonicTime: { probe.now }, securityProvider: { .legacy })
@@ -54,6 +69,7 @@ private final class FirstVideoProbe: MacVideoRendering, @unchecked Sendable {
         let port = receiver.listeningPort
         let first = try await connect(port)
         try await waitFor("connected") { receiver.connected }
+        precondition(receiver.videoSize == .zero, "connected socket without video frame must keep videoSize == .zero")
         try await send([], to: first) // a real heartbeat must not mask missing video
         probe.advance(to: 16)
         try await waitFor("heartbeat-only connection must fail its first-video deadline") { !receiver.connected }

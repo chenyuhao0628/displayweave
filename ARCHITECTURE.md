@@ -53,9 +53,9 @@ Touch coordinates, drag state, cursor movement, and two-finger scroll are encode
 
 ## Security boundaries
 
-- v0.3.1 defaults to certificate-pinned mutual TLS and explicit invitation pairing on Apple and Android. Legacy compatibility is an explicit unencrypted choice for trusted networks. See [pairing](docs/guides/secure-transport.md).
+- v0.3.5 defaults to certificate-pinned mutual TLS and explicit invitation pairing on Apple and Android. Legacy compatibility is an explicit unencrypted choice for trusted networks. See [pairing](docs/guides/secure-transport.md).
 - ADB RSA authorization trusts the Mac as a debugging host beyond DisplayWeave.
-- The macOS v0.3.1 uses a pinned Apple Development identity and is not notarized. The first migration from an ad-hoc release may require reauthorization; later builds are checked for signing continuity.
+- The macOS v0.3.5 release uses a pinned Apple Development identity and is not notarized. The first migration from an ad-hoc release may require reauthorization; later builds are checked for signing continuity.
 - The Android APK uses an offline project keystore stored outside Git.
 - The iOS public artifact is an unsigned re-signing input.
 - `CGVirtualDisplay` is a private API and can change across macOS releases.
@@ -74,7 +74,7 @@ Android DWV2. See the [design](docs/reference/mac-to-mac-design.md).
 
 ## Source ownership and bounded work (2026-10-16)
 
-The source app supports exclusive Mac send/receive roles over the same Wi-Fi or Ethernet LAN. This is packaged as an experimental feature in v0.3.1; physical acceptance remains pending. Mirroring captures an existing display; extending creates a virtual display.
+The source app supports exclusive Mac send/receive roles over the same Wi-Fi or Ethernet LAN. This is packaged as an experimental feature in v0.3.5; physical acceptance remains pending. Mirroring captures an existing display; extending creates a virtual display.
 
 | Area | Ownership |
 | --- | --- |
@@ -112,3 +112,7 @@ Desktop points/backing pixels are separate from the encoded raster. iMac presets
 ## Automatic desktop matching (v0.3.3)
 
 For Mac receivers, an eligible sender display and optional validated system-reported physical dimensions inform an estimated logical desktop. Missing sizes fall back to proportional matching; mobile receivers retain their existing geometry. Existing preferences are preserved. Screen changes are debounced and session-scoped, with cooldown and stale-state checks. The 4096×2304 Apple video envelope is unchanged. See [the matching evidence](docs/verification/automatic-desktop-matching.md).
+
+## High-refresh trials, decoder recovery, and Android keep-alive (v0.3.4 – v0.3.5)
+
+Android and eligible iOS/iPadOS receivers offer opt-in native-resolution high-refresh capability envelopes without expanding default conservative limits. On Android, `ReceiverKeepAliveService` promotes active sessions to a user-stoppable `connectedDevice` foreground notification and orders shutdown after foreground promotion so quick connection turnover cannot trigger `ForegroundServiceDidNotStartInTimeException`. `DecoderStallRecoveryPolicy` requests a fresh `streamConfig` (`streamConfigRequired`) on negotiated V2 sessions and recreates the `H264SurfaceDecoder` in place on legacy V1 sessions (`!negotiatedV2`), while `OpenDisplayServer.stop()` synchronizes with `decoderWorker` and releases `MediaCodec` asynchronously on a detached thread. All `OpenDisplayServer.Listener`, `NsdAdvertiser.Listener`, and `WifiTcpReceiverTransport` callbacks carry the originating source reference so retired instances cannot mutate active UI state. On iOS/iPadOS, `MetalVideoRenderer` guards texture commits across reset and generation epochs and caches `MTKView.drawableSize` without off-main-thread UIKit reads; Mac receivers gate window presentation and connection status on decoded `videoSize`. See [the v0.3.5 release notes](docs/releases/v0.3.5.md), [the v0.3.4 release notes](docs/releases/v0.3.4.md), and [Android decoder throughput and recovery](docs/reference/android-decoder-throughput-recovery.md).

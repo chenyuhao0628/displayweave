@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## DisplayWeave v0.3.5 (2026-11-10)
+
+Stable release, build 24. See [English release notes](docs/releases/v0.3.5.md) / [简体中文发布说明](docs/releases/v0.3.5.zh-CN.md) for signed assets, automated verification and hardware limits.
+
+- Recreate legacy V1 `H264SurfaceDecoder` in place on `decoderWorker` during render-stall and codec-failure recovery, classify null-decoder drops (`decoderUninitialized`), synchronize `OpenDisplayServer.stop()` with `decoderWorker` shutdown, release `MediaCodec` asynchronously on stop, and guard `decoderWorker.execute` after shutdown.
+- Enforce `ControlMessageWriter` payload bounds (`64 KiB` ceiling) and bounded queue admission (`128` entries) on `enqueueKeyFrameRequest`, guard all `OpenDisplayServer`, `NsdAdvertiser` and `WifiTcpReceiverTransport` callbacks by source instance, and preserve plain-JDK compatibility in `SecureTls` and `compileSelfTests`.
+- Eliminate `MTKView.drawableSize` main-thread data races, guard `MetalVideoRenderer` across reset/generation epochs, restart generation-scoped ping/watchdog monitors on iOS foreground resume, reset the active decoder on rendering-path toggle, and admit swapped-orientation `streamConfig` updates within the active capability envelope.
+- Gate Mac receiver window presentation and `MacConnectionIcon` status on decoded `videoSize`, reset stream state before binding an adopted connection, prevent duplicate TLS hello transmission, validate cursor sequence/coordinate bounds, clear pending sends on connection replacement, drain `adb` pipes concurrently with bounded output, enforce `usbmuxd` handshake timeouts, and resolve mid-stream keyframe synchronization races.
+- Tighten `check-release-integrity.py` and `check-release-links.sh`, synchronize bilingual documentation, architecture overview and privacy disclosures, and clean up unused web assets and CSS media queries.
+
 ## DisplayWeave v0.3.4 (2026-11-09)
 
 Stable release, build 23. See [English release notes](docs/releases/v0.3.4.md) / [简体中文发布说明](docs/releases/v0.3.4.zh-CN.md) for signed assets, automated verification and hardware limits.

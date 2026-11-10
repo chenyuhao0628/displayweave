@@ -87,10 +87,22 @@ jobs:
             -r tools/dmg-requirements.txt
           echo "$RUNNER_TEMP/displayweave-dmg-venv/bin" >> "$GITHUB_PATH"
 
-      - name: Prepare release versions and Android signing
+      - name: Prepare release versions, Mac baseline, and Android signing
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           echo "DISPLAYWEAVE_VERSION_NAME=${DISPLAYWEAVE_RELEASE_TAG#v}" >> "$GITHUB_ENV"
+          if [[ -z "${DISPLAYWEAVE_MAC_BASELINE_APP:-}" ]]; then
+            baseline_tag="$(git describe --tags --abbrev=0 "${DISPLAYWEAVE_RELEASE_TAG}^")"
+            baseline_dir="$RUNNER_TEMP/displayweave-mac-baseline"
+            mkdir -p "$baseline_dir"
+            gh release download "$baseline_tag" \
+              -p "DisplayWeave-macOS.zip" \
+              -D "$baseline_dir"
+            ditto -x -k "$baseline_dir/DisplayWeave-macOS.zip" "$baseline_dir"
+            echo "DISPLAYWEAVE_MAC_BASELINE_APP=$baseline_dir/DisplayWeave.app" >> "$GITHUB_ENV"
+          fi
           keystore="$RUNNER_TEMP/displayweave-android-release.jks"
           echo "DISPLAYWEAVE_ANDROID_KEYSTORE=$keystore" >> "$GITHUB_ENV"
           printf '%s' "$DISPLAYWEAVE_ANDROID_KEYSTORE_BASE64" \
@@ -111,7 +123,7 @@ jobs:
             --verbose --print-certs \
             "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-Android.apk"
 
-      - name: Generate signed Mac and verified Android update feeds
+      - name: Generate signed Mac, verified Android update feeds, and source archive
         env:
           DISPLAYWEAVE_RELEASE_BASE_URL: https://github.com/${{ github.repository }}/releases/download
           DISPLAYWEAVE_ANDROID_APK: ${{ github.workspace }}/build/update-release/DisplayWeave-Android.apk
@@ -137,13 +149,21 @@ jobs:
             -o "$DISPLAYWEAVE_OUTPUT_DIR/appcast.xml" \
             "$APPCAST_INPUT"
 
+          SOURCE_ARCHIVE="DisplayWeave-${DISPLAYWEAVE_RELEASE_TAG}-source.tar.gz"
+          git -C "$GITHUB_WORKSPACE" archive \
+            --format=tar.gz \
+            --prefix="DisplayWeave-${DISPLAYWEAVE_RELEASE_TAG}/" \
+            "$DISPLAYWEAVE_RELEASE_TAG" \
+            -o "$DISPLAYWEAVE_OUTPUT_DIR/$SOURCE_ARCHIVE"
+
           cd "$DISPLAYWEAVE_OUTPUT_DIR"
           shasum -a 256 \
             DisplayWeave-macOS.zip \
             DisplayWeave-macOS.dmg \
             DisplayWeave-Android.apk \
             DisplayWeave-iOS-unsigned-resigning-input.ipa \
-            appcast.xml android-update.json > SHA256SUMS.txt
+            appcast.xml android-update.json \
+            "$SOURCE_ARCHIVE" > SHA256SUMS.txt
 
       - name: Verify the complete update release
         run: |
@@ -162,6 +182,7 @@ jobs:
             "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-iOS-unsigned-resigning-input.ipa" \
             "$DISPLAYWEAVE_OUTPUT_DIR/appcast.xml" \
             "$DISPLAYWEAVE_OUTPUT_DIR/android-update.json" \
+            "$DISPLAYWEAVE_OUTPUT_DIR/DisplayWeave-${DISPLAYWEAVE_RELEASE_TAG}-source.tar.gz" \
             "$DISPLAYWEAVE_OUTPUT_DIR/SHA256SUMS.txt"
 
       - name: Stage update feeds for Pages deployment

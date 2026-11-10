@@ -84,9 +84,13 @@ struct MacConnectionIcon: View {
     @ObservedObject var sender: SenderController
     @ObservedObject private var receiver = MacRoleController.shared.receiver.receiver
 
+    private var active: Bool {
+        sender.running || (receiver.connected && receiver.videoSize != .zero)
+    }
+
     var body: some View {
-        Image(systemName: sender.running || receiver.connected
+        Image(systemName: active
               ? "rectangle.on.rectangle.fill" : "rectangle.on.rectangle")
-            .accessibilityLabel(sender.running || receiver.connected ? "DisplayWeave 已连接" : "DisplayWeave 未连接")
+            .accessibilityLabel(active ? "DisplayWeave 已连接" : "DisplayWeave 未连接")
     }
 }
