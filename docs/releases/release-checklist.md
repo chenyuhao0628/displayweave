@@ -13,7 +13,7 @@ Current release: **v0.3.5 / build 24**. [Release notes](v0.3.5.md), [exact files
 - [x] Sparkle EdDSA feed and Android update metadata generated; all six package/feed hashes and archive/signature/identity checks passed.
 - [x] Full local gate passed: 65 Swift suites and production-method fixtures; universal Mac Debug and iOS Simulator; Android `test assembleDebug lintDebug`; Apple distribution/signing, workspace cleanup, docs and packaging regressions; 36 brand exports; website build, bilingual docs, release links and diff checks.
 - [x] Apple↔Java mutual TLS, Mac/iOS Keychain and isolated iOS video-admission runtime (including swapped-orientation streamConfig and Metal generation/reset guards) passed.
-- [ ] Draft Release asset verification, anonymous online downloads, Pages feed verification and publication PR merge are recorded after they complete.
+- [x] Draft Release asset verification, anonymous online downloads, Pages feed verification and publication PR merge recorded in [GitHub Release v0.3.5](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.3.5) and [PR #31](https://github.com/chenyuhao0628/displayweave/pull/31).
 
 Android signing certificate SHA-256: `89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d`. High-refresh behavior remains experimental; no physical performance claim is made. Release binaries are not advertised until the matching Release is public.
 

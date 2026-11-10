@@ -13,7 +13,7 @@
 - [x] 已生成 Sparkle EdDSA 更新源和 Android 更新元数据；六项产物／更新源哈希以及归档、签名、身份检查通过。
 - [x] 完整本地门禁通过：65 组 Swift 套件及生产方法夹具、Mac universal Debug 与 iOS Simulator、Android `test assembleDebug lintDebug`、Apple 分发/签名/目录清理/文档/打包回归、36 项品牌导出、网站构建、双语文档、发行链接和 diff 检查。
 - [x] Apple↔Java 双向 TLS、Mac/iOS Keychain 与隔离 iOS 视频准入 runtime（含横竖屏互换 `streamConfig` 与 Metal 代次/重置保护）通过。
-- [ ] 草稿 Release 附件核验、匿名在线下载、Pages 更新源核验及发行 PR 合并结果，完成后记录。
+- [x] 草稿 Release 附件核验、匿名在线下载、Pages 更新源核验及发行 PR 合并结果已记录于 [GitHub Release v0.3.5](https://github.com/chenyuhao0628/displayweave/releases/tag/v0.3.5) 与 [PR #31](https://github.com/chenyuhao0628/displayweave/pull/31)。
 
 Android 签名证书 SHA-256：`89805f045800ea18b56b84b32e8e31b1710a3c7bf3c85fda54d260d1fc6d589d`。高刷行为仍属实验性，不宣称实体性能。对应 Release 公开前，不将发行二进制标记为可下载。
 
