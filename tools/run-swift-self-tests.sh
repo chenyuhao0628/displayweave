@@ -56,6 +56,8 @@ run_test BenchmarkRecorderSelfTest \
 run_test BinaryFrameHeaderV2SelfTest \
   "${settings[@]}" Mac/BinaryFrameHeaderV2.swift \
   MacTests/BinaryFrameHeaderV2SelfTest.swift
+run_test UDPMediaProtocolSelfTest \
+  Shared/UDPMediaProtocol.swift MacTests/UDPMediaProtocolSelfTest.swift
 run_test DeviceCapabilitiesSelfTest \
   Mac/FrameSizePolicy.swift Mac/DeviceCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift \
   MacTests/DeviceCapabilitiesSelfTest.swift
