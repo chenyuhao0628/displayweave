@@ -163,7 +163,7 @@ workflow_contract=(
   "needs.build_updates.result == 'success'"
 )
 for marker in "${workflow_contract[@]}"; do
-  grep -Fq "$marker" "$workflow" || {
+  grep -Fq -- "$marker" "$workflow" || {
     echo "release workflow is missing update contract marker: $marker" >&2
     exit 1
   }
