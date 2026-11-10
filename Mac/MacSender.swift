@@ -190,6 +190,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     // tell "Mac rendered 45fps" from "frames got lost" — count deliveries here.
     private var capFrames = 0
     private var capWindowStart = Date()
+    private var staticFrameGate = CaptureStaticFrameGate()
     private var pipelineEncodedFrames = 0
     private var pipelineSentFrames = 0
     private var pipelineSentBytes = 0
@@ -823,8 +824,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         config.pixelFormat = UserDefaults.standard.string(forKey: "pixfmt") == "bgra"
             ? kCVPixelFormatType_32BGRA
             : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
-        // Keep enough SCK headroom for keyframe replay and asynchronous encode.
-        config.queueDepth = 8
+        // Keep enough SCK headroom for keyframe replay and asynchronous encode
+        // without accumulating multi-frame capture queue latency.
+        config.queueDepth = CaptureStaticFramePolicy.defaultQueueDepth
         config.showsCursor = !localCursor
         return config
     }
@@ -2203,6 +2205,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         pipelineSentFrames = 0
         pipelineSentBytes = 0
         capFrames = 0
+        staticFrameGate.resetForNewConfiguration()
         maxEncodeSubmissionMs = 0
         encodeSubmissionMsTotal = 0
         encodeSubmissionCount = 0
@@ -2315,7 +2318,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_DataRateLimits,
                              value: [bytesPerSecond, 1] as CFArray)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: fps as CFNumber)
-        let speedStatus = VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality, value: kCFBooleanTrue)
+        let speedOverQuality = StreamEncodingPolicy.prioritizeEncodingSpeedOverQuality(
+            quality: settings.quality) ? kCFBooleanTrue : kCFBooleanFalse
+        let speedStatus = VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality, value: speedOverQuality)
         let prepareStatus = VTCompressionSessionPrepareToEncodeFrames(encoder)
         guard prepareStatus == noErr else {
             throw NSError(domain: "MacSender.Encoder", code: Int(prepareStatus), userInfo: [
@@ -2367,10 +2372,18 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         captureRecovery.finished(succeeded: true, consoleAvailable: true)
         captureFrames.offer(pixelBuffer, generation: captureFrames.generation)
         lastCaptureAt = Date()
-        capFrames += 1
 
         // No receiver, or the socket is backed up: skip this frame entirely.
         guard connectionReady else { return }
+        let hasDirtyRects = CaptureStaticFramePolicy.hasNonEmptyDirtyRects(info?[.dirtyRects])
+        let requiresKeyframe = keyframeRequests.hasPendingRequest
+            || keyframeRequests.inFlightRequest != nil
+        guard staticFrameGate.shouldEncodeFrame(
+            hasDirtyRects: hasDirtyRects,
+            requiresKeyframe: requiresKeyframe,
+            nowUptime: ProcessInfo.processInfo.systemUptime
+        ) else { return }
+        capFrames += 1
         let queueDecision = SendQueuePolicy.decision(
             pendingSends: pendingSends, pendingEncodes: pendingEncodes,
             sendBudget: maxPendingSends,
@@ -2387,13 +2400,18 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             return
         }
 
-        encode(pixelBuffer, pts: CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
+        let capturedAtMs = CaptureTimestampPolicy.captureTimestampMs(from: info?[.displayTime])
+        encode(
+            pixelBuffer,
+            pts: CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
+            capturedAtMs: capturedAtMs
+        )
     }
 
-    private func encode(_ pixelBuffer: CVPixelBuffer, pts: CMTime) {
+    private func encode(_ pixelBuffer: CVPixelBuffer, pts: CMTime, capturedAtMs explicitCapturedAtMs: Int64? = nil) {
         guard !stopped, !pipelineFailureReported, connectionReady, stream != nil, let encoder else { return }
         guard pipelineHasCapacity else { scheduleDropReplay(); return }
-        let capturedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let capturedAtMs = explicitCapturedAtMs ?? Int64(Date().timeIntervalSince1970 * 1000)
         let encodedForWireGeneration = wireConnectionGeneration
         let encodedForEncoderGeneration = encoderGeneration
         let encodeWorkID = pendingEncodeWork.begin(
@@ -2583,6 +2601,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             bytes: data.count,
             isKeyframe: isKeyframe,
             latencyMs: Date().timeIntervalSince(encodeStart) * 1000)
+        staticFrameGate.markFrameEncoded()
         sendFramed(framed)
     }
 
@@ -2766,6 +2785,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     }
 
     private func sendStreamConfig(width: Int, height: Int, protocolRetry: Bool = false) {
+        staticFrameGate.resetForNewConfiguration()
         let transportName: String
         switch transport {
         case .tcp:

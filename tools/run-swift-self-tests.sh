@@ -70,6 +70,8 @@ run_test EncoderLoadControllerSelfTest \
   "${settings[@]}" Mac/EncoderLoadController.swift MacTests/EncoderLoadControllerSelfTest.swift
 run_test CaptureRecoverySelfTest \
   Mac/CaptureRecovery.swift Mac/CaptureSourceCheck.swift MacTests/CaptureRecoverySelfTest.swift
+run_test CaptureFramePolicySelfTest \
+  Mac/CaptureFramePolicy.swift MacTests/CaptureFramePolicySelfTest.swift
 run_test DisplayRecoverySelfTest \
   Mac/OriginRestore.swift Mac/DisplayArrangement.swift Mac/DisplayUnitCoordinator.swift MacTests/DisplayRecoverySelfTest.swift
 run_test LogPoliciesSelfTest \
