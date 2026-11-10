@@ -1,7 +1,7 @@
 export type Locale = "en" | "zh"
 export type EvidenceState = "verified" | "experimental" | "deferred"
 
-export const releaseTag = "v0.3.4"
+export const releaseTag = "v0.3.5"
 export const releaseBase = `https://github.com/chenyuhao0628/displayweave/releases/download/${releaseTag}`
 
 export type ReleaseAsset = {
@@ -179,7 +179,7 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} release`,
       title: "Download the stable release.",
       intro:
-        "Build 23 adds Android high-frame-rate trials and background keep-alive, opt-in native-resolution high refresh on eligible iPads, code hardening and rounded Mac icons. High-refresh performance remains experimental. Android and macOS verify updates before installation.",
+        "Build 24 hardens cross-platform concurrency, decoder recovery serialization, strict legacy streamConfig validation, usbmux TLS relay admission, and release/CI automation while retaining all v0.3.4 high-refresh and pairing features. High-refresh performance remains experimental. Android and macOS verify updates before installation.",
       warning:
         "Pair DisplayWeave devices or choose the main-screen OpenDisplay compatibility mode. Mac uses a fixed Apple Development signature and remains unnotarized; iOS requires re-signing.",
       checksum: "Verify all downloads with SHA256SUMS.txt",
@@ -396,7 +396,7 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} 发布`,
       title: "下载正式版。",
       intro:
-        "构建 23 增加 Android 高帧率试验与后台保活、符合条件 iPad 的可选原生分辨率高刷、代码加固和 Mac 圆角图标。高刷性能仍属实验性；Android 与 macOS 在安装更新前校验下载。",
+        "构建 24 加固跨平台并发隔离、解码器恢复串行化、旧版 streamConfig 严格校验、usbmux TLS 中继准入以及发行/CI 自动化，并保留 v0.3.4 的全部高刷与配对能力。高刷性能仍属实验性；Android 与 macOS 在安装更新前校验下载。",
       warning:
         "DisplayWeave 使用邀请配对；OpenDisplay 可从主界面选择兼容连接。Mac 使用固定 Apple Development 签名且未公证；iOS 需自行签名。",
       checksum: "使用 SHA256SUMS.txt 验证全部下载",

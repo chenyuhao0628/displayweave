@@ -2,7 +2,7 @@
 
 # Build and install the iOS receiver
 
-v0.3.4 publishes `DisplayWeave-iOS-unsigned-resigning-input.ipa` for device re-signing. It is an unsigned arm64 device build, not a Simulator package or a directly installable app. Most source developers can build with Xcode and their own valid signing identity. See [current artifacts](../releases/current.md).
+v0.3.5 publishes `DisplayWeave-iOS-unsigned-resigning-input.ipa` for device re-signing. It is an unsigned arm64 device build, not a Simulator package or a directly installable app. Most source developers can build with Xcode and their own valid signing identity. See [current artifacts](../releases/current.md).
 
 ## Build from source
 

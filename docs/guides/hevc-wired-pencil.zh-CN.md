@@ -2,7 +2,7 @@
 
 # HEVC、Mac 直连与 Apple Pencil
 
-当前 v0.3.4 的用法见[分辨率](desktop-resolution.zh-CN.md)、[Apple 视频](apple-video.zh-CN.md)、[安全配对](secure-transport.zh-CN.md)、[有线/Wi-Fi 切换](mac-lan-handover.zh-CN.md)和[高级 Pencil](pencil-advanced.zh-CN.md)。本版已包含这些扩展，实机验收仍待完成。下文保留 p7/p8 基线及当时验证，不代表当前功能上限。
+当前 v0.3.5 的用法见[分辨率](desktop-resolution.zh-CN.md)、[Apple 视频](apple-video.zh-CN.md)、[安全配对](secure-transport.zh-CN.md)、[有线/Wi-Fi 切换](mac-lan-handover.zh-CN.md)和[高级 Pencil](pencil-advanced.zh-CN.md)。本版已包含这些扩展，实机验收仍待完成。下文保留 p7/p8 基线及当时验证，不代表当前功能上限。
 
 ## 历史 p7/p8 基线
 

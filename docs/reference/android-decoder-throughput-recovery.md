@@ -33,16 +33,18 @@ until a keyframe arrives. The non-congestion drop reason is
 `referenceChainBroken`; it must not be interpreted as network congestion by the
 adaptive bitrate controller.
 
-## Stall and Codec Failure Recovery (v0.3.4)
+## Stall and Codec Failure Recovery (v0.3.4 – v0.3.5)
 
 When `DecoderStallRecoveryPolicy` detects a render stall (`>= 2200 ms` since the
 last rendered frame while video packets continue arriving, with a `4000 ms`
 cooldown) or `H264SurfaceDecoder` reports a codec failure, negotiated V2 sessions
-set `decoderAwaitingFreshConfig = true` and send `{"type":"kf","streamConfigRequired":true}`
+set `decoderAwaitingFreshConfig = true` on `decoderWorker` and send `{"type":"kf","streamConfigRequired":true}`
 so the Mac resends `streamConfig` before forcing an IDR keyframe. Legacy V1
 sessions (`!negotiatedV2`) recreate `H264SurfaceDecoder` in place on
 `decoderWorker` using the active `VideoStreamConfig` and request an IDR keyframe
-without permanently dropping subsequent frames.
+without permanently dropping subsequent frames. During `onSurfaceLost()`,
+`decoder.release()` also runs on `decoderWorker` so release and recovery stay
+serialized.
 
 ## Surface Refresh Mapping
 

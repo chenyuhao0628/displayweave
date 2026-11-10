@@ -6,7 +6,7 @@ The source now includes `tools/apple-distribution.py` for local signed archives 
 
 ## Readiness and limits
 
-On 2026-10-16 this Mac had zero **Developer ID Application** identities and zero **Apple Distribution** identities; an Apple Development identity is insufficient for these exports. Production signing and notarization are therefore **blocked by external credentials**. Offline tests prove validation and workflow failure behavior, not a notarized artifact. The v0.3.4 stable release (23) uses Apple Development for Mac and remains unnotarized; iOS stays unsigned. Stable release status and Developer ID notarization are separate; see [release distribution](current.md).
+On 2026-10-16 this Mac had zero **Developer ID Application** identities and zero **Apple Distribution** identities; an Apple Development identity is insufficient for these exports. Production signing and notarization are therefore **blocked by external credentials**. Offline tests prove validation and workflow failure behavior, not a notarized artifact. The v0.3.5 stable release (24) uses Apple Development for Mac and remains unnotarized; iOS stays unsigned. Stable release status and Developer ID notarization are separate; see [release distribution](current.md).
 
 The existing local packaging script supports unnotarized stable releases too. The new workflow never substitutes its relaxed library-validation entitlement for production signing. Production Mac uses the empty `Mac/OpenSidecarMac.entitlements` and hardened runtime. No key generation, key export, automatic provisioning or developer-portal upload occurs.
 
@@ -40,7 +40,7 @@ python3 tools/apple-distribution.py preflight ios \
 Example only: recheck GitHub and choose unused version/build values. Replace `preflight` with `build`, keeping all other arguments, and add:
 
 ```text
---version 0.3.5 --build-number 24 --output build/apple-distribution/v0.3.5
+--version 0.3.6 --build-number 25 --output build/apple-distribution/v0.3.6
 ```
 
 These are example numbers, not a reserved or released version. The output must be new and below `build/`. It is created with private directory permissions and an `INCOMPLETE` marker. Existing output is never overwritten or removed. Failed candidates retain logs and archives; choose a new directory for a new build. Logs and profiles can contain local identifiers; keep the whole directory out of Git and public uploads.

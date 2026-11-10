@@ -11,15 +11,15 @@ DisplayWeave 把不可变的 Mac/Android 安装包发布到 GitHub Releases，�
 - Android 产物：`DisplayWeave-Android.apk`
 
 当前正式发行版本是
-[`v0.3.4`](https://github.com/chenyuhao0628/displayweave/releases)。
+[`v0.3.5`](https://github.com/chenyuhao0628/displayweave/releases)。
 未支持当前更新路径的旧 Android 版本需要手动安装一次当前 APK；后续版本使用应用内的 GitHub 单源更新渠道。
 本版本同时包含引导式 DMG 与 Sparkle ZIP 更新包。
 
-v0.3.4 的 Mac 使用固定 Apple Development 身份，仍未公证。Sparkle 通过不变的内置 EdDSA 公钥验证 ZIP。更新真实性与权限延续分别验证：打包流程检查 Mac 签名身份，Sparkle 验证更新签名；这些都不等同于 Developer ID 公证发行。
+v0.3.5 的 Mac 使用固定 Apple Development 身份，仍未公证。Sparkle 通过不变的内置 EdDSA 公钥验证 ZIP。更新真实性与权限延续分别验证：打包流程检查 Mac 签名身份，Sparkle 验证更新签名；这些都不等同于 Developer ID 公证发行。
 
-2026-11-09：构建 23 增加 Android 和符合条件 iPad 接收端的可选高刷试验、加固修复及 Mac 圆角图标。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](v0.3.4.zh-CN.md)。
+2026-11-10：构建 24 加固 Android 旧版 V1 解码恢复与异步编解码器释放、iOS Metal 绘制尺寸／代次同步及旋转视频准入、Mac 接收端解码后窗口呈现门禁、ADB/usbmux 管道与握手超时边界，并同步双语文档。下载仅使用 GitHub Releases，Mac 与 Android 更新元数据使用项目 GitHub Pages。改动、权限延续与验证边界见[发布说明](v0.3.5.zh-CN.md)。
 
-源码流程要求固定 Apple 签名身份和升级比较，见[权限延续](../guides/mac-permissions.zh-CN.md)，旧发行资产保持不可变；v0.3.4 与实际下载的 v0.3.3 应用比较并延续其签名身份。本地发行的可复现命令与验收要求见[本地发行](local-release.zh-CN.md)。
+源码流程要求固定 Apple 签名身份和升级比较，见[权限延续](../guides/mac-permissions.zh-CN.md)，旧发行资产保持不可变；v0.3.5 与 v0.3.4 应用比较并延续其签名身份。本地发行的可复现命令与验收要求见[本地发行](local-release.zh-CN.md)。
 
 ## 用户一次性迁移
 

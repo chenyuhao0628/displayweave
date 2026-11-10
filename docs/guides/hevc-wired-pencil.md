@@ -2,7 +2,7 @@
 
 # HEVC, direct-link Macs and Apple Pencil
 
-For current v0.3.4 behavior, see [resolution](desktop-resolution.md), [Apple video](apple-video.md), [secure pairing](secure-transport.md), [wired/Wi-Fi handover](mac-lan-handover.md) and [advanced Pencil](pencil-advanced.md). These extensions are included; physical acceptance remains pending. The following p7/p8 baseline and dated evidence are historical, not current feature limits.
+For current v0.3.5 behavior, see [resolution](desktop-resolution.md), [Apple video](apple-video.md), [secure pairing](secure-transport.md), [wired/Wi-Fi handover](mac-lan-handover.md) and [advanced Pencil](pencil-advanced.md). These extensions are included; physical acceptance remains pending. The following p7/p8 baseline and dated evidence are historical, not current feature limits.
 
 ## Historical p7/p8 baseline
 

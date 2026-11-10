@@ -2,7 +2,7 @@
 
 # Android receiver session controls
 
-Included in [v0.3.4 (23)](../releases/v0.3.4.md). High-FPS trials remain experimental.
+Included in [v0.3.4 (23)](../releases/v0.3.4.md) and [v0.3.5 (24)](../releases/v0.3.5.md). High-FPS trials remain experimental.
 
 Settings fades after four seconds while remaining persistently accessible in the top-right corner; tapping it restores full opacity and opens settings. Video viewport geometry is unchanged. Cursor updates retain only the latest position for each UI animation frame; TCP ordering is unchanged and latency improvement is unconfirmed.
 

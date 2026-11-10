@@ -2,7 +2,7 @@
 
 # Mac wired / Wi-Fi handover
 
-Included in v0.3.4, off by default. Two-Mac physical acceptance remains pending.
+Included in v0.3.5, off by default. Two-Mac physical acceptance remains pending.
 
 ## Use
 
