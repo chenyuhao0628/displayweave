@@ -58,6 +58,11 @@ run_test BinaryFrameHeaderV2SelfTest \
   MacTests/BinaryFrameHeaderV2SelfTest.swift
 run_test UDPMediaProtocolSelfTest \
   Shared/UDPMediaProtocol.swift MacTests/UDPMediaProtocolSelfTest.swift
+run_test UDPMediaFECSelfTest \
+  Shared/UDPMediaProtocol.swift Shared/UDPMediaFEC.swift MacTests/UDPMediaFECSelfTest.swift
+run_test UDPMediaEngineSelfTest \
+  Shared/UDPMediaProtocol.swift Shared/UDPMediaFEC.swift Shared/UDPMediaEngine.swift \
+  MacTests/UDPMediaEngineSelfTest.swift
 run_test DeviceCapabilitiesSelfTest \
   Mac/FrameSizePolicy.swift Mac/DeviceCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift \
   MacTests/DeviceCapabilitiesSelfTest.swift
