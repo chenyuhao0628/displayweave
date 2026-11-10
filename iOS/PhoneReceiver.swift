@@ -1059,10 +1059,10 @@ final class PhoneReceiver: ObservableObject {
             stallsThisWindow = 0
             fpsWindowStart = now
 
-            // Every 5s, report the aggregate to the Mac so its log holds the
-            // full pipeline picture for offline analysis.
+            // Every 1s, report the aggregate to the Mac so its log and adaptive
+            // bitrate controller receive timely feedback aligned with Android.
             statsReportCounter += 1
-            if statsReportCounter >= 5 {
+            if statsReportCounter >= 1 {
                 statsReportCounter = 0
                 sendControl([
                     "type": "stats",

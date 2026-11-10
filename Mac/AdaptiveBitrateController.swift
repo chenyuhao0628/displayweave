@@ -36,6 +36,11 @@ struct AdaptiveBitrateDecision: Equatable {
     var trigger: String
     var networkState: AdaptiveNetworkState
     var decisionEpoch: Int
+
+    /// Bitrate-only adaptation mutates the active encoder session in place;
+    /// it must never emit a new `streamConfig` or bump `configVersion`, which
+    /// would invalidate in-flight frames and break the receiver reference chain.
+    var requiresStreamConfig: Bool { false }
 }
 
 final class AdaptiveBitrateController {

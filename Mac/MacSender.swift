@@ -2951,7 +2951,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         }
         lastAdaptiveDecision = decision
         Task { @MainActor in onTargetBitrate?(Double(streamBitrate) / 1_000_000) }
-        sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
+        if decision.requiresStreamConfig {
+            sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
+        }
         Log.info("adaptive bitrate previousBitrate=\(decision.previousBitrate) newBitrate=\(decision.newBitrate) reason=\(decision.reason) trigger=\(decision.trigger) decisionEpoch=\(decision.decisionEpoch) networkState=\(decision.networkState.rawValue)")
     }
 
