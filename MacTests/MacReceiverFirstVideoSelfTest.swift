@@ -46,7 +46,7 @@ private final class FirstVideoProbe: MacVideoRendering, @unchecked Sendable {
     }
 
     @MainActor static func main() async throws {
-        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         let roleViews = try String(contentsOf: root.appendingPathComponent("Mac/MacRoleViews.swift"), encoding: .utf8)
         precondition(roleViews.contains("sender.running || (receiver.connected && receiver.videoSize != .zero)"),
                      "MacConnectionIcon must require decoded videoSize != .zero before showing receiver as connected")

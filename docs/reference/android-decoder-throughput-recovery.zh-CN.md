@@ -20,7 +20,7 @@ MediaCodec 输入和输出改用异步 Callback。Codec Input Buffer 可用前�
 
 ## 停滞与编解码失败恢复（v0.3.4 – v0.3.5）
 
-当 `DecoderStallRecoveryPolicy` 检测到渲染停滞（持续收到视频包但距上次渲染帧 `>= 2200 ms`，冷却时间 `4000 ms`）或 `H264SurfaceDecoder` 上报编解码失败时，已协商 V2 的会话会在 `decoderWorker` 上标记 `decoderAwaitingFreshConfig = true` 并发送 `{"type":"kf","streamConfigRequired":true}`，由 Mac 先重发 `streamConfig` 再强制输出 IDR 关键帧；旧版 V1 会话（`!negotiatedV2`）则在 `decoderWorker` 上使用当前 `VideoStreamConfig` 就地重建 `H264SurfaceDecoder` 并请求 IDR 关键帧，避免恢复后永久丢弃后续视频帧。`onSurfaceLost()` 期间的 `decoder.release()` 同样派发至 `decoderWorker` 串行执行。
+当 `DecoderStallRecoveryPolicy` 检测到渲染停滞（近 `1500 ms` 内持续收到视频包但距上次渲染帧 `>= 2000 ms`，冷却时间 `5000 ms`）或 `H264SurfaceDecoder` 上报编解码失败时，`releaseCodecForRecovery` 会在调用线程的 `synchronized (this)` 下设置 `decoderAwaitingFreshConfig = requireFreshConfig`，并将 `activeDecoder.release()` 派发至 `decoderWorker`。已协商 V2 的渲染停滞与 H.264 编解码失败会设置 `decoderAwaitingFreshConfig = true` 并发送 `{"type":"kf","reason":"decoderReset","streamConfigRequired":true}`，由 Mac 先重发 `streamConfig` 再强制输出 IDR 关键帧；HEVC 编解码失败同样要求新配置并发送 `{"type":"codecFailure","codec":"hevc","message":"..."}` 以触发 H.264 回退。旧版 V1 的渲染停滞与 H.264 编解码失败（`!negotiatedV2` 且非 HEVC）则在 `decoderWorker` 上使用当前 `VideoStreamConfig` 就地重建 `H264SurfaceDecoder` 并发送 `{"type":"kf"}`，避免恢复后永久丢弃后续视频帧。`onSurfaceLost()` 期间的 `decoder.release()` 同样派发至 `decoderWorker` 串行执行。
 
 ## Surface 刷新率映射
 

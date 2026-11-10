@@ -32,10 +32,11 @@ Receiver 使用以下稳定 Reason Key：
 | `staleConfigVersion` | 否 | Config Identity 或帧顺序已过期 |
 | `invalidFrameLength` | 否 | Framing 拒绝非法或超限长度 |
 | `malformedAnnexB` | 否 | Video Payload 没有可用 Annex-B NAL Unit |
-| `codecReconfigureDrop` | 否 | Decoder/Config 替换使工作失效 |
+| `codecReconfigureDrop` | 否 | Decoder/Config 替换（或有有效 Surface 但 `decoder == null` / `decoderAwaitingFreshConfig`）使工作失效 |
 | `transportReadFailure` | 否 | 当前 Transport Read 失败 |
 | `transportWriteFailure` | 否 | 当前 Transport Write 失败 |
 | `referenceChainBroken` | 否 | 已编码预测帧被丢弃；后续依赖帧等待新的关键帧 |
+| `awaitingKeyframeRejected` | 否 | 等待新关键帧期间到达的非关键帧被拒绝 |
 
 每个已记录事件包含 `reason`、`countWindow`、`countTotal`、`generation`、`sessionEpoch`、`configVersion`、`frameSequence`、`codec` 与 `transport`。Receiver Stats 发布：
 

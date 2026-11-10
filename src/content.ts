@@ -179,7 +179,7 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} release`,
       title: "Download the stable release.",
       intro:
-        "Build 24 hardens cross-platform concurrency, decoder recovery serialization, strict legacy streamConfig validation, usbmux TLS relay admission, and release/CI automation while retaining all v0.3.4 high-refresh and pairing features. High-refresh performance remains experimental. Android and macOS verify updates before installation.",
+        "Build 24 hardens Android legacy V1 decoder recovery and asynchronous codec teardown, iOS Metal drawable/generation synchronization and rotated streamConfig admission, Mac receiver decoded-frame window gating, bounded ADB/usbmux timeouts, and release/CI integrity checks while retaining all v0.3.4 high-refresh and pairing features. High-refresh performance remains experimental. Android and macOS verify updates before installation.",
       warning:
         "Pair DisplayWeave devices or choose the main-screen OpenDisplay compatibility mode. Mac uses a fixed Apple Development signature and remains unnotarized; iOS requires re-signing.",
       checksum: "Verify all downloads with SHA256SUMS.txt",
@@ -396,7 +396,7 @@ export const copy: Record<Locale, SiteCopy> = {
       label: `${releaseTag} 发布`,
       title: "下载正式版。",
       intro:
-        "构建 24 加固跨平台并发隔离、解码器恢复串行化、旧版 streamConfig 严格校验、usbmux TLS 中继准入以及发行/CI 自动化，并保留 v0.3.4 的全部高刷与配对能力。高刷性能仍属实验性；Android 与 macOS 在安装更新前校验下载。",
+        "构建 24 加固 Android 旧版 V1 解码恢复与异步编解码器释放、iOS Metal 绘制尺寸／代次同步与旋转 streamConfig 准入、Mac 接收端解码后窗口呈现门禁、有界 ADB/usbmux 超时控制以及发行/CI 完整性校验，并保留 v0.3.4 的全部高刷与配对能力。高刷性能仍属实验性；Android 与 macOS 在安装更新前校验下载。",
       warning:
         "DisplayWeave 使用邀请配对；OpenDisplay 可从主界面选择兼容连接。Mac 使用固定 Apple Development 签名且未公证；iOS 需自行签名。",
       checksum: "使用 SHA256SUMS.txt 验证全部下载",

@@ -32,10 +32,11 @@ The receiver recognizes these stable reason keys:
 | `staleConfigVersion` | No | config identity or frame ordering was stale |
 | `invalidFrameLength` | No | framing rejected an invalid or oversized length |
 | `malformedAnnexB` | No | the video payload had no usable Annex-B NAL unit |
-| `codecReconfigureDrop` | No | decoder/config replacement made the work ineligible |
+| `codecReconfigureDrop` | No | decoder/config replacement (or `decoder == null` / `decoderAwaitingFreshConfig` with an active Surface) made the work ineligible |
 | `transportReadFailure` | No | the current transport read failed |
 | `transportWriteFailure` | No | the current transport write failed |
 | `referenceChainBroken` | No | an encoded inter-frame was discarded; dependent frames wait for a fresh keyframe |
+| `awaitingKeyframeRejected` | No | a non-keyframe was rejected while awaiting a fresh keyframe |
 
 Every recorded event captures `reason`, `countWindow`, `countTotal`, `generation`, `sessionEpoch`, `configVersion`, `frameSequence`, `codec`, and `transport`. Receiver stats publish:
 
