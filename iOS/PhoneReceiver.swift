@@ -13,6 +13,19 @@ import CoreMedia
 import VideoToolbox
 import UIKit
 
+struct OutgoingDesktopInput {
+    let kind: DesktopInputEvent.Kind
+    var modifiers: Int = 0
+    var x: Double = 0
+    var y: Double = 0
+    var button: Int = 0
+    var clicks: Int = 1
+    var dx: Double = 0
+    var dy: Double = 0
+    var keyCode: UInt16 = 0
+    var repeating: Bool = false
+}
+
 /// One-second window of pipeline health, plus per-frame timing samples for
 /// the performance overlay graph.
 struct PerfStats: Equatable {
@@ -42,6 +55,7 @@ struct PerfStats: Equatable {
 }
 
 final class PhoneReceiver: ObservableObject {
+    static let desktopInputEnabledKey = "iosDesktopInputEnabled"
 
     @Published var status = "正在启动…"
     @Published var fps = 0
@@ -57,6 +71,12 @@ final class PhoneReceiver: ObservableObject {
     private var pencilActionGrant: String? // main-thread projection
     var onPencilToolChange: (() -> Void)?
     @Published private(set) var pencilActionStatus = "等待高级 Pencil 协商"
+    @Published private(set) var desktopInputAvailable = false
+    @Published private(set) var desktopInputStatus = "等待键鼠协商"
+    @Published private(set) var desktopInputUserEnabledSetting: Bool = (
+        UserDefaults.standard.object(forKey: PhoneReceiver.desktopInputEnabledKey) as? Bool ?? true
+    )
+    var onDesktopInputRevoked: (() -> Void)?
     var onInputReset: (() -> Void)?
     private let inputSendBudget = InputSendBudget()
     private var pencilNegotiated = false
@@ -64,6 +84,12 @@ final class PhoneReceiver: ObservableObject {
     private var pencilActionSession: String?
     private var pencilActionSequence: UInt64 = 0
     private var pencilForwarder = PencilInputForwarder()
+    private var desktopInputUserEnabled: Bool = (
+        UserDefaults.standard.object(forKey: PhoneReceiver.desktopInputEnabledKey) as? Bool ?? true
+    )
+    private var desktopInputSession: String?
+    private var desktopInputSequence: UInt64 = 0
+    private var lastDesktopInputReason: String = ""
     var inputGeneration: UInt64 { inputSendBudget.generation }
 
     private var listener: NWListener?
@@ -158,7 +184,7 @@ final class PhoneReceiver: ObservableObject {
     }
 
     private func clearPresentationCallbacks() {
-        onInputReset = nil; onPencilToolChange = nil
+        onInputReset = nil; onPencilToolChange = nil; onDesktopInputRevoked = nil
         onCursor = nil; onCursorImage = nil; onDecodedFrame = nil
     }
 
@@ -203,8 +229,8 @@ final class PhoneReceiver: ObservableObject {
 
     /// Native panel size in pixels + scale, announced to the Mac in a "hello"
     /// message so it can size the virtual display. Orientation-dependent:
-    /// rotating the phone re-announces with swapped dimensions and the Mac
-    /// rebuilds the virtual display as a portrait/landscape monitor.
+    /// rotating the phone or resizing iPad Split View / Stage Manager windows
+    /// re-announces debounced geometry so the Mac updates smoothly.
     private var nativeLong = 0
     private var nativeShort = 0
     // Changing the trial setting cannot change an already-advertised connection.
@@ -212,6 +238,11 @@ final class PhoneReceiver: ObservableObject {
     private(set) var devicePixelsWide = 0
     private(set) var devicePixelsHigh = 0
     var deviceScale: Double = 2
+    private var windowPointsWide: Int?
+    private var windowPointsHigh: Int?
+    private var panelMillimetersWide: Int?
+    private var panelMillimetersHigh: Int?
+    private var helloDebounceWorkItem: DispatchWorkItem?
     // Name advertised over Bonjour for the Mac's WiFi picker. iOS 16+ returns
     // a generic "iPhone" from UIDevice.current.name (the user-assigned name
     // needs an entitlement Apple gates behind approval and personal teams
@@ -269,7 +300,9 @@ final class PhoneReceiver: ObservableObject {
             self.displayMaxFps = resolvedMaxFps
             self.nativeLong = long
             self.nativeShort = short
-            self.deviceScale = scale
+            if self.windowPointsWide == nil {
+                self.deviceScale = scale
+            }
             if self.devicePixelsWide == 0 {   // default landscape until the view reports
                 self.devicePixelsWide = long
                 self.devicePixelsHigh = short
@@ -285,9 +318,113 @@ final class PhoneReceiver: ObservableObject {
             guard w > 0, w != self.devicePixelsWide else { return }
             self.devicePixelsWide = w
             self.devicePixelsHigh = h
+            self.windowPointsWide = nil
+            self.windowPointsHigh = nil
+            self.panelMillimetersWide = nil
+            self.panelMillimetersHigh = nil
             Log.info("orientation changed -> \(w)x\(h)")
-            if let connection = self.connection { self.sendHello(on: connection) }
+            self.scheduleDebouncedHello()
         }
+    }
+
+    func setWindowGeometry(
+        pixelsWide: Int,
+        pixelsHigh: Int,
+        scale: Double,
+        pointsWide: Int,
+        pointsHigh: Int,
+        screenNativeLong: Int,
+        screenNativeShort: Int,
+        screenNativeScale: Double
+    ) {
+        let clampedWide = max(2, min(16384, pixelsWide & ~1))
+        let clampedHigh = max(2, min(16384, pixelsHigh & ~1))
+        let clampedScale = scale.isFinite && scale > 0 ? min(4.0, max(0.5, scale)) : 2.0
+        let clampedPtsWide = max(2, min(16384, pointsWide))
+        let clampedPtsHigh = max(2, min(16384, pointsHigh))
+        let isPad = UIDevice.current.userInterfaceIdiom == .pad
+        let mm = Self.estimateMillimeters(
+            pixelsWide: clampedWide,
+            pixelsHigh: clampedHigh,
+            pointsWide: clampedPtsWide,
+            pointsHigh: clampedPtsHigh,
+            screenNativeLong: screenNativeLong,
+            screenNativeShort: screenNativeShort,
+            screenNativeScale: screenNativeScale,
+            isPad: isPad
+        )
+        queue.async { [weak self] in
+            guard let self else { return }
+            let sameGeometry = self.devicePixelsWide == clampedWide
+                && self.devicePixelsHigh == clampedHigh
+                && abs(self.deviceScale - clampedScale) < 0.001
+                && self.windowPointsWide == clampedPtsWide
+                && self.windowPointsHigh == clampedPtsHigh
+                && self.panelMillimetersWide == mm?.wide
+                && self.panelMillimetersHigh == mm?.high
+            guard !sameGeometry else { return }
+            let hadInitialGeometry = self.devicePixelsWide > 0 && self.windowPointsWide != nil
+            let pixelOrScaleChanged = self.devicePixelsWide != clampedWide
+                || self.devicePixelsHigh != clampedHigh
+                || abs(self.deviceScale - clampedScale) >= 0.001
+            self.devicePixelsWide = clampedWide
+            self.devicePixelsHigh = clampedHigh
+            self.deviceScale = clampedScale
+            self.windowPointsWide = clampedPtsWide
+            self.windowPointsHigh = clampedPtsHigh
+            self.panelMillimetersWide = mm?.wide
+            self.panelMillimetersHigh = mm?.high
+            if hadInitialGeometry || pixelOrScaleChanged {
+                self.scheduleDebouncedHello()
+            }
+        }
+    }
+
+    private func scheduleDebouncedHello() {
+        helloDebounceWorkItem?.cancel()
+        helloDebounceWorkItem = nil
+        guard connection != nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.helloDebounceWorkItem = nil
+            guard self.running, let conn = self.connection else { return }
+            Log.info("window geometry settled -> \(self.devicePixelsWide)x\(self.devicePixelsHigh)")
+            self.sendHello(on: conn)
+        }
+        helloDebounceWorkItem = work
+        queue.asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+
+    private static func estimateMillimeters(
+        pixelsWide: Int,
+        pixelsHigh: Int,
+        pointsWide: Int,
+        pointsHigh: Int,
+        screenNativeLong: Int,
+        screenNativeShort: Int,
+        screenNativeScale: Double,
+        isPad: Bool
+    ) -> (wide: Int, high: Int)? {
+        let ppi: Double
+        if screenNativeScale <= 1.25 {
+            ppi = 110.0
+        } else if isPad {
+            let isMini = max(screenNativeLong, screenNativeShort) == 2266
+                && min(screenNativeLong, screenNativeShort) == 1488
+            ppi = isMini ? 326.0 : 264.0
+        } else {
+            ppi = screenNativeScale >= 2.8 ? 460.0 : 326.0
+        }
+        guard ppi > 0 else { return nil }
+        let mmWide = Int((Double(pixelsWide) / ppi * 25.4).rounded())
+        let mmHigh = Int((Double(pixelsHigh) / ppi * 25.4).rounded())
+        guard (50...2000).contains(mmWide), (50...2000).contains(mmHigh),
+              pointsWide >= 2, pointsHigh >= 2 else { return nil }
+        let pointAspect = Double(pointsWide) / Double(pointsHigh)
+        let mmAspect = Double(mmWide) / Double(mmHigh)
+        guard pointAspect > 0, mmAspect > 0,
+              abs(log(mmAspect / pointAspect)) <= log(1.12) else { return nil }
+        return (mmWide, mmHigh)
     }
 
     init(displayLayer: AVSampleBufferDisplayLayer) {
@@ -343,6 +480,8 @@ final class PhoneReceiver: ObservableObject {
     func stop() {
         queue.async {
             self.running = false
+            self.helloDebounceWorkItem?.cancel()
+            self.helloDebounceWorkItem = nil
             self.monitorSchedule.deactivate()
             self.listenerGeneration &+= 1
             let oldListener = self.listener
@@ -352,6 +491,21 @@ final class PhoneReceiver: ObservableObject {
             if case .tls(_, let state) = self.security { state.stopPairing() }
             self.listenerHealthy = false
             let old = self.connection
+            var farewell = Data()
+            if old != nil, let session = self.desktopInputSession,
+               self.desktopInputSequence < DesktopInputProtocol.maximumSequence {
+                self.desktopInputSequence += 1
+                let releaseObj: [String: Any] = [
+                    "type": "desktopInput",
+                    "inputSession": session,
+                    "sequence": self.desktopInputSequence,
+                    "kind": DesktopInputEvent.Kind.releaseAll.rawValue,
+                    "modifiers": 0,
+                ]
+                if let releaseData = try? JSONSerialization.data(withJSONObject: releaseObj) {
+                    farewell.append(ReceiverFrameDecoder.frame(releaseData))
+                }
+            }
             self.connection = nil
             self.peerID = nil
             self.resetStreamState()
@@ -359,7 +513,8 @@ final class PhoneReceiver: ObservableObject {
             self.setStatus("已在后台断开")
             if let old {
                 let payload = Data("{\"type\":\"goodbye\"}".utf8)
-                old.send(content: ReceiverFrameDecoder.frame(payload), completion: .contentProcessed { _ in old.cancel() })
+                farewell.append(ReceiverFrameDecoder.frame(payload))
+                old.send(content: farewell, completion: .contentProcessed { _ in old.cancel() })
                 self.queue.asyncAfter(deadline: .now() + 0.25) { old.cancel() }
             }
         }
@@ -445,6 +600,8 @@ final class PhoneReceiver: ObservableObject {
 
     private func adopt(_ conn: NWConnection, authenticatedPeer: SecurePeerRecord? = nil) {
             Log.info("new connection from \(String(describing: conn.endpoint))")
+            self.helloDebounceWorkItem?.cancel()
+            self.helloDebounceWorkItem = nil
             // usbmux-forwarded (cable) connections arrive from loopback;
             // anything else came over the network.
             let peer = String(describing: conn.endpoint)
@@ -477,9 +634,18 @@ final class PhoneReceiver: ObservableObject {
                 }
             }
             let generation = self.inputSendBudget.generation
+            let desktopStatusInitial: String
+            if !self.desktopInputUserEnabled {
+                desktopStatusInitial = "键鼠回传已关闭"
+            } else if encrypted {
+                desktopStatusInitial = "等待 Mac 授权键鼠回传"
+            } else {
+                desktopStatusInitial = "请先配对并使用加密连接"
+            }
             DispatchQueue.main.async {
                 guard self.inputSendBudget.generation == generation else { return }
                 self.encrypted = encrypted
+                self.desktopInputStatus = desktopStatusInitial
             }
             if encrypted {
                 self.lastDataReceived = Date()
@@ -512,27 +678,71 @@ final class PhoneReceiver: ObservableObject {
         case "streamConfig":
             configureVideo(obj)
         case "inputConfig":
-            pencilNegotiated = PencilProtocol.supports(obj["inputCaps"] as? [String])
-            pencilExtendedNegotiated = pencilNegotiated && peerID != nil && (obj["inputCaps"] as? [String])?.contains(PencilProtocol.extendedCapability) == true
-            let candidate = obj["pencilActionSession"] as? String
-            let session = pencilExtendedNegotiated && candidate.flatMap(UUID.init(uuidString:)) != nil ? candidate : nil
-            if session != pencilActionSession { pencilActionSequence = 0 }
-            pencilActionSession = session
-            let enabled = pencilNegotiated, generation = inputSendBudget.generation
-            let extended = pencilExtendedNegotiated
-            let labels = ["consentRequired": "请在 Mac 权限设置中允许 Pencil 快捷键", "accessibilityRequired": "请在 Mac 授予辅助功能权限",
-                          "targetPending": "等待 Mac 准备显示器", "secureRequired": "快捷键需要加密配对"]
-            let actionStatus = session != nil ? "快捷键已授权" : labels[obj["pencilActionStatus"] as? String ?? ""] ?? "发送端未启用高级快捷键"
-            DispatchQueue.main.async {
-                guard self.inputSendBudget.generation == generation else { return }
-                self.pencilAvailable = enabled
-                self.pencilExtendedAvailable = extended
-                if !extended && self.selectedPencilTool != .pen {
-                    self.onPencilToolChange?(); self.selectedPencilTool = .pen
+            let caps = obj["inputCaps"] as? [String]
+            let hasDesktopFields = obj["inputStatus"] != nil
+                || obj["inputSession"] != nil
+                || caps?.contains(DesktopInputProtocol.capability) == true
+                || (caps?.isEmpty == true
+                    && obj["pencilActionStatus"] == nil
+                    && obj["pencilActionSession"] == nil)
+            let hasPencilFields = obj["pencilActionStatus"] != nil
+                || obj["pencilActionSession"] != nil
+                || PencilProtocol.supports(caps)
+                || !hasDesktopFields
+
+            let generation = inputSendBudget.generation
+            if hasPencilFields {
+                pencilNegotiated = PencilProtocol.supports(caps)
+                pencilExtendedNegotiated = pencilNegotiated && peerID != nil
+                    && caps?.contains(PencilProtocol.extendedCapability) == true
+                let candidate = obj["pencilActionSession"] as? String
+                let session = pencilExtendedNegotiated && candidate.flatMap(UUID.init(uuidString:)) != nil ? candidate : nil
+                if session != pencilActionSession { pencilActionSequence = 0 }
+                pencilActionSession = session
+                let enabled = pencilNegotiated
+                let extended = pencilExtendedNegotiated
+                let labels = ["consentRequired": "请在 Mac 权限设置中允许 Pencil 快捷键", "accessibilityRequired": "请在 Mac 授予辅助功能权限",
+                              "targetPending": "等待 Mac 准备显示器", "secureRequired": "快捷键需要加密配对"]
+                let actionStatus = session != nil ? "快捷键已授权" : labels[obj["pencilActionStatus"] as? String ?? ""] ?? "发送端未启用高级快捷键"
+                DispatchQueue.main.async {
+                    guard self.inputSendBudget.generation == generation else { return }
+                    self.pencilAvailable = enabled
+                    self.pencilExtendedAvailable = extended
+                    if !extended && self.selectedPencilTool != .pen {
+                        self.onPencilToolChange?(); self.selectedPencilTool = .pen
+                    }
+                    self.pencilShortcutsAvailable = session != nil
+                    self.pencilActionGrant = session
+                    self.pencilActionStatus = actionStatus
                 }
-                self.pencilShortcutsAvailable = session != nil
-                self.pencilActionGrant = session
-                self.pencilActionStatus = actionStatus
+            }
+            if hasDesktopFields {
+                let candidate = obj["inputSession"] as? String
+                let valid = peerID != nil
+                    && desktopInputUserEnabled
+                    && caps?.contains(DesktopInputProtocol.capability) == true
+                    && candidate.flatMap(UUID.init(uuidString:)) != nil
+                let grant = valid ? candidate : nil
+                if grant != desktopInputSession {
+                    desktopInputSequence = 0
+                }
+                desktopInputSession = grant
+                let reason = obj["inputStatus"] as? String ?? ""
+                lastDesktopInputReason = reason
+                let statusLabel = Self.desktopInputStatusLabel(
+                    userEnabled: desktopInputUserEnabled,
+                    encrypted: peerID != nil,
+                    granted: grant != nil,
+                    reason: reason
+                )
+                DispatchQueue.main.async {
+                    guard self.inputSendBudget.generation == generation else { return }
+                    self.desktopInputAvailable = (grant != nil)
+                    self.desktopInputStatus = statusLabel
+                    if grant == nil {
+                        self.onDesktopInputRevoked?()
+                    }
+                }
             }
         case "pong":
             guard let t1 = obj["t"] as? Double, let mt = obj["mt"] as? Double else { return }
@@ -579,6 +789,24 @@ final class PhoneReceiver: ObservableObject {
         }
     }
 
+    private static func desktopInputStatusLabel(
+        userEnabled: Bool,
+        encrypted: Bool,
+        granted: Bool,
+        reason: String
+    ) -> String {
+        if !userEnabled { return "键鼠回传已关闭" }
+        if granted { return "已授权 · 外接键盘与指针可直接操作 Mac" }
+        if !encrypted { return "请先配对并使用加密连接" }
+        let labels = [
+            "secureRequired": "请先配对并使用加密连接",
+            "consentRequired": "请在 Mac 端设置中允许键鼠回传",
+            "accessibilityRequired": "请在 Mac 端授予辅助功能权限",
+            "targetPending": "等待 Mac 准备显示器",
+        ]
+        return labels[reason] ?? "发送端未授权键鼠回传，请检查 Mac 端设置"
+    }
+
     private func scheduleWatchdog(generation: UInt64) {
         queue.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             guard let self, self.running, self.monitorSchedule.isCurrent(generation) else { return }
@@ -598,6 +826,8 @@ final class PhoneReceiver: ObservableObject {
     }
 
     private func resetStreamState(acceptingInput: Bool = false) {
+        helloDebounceWorkItem?.cancel()
+        helloDebounceWorkItem = nil
         udpMediaSession?.stop()
         udpMediaSession = nil
         lastUdpMediaEpoch = 0
@@ -606,12 +836,19 @@ final class PhoneReceiver: ObservableObject {
         pencilExtendedNegotiated = false
         pencilActionSession = nil; pencilActionSequence = 0
         pencilForwarder = PencilInputForwarder()
+        desktopInputSession = nil
+        desktopInputSequence = 0
+        lastDesktopInputReason = ""
+        let userEnabled = desktopInputUserEnabled
         DispatchQueue.main.async {
             guard self.inputSendBudget.generation == generation else { return }
             self.pencilAvailable = false
             self.pencilExtendedAvailable = false; self.pencilShortcutsAvailable = false
             self.pencilActionGrant = nil; self.selectedPencilTool = .pen
             self.pencilActionStatus = "等待高级 Pencil 协商"
+            self.desktopInputAvailable = false
+            self.desktopInputStatus = userEnabled ? "等待键鼠协商" : "键鼠回传已关闭"
+            self.onDesktopInputRevoked?()
             self.onInputReset?()
         }
         firstVideoDeadline = ReceiverFirstVideoDeadline()
@@ -671,8 +908,13 @@ final class PhoneReceiver: ObservableObject {
 
     private func sendHello(on conn: NWConnection) {
         let codecs = supportsHEVC ? ["h264", "hevc"] : ["h264"]
-        let limits = videoLimits
-        let nativeEnvelope = nativeVideoEnvelope
+        let pxWide = max(2, min(16384, devicePixelsWide > 0 ? (devicePixelsWide & ~1) : 1920))
+        let pxHigh = max(2, min(16384, devicePixelsHigh > 0 ? (devicePixelsHigh & ~1) : 1080))
+        let safeScale = deviceScale.isFinite && deviceScale > 0 ? min(4.0, max(0.5, deviceScale)) : 2.0
+        let limits = pxHigh > pxWide ? (width: 2304, height: 4096) : (width: 4096, height: 2304)
+        let nativeEnvelope: AppleNativeVideoEnvelope? = nativeHighRefreshTrialForConnection
+            ? AppleVideoPolicy.nativeHighRefreshEnvelope(width: pxWide, height: pxHigh, maxFps: displayMaxFps)
+            : nil
         var videoCaps: [[String: Any]] = []
         videoCaps.reserveCapacity(codecs.count * (nativeEnvelope == nil ? 1 : 2))
         for codec in codecs {
@@ -681,14 +923,38 @@ final class PhoneReceiver: ObservableObject {
                               "maxPixelsPerSecond": AppleVideoPolicy.maxPixelsPerSecond])
             if let nativeEnvelope { videoCaps.append(nativeEnvelope.capability(codec: codec)) }
         }
+        var inputCaps = [PencilProtocol.capability]
+        if peerID != nil {
+            inputCaps.append(PencilProtocol.extendedCapability)
+            if desktopInputUserEnabled {
+                inputCaps.append(DesktopInputProtocol.capability)
+            }
+        }
+        var panel: [String: Any] = [
+            "pixelsWide": pxWide,
+            "pixelsHigh": pxHigh,
+            "scale": safeScale,
+        ]
+        let ptWide = windowPointsWide ?? max(2, min(16384, Int((Double(pxWide) / safeScale).rounded())))
+        let ptHigh = windowPointsHigh ?? max(2, min(16384, Int((Double(pxHigh) / safeScale).rounded())))
+        if (2...16384).contains(ptWide), (2...16384).contains(ptHigh) {
+            panel["pointsWide"] = ptWide
+            panel["pointsHigh"] = ptHigh
+        }
+        if let mmWide = panelMillimetersWide, let mmHigh = panelMillimetersHigh,
+           (50...2000).contains(mmWide), (50...2000).contains(mmHigh) {
+            panel["millimetersWide"] = mmWide
+            panel["millimetersHigh"] = mmHigh
+        }
         sendControl([
             "type": "hello",
-            "pixelsWide": devicePixelsWide,
-            "pixelsHigh": devicePixelsHigh,
-            "scale": deviceScale,
+            "pixelsWide": pxWide,
+            "pixelsHigh": pxHigh,
+            "scale": safeScale,
+            "panel": panel,
             "device": UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone",
             "id": Self.installID,
-            "inputCaps": peerID != nil ? [PencilProtocol.capability, PencilProtocol.extendedCapability] : [PencilProtocol.capability],
+            "inputCaps": inputCaps,
             "capabilities": [AppleVideoPolicy.capability, "udpMediaV1"],
             "udpMediaV1": true,
             "refreshRate": displayMaxFps, "maxFps": displayMaxFps,
@@ -697,7 +963,117 @@ final class PhoneReceiver: ObservableObject {
             "maxEncodeWide": limits.width, "maxEncodeHigh": limits.height,
             "videoCaps": videoCaps,
         ], on: conn)
-        Log.info("hello sent")
+        Log.info("hello sent (\(pxWide)x\(pxHigh) @ \(safeScale)x)")
+    }
+
+    func setDesktopInputEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: Self.desktopInputEnabledKey)
+        if Thread.isMainThread {
+            desktopInputUserEnabledSetting = enabled
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.desktopInputUserEnabledSetting = enabled
+            }
+        }
+        queue.async { [weak self] in
+            guard let self, self.desktopInputUserEnabled != enabled else { return }
+            self.desktopInputUserEnabled = enabled
+            let generation = self.inputSendBudget.generation
+            if !enabled {
+                if let session = self.desktopInputSession,
+                   self.desktopInputSequence < DesktopInputProtocol.maximumSequence {
+                    self.desktopInputSequence += 1
+                    let releaseObj: [String: Any] = [
+                        "type": "desktopInput",
+                        "inputSession": session,
+                        "sequence": self.desktopInputSequence,
+                        "kind": DesktopInputEvent.Kind.releaseAll.rawValue,
+                        "modifiers": 0,
+                    ]
+                    self.sendControl(releaseObj)
+                }
+                self.desktopInputSession = nil
+                self.desktopInputSequence = 0
+                DispatchQueue.main.async {
+                    guard self.inputSendBudget.generation == generation else { return }
+                    self.desktopInputAvailable = false
+                    self.desktopInputStatus = "键鼠回传已关闭"
+                    self.onDesktopInputRevoked?()
+                }
+            } else {
+                let encrypted = self.peerID != nil
+                let label = Self.desktopInputStatusLabel(
+                    userEnabled: true,
+                    encrypted: encrypted,
+                    granted: false,
+                    reason: self.lastDesktopInputReason
+                )
+                DispatchQueue.main.async {
+                    guard self.inputSendBudget.generation == generation else { return }
+                    self.desktopInputStatus = encrypted ? "等待 Mac 授权键鼠回传" : label
+                }
+            }
+            if let conn = self.connection {
+                self.sendHello(on: conn)
+            }
+        }
+    }
+
+    func sendDesktopInput(_ event: OutgoingDesktopInput, generation: UInt64) {
+        enqueueControl(expectedGeneration: generation) { [weak self] in
+            guard let self, self.desktopInputUserEnabled,
+                  let session = self.desktopInputSession,
+                  self.desktopInputSequence < DesktopInputProtocol.maximumSequence else { return [] }
+            guard let payload = self.buildDesktopInputMessage(event, session: session) else { return [] }
+            return [payload]
+        }
+    }
+
+    func releaseDesktopInput(generation: UInt64) {
+        sendDesktopInput(OutgoingDesktopInput(kind: .releaseAll), generation: generation)
+    }
+
+    private func buildDesktopInputMessage(_ event: OutgoingDesktopInput, session: String) -> [String: Any]? {
+        let nextSequence = desktopInputSequence + 1
+        let clampedModifiers = min(31, max(0, event.modifiers))
+        var obj: [String: Any] = [
+            "type": "desktopInput",
+            "inputSession": session,
+            "sequence": nextSequence,
+            "kind": event.kind.rawValue,
+            "modifiers": clampedModifiers,
+        ]
+        switch event.kind {
+        case .move:
+            guard event.x.isFinite, event.y.isFinite else { return nil }
+            obj["x"] = min(1, max(0, event.x))
+            obj["y"] = min(1, max(0, event.y))
+        case .buttonDown, .buttonUp:
+            guard event.x.isFinite, event.y.isFinite, (0...2).contains(event.button) else { return nil }
+            obj["x"] = min(1, max(0, event.x))
+            obj["y"] = min(1, max(0, event.y))
+            obj["button"] = event.button
+            obj["clicks"] = min(3, max(1, event.clicks))
+        case .scroll:
+            guard event.x.isFinite, event.y.isFinite,
+                  event.dx.isFinite, event.dy.isFinite else { return nil }
+            obj["x"] = min(1, max(0, event.x))
+            obj["y"] = min(1, max(0, event.y))
+            obj["dx"] = min(4096, max(-4096, event.dx))
+            obj["dy"] = min(4096, max(-4096, event.dy))
+        case .keyDown, .keyUp:
+            let code = Int(event.keyCode)
+            guard (0...127).contains(code),
+                  ![54, 55, 56, 57, 58, 59, 60, 61, 62, 63].contains(code) else { return nil }
+            obj["keyCode"] = code
+            obj["repeat"] = event.repeating
+        case .modifiers, .releaseAll:
+            break
+        }
+        guard let encoded = try? JSONSerialization.data(withJSONObject: obj),
+              DesktopInputEvent.decode(encoded) != nil else { return nil }
+        desktopInputSequence = nextSequence
+        return obj
     }
 
     /// Touch events: x/y normalized [0,1] in video space, origin top-left.

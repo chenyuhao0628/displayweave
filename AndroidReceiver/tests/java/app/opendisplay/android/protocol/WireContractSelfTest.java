@@ -59,6 +59,39 @@ final class WireContractSelfTest {
         }
         equal(AnnexB.stripTelemetryPrefix(hex(vectors, "legacyPayload")), hex(vectors, "annexB"));
 
+        // Verify AndroidStylusInput and AndroidDesktopInput match shared golden vectors byte-for-byte.
+        AndroidDesktopInput desktop = new AndroidDesktopInput();
+        desktop.configureFromInputConfig(true,
+                "{\"type\":\"inputConfig\",\"inputCaps\":[\"mac-input-v1\"],"
+                        + "\"inputSession\":\"11111111-2222-4333-8444-555555555555\","
+                        + "\"inputStatus\":\"ready\"}");
+        java.util.List<String> desktopMoves = desktop.onPointerEvent(
+                AndroidDesktopInput.ACTION_HOVER_MOVE,
+                250.0, 750.0, 1000.0, 1000.0, 0, 0.0, 0.0, 0, 100L);
+        if (desktopMoves.size() != 1) {
+            throw new AssertionError("expected single desktop move message");
+        }
+        equal(LengthPrefixedProtocol.jsonBytes(desktopMoves.get(0)), hex(vectors, "desktopPayload"));
+        equal(LengthPrefixedProtocol.encode(LengthPrefixedProtocol.jsonBytes(desktopMoves.get(0))),
+                hex(vectors, "desktopFrame"));
+
+        AndroidStylusInput.Sample pencilSample = new AndroidStylusInput.Sample(
+                AndroidStylusInput.Phase.DOWN,
+                0.25, 0.75, 0.5, 0.0, 1.5, 1.5,
+                AndroidStylusInput.Tool.ERASER);
+        equal(LengthPrefixedProtocol.jsonBytes(pencilSample.toPencilV2Json()),
+                hex(vectors, "pencilPayload"));
+        equal(LengthPrefixedProtocol.encode(LengthPrefixedProtocol.jsonBytes(pencilSample.toPencilV2Json())),
+                hex(vectors, "pencilFrame"));
+
+        String actionJson = AndroidStylusInput.pencilActionJson(
+                "11111111-2222-4333-8444-555555555555",
+                1L,
+                AndroidStylusInput.RemoteAction.UNDO);
+        equal(LengthPrefixedProtocol.jsonBytes(actionJson), hex(vectors, "actionPayload"));
+        equal(LengthPrefixedProtocol.encode(LengthPrefixedProtocol.jsonBytes(actionJson)),
+                hex(vectors, "actionFrame"));
+
         if (vectors.getProperty("udpHeaderVideoData") != null) {
             byte[] rawHeader = hex(vectors, "udpHeaderVideoData");
             UdpMediaProtocol.Header decoded = UdpMediaProtocol.Header.decode(rawHeader, rawHeader.length);

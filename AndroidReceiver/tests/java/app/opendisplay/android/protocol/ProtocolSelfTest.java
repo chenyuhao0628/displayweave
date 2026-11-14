@@ -54,6 +54,8 @@ public final class ProtocolSelfTest {
         testUdpMediaMultiBlockParityBeforeDataAndRollover();
         testUdpMediaJitterGapDropsPFramesAndArrivalEstimator();
         testUdpMediaReceiverSessionLoopback();
+        testAndroidStylusInputTranslation();
+        testAndroidDesktopInputTranslation();
         System.out.println("ProtocolSelfTest PASS");
     }
 
@@ -141,9 +143,30 @@ public final class ProtocolSelfTest {
                 "wifi", "Android", "install-1");
         assertContains(wifiJson, "\"protocolVersion\":2");
         assertContains(wifiJson, "\"maxFrameBytes\":8388608");
+        assertContains(wifiJson, "\"panel\":{\"pixelsWide\":2560,\"pixelsHigh\":1600,\"scale\":2.000}");
+        assertContains(wifiJson, "\"inputCaps\":[\"pencil-v1\"]");
         assertContains(wifiJson, "\"capabilities\":[\"streamConfigAck\",\"decoderReady\","
                 + "\"firstFrameRendered\",\"sessionEpoch\",\"configVersion\","
                 + "\"frameSequence\",\"maxFrameBytes\",\"binaryFrameHeaderV2\",\"udpMediaV1\"]");
+
+        int[] mm = LengthPrefixedProtocol.computePhysicalMillimeters(2560, 1600, 254.0, 254.0);
+        assertTrue(mm != null);
+        assertEquals(256, mm[0]);
+        assertEquals(160, mm[1]);
+        assertEquals(null, LengthPrefixedProtocol.computePhysicalMillimeters(2560, 1600, 49.9, 254.0));
+        assertEquals(null, LengthPrefixedProtocol.computePhysicalMillimeters(2560, 1600, 254.0, 1000.1));
+        assertEquals(null, LengthPrefixedProtocol.computePhysicalMillimeters(2560, 1600, Double.NaN, 254.0));
+        assertEquals(null, LengthPrefixedProtocol.computePhysicalMillimeters(2560, 1600, Double.POSITIVE_INFINITY, 254.0));
+
+        String encryptedWifiJson = LengthPrefixedProtocol.helloJson(
+                2560, 1600, 2.0, 120, 120,
+                new String[] {"hevc", "h264"}, "hevc", "Android Tablet", 35,
+                "wifi", "Android", "install-1", mm[0], mm[1], true);
+        assertContains(encryptedWifiJson,
+                "\"panel\":{\"pixelsWide\":2560,\"pixelsHigh\":1600,\"scale\":2.000,"
+                        + "\"millimetersWide\":256,\"millimetersHigh\":160}");
+        assertContains(encryptedWifiJson,
+                "\"inputCaps\":[\"pencil-v1\",\"pencil-v2\",\"mac-input-v1\"]");
 
         String usbJson = LengthPrefixedProtocol.helloJson(
                 2560, 1600, 2.0, 120, 120,
@@ -1148,6 +1171,169 @@ public final class ProtocolSelfTest {
         assertTrue(fb2 != null);
         // dSend = 30_000 - 20_000 = 10_000us, dArr = 32_000 - 22_000 = 10_000us -> rawGrad = 0 -> EWMA = round(0.7 * 600) = 420.
         assertEquals(420, fb2.arrivalGradientUs);
+    }
+
+    private static void testAndroidStylusInputTranslation() {
+        AndroidStylusInput stylus = new AndroidStylusInput();
+
+        // 1. Unnegotiated fallback: hover ignored, contact emits touch fallback.
+        assertEquals(0, stylus.onMotionEvent(
+                AndroidStylusInput.ACTION_HOVER_MOVE,
+                AndroidStylusInput.TOOL_TYPE_STYLUS,
+                500, 250, 1000, 1000, 0.0, 0.2, 0.0, 0.0, 0).size());
+        List<String> fallbackDown = stylus.onMotionEvent(
+                AndroidStylusInput.ACTION_DOWN,
+                AndroidStylusInput.TOOL_TYPE_STYLUS,
+                500, 250, 1000, 1000, 0.6, 0.2, 0.0, 0.0, 0);
+        assertEquals(1, fallbackDown.size());
+        assertEquals("{\"type\":\"touch\",\"phase\":\"began\",\"x\":0.5,\"y\":0.25}", fallbackDown.get(0));
+
+        // Mid-stroke negotiation to pencil-v2 must NOT switch an in-flight touch stroke!
+        stylus.configureFromInputConfig(true,
+                "{\"type\":\"inputConfig\",\"inputCaps\":[\"pencil-v1\",\"pencil-v2\"],"
+                        + "\"pencilActionStatus\":\"ready\","
+                        + "\"pencilActionSession\":\"11111111-2222-4333-8444-555555555555\"}");
+        List<String> fallbackUp = stylus.onMotionEvent(
+                AndroidStylusInput.ACTION_UP,
+                AndroidStylusInput.TOOL_TYPE_STYLUS,
+                500, 250, 1000, 1000, 0.0, 0.2, 0.0, 0.0, 0);
+        assertEquals(1, fallbackUp.size());
+        assertEquals("{\"type\":\"touch\",\"phase\":\"ended\",\"x\":0.5,\"y\":0.25}", fallbackUp.get(0));
+
+        // 2. Next hover & stroke use negotiated pencil-v2 over TLS; desktop-only inputConfig does not clobber!
+        stylus.configureFromInputConfig(true,
+                "{\"type\":\"inputConfig\",\"inputCaps\":[\"mac-input-v1\"],"
+                        + "\"inputSession\":\"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\","
+                        + "\"inputStatus\":\"ready\"}");
+        assertTrue(stylus.isNegotiatedV2());
+        assertTrue(stylus.isShortcutsAvailable());
+
+        List<String> hoverIn = stylus.onMotionEvent(
+                AndroidStylusInput.ACTION_HOVER_MOVE,
+                AndroidStylusInput.TOOL_TYPE_STYLUS,
+                250, 750, 1000, 1000, 0.8, Math.PI / 4.0, Math.PI / 2.0, 0.5, 0);
+        assertEquals(1, hoverIn.size());
+        assertContains(hoverIn.get(0), "\"type\":\"pencil2\"");
+        assertContains(hoverIn.get(0), "\"phase\":\"hover\"");
+        assertContains(hoverIn.get(0), "\"pressure\":0");
+        assertContains(hoverIn.get(0), "\"azimuth\":0");
+        assertContains(hoverIn.get(0), "\"tool\":\"pen\"");
+
+        List<String> hoverExit = stylus.onMotionEvent(
+                AndroidStylusInput.ACTION_HOVER_EXIT,
+                AndroidStylusInput.TOOL_TYPE_STYLUS,
+                250, 750, 1000, 1000, 0.0, 0.0, 0.0, 0.0, 0);
+        assertEquals(1, hoverExit.size());
+        assertEquals("{\"type\":\"proximity\",\"entering\":false,\"x\":0.25,\"y\":0.75}", hoverExit.get(0));
+
+        // Eraser via secondary barrel button or TOOL_TYPE_ERASER.
+        List<String> eraserDown = stylus.onMotionEvent(
+                AndroidStylusInput.ACTION_DOWN,
+                AndroidStylusInput.TOOL_TYPE_STYLUS,
+                100, 200, 1000, 1000, 0.75, 0.0, 0.0, 0.0,
+                AndroidStylusInput.BUTTON_STYLUS_SECONDARY);
+        assertEquals(1, eraserDown.size());
+        assertContains(eraserDown.get(0), "\"tool\":\"eraser\"");
+        assertContains(eraserDown.get(0), "\"pressure\":0.75");
+
+        List<String> cancelled = stylus.cancelActiveInput();
+        assertEquals(1, cancelled.size());
+        assertContains(cancelled.get(0), "\"phase\":\"cancel\"");
+        assertContains(cancelled.get(0), "\"pressure\":0");
+
+        // pencilAction monotonic sequence over TLS, rejected when unencrypted.
+        assertEquals(
+                "{\"type\":\"pencilAction\",\"inputSession\":\"11111111-2222-4333-8444-555555555555\",\"sequence\":1,\"action\":\"undo\"}",
+                stylus.nextPencilActionJson(AndroidStylusInput.RemoteAction.UNDO));
+        assertEquals(
+                "{\"type\":\"pencilAction\",\"inputSession\":\"11111111-2222-4333-8444-555555555555\",\"sequence\":2,\"action\":\"redo\"}",
+                stylus.nextPencilActionJson(AndroidStylusInput.RemoteAction.REDO));
+
+        stylus.configureFromInputConfig(false,
+                "{\"type\":\"inputConfig\",\"inputCaps\":[\"pencil-v1\",\"pencil-v2\"]}");
+        assertTrue(stylus.isNegotiatedV1());
+        assertFalse(stylus.isNegotiatedV2());
+        assertEquals(null, stylus.nextPencilActionJson(AndroidStylusInput.RemoteAction.UNDO));
+    }
+
+    private static void testAndroidDesktopInputTranslation() {
+        AndroidDesktopInput desktop = new AndroidDesktopInput();
+        String grantJson = "{\"type\":\"inputConfig\",\"inputCaps\":[\"mac-input-v1\"],"
+                + "\"inputSession\":\"11111111-2222-4333-8444-555555555555\","
+                + "\"inputStatus\":\"ready\"}";
+
+        // Must require TLS encryption.
+        desktop.configureFromInputConfig(false, grantJson);
+        assertFalse(desktop.isGranted());
+
+        desktop.configureFromInputConfig(true, grantJson);
+        assertTrue(desktop.isGranted());
+
+        // Pencil-only inputConfig must NOT revoke active desktop session!
+        desktop.configureFromInputConfig(true,
+                "{\"type\":\"inputConfig\",\"inputCaps\":[\"pencil-v1\",\"pencil-v2\"],"
+                        + "\"pencilActionStatus\":\"ready\","
+                        + "\"pencilActionSession\":\"22222222-3333-4444-8555-666666666666\"}");
+        assertTrue(desktop.isGranted());
+
+        // Mouse primary double-click + scroll clamping.
+        List<String> click1Down = desktop.onPointerEvent(
+                AndroidDesktopInput.ACTION_BUTTON_PRESS,
+                500, 500, 1000, 1000, AndroidDesktopInput.BUTTON_PRIMARY, 0, 0, 0, 1_000L);
+        assertEquals(1, click1Down.size());
+        assertContains(click1Down.get(0), "\"kind\":\"buttonDown\"");
+        assertContains(click1Down.get(0), "\"button\":0,\"clicks\":1");
+        desktop.onPointerEvent(
+                AndroidDesktopInput.ACTION_BUTTON_RELEASE,
+                500, 500, 1000, 1000, 0, 0, 0, 0, 1_050L);
+
+        List<String> click2Down = desktop.onPointerEvent(
+                AndroidDesktopInput.ACTION_BUTTON_PRESS,
+                502, 501, 1000, 1000, AndroidDesktopInput.BUTTON_PRIMARY, 0, 0, 0, 1_200L);
+        assertContains(click2Down.get(0), "\"button\":0,\"clicks\":2");
+        desktop.onPointerEvent(
+                AndroidDesktopInput.ACTION_BUTTON_RELEASE,
+                502, 501, 1000, 1000, 0, 0, 0, 0, 1_240L);
+
+        // Modifier keys emit "kind":"modifiers", NEVER forbidden keyDown/keyUp 54..63!
+        String shiftDown = desktop.onKeyEvent(
+                true, AndroidDesktopInput.KEYCODE_SHIFT_LEFT, AndroidDesktopInput.META_SHIFT_ON, 0);
+        assertTrue(shiftDown != null);
+        assertContains(shiftDown, "\"kind\":\"modifiers\",\"modifiers\":1");
+        assertFalse(shiftDown.contains("\"keyCode\""));
+        // Redundant modifier repeat with unchanged bitmask is suppressed.
+        assertEquals(null, desktop.onKeyEvent(
+                true, AndroidDesktopInput.KEYCODE_SHIFT_LEFT, AndroidDesktopInput.META_SHIFT_ON, 1));
+
+        List<String> scroll = desktop.onPointerEvent(
+                AndroidDesktopInput.ACTION_SCROLL,
+                500, 500, 1000, 1000, 0, -200.0, 1.5, AndroidDesktopInput.META_SHIFT_ON, 1_300L);
+        assertEquals(1, scroll.size());
+        assertContains(scroll.get(0), "\"kind\":\"scroll\"");
+        assertContains(scroll.get(0), "\"dx\":4096,\"dy\":60,\"modifiers\":1");
+
+        // Key mapping checks: A (29 -> 0), NUMPAD_8 (152 -> 91, NOT 90/F20!), F20 (333 -> 90).
+        assertEquals(Integer.valueOf(0), AndroidDesktopInput.mapAndroidKeyCodeToMac(29));
+        assertEquals(Integer.valueOf(91), AndroidDesktopInput.mapAndroidKeyCodeToMac(152));
+        assertEquals(Integer.valueOf(90), AndroidDesktopInput.mapAndroidKeyCodeToMac(333));
+
+        // System-reserved keys (e.g. VOLUME_UP=24, BACK=4) return null so Android OS handles them.
+        assertEquals(null, desktop.onKeyEvent(true, 24, 0, 0));
+        assertEquals(null, desktop.onKeyEvent(true, 4, 0, 0));
+
+        // Enforce 16 concurrent held keys cap, then releaseAll() clears held state cleanly.
+        for (int i = 0; i < 16; i++) {
+            String kd = desktop.onKeyEvent(true, 29 + i, AndroidDesktopInput.META_SHIFT_ON, 0);
+            assertTrue(kd != null);
+            assertContains(kd, "\"kind\":\"keyDown\"");
+        }
+        // 17th distinct key while 16 are held must be dropped.
+        assertEquals(null, desktop.onKeyEvent(true, 29 + 16, AndroidDesktopInput.META_SHIFT_ON, 0));
+
+        String rel = desktop.releaseAll();
+        assertTrue(rel != null);
+        assertContains(rel, "\"kind\":\"releaseAll\",\"modifiers\":0");
+        assertEquals(null, desktop.releaseAll());
     }
 
     private static final class BitWriter {

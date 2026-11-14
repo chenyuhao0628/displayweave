@@ -17,15 +17,7 @@ final class ReceiverModel: ObservableObject {
         // deprecated UIScreen.main on iOS 17+, with a safe fallback before a
         // scene attaches).
         if let scene = Self.activeWindowScene() {
-            let screen = scene.screen
-            let native = screen.nativeBounds.size
-            let nativeScale = screen.nativeScale > 0 ? Double(screen.nativeScale) : 2.0
-            receiver.setNativePanel(
-                long: max(2, Int(max(native.width, native.height).rounded()) & ~1),
-                short: max(2, Int(min(native.width, native.height).rounded()) & ~1),
-                scale: nativeScale,
-                maxFps: screen.maximumFramesPerSecond
-            )
+            applyScreenGeometry(scene: scene, windowBounds: .zero)
         } else {
             receiver.setNativePanel(long: 1920, short: 1080, scale: 2.0, maxFps: 60)
         }
@@ -42,6 +34,69 @@ final class ReceiverModel: ObservableObject {
         guard !started else { return }
         started = true
         receiver.start(port: 9000)
+    }
+
+    func updateWindowGeometry(scene: UIWindowScene?, windowBounds: CGRect) {
+        guard let resolvedScene = scene ?? Self.activeWindowScene() else { return }
+        applyScreenGeometry(scene: resolvedScene, windowBounds: windowBounds)
+    }
+
+    private func applyScreenGeometry(scene: UIWindowScene, windowBounds: CGRect) {
+        let screen = scene.screen
+        let native = screen.nativeBounds.size
+        let nativeLong = max(2, Int(max(native.width, native.height).rounded()) & ~1)
+        let nativeShort = max(2, Int(min(native.width, native.height).rounded()) & ~1)
+        let nativeScale = screen.nativeScale > 0 ? Double(screen.nativeScale) : 2.0
+        let screenScale = screen.scale > 0 ? Double(screen.scale) : nativeScale
+        let maxFps = screen.maximumFramesPerSecond
+
+        receiver.setNativePanel(
+            long: nativeLong,
+            short: nativeShort,
+            scale: nativeScale,
+            maxFps: maxFps
+        )
+
+        let screenSize = screen.bounds.size
+        let hasValidWindow = windowBounds.width.isFinite && windowBounds.height.isFinite
+            && windowBounds.width >= 64 && windowBounds.height >= 64
+        let refSize = hasValidWindow ? windowBounds.size : screenSize
+        guard refSize.width.isFinite, refSize.height.isFinite,
+              refSize.width >= 2, refSize.height >= 2 else { return }
+
+        let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+        let matchesFullScreen = !hasValidWindow
+            || (abs(windowBounds.width - screenSize.width) <= 2
+                && abs(windowBounds.height - screenSize.height) <= 2)
+            || (abs(windowBounds.width - screenSize.height) <= 2
+                && abs(windowBounds.height - screenSize.width) <= 2)
+
+        let pixelsWide: Int
+        let pixelsHigh: Int
+        let effectiveScale: Double
+        if isPhone || matchesFullScreen {
+            let portrait = refSize.height > refSize.width
+            pixelsWide = portrait ? nativeShort : nativeLong
+            pixelsHigh = portrait ? nativeLong : nativeShort
+            effectiveScale = min(4.0, max(0.5, nativeScale))
+        } else {
+            effectiveScale = min(4.0, max(0.5, screenScale))
+            pixelsWide = max(2, min(16384, Int((refSize.width * effectiveScale).rounded()) & ~1))
+            pixelsHigh = max(2, min(16384, Int((refSize.height * effectiveScale).rounded()) & ~1))
+        }
+        let pointsWide = max(2, min(16384, Int(refSize.width.rounded())))
+        let pointsHigh = max(2, min(16384, Int(refSize.height.rounded())))
+
+        receiver.setWindowGeometry(
+            pixelsWide: pixelsWide,
+            pixelsHigh: pixelsHigh,
+            scale: effectiveScale,
+            pointsWide: pointsWide,
+            pointsHigh: pointsHigh,
+            screenNativeLong: nativeLong,
+            screenNativeShort: nativeShort,
+            screenNativeScale: nativeScale
+        )
     }
 
     private static func activeWindowScene() -> UIWindowScene? {

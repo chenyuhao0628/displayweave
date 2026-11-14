@@ -14,16 +14,28 @@ public final class DisplaySpec {
     public final String deviceModel;
     public final int androidSdk;
     public final String transport;
+    public final Integer millimetersWide;
+    public final Integer millimetersHigh;
 
     public DisplaySpec(int pixelsWide, int pixelsHigh, double scale) {
         this(pixelsWide, pixelsHigh, scale, 60, 60,
-                new String[] {"h264"}, "h264", "Android Tablet", 0, "wifi");
+                new String[] {"h264"}, "h264", "Android Tablet", 0, "wifi", null, null);
     }
 
     public DisplaySpec(int pixelsWide, int pixelsHigh, double scale,
                        int refreshRate, int maxFps,
                        String[] supportedCodecs, String preferredCodec,
                        String deviceModel, int androidSdk, String transport) {
+        this(pixelsWide, pixelsHigh, scale, refreshRate, maxFps,
+                supportedCodecs, preferredCodec, deviceModel, androidSdk, transport,
+                null, null);
+    }
+
+    public DisplaySpec(int pixelsWide, int pixelsHigh, double scale,
+                       int refreshRate, int maxFps,
+                       String[] supportedCodecs, String preferredCodec,
+                       String deviceModel, int androidSdk, String transport,
+                       Integer millimetersWide, Integer millimetersHigh) {
         this.pixelsWide = pixelsWide;
         this.pixelsHigh = pixelsHigh;
         this.scale = scale;
@@ -40,6 +52,8 @@ public final class DisplaySpec {
                 : deviceModel;
         this.androidSdk = androidSdk;
         this.transport = transport == null || transport.length() == 0 ? "wifi" : transport;
+        this.millimetersWide = millimetersWide;
+        this.millimetersHigh = millimetersHigh;
     }
 
     public boolean sameDisplayConfiguration(DisplaySpec other) {
@@ -52,6 +66,8 @@ public final class DisplaySpec {
                 && refreshRate == other.refreshRate
                 && maxFps == other.maxFps
                 && Objects.equals(preferredCodec, other.preferredCodec)
-                && Arrays.equals(supportedCodecs, other.supportedCodecs);
+                && Arrays.equals(supportedCodecs, other.supportedCodecs)
+                && Objects.equals(millimetersWide, other.millimetersWide)
+                && Objects.equals(millimetersHigh, other.millimetersHigh);
     }
 }

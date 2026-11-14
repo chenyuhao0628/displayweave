@@ -1955,7 +1955,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 let previous = lastHello
                 lastHello = info
                 if !connectionReady { helloReady() }
-                desktopInput.hello(encrypted: encrypted, capabilities: info.isMacReceiver ? info.inputCaps : nil)
+                desktopInput.hello(encrypted: encrypted, capabilities: info.inputCaps)
                 let supportsPencil = !info.isMacReceiver && PencilProtocol.supports(info.inputCaps)
                 if pencilNegotiated && !supportsPencil { inputInjector?.cancelPress() }
                 pencilNegotiated = supportsPencil
@@ -2005,7 +2005,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             let reason = obj["reason"] as? String ?? ""
             Log.info("receiver connection state=\(state) reason=\(reason)")
         case "desktopInput":
-            guard lastHello?.isMacReceiver == true else { return }
+            guard lastHello?.inputCaps?.contains(DesktopInputProtocol.capability) == true else { return }
             desktopInput.handle(payload)
         case "pencilAction":
             guard pencilExtendedNegotiated else { return }

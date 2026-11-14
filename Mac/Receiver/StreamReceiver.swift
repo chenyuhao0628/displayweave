@@ -6,6 +6,7 @@ import Foundation
 import Combine
 import Network
 import AVFoundation
+import CoreGraphics
 import CoreMedia
 import VideoToolbox
 
@@ -57,8 +58,10 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     private var advertiseService = true
     private var timer: DispatchSourceTimer?
     private var decoder = ReceiverFrameDecoder()
-    private var panel = PanelAnnouncement(pixelsWide: 1920, pixelsHigh: 1080, scale: 1,
-                                           pointsWide: 1920, pointsHigh: 1080)
+    private var panel = StreamReceiver.resolvedPanel(
+        PanelAnnouncement(pixelsWide: 1920, pixelsHigh: 1080, scale: 1,
+                          pointsWide: 1920, pointsHigh: 1080)
+    )
     private var serviceName = "DisplayWeave Mac"
     private var maxFps = 60
     private let supportsHEVC: Bool
@@ -106,6 +109,42 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
 
     deinit { if let securityObserver { NotificationCenter.default.removeObserver(securityObserver) } }
 
+    /// Populates `millimetersWide` / `millimetersHigh` from `CGDisplayScreenSize`
+    /// when caller omitted physical dimensions and a valid hardware EDID size exists.
+    private static func resolvedPanel(_ base: PanelAnnouncement) -> PanelAnnouncement {
+        if base.millimetersWide != nil && base.millimetersHigh != nil {
+            return base
+        }
+        let mainID = CGMainDisplayID()
+        guard mainID != 0 else { return base }
+        let raw = CGDisplayScreenSize(mainID)
+        let bounds = CGDisplayBounds(mainID)
+        guard raw.width.isFinite, raw.height.isFinite,
+              raw.width >= 50, raw.height >= 50,
+              raw.width <= 2000, raw.height <= 2000 else {
+            return base
+        }
+        if bounds.width > 0, bounds.height > 0 {
+            let syntheticW = Double(bounds.width) * 25.4 / 72.0
+            let syntheticH = Double(bounds.height) * 25.4 / 72.0
+            if abs(syntheticW - Double(raw.width)) <= 1.5 && abs(syntheticH - Double(raw.height)) <= 1.5 {
+                return base
+            }
+        }
+        let wantPortrait = base.pixelsHigh > base.pixelsWide
+        let rawPortrait = raw.height > raw.width
+        let widthMm = Int(((wantPortrait == rawPortrait) ? raw.width : raw.height).rounded())
+        let heightMm = Int(((wantPortrait == rawPortrait) ? raw.height : raw.width).rounded())
+        return PanelAnnouncement(
+            pixelsWide: base.pixelsWide,
+            pixelsHigh: base.pixelsHigh,
+            scale: base.scale,
+            pointsWide: base.pointsWide,
+            pointsHigh: base.pointsHigh,
+            millimetersWide: base.millimetersWide ?? widthMm,
+            millimetersHigh: base.millimetersHigh ?? heightMm
+        )
+    }
 
     private func securityChanged(kind: String?, peer: String?) {
         guard kind != "senderMode" else { return }
@@ -122,7 +161,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     func configure(panel: PanelAnnouncement, name: String, maxFps: Int = 60) {
         queue.async { [weak self] in
             guard let self else { return }
-            let nextPanel = panel
+            let nextPanel = Self.resolvedPanel(panel)
             let nextMaxFps = AppleVideoPolicy.frameRate(maximum: maxFps)
             let nextServiceName = name.isEmpty ? "DisplayWeave Mac" : name
             let geometryChanged = self.panel != nextPanel || self.maxFps != nextMaxFps

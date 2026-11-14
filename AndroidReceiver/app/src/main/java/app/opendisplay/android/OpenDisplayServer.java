@@ -12,6 +12,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import app.opendisplay.android.protocol.AndroidDesktopInput;
+import app.opendisplay.android.protocol.AndroidStylusInput;
 import app.opendisplay.android.protocol.LengthPrefixedProtocol;
 import app.opendisplay.android.protocol.MacControlMessage;
 import app.opendisplay.android.protocol.BinaryFrameHeaderV2;
@@ -96,6 +98,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private volatile String lastConnectedPeerHost;
     private volatile UdpMediaReceiverSession udpMediaReceiverSession;
     private long udpFrameSequenceOffset;
+    private final AndroidStylusInput stylusInput = new AndroidStylusInput();
+    private final AndroidDesktopInput desktopInput = new AndroidDesktopInput();
 
     private static final class QueuedVideoFrame {
         final long generation;
@@ -271,6 +275,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                         return;
                     }
                     stopUdpMediaSession();
+                    stylusInput.reset();
+                    desktopInput.reset();
                     lastConnectedPeerHost = peer;
                     protocolSession.onConnected(generation);
                     frameSizeMetrics.resetCurrent();
@@ -357,6 +363,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                         return;
                     }
                     stopUdpMediaSession();
+                    stylusInput.reset();
+                    desktopInput.reset();
                     resetClockSynchronization();
                     lastVideoReceivedMs = 0;
                 });
@@ -432,6 +440,35 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
     public void sendScroll(double dx, double dy) {
         sendJson(LengthPrefixedProtocol.scrollJson(dx, dy));
+    }
+
+    public AndroidStylusInput stylusInput() {
+        return stylusInput;
+    }
+
+    public AndroidDesktopInput desktopInput() {
+        return desktopInput;
+    }
+
+    public boolean isDesktopInputActive() {
+        return desktopInput.isGranted();
+    }
+
+    public void sendControlMessage(String json) {
+        if (json != null && !json.isEmpty()) {
+            sendJson(json);
+        }
+    }
+
+    public void sendControlMessages(java.util.List<String> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return;
+        }
+        for (String msg : messages) {
+            if (msg != null && !msg.isEmpty()) {
+                sendJson(msg);
+            }
+        }
     }
 
     private void executeTransportEvent(Runnable event) {
@@ -767,6 +804,10 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                             configVersion);
                     configureDecoderForIdentity(
                             generation, sessionEpoch, configVersion, previousConfig, config);
+            } else if ("inputConfig".equals(type)) {
+                boolean secure = transport.secure();
+                stylusInput.configureFromInputConfig(secure, json);
+                desktopInput.configureFromInputConfig(secure, json);
             } else if ("udpMediaConfig".equals(type)) {
                 UdpMediaProtocol.ConfigMessage udpCfg = UdpMediaProtocol.ConfigMessage.parseJson(json);
                 if (udpCfg != null
@@ -804,6 +845,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                                             }
                                         });
                                     }
+
                                 });
                         UdpMediaReceiverSession displacedSession;
                         boolean adopted;
@@ -859,7 +901,10 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 spec.androidSdk,
                 spec.transport,
                 "Android",
-                installId));
+                installId,
+                spec.millimetersWide,
+                spec.millimetersHigh,
+                transport.secure()));
         long generation = connectionCoordinator.currentGeneration();
         if (protocolSession.isNegotiatedV2()) {
             connectionCoordinator.transition(

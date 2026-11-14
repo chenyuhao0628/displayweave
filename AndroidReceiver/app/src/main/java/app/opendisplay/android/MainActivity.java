@@ -18,6 +18,7 @@ import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.Display;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -33,6 +34,9 @@ import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import app.opendisplay.android.protocol.AndroidDesktopInput;
+import app.opendisplay.android.protocol.AndroidStylusInput;
+import app.opendisplay.android.protocol.LengthPrefixedProtocol;
 import app.opendisplay.android.update.UpdateCoordinator;
 import app.opendisplay.android.update.UpdateManifest;
 
@@ -451,7 +455,11 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         });
 
         surfaceView.setContentDescription("远程画面，单指点击或拖动，双指滚动");
+        surfaceView.setFocusable(true);
+        surfaceView.setFocusableInTouchMode(true);
         surfaceView.setOnTouchListener(this::handleTouch);
+        surfaceView.setOnGenericMotionListener(this::handleGenericMotion);
+        surfaceView.setOnKeyListener((v, keyCode, event) -> handleHardwareKey(keyCode, event));
     }
 
     private void scheduleLiveDisplayUpdate() {
@@ -495,6 +503,11 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         if (touchGesture != null) sendTouchEvents(touchGesture.cancel());
         touchGesture = null;
         scrollGesture.end();
+        OpenDisplayServer activeServer = server;
+        if (activeServer != null) {
+            activeServer.sendControlMessages(activeServer.stylusInput().cancelActiveInput());
+            activeServer.sendControlMessage(activeServer.desktopInput().releaseAll());
+        }
     }
 
     private void scheduleTouchHold() {
@@ -1018,13 +1031,67 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         if (!streaming || activeServer == null || view.getWidth() <= 0 || view.getHeight() <= 0) {
             return true;
         }
+        int index = TouchEventMapper.safePointerIndex(
+                event.getActionMasked(), event.getActionIndex(), event.getPointerCount());
+        int primaryIndex = index >= 0 ? index : 0;
+        int toolType = event.getPointerCount() > primaryIndex
+                ? event.getToolType(primaryIndex)
+                : MotionEvent.TOOL_TYPE_FINGER;
+
+        if (AndroidStylusInput.isStylusToolType(toolType)) {
+            cancelPendingHold();
+            if (touchGesture != null) {
+                sendTouchEvents(touchGesture.cancel());
+                touchGesture = null;
+            }
+            scrollGesture.end();
+            java.util.List<String> stylusMsgs = activeServer.stylusInput().onMotionEvent(
+                    event.getActionMasked(),
+                    toolType,
+                    event.getX(primaryIndex),
+                    event.getY(primaryIndex),
+                    view.getWidth(),
+                    view.getHeight(),
+                    event.getPressure(primaryIndex),
+                    event.getAxisValue(MotionEvent.AXIS_TILT, primaryIndex),
+                    event.getOrientation(primaryIndex),
+                    0.0,
+                    event.getButtonState());
+            activeServer.sendControlMessages(stylusMsgs);
+            if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+                view.performClick();
+            }
+            return true;
+        }
+
+        if (activeServer.isDesktopInputActive()
+                && AndroidDesktopInput.isExternalPointer(event.getSource(), toolType)) {
+            cancelPendingHold();
+            if (touchGesture != null) {
+                sendTouchEvents(touchGesture.cancel());
+                touchGesture = null;
+            }
+            scrollGesture.end();
+            java.util.List<String> pointerMsgs = activeServer.desktopInput().onPointerEvent(
+                    event.getActionMasked(),
+                    event.getX(primaryIndex),
+                    event.getY(primaryIndex),
+                    view.getWidth(),
+                    view.getHeight(),
+                    event.getButtonState(),
+                    0.0,
+                    0.0,
+                    event.getMetaState(),
+                    event.getEventTime());
+            activeServer.sendControlMessages(pointerMsgs);
+            return true;
+        }
+
         if (event.getPointerCount() >= 2 || scrollGesture.isActive()) {
             handleScrollGesture(view, event);
             return true;
         }
 
-        int index = TouchEventMapper.safePointerIndex(
-                event.getActionMasked(), event.getActionIndex(), event.getPointerCount());
         if (index < 0) {
             return true;
         }
@@ -1054,6 +1121,88 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 break;
         }
         return true;
+    }
+
+    private boolean handleGenericMotion(View view, MotionEvent event) {
+        OpenDisplayServer activeServer = server;
+        if (!streaming || activeServer == null || view.getWidth() <= 0 || view.getHeight() <= 0) {
+            return false;
+        }
+        int toolType = event.getPointerCount() > 0
+                ? event.getToolType(0)
+                : MotionEvent.TOOL_TYPE_UNKNOWN;
+        if (AndroidStylusInput.isStylusToolType(toolType)) {
+            java.util.List<String> stylusMsgs = activeServer.stylusInput().onMotionEvent(
+                    event.getActionMasked(),
+                    toolType,
+                    event.getX(0),
+                    event.getY(0),
+                    view.getWidth(),
+                    view.getHeight(),
+                    0.0,
+                    event.getAxisValue(MotionEvent.AXIS_TILT, 0),
+                    event.getOrientation(0),
+                    0.0,
+                    event.getButtonState());
+            activeServer.sendControlMessages(stylusMsgs);
+            return !stylusMsgs.isEmpty();
+        }
+        if (activeServer.isDesktopInputActive()
+                && AndroidDesktopInput.isExternalPointer(event.getSource(), toolType)) {
+            java.util.List<String> pointerMsgs = activeServer.desktopInput().onPointerEvent(
+                    event.getActionMasked(),
+                    event.getX(0),
+                    event.getY(0),
+                    view.getWidth(),
+                    view.getHeight(),
+                    event.getButtonState(),
+                    event.getAxisValue(MotionEvent.AXIS_HSCROLL),
+                    event.getAxisValue(MotionEvent.AXIS_VSCROLL),
+                    event.getMetaState(),
+                    event.getEventTime());
+            activeServer.sendControlMessages(pointerMsgs);
+            return !pointerMsgs.isEmpty();
+        }
+        return false;
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (handleHardwareKey(keyCode, event)) {
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (handleHardwareKey(keyCode, event)) {
+            return true;
+        }
+        return super.onKeyUp(keyCode, event);
+    }
+
+    private boolean handleHardwareKey(int keyCode, KeyEvent event) {
+        OpenDisplayServer activeServer = server;
+        if (!streaming || activeServer == null || event == null
+                || !activeServer.isDesktopInputActive()
+                || AndroidDesktopInput.isSystemReservedKey(keyCode)) {
+            return false;
+        }
+        int action = event.getAction();
+        if (action != KeyEvent.ACTION_DOWN && action != KeyEvent.ACTION_UP) {
+            return false;
+        }
+        String json = activeServer.desktopInput().onKeyEvent(
+                action == KeyEvent.ACTION_DOWN,
+                keyCode,
+                event.getMetaState(),
+                event.getRepeatCount());
+        if (json != null) {
+            activeServer.sendControlMessage(json);
+            return true;
+        }
+        return AndroidDesktopInput.mapAndroidKeyCodeToMac(keyCode) != null;
     }
 
     private void handleScrollGesture(View view, MotionEvent event) {
@@ -1112,6 +1261,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         if (streaming) {
             surfaceFrameRateLifecycle.onStreamingStarted();
             if (!wasStreaming) revealStreamSettingsButton();
+            if (surfaceView != null) surfaceView.requestFocus();
         } else {
             uiHandler.removeCallbacks(hideStreamSettingsButton);
             cancelTouchGesture();
@@ -1357,14 +1507,22 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         DisplayProfile profile = currentDisplayProfile();
         if (Build.VERSION.SDK_INT >= 30) {
             Rect bounds = getWindowManager().getCurrentWindowMetrics().getBounds();
-            return scaledDisplaySpec(bounds.width(), bounds.height(), metrics.density, profile);
+            int[] mm = LengthPrefixedProtocol.computePhysicalMillimeters(
+                    bounds.width(), bounds.height(), metrics.xdpi, metrics.ydpi);
+            return scaledDisplaySpec(bounds.width(), bounds.height(), metrics.density, profile, mm);
         }
         DisplayMetrics realMetrics = new DisplayMetrics();
         readLegacyRealMetrics(realMetrics);
-        return scaledDisplaySpec(realMetrics.widthPixels, realMetrics.heightPixels, realMetrics.density, profile);
+        int[] mm = LengthPrefixedProtocol.computePhysicalMillimeters(
+                realMetrics.widthPixels, realMetrics.heightPixels,
+                realMetrics.xdpi, realMetrics.ydpi);
+        return scaledDisplaySpec(
+                realMetrics.widthPixels, realMetrics.heightPixels,
+                realMetrics.density, profile, mm);
     }
 
-    private DisplaySpec scaledDisplaySpec(int width, int height, double density, DisplayProfile profile) {
+    private DisplaySpec scaledDisplaySpec(
+            int width, int height, double density, DisplayProfile profile, int[] physicalMm) {
         int scaledW = Math.max(2, ((int) Math.round(width * profile.scale)) & ~1);
         int scaledH = Math.max(2, ((int) Math.round(height * profile.scale)) & ~1);
         int refreshRate = bucketRefreshRate(currentRefreshRate());
@@ -1381,7 +1539,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 preferredCodec,
                 deviceModel(),
                 Build.VERSION.SDK_INT,
-                "wifi");
+                "wifi",
+                physicalMm != null ? physicalMm[0] : null,
+                physicalMm != null ? physicalMm[1] : null);
     }
 
     private float currentRefreshRate() {
