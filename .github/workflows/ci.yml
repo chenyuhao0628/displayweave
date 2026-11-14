@@ -40,7 +40,7 @@ jobs:
           else
             echo "android=false" >> "$GITHUB_OUTPUT"
           fi
-          if echo "$CHANGED" | grep -Eq '^(Mac/|Shared/|iOS/|MacTests/|project\.yml|tools/|\.github/workflows/ci\.yml)'; then
+          if echo "$CHANGED" | grep -Eq '^(Mac/|Shared/|iOS/|MacTests/|script/|generate\.sh$|run\.sh$|project\.yml|tools/|AndroidReceiver/.*(SecureTls|TransportCertificate)|\.github/workflows/ci\.yml)'; then
             echo "apple=true" >> "$GITHUB_OUTPUT"
           else
             echo "apple=false" >> "$GITHUB_OUTPUT"
@@ -82,9 +82,17 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('project.yml') }}
           restore-keys: |
             spm-${{ runner.os }}-
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
       - run: xcodegen generate
+      - name: Launcher script typecheck
+        run: swiftc -typecheck script/LauncherMain.swift
       - name: Swift standalone policy tests
         run: ./tools/run-swift-self-tests.sh
+      - name: Apple and Java TLS interoperability test
+        run: python3 tools/test-tls-interop.py
       - name: macOS Debug build
         run: >-
           xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac

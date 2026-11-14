@@ -49,7 +49,7 @@ Use [local publication](local-release.md) for the current stable release. It use
 2. Verify versions, hashes, archive contents, all Mac architectures and signing continuity, the Sparkle Ed25519 signature and the pinned Android certificate.
 3. Commit the reviewed documentation and exact feeds in `public/`; require full CI before integration. Tag the verified commit and create its tracked-source archive.
 4. Upload eight explicit files to a draft GitHub Release: four binaries, two feeds, source archive and checksums. Verify remote bytes before publishing.
-5. Publish the Release before merging the publication PR. The main-branch Pages deployment then publishes the website and feeds; compare both live feeds byte-for-byte with the Release assets.
+5. Publish the Release before merging the publication PR. The main-branch Pages deployment overlays `appcast.xml` and `android-update.json` from the latest published GitHub Release (verifying `SHA256SUMS.txt` when present) so later website-only commits on `main` cannot roll back live update feeds; compare both live feeds byte-for-byte with the Release assets.
 
 The hosted **Release** workflow has no maintainer Mac identity on default runners and deliberately stops at preflight. Do not use it as a complete publication path until a runner is explicitly provisioned with the pinned Mac signing identity and required secrets. Its Sparkle/Android secret names remain in the workflow for future setup; no new credentials are uploaded by this release.
 
@@ -65,7 +65,7 @@ Keep two encrypted offline backups of the Sparkle private key and of the Android
 
 ## Feed rollback and incident handling
 
-Release assets are immutable. To stop a bad offer, restore `public/appcast.xml` and `public/android-update.json` to the last known-good feed and redeploy Pages. A feed rollback prevents new downloads but does not downgrade devices that already installed the higher build. Publish a corrected release with a higher build number to recover those devices.
+Release assets are immutable. To stop a bad offer, restore `public/appcast.xml` and `public/android-update.json` to the last known-good feed and dispatch the Pages workflow with `use_repo_feeds: true` so the checked-in rollback feeds are not overwritten by the latest Release assets. A feed rollback prevents new downloads but does not downgrade devices that already installed the higher build. Publish a corrected release with a higher build number to recover those devices.
 
 Before making feeds public, run:
 

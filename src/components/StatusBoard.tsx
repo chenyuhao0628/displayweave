@@ -14,7 +14,7 @@ export default function StatusBoard({ copy }: { copy: SiteCopy["status"] }) {
         {order.map((state) => (
           <section className={`status-column status-${state}`} key={state}>
             <h3>
-              <span className="status-light" />
+              <span className="status-light" aria-hidden="true" />
               {copy.names[state]}
             </h3>
             {copy.items

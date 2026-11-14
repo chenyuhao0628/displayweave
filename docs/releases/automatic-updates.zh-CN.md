@@ -49,7 +49,7 @@ v0.3.5 的 Mac 使用固定 Apple Development 身份，仍未公证。Sparkle �
 2. 验证版本、哈希、归档内容、Mac 全部架构及签名连续性、Sparkle Ed25519 签名与 Android 固定证书。
 3. 提交审查后的文档和 `public/` 中的原始更新源，合并前要求完整 CI。为验证过的提交打 tag，生成对应跟踪源码包。
 4. 向 GitHub 草稿 Release 明确上传八个文件：四个平台包、两个更新源、源码包和校验和。公开前验证远端字节。
-5. 先公开 Release，再合并发行 PR；main 的 Pages 部署随后发布网站与更新源。在线两个更新源应与 Release 附件逐字节一致。
+5. 先公开 Release，再合并发行 PR；main 的 Pages 部署默认从最新已公开 GitHub Release 覆盖 `appcast.xml` 与 `android-update.json`（并在存在 `SHA256SUMS.txt` 时校验哈希），防止后续仅修改网站的 `main` 提交回滚线上更新源。在线两个更新源应与 Release 附件逐字节一致。
 
 托管 **Release** 工作流在默认 runner 上尚无维护者 Mac 签名身份，会在预检处主动停止。在为 runner 显式配置固定 Mac 签名身份及所需密钥之前，不把它作为完整发行路径。Sparkle／Android secret 名称保留在工作流中供后续配置，本次发行不上传新凭据。
 
@@ -65,7 +65,7 @@ v0.3.5 的 Mac 使用固定 Apple Development 身份，仍未公证。Sparkle �
 
 ## 更新源回滚与事故处理
 
-Release 资产保持不可变。若要停止分发问题版本，把 `public/appcast.xml` 和 `public/android-update.json` 恢复到最近的已知正常版本并重新部署 Pages。更新源回滚只能阻止新下载，不能把已安装高版本的设备降级；这些设备必须通过更高 build number 的修复版本恢复。
+Release 资产保持不可变。若要停止分发问题版本，把 `public/appcast.xml` 和 `public/android-update.json` 恢复到最近的已知正常版本，并以 `use_repo_feeds: true` 手动触发 Pages 工作流重新部署，使仓库内的回滚更新源不会被最新 Release 附件覆盖。更新源回滚只能阻止新下载，不能把已安装高版本的设备降级；这些设备必须通过更高 build number 的修复版本恢复。
 
 公开更新源前运行：
 

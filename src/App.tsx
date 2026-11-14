@@ -31,8 +31,8 @@ export default function App({
             <div className="hero-copy">
               <div className="version-line">
                 <span>{releaseTag}</span>
-                <i />
-                LOCAL DISPLAY FABRIC
+                <i aria-hidden="true" />
+                {c.hero.tag}
               </div>
               <h1>
                 {c.hero.titleLines.map((line) => (

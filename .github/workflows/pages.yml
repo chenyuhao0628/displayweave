@@ -15,6 +15,12 @@ on:
       - "tsconfig.json"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
+    inputs:
+      use_repo_feeds:
+        description: "Keep checked-in public/ feeds instead of overlaying the latest published GitHub Release feeds (incident rollback only)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -41,6 +47,41 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - name: Overlay update feeds from latest GitHub Release
+        if: ${{ !inputs.use_repo_feeds }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          assets="$(gh release view --repo "${{ github.repository }}" --json assets --jq '.assets[].name' 2>/dev/null || true)"
+          if grep -Fxq "appcast.xml" <<<"$assets" && grep -Fxq "android-update.json" <<<"$assets"; then
+            gh release download \
+              --repo "${{ github.repository }}" \
+              --pattern 'appcast.xml' \
+              --pattern 'android-update.json' \
+              --clobber \
+              -D build/site/client
+            if grep -Fxq "SHA256SUMS.txt" <<<"$assets"; then
+              sums_dir="$RUNNER_TEMP/release-feed-sums"
+              mkdir -p "$sums_dir"
+              gh release download \
+                --repo "${{ github.repository }}" \
+                --pattern 'SHA256SUMS.txt' \
+                --clobber \
+                -D "$sums_dir"
+              feed_sums="$sums_dir/feed-sums.txt"
+              awk '
+                $2 == "appcast.xml" || $2 == "*appcast.xml" || $2 == "./appcast.xml" { print $1 "  appcast.xml" }
+                $2 == "android-update.json" || $2 == "*android-update.json" || $2 == "./android-update.json" { print $1 "  android-update.json" }
+              ' "$sums_dir/SHA256SUMS.txt" > "$feed_sums"
+              test "$(wc -l < "$feed_sums" | tr -d ' ')" -eq 2
+              (cd build/site/client && sha256sum -c "$feed_sums")
+            fi
+            grep -Fq '<rss' build/site/client/appcast.xml
+            python3 -c 'import json, pathlib; json.loads(pathlib.Path("build/site/client/android-update.json").read_text())'
+          else
+            echo "No published release with both update feeds found; keeping checked-in public/ feeds."
+          fi
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

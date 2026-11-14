@@ -2,7 +2,7 @@
 
 # DisplayWeave roadmap
 
-Updated 2026-11-10. The current release is **v0.3.5 (24)**. Mac desktop matching estimates size from available display data; see [release notes](docs/releases/v0.3.5.md) and the [implementation/acceptance ledger](docs/verification/automatic-desktop-matching.md).
+Updated 2026-11-15. The current published stable release is **v0.3.5 (24)** (2026-11-10); post-`v0.3.5` capabilities listed under the source-branch section below are **not yet in published release downloads**. Mac desktop matching estimates size from available display data; see [release notes](docs/releases/v0.3.5.md), the [implementation/acceptance ledger](docs/verification/automatic-desktop-matching.md), and [protocol specification revision 2](docs/reference/protocol.md).
 
 ## Included in the current v0.3.5 stable release
 
@@ -24,6 +24,13 @@ Updated 2026-11-10. The current release is **v0.3.5 (24)**. Mac desktop matching
 
 Each feature has its own guide, checks and compatibility boundaries in the ledger. Requested FPS is not measured rendered FPS.
 
+## Implemented on the source branch (not yet in a published release)
+
+- **Authenticated `udpMediaV1` low-latency transport & tight VBV pacing:** RFC 5869 HKDF-SHA256 + AES-128-GCM session-scoped UDP media plane with a 16-byte AAD header, 1024-packet ROC anti-replay window, systematic GF(256) (`0x11d`) Cauchy/XOR FEC (`5%`–`20%` deducted before encoder bitrate), selective NACK retransmission, `1 ms` priority packet pacer, receiver delay-gradient bandwidth estimation (`UDPDelayGradientBWE`), automatic `2.5 s` silence fallback to framed TCP, bounded jitter buffers (`3` frames / `45 ms` on Apple, `4` frames / `35 ms` on Android), `50 ms` (`1.5×` peak, `16,384 B` floor) VideoToolbox VBV `DataRateLimits`, `250 ms` TCP ABR fast-drop hold, `65 ms` / `120 ms` TCP `ReceiverFrameAgePolicy`, and speed-priority encoding for `smooth` or `>= 90 fps`.
+- **UDP cursor (`udpCursorV1`), opt-in system audio (`udpAudioV1`), hardware-gated 5K HEVC (`hevc5kV1`) and Display P3 (`displayP3`):** `125 Hz` authenticated UDP normalized cursor coordinates (17-byte payload; cursor PNG bitmaps stay on TCP), opt-in `48 kHz` stereo S16LE system audio streaming (`5 ms` / `960 B` packets with `60 ms` / `2,880`-frame bounded receiver ring buffers and self-audio exclusion), Mac hardware-HEVC `5120 × 2880 @ 60` (`2880 × 5120 @ 60` portrait) negotiation with H.264 strictly capped at `4096 × 2304`, and Apple Display P3 color-space tagging.
+- **Physical `panel` millimeter telemetry, live iPadOS window geometry & cross-platform stylus/desktop input:** Mac, iOS/iPadOS and Android `millimetersWide`/`millimetersHigh` reporting with macOS 26.1+ `208 × 96 mm` (`>= 20,000 mm²` area floor, `<= 2,000 mm` edge cap) virtual-display sizing, debounced iPadOS Split View / Stage Manager live window geometry updates, consented `mac-input-v1` external hardware keyboard/mouse/trackpad forwarding on iPadOS/iOS and Android, and Android active stylus `pencil-v1` / `pencil-v2` / `pencilAction` support.
+- **Direct-socket & release-feed hardening:** `NWParameters.preferNoProxies = true` on Mac sender LAN/Bonjour TCP connections (explicitly excluding loopback `127.0.0.1` / `::1` / `localhost` ADB and usbmux tunnels via `LANProxyBypassPolicy`), Local Network & AWDL contention diagnostics, GitHub Pages live release-feed overlay protection (`appcast.xml`, `android-update.json` verified against `SHA256SUMS.txt`), and 14 Revision 2 Swift/Java `udpMediaV1` golden vectors; see [architecture](ARCHITECTURE.md) and [protocol contract](docs/reference/protocol.md).
+
 ## Earlier implementation baseline
 
 The local p8 artifact included the p7 Mac send/receive LAN mirror/extend preview, four-surface UI refactor, selected upstream startup recovery, bounded queues/framing, Mac hardware-gated HEVC, interface-pinned direct-link candidates and basic Pencil. Earlier previews exercised Android dynamic ADB-forward USB, bounded USB/Wi-Fi recovery and one current iPhone/Android concurrent session. See the dated release notes and physical reports; historical evidence is not automatically evidence for new secure transport.
@@ -34,6 +41,6 @@ Production Apple distribution requires the maintainer's Developer ID Application
 
 ## Physical acceptance
 
-Two-Mac automatic matching and native 5K clarity, both-direction mirror/extend, Wi-Fi/Ethernet/Thunderbolt Bridge route changes, sleep/wake, hotplug, Intel runtime, input/layout/shortcut behavior; real Pencil gestures/rotation/eraser and drawing applications; Apple HEVC/high-refresh display behavior; paired LAN/USB performance and reconnects. Native 5K video is not implemented; the Apple video envelope remains 4096×2304.
+Two-Mac automatic matching and native 5K clarity, both-direction mirror/extend, Wi-Fi/Ethernet/Thunderbolt Bridge route changes, sleep/wake, hotplug, Intel runtime, input/layout/shortcut behavior; real Pencil and Android active-stylus gestures/rotation/eraser and drawing applications; iPadOS and Android external keyboard/trackpad/mouse `mac-input-v1` ergonomics; Apple HEVC/Display P3/high-refresh display behavior; `udpMediaV1` / `udpCursorV1` / `udpAudioV1` LAN jitter/loss recovery and paired LAN/USB performance and reconnects. Published `v0.3.5` downloads remain capped at the `4096 × 2304` Apple video envelope; source-branch hardware-gated `5120 × 2880 @ 60` HEVC (`hevc5kV1`) awaits physical two-Mac 5K acceptance.
 
-Also pending: two simultaneous Android receivers, controlled same-resolution/codec/bitrate USB-versus-Wi-Fi benchmarks, 30-minute/2-hour endurance, and broader OS/SoC/cable matrices. Test virtual displays only with an independent online display. See [acceptance](docs/archive/plans/roadmap-and-acceptance.md).
+Also pending: two simultaneous Android receivers, controlled same-resolution/codec/bitrate USB-versus-Wi-Fi and UDP-versus-TCP benchmarks, 30-minute/2-hour endurance, and broader OS/SoC/cable matrices. Test virtual displays only with an independent online display. See [acceptance](docs/archive/plans/roadmap-and-acceptance.md).
