@@ -162,6 +162,7 @@ struct StreamSettings: Equatable {
     var desktopResolutions = DesktopResolutionPreferences()
     var priority: StreamPriority = .resolution
     var adaptEncoderLoad = true
+    var audioEnabled = false
 
     var availableBitratePresets: [BitratePreset] {
         guard bitrateMode != .auto else { return [] }
@@ -212,7 +213,8 @@ struct StreamSettings: Equatable {
                 stored: defaults.dictionary(forKey: "desktopResolutions.v1") as? [String: String] ?? [:],
                 defaultResolution: desktopDefault),
             priority: StreamPriority(rawValue: defaults.string(forKey: "streamPriority") ?? "") ?? .resolution,
-            adaptEncoderLoad: defaults.object(forKey: "adaptEncoderLoad") == nil || defaults.bool(forKey: "adaptEncoderLoad"))
+            adaptEncoderLoad: defaults.object(forKey: "adaptEncoderLoad") == nil || defaults.bool(forKey: "adaptEncoderLoad"),
+            audioEnabled: defaults.bool(forKey: "audioEnabled"))
         settings.normalizeBitratePreset()
         return settings
     }
@@ -229,6 +231,7 @@ struct StreamSettings: Equatable {
         defaults.set(desktopResolutions.defaultResolution.rawValue, forKey: "desktopResolutionDefault.v2")
         defaults.set(priority.rawValue, forKey: "streamPriority")
         defaults.set(adaptEncoderLoad, forKey: "adaptEncoderLoad")
+        defaults.set(audioEnabled, forKey: "audioEnabled")
     }
 
     func selectedFps(deviceMaxFps: Int) -> Int {

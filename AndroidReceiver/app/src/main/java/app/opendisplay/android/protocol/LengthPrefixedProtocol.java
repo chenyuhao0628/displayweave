@@ -44,7 +44,9 @@ public final class LengthPrefixedProtocol {
             "frameSequence",
             "maxFrameBytes",
             "binaryFrameHeaderV2",
-            "udpMediaV1"
+            "udpMediaV1",
+            "udpCursorV1",
+            "udpAudioV1"
     };
     public static final String[] INPUT_CAPS_LEGACY = new String[] {
             AndroidStylusInput.CAPABILITY_V1

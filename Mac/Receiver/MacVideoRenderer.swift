@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreMedia
+import Foundation
 
 /// Receiver-queue interface; allows driver backpressure to be reproduced without
 /// a display window or a particular hardware decoder.
@@ -20,4 +21,16 @@ struct MacSampleBufferVideoRenderer: MacVideoRendering {
             renderer.flush(removingDisplayedImage: true, completionHandler: nil)
         } else { renderer.flush() }
     }
+}
+
+protocol MacAudioPlaying: AnyObject {
+    var isMuted: Bool { get set }
+    func enqueueS16LE(_ pcmData: Data)
+    func stop()
+}
+
+final class NullMacAudioPlayer: MacAudioPlaying {
+    var isMuted = false
+    func enqueueS16LE(_ pcmData: Data) {}
+    func stop() {}
 }

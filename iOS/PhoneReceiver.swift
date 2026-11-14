@@ -13,6 +13,12 @@ import CoreMedia
 import VideoToolbox
 import UIKit
 
+@objc protocol IOSAudioPlayback: AnyObject {
+    init()
+    func enqueuePCM(_ pcmData: Data, sampleRate: Int, channels: Int)
+    func stop()
+}
+
 struct OutgoingDesktopInput {
     let kind: DesktopInputEvent.Kind
     var modifiers: Int = 0
@@ -151,6 +157,14 @@ final class PhoneReceiver: ObservableObject {
     private var macCapFps = 0
     private var udpMediaSession: UDPMediaReceiverSession?
     private var lastUdpMediaEpoch: Int64 = 0
+    private var lastCursorSequence: UInt64 = 0
+    private var lastAudioSequence: UInt32?
+    private var audioPlayer: (any IOSAudioPlayback)? = {
+        guard let cls = NSClassFromString("DisplayWeaveIOSAudioPlayer") as? any IOSAudioPlayback.Type else {
+            return nil
+        }
+        return cls.init()
+    }()
 
     private var nowMs: Double { Date().timeIntervalSince1970 * 1000 }
 
@@ -765,6 +779,11 @@ final class PhoneReceiver: ObservableObject {
             macInputP95 = obj["inp95"] as? Double ?? macInputP95
             macCapFps = obj["capFps"] as? Int ?? macCapFps
         case "cursor":
+            if let seq = (obj["s"] as? NSNumber)?.uint64Value ?? (obj["sequence"] as? NSNumber)?.uint64Value,
+               seq > 0 {
+                guard seq > lastCursorSequence else { return }
+                lastCursorSequence = seq
+            }
             let visible = (obj["v"] as? Int ?? 0) == 1
             let x = obj["x"] as? Double ?? 0
             let y = obj["y"] as? Double ?? 0
@@ -831,6 +850,9 @@ final class PhoneReceiver: ObservableObject {
         udpMediaSession?.stop()
         udpMediaSession = nil
         lastUdpMediaEpoch = 0
+        audioPlayer?.stop()
+        lastCursorSequence = 0
+        lastAudioSequence = nil
         let generation = inputSendBudget.reset(accepting: acceptingInput)
         pencilNegotiated = false
         pencilExtendedNegotiated = false
@@ -955,7 +977,13 @@ final class PhoneReceiver: ObservableObject {
             "device": UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone",
             "id": Self.installID,
             "inputCaps": inputCaps,
-            "capabilities": [AppleVideoPolicy.capability, "udpMediaV1"],
+            "capabilities": [
+                AppleVideoPolicy.capability,
+                AppleVideoPolicy.udpMediaCapability,
+                AppleVideoPolicy.udpCursorCapability,
+                AppleVideoPolicy.udpAudioCapability,
+                AppleVideoPolicy.displayP3Capability,
+            ],
             "udpMediaV1": true,
             "refreshRate": displayMaxFps, "maxFps": displayMaxFps,
             "displayMaxFrameRate": displayMaxFps,
@@ -1389,6 +1417,8 @@ final class PhoneReceiver: ObservableObject {
         }
         udpMediaSession?.stop()
         udpMediaSession = nil
+        audioPlayer?.stop()
+        lastAudioSequence = nil
         let generation = inputSendBudget.generation
         let senderHost = UDPEndpointResolver.hostString(from: conn.currentPath?.remoteEndpoint)
             ?? UDPEndpointResolver.hostString(from: conn.endpoint)
@@ -1445,6 +1475,45 @@ final class PhoneReceiver: ObservableObject {
                       self.connection === conn,
                       self.inputSendBudget.generation == gen else { return }
                 self.requestKeyframeIfNeeded()
+            }
+        }
+        session.onCursor = { [weak self, weak conn] gen, cursor in
+            guard let self, cursor.isValid else { return }
+            self.queue.async { [weak self, weak conn] in
+                guard let self, let conn,
+                      self.running,
+                      self.connection === conn,
+                      self.inputSendBudget.generation == gen else { return }
+                self.lastDataReceived = Date()
+                guard cursor.sequence > self.lastCursorSequence else { return }
+                self.lastCursorSequence = cursor.sequence
+                let x = Double(cursor.normalizedX)
+                let y = Double(cursor.normalizedY)
+                let visible = cursor.visible
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.inputSendBudget.generation == gen else { return }
+                    self.onCursor?(x, y, visible)
+                }
+            }
+        }
+        session.onAudio = { [weak self, weak conn] gen, audio in
+            guard let self, audio.isValid,
+                  audio.formatFlags == UDPMediaAudioPayload.formatPCM16LE else { return }
+            self.queue.async { [weak self, weak conn] in
+                guard let self, let conn,
+                      self.running,
+                      self.connection === conn,
+                      self.inputSendBudget.generation == gen else { return }
+                self.lastDataReceived = Date()
+                if let prevSeq = self.lastAudioSequence {
+                    guard UDPMediaHeader.isFrameIdNewer(audio.audioSeq, than: prevSeq) else { return }
+                }
+                self.lastAudioSequence = audio.audioSeq
+                self.audioPlayer?.enqueuePCM(
+                    audio.pcmBytes,
+                    sampleRate: Int(audio.sampleRate),
+                    channels: Int(audio.channels)
+                )
             }
         }
         udpMediaSession = session

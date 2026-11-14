@@ -123,6 +123,10 @@ struct DeviceCapabilitiesSelfTest {
         assertEqual(215, upgradedHello.panel?.millimetersHigh,
                     "partial panel physical height decodes fractional mm safely")
         assertEqual(true, upgradedHello.supportsUDPMediaV1, "udpMediaV1 detected")
+        assertEqual(true, upgradedHello.supportsUDPCursorV1, "udpCursorV1 detected")
+        assertEqual(true, upgradedHello.supportsUDPAudioV1, "udpAudioV1 detected")
+        assertEqual(true, upgradedHello.supportsHEVC5KV1, "hevc5kV1 detected")
+        assertEqual(true, upgradedHello.supportsDisplayP3, "displayP3 detected")
         precondition(upgradedHello.hasValidGeometry)
 
         print("DeviceCapabilitiesSelfTest PASS")

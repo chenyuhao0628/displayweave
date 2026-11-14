@@ -16,10 +16,12 @@ struct UDPMediaFrameEnvelope: Equatable, Sendable {
 }
 
 enum UDPPacerPriority: Int, Comparable, Sendable {
-    case retransmit = 0
-    case keyframe = 1
-    case normalVideo = 2
-    case fecParity = 3
+    case cursor = 0
+    case audio = 1
+    case retransmit = 2
+    case keyframe = 3
+    case normalVideo = 4
+    case fecParity = 5
 
     static func < (lhs: UDPPacerPriority, rhs: UDPPacerPriority) -> Bool {
         lhs.rawValue < rhs.rawValue
@@ -62,13 +64,15 @@ struct UDPQueuedDatagram: Sendable, Equatable {
 }
 
 /// WebRTC-inspired debt-based packet pacer with priority ordering
-/// (`retransmit > keyframe > normalVideo > fecParity`) and automatic stale
+/// (`cursor > audio > retransmit > keyframe > normalVideo > fecParity`),
+/// latest-wins cursor coalescing, bounded audio queue, and automatic stale
 /// P-frame purge on new IDR arrival.
 struct UDPDebtPacer: Sendable {
     static let maxSingleBurstBytes = 32 * 1024
     static let minBurstBytes = 1400
     static let maxDebtWindowSeconds: Double = 0.060
     static let maxQueuedPackets = 2048
+    static let maxQueuedAudioPackets = 16
 
     private(set) var pacingRateBps: Int
     private(set) var debtBytes: Double = 0
@@ -112,6 +116,36 @@ struct UDPDebtPacer: Sendable {
 
     mutating func enqueueRetransmit(_ item: UDPQueuedDatagram) {
         guard queue.count < Self.maxQueuedPackets else { return }
+        insertOrdered(item)
+    }
+
+    /// Enqueues a cursor update at top priority, coalescing any unsent older cursor packet.
+    mutating func enqueueCursor(_ item: UDPQueuedDatagram) {
+        queue.removeAll { $0.packetType == .cursor }
+        if queue.count >= Self.maxQueuedPackets {
+            if let dropIdx = queue.lastIndex(where: { $0.priority == .fecParity || $0.priority == .normalVideo }) {
+                queue.remove(at: dropIdx)
+            } else {
+                return
+            }
+        }
+        insertOrdered(item)
+    }
+
+    /// Enqueues an audio chunk at high priority with bounded queue depth (`<= 16` chunks).
+    mutating func enqueueAudio(_ item: UDPQueuedDatagram) {
+        let queuedAudioCount = queue.reduce(0) { $0 + ($1.packetType == .audio ? 1 : 0) }
+        if queuedAudioCount >= Self.maxQueuedAudioPackets,
+           let oldestAudioIdx = queue.firstIndex(where: { $0.packetType == .audio }) {
+            queue.remove(at: oldestAudioIdx)
+        }
+        if queue.count >= Self.maxQueuedPackets {
+            if let dropIdx = queue.lastIndex(where: { $0.priority == .fecParity || $0.priority == .normalVideo }) {
+                queue.remove(at: dropIdx)
+            } else {
+                return
+            }
+        }
         insertOrdered(item)
     }
 

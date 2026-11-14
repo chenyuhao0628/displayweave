@@ -510,6 +510,28 @@ final class UDPMediaSenderSession: @unchecked Sendable {
         return true
     }
 
+    /// Enqueues a 17-byte cursor position update at top priority with latest-wins coalescing.
+    @discardableResult
+    func sendCursor(_ payload: UDPMediaCursorPayload) -> Bool {
+        guard isReady, payload.isValid else { return false }
+        queue.async { [weak self] in
+            guard let self, !self.isStoppedInternal, self.peerAddress != nil else { return }
+            self.enqueueCursorOnQueue(payload)
+        }
+        return true
+    }
+
+    /// Enqueues a PCM audio packet (`<= 1152` bytes S16LE) at high priority on the UDP media plane.
+    @discardableResult
+    func sendAudio(_ payload: UDPMediaAudioPayload) -> Bool {
+        guard isReady, payload.isValid else { return false }
+        queue.async { [weak self] in
+            guard let self, !self.isStoppedInternal, self.peerAddress != nil else { return }
+            self.enqueueAudioOnQueue(payload)
+        }
+        return true
+    }
+
     func stop() {
         stateLock.lock()
         let alreadyStopped = _stopped
@@ -646,6 +668,58 @@ final class UDPMediaSenderSession: @unchecked Sendable {
         flushPacerBurstOnQueue(nowUptime: nowUptime)
     }
 
+    private func enqueueCursorOnQueue(_ payload: UDPMediaCursorPayload) {
+        let nowUptime = ProcessInfo.processInfo.systemUptime
+        guard let (datagram, _, _) = try? crypto.seal(
+            direction: .senderToReceiver,
+            packetType: .cursor,
+            flags: [],
+            sendTimeUs: Self.currentSendTimeUs(),
+            frameId: 0,
+            fragIndex: 0,
+            fragCount: 1,
+            payload: payload.encode()
+        ) else { return }
+        pacer.enqueueCursor(
+            UDPQueuedDatagram(
+                priority: .cursor,
+                packetType: .cursor,
+                flags: [],
+                frameId: 0,
+                fragIndex: 0,
+                isParity: false,
+                datagram: datagram
+            )
+        )
+        flushPacerBurstOnQueue(nowUptime: nowUptime)
+    }
+
+    private func enqueueAudioOnQueue(_ payload: UDPMediaAudioPayload) {
+        let nowUptime = ProcessInfo.processInfo.systemUptime
+        guard let (datagram, _, _) = try? crypto.seal(
+            direction: .senderToReceiver,
+            packetType: .audio,
+            flags: [],
+            sendTimeUs: Self.currentSendTimeUs(),
+            frameId: 0,
+            fragIndex: 0,
+            fragCount: 1,
+            payload: payload.encode()
+        ) else { return }
+        pacer.enqueueAudio(
+            UDPQueuedDatagram(
+                priority: .audio,
+                packetType: .audio,
+                flags: [],
+                frameId: 0,
+                fragIndex: 0,
+                isParity: false,
+                datagram: datagram
+            )
+        )
+        flushPacerBurstOnQueue(nowUptime: nowUptime)
+    }
+
     private func tickPacer() {
         guard !isStoppedInternal else { return }
         let now = ProcessInfo.processInfo.systemUptime
@@ -759,7 +833,7 @@ final class UDPMediaSenderSession: @unchecked Sendable {
 
 /// Receiver-side UDP media session managing probe response, per-packet AES-128-GCM
 /// verification, bounded reassembly, FEC recovery, NACK emission, jitter buffering,
-/// and 30ms BWE feedback.
+/// cursor/audio delivery, and 30ms BWE feedback.
 final class UDPMediaReceiverSession: @unchecked Sendable {
     static let maintenanceInterval: DispatchTimeInterval = .milliseconds(5)
     static let maxInitialProbes = 6
@@ -784,9 +858,12 @@ final class UDPMediaReceiverSession: @unchecked Sendable {
     private var receivedAnySenderPacket = false
     private var initialProbesSent = 0
     private var lastProbeSentMonoNs: UInt64 = 0
+    private var lastCursorSequence: UInt64?
 
     var onFrameReady: ((UInt64, UDPMediaFrameEnvelope) -> Void)?
     var onKeyframeNeeded: ((UInt64, String) -> Void)?
+    var onCursor: ((UInt64, UDPMediaCursorPayload) -> Void)?
+    var onAudio: ((UInt64, UDPMediaAudioPayload) -> Void)?
 
     init?(
         config: UDPMediaConfigMessage,
@@ -924,6 +1001,33 @@ final class UDPMediaReceiverSession: @unchecked Sendable {
             sendTimeUs: packet.header.sendTimeUs,
             arrivalMonoNs: monoNs
         )
+
+        switch packet.header.packetType {
+        case .cursor:
+            if let cursor = try? UDPMediaCursorPayload.decode(from: packet.payload) {
+                if let lastSeq = lastCursorSequence {
+                    if cursor.sequence > lastSeq {
+                        lastCursorSequence = cursor.sequence
+                        onCursor?(generation, cursor)
+                    }
+                } else {
+                    lastCursorSequence = cursor.sequence
+                    onCursor?(generation, cursor)
+                }
+            }
+            emitFeedbackIfDue(nowMonoNs: monoNs)
+            return
+
+        case .audio:
+            if let audio = try? UDPMediaAudioPayload.decode(from: packet.payload) {
+                onAudio?(generation, audio)
+            }
+            emitFeedbackIfDue(nowMonoNs: monoNs)
+            return
+
+        default:
+            break
+        }
 
         if let assembled = reassembler.ingest(packet: packet, nowMonoNs: monoNs) {
             let result = jitterBuffer.insert(assembled, nowMonoNs: monoNs)

@@ -27,6 +27,7 @@ public final class VideoStreamPolicySelfTest {
         testProtocolV2SessionFiltering();
         testProtocolV2UdpEpochOrdering();
         testExpiredTransportCertificateRejectedWithRecoveryMessage();
+        testUdpAudioRingBufferBoundsAndDeduplication();
         testRefreshModeSelection();
         testFrameClassifier();
         testVideoFramePacketUsesZeroCopyBinaryPayloadView();
@@ -375,6 +376,49 @@ public final class VideoStreamPolicySelfTest {
             assertTrue(error.getMessage().contains("重置传输身份并重新配对"));
         }
         assertTrue(peerRejected);
+    }
+
+    private static void testUdpAudioRingBufferBoundsAndDeduplication() {
+        // 48kHz stereo S16LE (4 bytes/frame) * 60ms = 2880 frames = 11520 bytes max capacity.
+        UdpAudioPlayer.PcmRingBuffer ring = new UdpAudioPlayer.PcmRingBuffer(48_000, 2);
+        assertEquals(11_520, ring.capacityBytes());
+
+        byte[] chunk960 = new byte[960]; // 5ms stereo
+        for (int i = 0; i < chunk960.length; i++) {
+            chunk960[i] = (byte) ((i * 7) & 0xFF);
+        }
+        // Offer 15 packets (75ms = 14,400 bytes) -> bounded at 60ms (11,520 bytes) with 2,880 bytes dropped.
+        for (int seq = 1; seq <= 15; seq++) {
+            assertTrue(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
+                    seq, 1_000L + seq, 48_000, 2, 0, chunk960)));
+        }
+        assertEquals(11_520, ring.availableBytes());
+        assertEquals(2_880L, ring.droppedOverflowBytes());
+        assertEquals(0, ring.availableBytes() % 4);
+
+        // Duplicate or out-of-order audioSeq must be ignored.
+        assertFalse(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
+                15L, 1_020L, 48_000, 2, 0, chunk960)));
+        assertFalse(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
+                14L, 1_020L, 48_000, 2, 0, chunk960)));
+
+        byte[] drained = new byte[12_000];
+        assertEquals(11_520, ring.drain(drained, drained.length));
+        assertEquals(0, ring.availableBytes());
+
+        // 32-bit wrap-safe audioSeq rollover across 0xFFFFFFFF -> 0.
+        ring.clear();
+        assertTrue(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
+                0xFFFF_FFFFL, 2_000L, 48_000, 2, 0, chunk960)));
+        assertTrue(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
+                0L, 2_005L, 48_000, 2, 0, chunk960)));
+        assertEquals(1_920, ring.availableBytes());
+
+        // Format change (48kHz mono = 5,760 bytes cap) reconfigures cleanly.
+        assertTrue(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
+                1L, 3_000L, 48_000, 1, 0, new byte[480])));
+        assertEquals(5_760, ring.capacityBytes());
+        assertEquals(480, ring.availableBytes());
     }
 
     private static VideoFrameTelemetry telemetry(long epoch, long version, long sequence) {

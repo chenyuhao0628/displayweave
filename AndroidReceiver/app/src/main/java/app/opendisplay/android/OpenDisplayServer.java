@@ -97,7 +97,9 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private volatile long lastDecoderRecoveryMs;
     private volatile String lastConnectedPeerHost;
     private volatile UdpMediaReceiverSession udpMediaReceiverSession;
+    private volatile UdpAudioPlayer udpAudioPlayer;
     private long udpFrameSequenceOffset;
+    private Long lastUdpCursorSequence;
     private final AndroidStylusInput stylusInput = new AndroidStylusInput();
     private final AndroidDesktopInput desktopInput = new AndroidDesktopInput();
 
@@ -820,7 +822,10 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     }
                     stopUdpMediaSession();
                     UdpMediaReceiverSession session = null;
+                    UdpAudioPlayer nextAudioPlayer = null;
                     try {
+                        nextAudioPlayer = new UdpAudioPlayer();
+                        final UdpAudioPlayer sessionAudioPlayer = nextAudioPlayer;
                         session = UdpMediaReceiverSession.start(
                                 generation,
                                 udpCfg,
@@ -846,8 +851,28 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                                         });
                                     }
 
+                                    @Override
+                                    public void onCursor(
+                                            long gen,
+                                            long epoch,
+                                            UdpMediaProtocol.CursorPayload cursor) {
+                                        handleUdpCursor(gen, epoch, cursor);
+                                    }
+
+                                    @Override
+                                    public void onAudio(
+                                            long gen,
+                                            long epoch,
+                                            UdpMediaProtocol.AudioPayload audio) {
+                                        if (running
+                                                && connectionCoordinator.isCurrent(gen)
+                                                && protocolSession.sessionEpoch() == epoch) {
+                                            sessionAudioPlayer.offer(audio);
+                                        }
+                                    }
                                 });
                         UdpMediaReceiverSession displacedSession;
+                        UdpAudioPlayer displacedAudio;
                         boolean adopted;
                         synchronized (this) {
                             adopted = running
@@ -855,13 +880,20 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                                     && protocolSession.sessionEpoch() == udpCfg.sessionEpoch;
                             if (adopted) {
                                 displacedSession = udpMediaReceiverSession;
+                                displacedAudio = udpAudioPlayer;
                                 udpMediaReceiverSession = session;
+                                udpAudioPlayer = sessionAudioPlayer;
+                                lastUdpCursorSequence = null;
                             } else {
                                 displacedSession = session;
+                                displacedAudio = sessionAudioPlayer;
                             }
                         }
                         if (displacedSession != null) {
                             displacedSession.close();
+                        }
+                        if (displacedAudio != null) {
+                            displacedAudio.close();
                         }
                         if (adopted) {
                             sendJson(UdpMediaProtocol.ConfigMessage.readyJson(
@@ -870,6 +902,9 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     } catch (java.io.IOException error) {
                         if (session != null) {
                             session.close();
+                        }
+                        if (nextAudioPlayer != null) {
+                            nextAudioPlayer.close();
                         }
                         android.util.Log.w("DisplayWeave", "UDP media receiver start failed", error);
                     }
@@ -927,14 +962,40 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
 
     private void stopUdpMediaSession() {
         UdpMediaReceiverSession activeSession;
+        UdpAudioPlayer activeAudio;
         synchronized (this) {
             activeSession = udpMediaReceiverSession;
             udpMediaReceiverSession = null;
+            activeAudio = udpAudioPlayer;
+            udpAudioPlayer = null;
             udpFrameSequenceOffset = 0;
+            lastUdpCursorSequence = null;
         }
         if (activeSession != null) {
             activeSession.close();
         }
+        if (activeAudio != null) {
+            activeAudio.close();
+        }
+    }
+
+    private void handleUdpCursor(
+            long generation,
+            long sessionEpoch,
+            UdpMediaProtocol.CursorPayload cursor) {
+        if (cursor == null || !running
+                || !connectionCoordinator.isCurrent(generation)
+                || protocolSession.sessionEpoch() != sessionEpoch) {
+            return;
+        }
+        synchronized (this) {
+            if (lastUdpCursorSequence != null
+                    && Long.compareUnsigned(cursor.sequence, lastUdpCursorSequence) <= 0) {
+                return;
+            }
+            lastUdpCursorSequence = cursor.sequence;
+        }
+        listener.onCursor(this, cursor.normalizedX, cursor.normalizedY, cursor.visible);
     }
 
     private void handleUdpFrame(

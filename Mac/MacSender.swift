@@ -241,6 +241,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private var lastMacDropsSnapshot = 0
     private var udpMediaSession: UDPMediaSenderSession?
     private var activeUDPMediaSessionEpoch: Int64 = 0
+    private let audioQueue = DispatchQueue(label: "sender.audio", qos: .userInteractive)
+    private let audioLock = NSLock()
+    private var audioPacketizer = AudioCapturePacketizer()
+    private var audioSequence: UInt32 = 0
+    private var audioCaptureSink: ((UInt32, Data) -> Void)?
+    private var udpCursorSender: ((CursorPosition, UInt64) -> Bool)?
+    private weak var audioAttachedStream: SCStream?
 
     private let benchmarkClock = ContinuousClock()
     private var benchmarkRecorder: BenchmarkRecorder?
@@ -726,6 +733,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         codecFallbackResizeTask?.cancel()
         codecFallbackResizeTask = nil
         codecFallbackResizeID = nil
+        audioLock.withLock {
+            audioAttachedStream = nil
+            audioPacketizer.reset()
+        }
         stopCursorEcho()
         captureDisplayID = 0
         captureFrames.retire()
@@ -797,11 +808,21 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             captureDisplayID = display.displayID
             _ = captureFrames.begin()
             captureSourceCheck = CaptureSourceCheck()
+            if config.capturesAudio {
+                audioLock.withLock {
+                    audioAttachedStream = stream
+                    audioPacketizer.reset()
+                }
+                refreshUDPFastPlaneSinksOnQueue()
+            }
             return true
         }
         guard attached else { throw CancellationError() }
         do {
             try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+            if config.capturesAudio {
+                try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
+            }
             try await stream.startCapture()
             try Task.checkCancellation()
         } catch {
@@ -836,6 +857,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         config.pixelFormat = UserDefaults.standard.string(forKey: "pixfmt") == "bgra"
             ? kCVPixelFormatType_32BGRA
             : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        if lastHello?.supportsDisplayP3 == true {
+            config.colorSpaceName = CGColorSpace.displayP3
+        }
+        let captureAudio = settings.audioEnabled && lastHello?.supportsUDPAudioV1 == true
+        config.capturesAudio = captureAudio
+        if captureAudio {
+            config.sampleRate = AudioCapturePacketizer.targetSampleRate
+            config.channelCount = AudioCapturePacketizer.targetChannels
+            config.excludesCurrentProcessAudio = true
+        }
         // Keep enough SCK headroom for keyframe replay and asynchronous encode
         // without accumulating multi-frame capture queue latency.
         config.queueDepth = CaptureStaticFramePolicy.defaultQueueDepth
@@ -1148,6 +1179,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         udpMediaSession?.stop()
         udpMediaSession = nil
         activeUDPMediaSessionEpoch = 0
+        audioLock.withLock {
+            audioCaptureSink = nil
+            udpCursorSender = nil
+            audioSequence = 0
+        }
         cancelDropReplay()
         desktopInput.reset()
         pencilActions.reset(); pencilExtendedNegotiated = false
@@ -1174,6 +1210,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         udpMediaSession?.stop()
         udpMediaSession = nil
         activeUDPMediaSessionEpoch = 0
+        audioLock.withLock {
+            audioCaptureSink = nil
+            udpCursorSender = nil
+            audioSequence = 0
+        }
         keyframeRequests.retireInFlightRequest()
         stopCursorEcho()
         desktopInput.reset()
@@ -1713,9 +1754,17 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         cursorImageLock.withLock {
             cursorImageContext = (displayID, wireConnectionGeneration, encoderGeneration, 0, nil, .zero, .zero)
         }
-        cursorEcho.start(sample: { CursorPosition.sample(displayID: displayID) },
-                         write: CursorEcho.writer(on: connection),
-                         log: settings.enableDebugStats ? { Log.info($0) } : nil)
+        cursorEcho.start(
+            sample: { CursorPosition.sample(displayID: displayID) },
+            write: CursorEcho.writer(on: connection),
+            udpSend: { [weak self] position, sequence in
+                guard let self,
+                      let sender = self.audioLock.withLock({ self.udpCursorSender }) else {
+                    return false
+                }
+                return sender(position, sequence)
+            },
+            log: settings.enableDebugStats ? { Log.info($0) } : nil)
         scheduleCursorImagePoll()
     }
 
@@ -2513,6 +2562,14 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         let speedOverQuality = StreamEncodingPolicy.prioritizesEncodingSpeed(
             quality: settings.quality, fps: fps) ? kCFBooleanTrue : kCFBooleanFalse
         let speedStatus = VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality, value: speedOverQuality)
+        if lastHello?.supportsDisplayP3 == true {
+            VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_ColorPrimaries,
+                                 value: kCMFormatDescriptionColorPrimaries_P3_D65)
+            VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_TransferFunction,
+                                 value: kCMFormatDescriptionTransferFunction_sRGB)
+            VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_YCbCrMatrix,
+                                 value: kCMFormatDescriptionYCbCrMatrix_ITU_R_709_2)
+        }
         let prepareStatus = VTCompressionSessionPrepareToEncodeFrames(encoder)
         guard prepareStatus == noErr else {
             throw NSError(domain: "MacSender.Encoder", code: Int(prepareStatus), userInfo: [
@@ -2538,6 +2595,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     func stream(_ stream: SCStream,
                 didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
                 of type: SCStreamOutputType) {
+        if type == .audio {
+            handleCapturedAudioSampleBuffer(sampleBuffer, from: stream)
+            return
+        }
         guard !stopped, !pipelineFailureReported, self.stream === stream, type == .screen,
               CMSampleBufferIsValid(sampleBuffer),
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
@@ -2807,6 +2868,25 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             return
         }
         sendFramed(framed)
+    }
+
+    private func handleCapturedAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, from stream: SCStream) {
+        guard !stopped else { return }
+        let chunksAndSink: ([(UInt32, Data)], ((UInt32, Data) -> Void)?) = audioLock.withLock {
+            guard audioAttachedStream === stream, let sink = audioCaptureSink else {
+                return ([], nil)
+            }
+            let chunks = audioPacketizer.ingest(sampleBuffer)
+            let numbered = chunks.map { chunk -> (UInt32, Data) in
+                audioSequence &+= 1
+                return (audioSequence, chunk)
+            }
+            return (numbered, sink)
+        }
+        guard let sink = chunksAndSink.1 else { return }
+        for (seq, chunk) in chunksAndSink.0 {
+            sink(seq, chunk)
+        }
     }
 
     private func replayStaticKeyframeImmediatelyIfNeeded() {
@@ -3221,6 +3301,50 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         session.updateEncoderLoadCeiling(ceiling)
     }
 
+    private func refreshUDPFastPlaneSinksOnQueue() {
+        guard let info = lastHello, let session = udpMediaSession else {
+            audioLock.withLock {
+                audioCaptureSink = nil
+                udpCursorSender = nil
+            }
+            return
+        }
+        let allowCursor = info.supportsUDPCursorV1
+        let allowAudio = settings.audioEnabled && info.supportsUDPAudioV1
+        audioLock.withLock {
+            if allowCursor {
+                udpCursorSender = { [weak session] position, sequence in
+                    guard let session, session.isReady else { return false }
+                    let payload = UDPMediaCursorPayload(
+                        sequence: sequence,
+                        normalizedX: position.x,
+                        normalizedY: position.y,
+                        visible: position.visible
+                    )
+                    return session.sendCursor(payload)
+                }
+            } else {
+                udpCursorSender = nil
+            }
+            if allowAudio {
+                audioCaptureSink = { [weak session] seq, pcmChunk in
+                    guard let session, session.isReady else { return }
+                    let payload = UDPMediaAudioPayload(
+                        audioSeq: seq,
+                        captureTimestampMs: Int64(Date().timeIntervalSince1970 * 1_000),
+                        sampleRate: UInt16(AudioCapturePacketizer.targetSampleRate),
+                        channels: UInt8(AudioCapturePacketizer.targetChannels),
+                        formatFlags: UDPMediaAudioPayload.formatPCM16LE,
+                        pcmBytes: pcmChunk
+                    )
+                    _ = session.sendAudio(payload)
+                }
+            } else {
+                audioCaptureSink = nil
+            }
+        }
+    }
+
     private func ensureUDPMediaPlaneAfterStreamConfig() {
         guard connectionReady, let info = lastHello else { return }
         guard case .tcp(_, let interface) = transport,
@@ -3232,6 +3356,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 udpMediaSession?.stop()
                 udpMediaSession = nil
                 activeUDPMediaSessionEpoch = 0
+                audioLock.withLock {
+                    audioCaptureSink = nil
+                    udpCursorSender = nil
+                    audioSequence = 0
+                }
             }
             return
         }
@@ -3243,6 +3372,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 udpMediaSession?.syncManualTargetBitrate(streamBitrate)
             }
             syncUDPEncoderLoadCeiling()
+            refreshUDPFastPlaneSinksOnQueue()
             return
         }
         startUDPMediaPlaneIfSupported(for: info)
@@ -3252,6 +3382,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         udpMediaSession?.stop()
         udpMediaSession = nil
         activeUDPMediaSessionEpoch = 0
+        audioLock.withLock {
+            audioCaptureSink = nil
+            udpCursorSender = nil
+            audioSequence = 0
+        }
         guard case .tcp(let endpoint, let interface) = transport,
               UDPMediaActivationPolicy.shouldActivateUDPMedia(
                 peerSupportsUDP: info.supportsUDPMediaV1,
@@ -3326,6 +3461,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 self.udpMediaSession?.stop()
                 self.udpMediaSession = nil
                 self.activeUDPMediaSessionEpoch = 0
+                self.audioLock.withLock {
+                    self.audioCaptureSink = nil
+                    self.udpCursorSender = nil
+                    self.audioSequence = 0
+                }
                 self.adaptiveBitrateController?.syncCurrentBitrate(self.streamBitrate)
                 self.requestKeyframe(.streamReconfigure)
                 self.replayStaticKeyframeImmediatelyIfNeeded()
@@ -3341,6 +3481,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         udpMediaSession = session
         activeUDPMediaSessionEpoch = epoch
         syncUDPEncoderLoadCeiling()
+        refreshUDPFastPlaneSinksOnQueue()
         sendJSONFrame(session.makeConfigMessage().jsonString)
     }
 

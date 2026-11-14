@@ -92,10 +92,23 @@ final class WireContractSelfTest {
         equal(LengthPrefixedProtocol.encode(LengthPrefixedProtocol.jsonBytes(actionJson)),
                 hex(vectors, "actionFrame"));
 
-        if (vectors.getProperty("udpHeaderVideoData") != null) {
-            byte[] rawHeader = hex(vectors, "udpHeaderVideoData");
-            UdpMediaProtocol.Header decoded = UdpMediaProtocol.Header.decode(rawHeader, rawHeader.length);
-            equal(decoded.encode(), rawHeader);
+        // Shared udpMediaV1 deterministic golden vectors (present once wire-contract-v1.properties rev 2 is merged).
+        for (String key : new String[]{"udpHeaderVideoData", "udpHeaderCursor", "udpHeaderAudio"}) {
+            if (vectors.getProperty(key) != null) {
+                byte[] rawHeader = hex(vectors, key);
+                UdpMediaProtocol.Header decoded = UdpMediaProtocol.Header.decode(rawHeader, rawHeader.length);
+                equal(decoded.encode(), rawHeader);
+            }
+        }
+        if (vectors.getProperty("udpCursorPayload") != null) {
+            byte[] rawCursor = hex(vectors, "udpCursorPayload");
+            UdpMediaProtocol.CursorPayload cursor = UdpMediaProtocol.CursorPayload.decode(rawCursor);
+            equal(cursor.encode(), rawCursor);
+        }
+        if (vectors.getProperty("udpAudioPayload") != null) {
+            byte[] rawAudio = hex(vectors, "udpAudioPayload");
+            UdpMediaProtocol.AudioPayload audio = UdpMediaProtocol.AudioPayload.decode(rawAudio);
+            equal(audio.encode(), rawAudio);
         }
         if (vectors.getProperty("udpRootSecret") != null && vectors.getProperty("udpS2RKeyEpoch1") != null) {
             UdpMediaProtocol.KeyMaterial km = UdpMediaProtocol.KeyMaterial.derive(
@@ -106,9 +119,30 @@ final class WireContractSelfTest {
             equal(km.receiverToSenderSalt, hex(vectors, "udpR2SSaltEpoch1"));
             equal(km.nonce(UdpMediaProtocol.DIR_SENDER_TO_RECEIVER, 1L), hex(vectors, "udpS2RNonceSeq1"));
             equal(km.nonce(UdpMediaProtocol.DIR_RECEIVER_TO_SENDER, 1L), hex(vectors, "udpR2SNonceSeq1"));
+
+            UdpMediaProtocol.CryptoSession sender = new UdpMediaProtocol.CryptoSession(km);
+            UdpMediaProtocol.CryptoSession receiver = new UdpMediaProtocol.CryptoSession(km);
+            byte[] cursorDg = hex(vectors, "udpCursorSealedDatagram");
+            byte[] audioDg = hex(vectors, "udpAudioSealedDatagram");
+            equal(sender.seal(
+                    UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                    UdpMediaProtocol.PACKET_CURSOR,
+                    0, 123_500L, 0L, 0, 1, hex(vectors, "udpCursorPayload")),
+                    cursorDg);
+            equal(sender.seal(
+                    UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                    UdpMediaProtocol.PACKET_AUDIO,
+                    0, 123_600L, 0L, 0, 1, hex(vectors, "udpAudioPayload")),
+                    audioDg);
+            UdpMediaProtocol.AuthenticatedPacket openedCursor =
+                    receiver.open(cursorDg, cursorDg.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER);
+            equal(openedCursor.payload, hex(vectors, "udpCursorPayload"));
+            UdpMediaProtocol.AuthenticatedPacket openedAudio =
+                    receiver.open(audioDg, audioDg.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER);
+            equal(openedAudio.payload, hex(vectors, "udpAudioPayload"));
         }
 
-        System.out.println("Shared wire fixtures: Java framing/fragmentation/EOF, DWV2 and legacy Annex-B PASS");
+        System.out.println("Shared wire fixtures: Java framing/fragmentation/EOF, DWV2, input, and legacy Annex-B PASS");
     }
     private static byte[] hex(Properties fixtures, String key) {
         String text = fixtures.getProperty(key);

@@ -122,6 +122,13 @@ struct StreamSettingsSelfTest {
         let invalid = StreamSettings.load(from: emptyDefaults)
         assertTrue(invalid.bitrateMode == .auto && invalid.bitratePreset == .mbps40,
                    "invalid stored bitrate settings fall back safely")
+        assertTrue(invalid.audioEnabled == false,
+                   "system audio forwarding defaults to OFF on fresh/default settings")
+        var withAudio = invalid
+        withAudio.audioEnabled = true
+        withAudio.save(to: emptyDefaults)
+        assertTrue(StreamSettings.load(from: emptyDefaults).audioEnabled == true,
+                   "opt-in system audio setting persists across save/load")
         assertEqual(.gaming, StreamQuality.smooth,
                     "StreamQuality.smooth aliases low-latency gaming preset")
 

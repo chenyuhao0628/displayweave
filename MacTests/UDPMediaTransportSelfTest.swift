@@ -12,8 +12,12 @@ private func runLoopbackTransportCheck(
 ) {
     let readySem = DispatchSemaphore(value: 0)
     let framesSem = DispatchSemaphore(value: 0)
+    let cursorSem = DispatchSemaphore(value: 0)
+    let audioSem = DispatchSemaphore(value: 0)
     let lock = NSLock()
     var receivedFrames: [UDPMediaFrameEnvelope] = []
+    var receivedCursors: [UDPMediaCursorPayload] = []
+    var receivedAudios: [UDPMediaAudioPayload] = []
     var completedFrameSignals = 0
     var totalSentBytesReported = 0
 
@@ -65,6 +69,24 @@ private func runLoopbackTransportCheck(
             framesSem.signal()
         }
     }
+    receiver.onCursor = { gen, cursor in
+        guard gen == 1 else { return }
+        lock.lock()
+        receivedCursors.append(cursor)
+        if cursor.sequence == 12 {
+            cursorSem.signal()
+        }
+        lock.unlock()
+    }
+    receiver.onAudio = { gen, audio in
+        guard gen == 1 else { return }
+        lock.lock()
+        receivedAudios.append(audio)
+        if receivedAudios.count >= 2 {
+            audioSem.signal()
+        }
+        lock.unlock()
+    }
 
     expect(readySem.wait(timeout: .now() + 2.0) == .success && sender.isReady,
            "UDP probe handshake must make sender session ready on \(host) (if=\(boundInterfaceName ?? "any"))")
@@ -108,14 +130,38 @@ private func runLoopbackTransportCheck(
         Thread.sleep(forTimeInterval: 0.008)
     }
 
+    // Send cursor updates (including stale sequence 11 after sequence 12 to verify monotonic filter)
+    expect(sender.sendCursor(UDPMediaCursorPayload(sequence: 10, normalizedX: Float32(0.25), normalizedY: Float32(0.5), visible: true)),
+           "sendCursor(10) succeeds")
+    Thread.sleep(forTimeInterval: 0.004)
+    expect(sender.sendCursor(UDPMediaCursorPayload(sequence: 12, normalizedX: Float32(0.75), normalizedY: Float32(0.125), visible: true)),
+           "sendCursor(12) succeeds")
+    Thread.sleep(forTimeInterval: 0.004)
+    expect(sender.sendCursor(UDPMediaCursorPayload(sequence: 11, normalizedX: Float32(0.1), normalizedY: Float32(0.1), visible: false)),
+           "sendCursor(11) transmits")
+
+    // Send 2 S16LE stereo audio packets
+    let pcm1 = Data((0..<960).map { UInt8($0 & 0xFF) })
+    let pcm2 = Data((0..<960).map { UInt8(($0 + 7) & 0xFF) })
+    expect(sender.sendAudio(UDPMediaAudioPayload(audioSeq: 1, captureTimestampMs: 1_700_000_002_000, sampleRate: 48_000, channels: 2, pcmBytes: pcm1)),
+           "sendAudio(1) succeeds")
+    expect(sender.sendAudio(UDPMediaAudioPayload(audioSeq: 2, captureTimestampMs: 1_700_000_002_005, sampleRate: 48_000, channels: 2, pcmBytes: pcm2)),
+           "sendAudio(2) succeeds")
+
     expect(framesSem.wait(timeout: .now() + 2.0) == .success,
            "all 5 multi-fragment frames must be reassembled and delivered over \(host)")
+    expect(cursorSem.wait(timeout: .now() + 2.0) == .success,
+           "cursor updates must be delivered over \(host)")
+    expect(audioSem.wait(timeout: .now() + 2.0) == .success,
+           "audio packets must be delivered over \(host)")
 
-    // Wait briefly across idle 1ms pacer ticks to verify completedFrame never increments on idle ticks
+    // Wait briefly across idle 1ms pacer ticks to verify completedFrame never increments on idle ticks or cursor/audio
     Thread.sleep(forTimeInterval: 0.025)
 
     lock.lock()
     let delivered = receivedFrames
+    let cursors = receivedCursors
+    let audios = receivedAudios
     let frameSignals = completedFrameSignals
     let sentBytes = totalSentBytesReported
     lock.unlock()
@@ -128,6 +174,9 @@ private func runLoopbackTransportCheck(
     }
     expect(frameSignals == 5 && sentBytes > 20_000,
            "onBytesSent marks completedFrame == true exactly once per .endOfFrame video frame (got \(frameSignals))")
+    expect(cursors.last?.sequence == 12 && !cursors.contains(where: { $0.sequence == 11 }),
+           "receiver drops out-of-order older cursor sequence 11 after 12")
+    expect(audios.map(\.audioSeq).sorted() == [1, 2], "both PCM audio packets delivered intact")
 
     // Stop must immediately deactivate session
     sender.stop()

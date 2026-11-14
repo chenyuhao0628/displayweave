@@ -112,6 +112,10 @@ enum VirtualDisplayPhysicalSizePolicy {
 enum MacReceiverPolicy {
     static let maxH264LongEdge = 4096
     static let maxH264ShortEdge = 2304
+    static let maxHEVC5KLongEdge = 5120
+    static let maxHEVC5KShortEdge = 2880
+    static let maxHEVC5KFrameRate = 60
+    static let maxHEVC5KPixelsPerSecond = 5120 * 2880 * 60
 
     static func clampedH264Dimensions(width: Int, height: Int) -> (width: Int, height: Int) {
         let safeW = max(2, min(16384, width))
@@ -172,17 +176,33 @@ enum MacReceiverPolicy {
         let hevcCaps = (info.videoCaps ?? []).prefix(16).filter { $0.codec.lowercased() == "hevc" }
         let hevc = hardwareHEVCEncode && settings.codecMode != .h264
             && info.negotiatedSupportedCodecs.contains("hevc") && !hevcCaps.isEmpty
-        let fallbackW = h264FallbackW
-        let fallbackH = h264FallbackH
+        let allowsHEVC5K = hevc && info.supportsHEVC5KV1
+        let fallbackW = allowsHEVC5K ? (portrait ? maxHEVC5KShortEdge : maxHEVC5KLongEdge) : h264FallbackW
+        let fallbackH = allowsHEVC5K ? (portrait ? maxHEVC5KLongEdge : maxHEVC5KShortEdge) : h264FallbackH
         func intersect(_ a: Int?, _ b: Int?) -> Int? {
             if let a, let b { return min(a, b) }; return a ?? b
         }
-        let offers = hevc ? hevcCaps.flatMap { cap in fallback.map { safe in
+        func is5KCap(_ cap: VideoCapability) -> Bool {
+            guard let w = cap.maxWidth, let h = cap.maxHeight else { return false }
+            let exceeds4K = max(w, h) > maxH264LongEdge || min(w, h) > maxH264ShortEdge
+            let fits5K = max(w, h) <= maxHEVC5KLongEdge && min(w, h) <= maxHEVC5KShortEdge
+            return exceeds4K && fits5K
+        }
+        let intersectedHEVC = hevcCaps.flatMap { cap in fallback.map { safe in
             VideoCapability(codec: "hevc", maxWidth: intersect(cap.maxWidth, safe.maxWidth),
                 maxHeight: intersect(cap.maxHeight, safe.maxHeight),
                 maxFrameRate: intersect(cap.maxFrameRate, safe.maxFrameRate),
                 maxPixelsPerSecond: intersect(cap.maxPixelsPerSecond, safe.maxPixelsPerSecond))
-        } } : fallback
+        } }
+        let native5KHEVC: [VideoCapability] = allowsHEVC5K ? hevcCaps.filter(is5KCap).map { cap in
+            VideoCapability(
+                codec: "hevc",
+                maxWidth: cap.maxWidth,
+                maxHeight: cap.maxHeight,
+                maxFrameRate: intersect(cap.maxFrameRate, maxHEVC5KFrameRate),
+                maxPixelsPerSecond: intersect(cap.maxPixelsPerSecond, maxHEVC5KPixelsPerSecond))
+        } : []
+        let offers = hevc ? (intersectedHEVC + native5KHEVC) : fallback
         // Alternative envelopes are evaluated independently, never combined into
         // an operating point that no advertised capability can actually decode.
         let plans = offers.map { cap -> MacStreamPlan in

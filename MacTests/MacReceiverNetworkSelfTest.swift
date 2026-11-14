@@ -168,6 +168,10 @@ private final class ReceiverLogProbe: @unchecked Sendable {
             let peer = try ReceiverTestPeer(port: legacyPort)
             let hello = try peer.hello()
             precondition(hello["supportedCodecs"] as? [String] == ["h264"])
+            let legacyCaps = Set(hello["capabilities"] as? [String] ?? [])
+            precondition(legacyCaps.contains("udpMediaV1") && legacyCaps.contains("udpCursorV1")
+                && legacyCaps.contains("udpAudioV1") && legacyCaps.contains("displayP3")
+                && !legacyCaps.contains("hevc5kV1"))
             let cfg = try JSONSerialization.data(withJSONObject: ["type":"streamConfig", "codec":"hevc", "width":64, "height":64])
             try peer.write(ReceiverFrameDecoder.frame(cfg))
             let failure = try peer.hello()
@@ -177,6 +181,131 @@ private final class ReceiverLogProbe: @unchecked Sendable {
         try await waitFor("fallback timeout closes peer") { !legacy.connected && legacy.status.contains("回退超时") }
         await withCheckedContinuation { continuation in legacy.stop { continuation.resume() } }
         withExtendedLifetime(unsupported) {}
+
+        // Verify C4 (orientation-independent 4K + live configure re-hello) + UDP cursor/audio/stale-config handling
+        final class AudioSinkProbe: MacAudioPlaying, @unchecked Sendable {
+            private let lock = NSLock()
+            var isMuted = false
+            private(set) var receivedBytes = 0
+            private(set) var stops = 0
+            func enqueueS16LE(_ pcmData: Data) { lock.withLock { receivedBytes += pcmData.count } }
+            func stop() { lock.withLock { stops += 1 } }
+        }
+        let audioProbe = AudioSinkProbe()
+        let upgraded = StreamReceiver(hardwareHEVCDecode: true, audioPlayer: audioProbe, securityProvider: { .legacy })
+        upgraded.configure(panel: PanelAnnouncement(pixelsWide: 2560, pixelsHigh: 1440, scale: 2,
+                           millimetersWide: 600, millimetersHigh: 340),
+                           name: "UpgradedMac", maxFps: 60)
+        upgraded.start(port: 0, advertiseService: false)
+        try await waitFor("upgraded listen") { upgraded.listeningPort != 0 }
+        let upgPort = upgraded.listeningPort
+        var udpCursorPoint: (Double, Double, Bool)?
+        upgraded.onCursor = { x, y, v in udpCursorPoint = (x, y, v) }
+        let upgPeer = try await Task.detached { () -> ReceiverTestPeer in
+            let peer = try ReceiverTestPeer(port: upgPort)
+            let hello = try peer.hello()
+            let caps = Set(hello["capabilities"] as? [String] ?? [])
+            precondition(caps.contains("hevc5kV1") && caps.contains("displayP3")
+                && caps.contains("udpCursorV1") && caps.contains("udpAudioV1"))
+            return peer
+        }.value
+        // Portrait 2304x4096 H.264 streamConfig accepted on landscape 2560x1440 Mac panel
+        let portraitCfg = try JSONSerialization.data(withJSONObject: [
+            "type": "streamConfig", "codec": "h264", "width": 2304, "height": 4096, "fps": 60, "configVersion": 1
+        ])
+        try await Task.detached { try upgPeer.write(ReceiverFrameDecoder.frame(portraitCfg)) }.value
+        // Switch to 64x64 configVersion=2 + live panel update without dropping stream
+        let cfgV2 = try JSONSerialization.data(withJSONObject: [
+            "type": "streamConfig", "codec": "h264", "width": 64, "height": 64, "fps": 60, "configVersion": 2
+        ])
+        try await Task.detached {
+            try upgPeer.write(ReceiverFrameDecoder.frame(cfgV2) + ReceiverFrameDecoder.frame(video))
+        }.value
+        try await waitFor("upgraded video") { upgraded.videoSize == CGSize(width: 64, height: 64) }
+        upgraded.configure(panel: PanelAnnouncement(pixelsWide: 1440, pixelsHigh: 2560, scale: 2,
+                           millimetersWide: 340, millimetersHigh: 600),
+                           name: "UpgradedMac", maxFps: 60)
+        try await Task.detached {
+            for _ in 0..<8 {
+                let msg = try upgPeer.hello()
+                if msg["type"] as? String == "hello",
+                   msg["pixelsWide"] as? Int == 1440,
+                   msg["pixelsHigh"] as? Int == 2560 {
+                    return
+                }
+            }
+            throw ReceiverTestFailure(message: "live configure did not emit updated hello")
+        }.value
+        precondition(upgraded.connected && upgraded.videoSize == CGSize(width: 64, height: 64),
+                     "live panel configure must preserve active session and decoded video")
+
+        if let udpSender = UDPMediaSenderSession(
+            sessionEpoch: 1,
+            wireGeneration: 1,
+            initialBitrate: 30_000_000,
+            bitrateBounds: 12_000_000...100_000_000,
+            peerHost: "127.0.0.1",
+            peerPort: nil
+        ) {
+            let udpCfgData = Data(udpSender.makeConfigMessage().jsonString.utf8)
+            let readyPort = try await Task.detached { () -> UInt16 in
+                try upgPeer.write(ReceiverFrameDecoder.frame(udpCfgData))
+                for _ in 0..<8 {
+                    let msg = try upgPeer.hello()
+                    if msg["type"] as? String == "udpMediaReady", let p = msg["udpPort"] as? Int {
+                        return UInt16(p)
+                    }
+                }
+                throw ReceiverTestFailure(message: "missing udpMediaReady")
+            }.value
+            let stopsBeforeDuplicate = audioProbe.stops
+            let duplicatePort = try await Task.detached { () -> UInt16 in
+                let malformed = try JSONSerialization.data(withJSONObject: ["type": "udpMediaConfig", "sessionEpoch": 0])
+                try upgPeer.write(ReceiverFrameDecoder.frame(malformed) + ReceiverFrameDecoder.frame(udpCfgData))
+                for _ in 0..<8 {
+                    let msg = try upgPeer.hello()
+                    if msg["type"] as? String == "udpMediaReady", let p = msg["udpPort"] as? Int {
+                        return UInt16(p)
+                    }
+                }
+                throw ReceiverTestFailure(message: "missing duplicate udpMediaReady")
+            }.value
+            precondition(duplicatePort == readyPort && audioProbe.stops == stopsBeforeDuplicate,
+                         "malformed or duplicate-epoch udpMediaConfig must preserve active UDP session and audio player")
+            udpSender.configurePeer(host: "127.0.0.1", port: readyPort)
+            try await waitFor("udp sender ready") { udpSender.isReady }
+            // Stale configVersion=1 frame on UDP must be ignored without disconnecting
+            _ = udpSender.sendFrame(annexB: Data([0, 0, 0, 1, 0x41, 0x9A]), isKeyframe: false, captureTimestampMs: 100, configVersion: 1)
+            // Future configVersion=3 IDR arriving before TCP streamConfig(v3) must trigger immediate "kf" once streamConfig(v3) arrives
+            _ = udpSender.sendFrame(annexB: video, isKeyframe: true, captureTimestampMs: 102, configVersion: 3)
+            _ = udpSender.sendCursor(UDPMediaCursorPayload(sequence: 500, normalizedX: 0.75, normalizedY: 0.25, visible: true))
+            _ = udpSender.sendAudio(UDPMediaAudioPayload(audioSeq: 10, captureTimestampMs: 101, pcmBytes: Data(repeating: 0x10, count: 960)))
+            _ = udpSender.sendAudio(UDPMediaAudioPayload(audioSeq: 10, captureTimestampMs: 101, pcmBytes: Data(repeating: 0x11, count: 960)))
+            _ = udpSender.sendAudio(UDPMediaAudioPayload(audioSeq: 9, captureTimestampMs: 100, pcmBytes: Data(repeating: 0x12, count: 960)))
+            _ = udpSender.sendAudio(UDPMediaAudioPayload(audioSeq: 11, captureTimestampMs: 106, pcmBytes: Data(repeating: 0x13, count: 960)))
+            try await waitFor("udp cursor + monotonic audio") {
+                udpCursorPoint != nil && audioProbe.receivedBytes >= 1920
+            }
+            precondition(audioProbe.receivedBytes == 1920,
+                         "duplicate or out-of-order audioSeq packets must be dropped before enqueueing PCM")
+            let cfgV3 = try JSONSerialization.data(withJSONObject: [
+                "type": "streamConfig", "codec": "h264", "width": 64, "height": 64, "fps": 60, "configVersion": 3
+            ])
+            try await Task.detached {
+                try upgPeer.write(ReceiverFrameDecoder.frame(cfgV3))
+                for _ in 0..<8 {
+                    let msg = try upgPeer.hello()
+                    if msg["type"] as? String == "kf" { return }
+                }
+                throw ReceiverTestFailure(message: "streamConfig after ahead-of-order UDP frame did not request kf")
+            }.value
+            precondition(upgraded.connected, "stale or ahead-of-order UDP configVersion must not disconnect receiver")
+            udpSender.stop()
+        }
+        await withCheckedContinuation { continuation in upgraded.stop { continuation.resume() } }
+        precondition(audioProbe.stops >= 1, "stopping receiver must stop audio player")
+        withExtendedLifetime(upgPeer) {}
+
         print("Mac receiver loopback: hello, cursor coalescing, diagnostics, busy rejection, H264, invalid framing, reconnect, stop/restart PASS")
     }
 }

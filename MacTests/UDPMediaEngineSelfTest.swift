@@ -299,9 +299,25 @@ struct UDPMediaEngineSelfTest {
         expect(prioPacer.purgedStaleFragments == 1,
                "UDPDebtPacer purges stale normalVideo across UInt32.max -> 0 frameId wrap")
 
+        let cursorOld = Data(repeating: 0xC1, count: 49)
+        let cursorLatest = Data(repeating: 0xC2, count: 49)
+        prioPacer.enqueueCursor(UDPQueuedDatagram(priority: .cursor, packetType: .cursor, frameId: 0, fragIndex: 0, isParity: false, datagram: cursorOld))
+        prioPacer.enqueueCursor(UDPQueuedDatagram(priority: .cursor, packetType: .cursor, frameId: 0, fragIndex: 0, isParity: false, datagram: cursorLatest))
+        for seq in 0..<20 {
+            let audioDg = Data(repeating: UInt8(seq), count: 80)
+            prioPacer.enqueueAudio(UDPQueuedDatagram(priority: .audio, packetType: .audio, frameId: 0, fragIndex: 0, isParity: false, datagram: audioDg))
+        }
         let prioBurst = prioPacer.pollTransmitBurst(nowUptime: 200.0)
+        let cursorSent = prioBurst.filter { $0.packetType == .cursor }
+        let audioSent = prioBurst.filter { $0.packetType == .audio }
         let videoSent = prioBurst.filter { $0.packetType == .videoData }
-        expect(videoSent.count == 1 && videoSent[0].completesVideoFrame,
+        expect(cursorSent.count == 1 && cursorSent[0].datagram == cursorLatest,
+               "enqueueCursor coalesces older unsent cursor updates (latest-wins)")
+        expect(audioSent.count == UDPDebtPacer.maxQueuedAudioPackets && audioSent.first?.datagram.first == 4,
+               "enqueueAudio bounds audio queue to 16 newest packets")
+        expect(prioBurst.first?.priority == .cursor && prioBurst.last?.priority == .keyframe,
+               "UDPDebtPacer orders cursor > audio > keyframe")
+        expect(videoSent.count == 1 && videoSent[0].completesVideoFrame && !cursorSent[0].completesVideoFrame && !audioSent[0].completesVideoFrame,
                "completesVideoFrame is true only for non-retransmit .videoData with .endOfFrame")
 
         print("UDPMediaEngineSelfTest PASS")

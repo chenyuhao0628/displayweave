@@ -172,6 +172,18 @@ struct PhoneInfo: Decodable {
     var supportsUDPMediaV1: Bool {
         udpMediaV1 == true || Set(capabilities ?? []).contains("udpMediaV1")
     }
+    var supportsUDPCursorV1: Bool {
+        Set(capabilities ?? []).contains("udpCursorV1")
+    }
+    var supportsUDPAudioV1: Bool {
+        Set(capabilities ?? []).contains("udpAudioV1")
+    }
+    var supportsHEVC5KV1: Bool {
+        Set(capabilities ?? []).contains("hevc5kV1")
+    }
+    var supportsDisplayP3: Bool {
+        Set(capabilities ?? []).contains("displayP3")
+    }
     var advertisedUDPPort: UInt16? {
         guard let udpPort, (1...65535).contains(udpPort) else { return nil }
         return UInt16(udpPort)

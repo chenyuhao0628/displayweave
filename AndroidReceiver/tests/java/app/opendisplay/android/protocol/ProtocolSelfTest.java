@@ -54,6 +54,7 @@ public final class ProtocolSelfTest {
         testUdpMediaMultiBlockParityBeforeDataAndRollover();
         testUdpMediaJitterGapDropsPFramesAndArrivalEstimator();
         testUdpMediaReceiverSessionLoopback();
+        testUdpCursorAndAudioCodecsAndSessionLoopback();
         testAndroidStylusInputTranslation();
         testAndroidDesktopInputTranslation();
         System.out.println("ProtocolSelfTest PASS");
@@ -147,7 +148,8 @@ public final class ProtocolSelfTest {
         assertContains(wifiJson, "\"inputCaps\":[\"pencil-v1\"]");
         assertContains(wifiJson, "\"capabilities\":[\"streamConfigAck\",\"decoderReady\","
                 + "\"firstFrameRendered\",\"sessionEpoch\",\"configVersion\","
-                + "\"frameSequence\",\"maxFrameBytes\",\"binaryFrameHeaderV2\",\"udpMediaV1\"]");
+                + "\"frameSequence\",\"maxFrameBytes\",\"binaryFrameHeaderV2\","
+                + "\"udpMediaV1\",\"udpCursorV1\",\"udpAudioV1\"]");
 
         int[] mm = LengthPrefixedProtocol.computePhysicalMillimeters(2560, 1600, 254.0, 254.0);
         assertTrue(mm != null);
@@ -176,6 +178,8 @@ public final class ProtocolSelfTest {
                 + "\"firstFrameRendered\",\"sessionEpoch\",\"configVersion\","
                 + "\"frameSequence\",\"maxFrameBytes\",\"binaryFrameHeaderV2\"]");
         assertFalse(usbJson.contains("\"udpMediaV1\""));
+        assertFalse(usbJson.contains("\"udpCursorV1\""));
+        assertFalse(usbJson.contains("\"udpAudioV1\""));
     }
 
     private static void testBinaryFrameHeaderV2RoundTrip() throws Exception {
@@ -786,8 +790,82 @@ public final class ProtocolSelfTest {
                 km.nonce(UdpMediaProtocol.DIR_RECEIVER_TO_SENDER, 1L)));
 
         byte[] hdrVideo = fromHex("4301002a0001e2400000000700000001");
+        byte[] hdrCursor = fromHex("6801002b0001e26c0000000000000001");
+        byte[] hdrAudio = fromHex("7001002c0001e2d00000000000000001");
         assertTrue(java.util.Arrays.equals(
                 hdrVideo, UdpMediaProtocol.Header.decode(hdrVideo, hdrVideo.length).encode()));
+        assertTrue(java.util.Arrays.equals(
+                hdrCursor, UdpMediaProtocol.Header.decode(hdrCursor, hdrCursor.length).encode()));
+        assertTrue(java.util.Arrays.equals(
+                hdrAudio, UdpMediaProtocol.Header.decode(hdrAudio, hdrAudio.length).encode()));
+
+        // Reject cursor/audio headers with non-(0,1) fragment bounds matching Swift UDPMediaHeader.decode.
+        byte[] badCursorHdr = hdrCursor.clone();
+        badCursorHdr[15] = 2; // fragCount = 2
+        boolean rejectedBadCursorHdr = false;
+        try {
+            UdpMediaProtocol.Header.decode(badCursorHdr, badCursorHdr.length);
+        } catch (IllegalArgumentException expected) {
+            rejectedBadCursorHdr = true;
+        }
+        assertTrue(rejectedBadCursorHdr);
+
+        byte[] cursorWire = fromHex("00000000000000093e8000003f40000001");
+        UdpMediaProtocol.CursorPayload cursor = UdpMediaProtocol.CursorPayload.decode(cursorWire);
+        assertEquals(9L, cursor.sequence);
+        assertEquals(0.25f, cursor.normalizedX);
+        assertEquals(0.75f, cursor.normalizedY);
+        assertTrue(cursor.visible);
+        assertTrue(java.util.Arrays.equals(cursorWire, cursor.encode()));
+
+        // Reject visible byte != 0 && != 1 matching Swift UDPMediaCursorPayload.decode.
+        byte[] badVisCursor = cursorWire.clone();
+        badVisCursor[16] = 2;
+        boolean rejectedBadVis = false;
+        try {
+            UdpMediaProtocol.CursorPayload.decode(badVisCursor);
+        } catch (IllegalArgumentException expected) {
+            rejectedBadVis = true;
+        }
+        assertTrue(rejectedBadVis);
+
+        byte[] audioWire = fromHex("000000050000018bcfe568fabb8002001000f0ff2001e0fe");
+        UdpMediaProtocol.AudioPayload audio = UdpMediaProtocol.AudioPayload.decode(audioWire);
+        assertEquals(5L, audio.audioSeq);
+        assertEquals(1_700_000_000_250L, audio.captureTimestampMs);
+        assertEquals(48_000, audio.sampleRate);
+        assertEquals(2, audio.channels);
+        assertEquals(0, audio.formatFlags);
+        assertTrue(java.util.Arrays.equals(fromHex("1000f0ff2001e0fe"), audio.pcmBytes));
+        assertTrue(java.util.Arrays.equals(audioWire, audio.encode()));
+
+        // Verify byte-for-byte AES-128-GCM ciphertext + tag identity with Swift CryptoKit!
+        byte[] expectedSealedCursor = fromHex(
+                "680100010001e26c000000000000000141b50a68db722cff9e1ddba583233c67b6e9959aa2dab518cc03f85fab198993f5");
+        byte[] expectedSealedAudio = fromHex(
+                "700100020001e2d0000000000000000147b523d307604918f82c3b7917edaf6aa4eb57df9b68b61d82b8d23ed8c2decb0a8fe2b7fef470b3");
+        UdpMediaProtocol.CryptoSession sender = new UdpMediaProtocol.CryptoSession(km);
+        UdpMediaProtocol.CryptoSession receiver = new UdpMediaProtocol.CryptoSession(km);
+        assertTrue(java.util.Arrays.equals(
+                expectedSealedCursor,
+                sender.seal(
+                        UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                        UdpMediaProtocol.PACKET_CURSOR,
+                        0, 123_500L, 0L, 0, 1, cursorWire)));
+        assertTrue(java.util.Arrays.equals(
+                expectedSealedAudio,
+                sender.seal(
+                        UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                        UdpMediaProtocol.PACKET_AUDIO,
+                        0, 123_600L, 0L, 0, 1, audioWire)));
+        assertTrue(java.util.Arrays.equals(
+                cursorWire,
+                receiver.open(expectedSealedCursor, expectedSealedCursor.length,
+                        UdpMediaProtocol.DIR_SENDER_TO_RECEIVER).payload));
+        assertTrue(java.util.Arrays.equals(
+                audioWire,
+                receiver.open(expectedSealedAudio, expectedSealedAudio.length,
+                        UdpMediaProtocol.DIR_SENDER_TO_RECEIVER).payload));
     }
 
     private static byte[] fromHex(String hex) {
@@ -1171,6 +1249,127 @@ public final class ProtocolSelfTest {
         assertTrue(fb2 != null);
         // dSend = 30_000 - 20_000 = 10_000us, dArr = 32_000 - 22_000 = 10_000us -> rawGrad = 0 -> EWMA = round(0.7 * 600) = 420.
         assertEquals(420, fb2.arrivalGradientUs);
+    }
+
+    private static void testUdpCursorAndAudioCodecsAndSessionLoopback() throws Exception {
+        UdpMediaProtocol.CursorPayload cursor =
+                new UdpMediaProtocol.CursorPayload(99L, 0.25f, 0.75f, true);
+        byte[] encodedCursor = cursor.encode();
+        assertEquals(UdpMediaProtocol.CursorPayload.BYTE_LENGTH, encodedCursor.length);
+        UdpMediaProtocol.CursorPayload decodedCursor = UdpMediaProtocol.CursorPayload.decode(encodedCursor);
+        assertEquals(99L, decodedCursor.sequence);
+        assertEquals(0.25f, decodedCursor.normalizedX);
+        assertEquals(0.75f, decodedCursor.normalizedY);
+        assertTrue(decodedCursor.visible);
+
+        boolean rejectedBadCursor = false;
+        try {
+            new UdpMediaProtocol.CursorPayload(1L, 1.5f, 0.5f, true);
+        } catch (IllegalArgumentException expected) {
+            rejectedBadCursor = true;
+        }
+        assertTrue(rejectedBadCursor);
+
+        byte[] pcm = new byte[960]; // 5ms stereo 48kHz S16LE
+        for (int i = 0; i < pcm.length; i++) {
+            pcm[i] = (byte) (i & 0xFF);
+        }
+        UdpMediaProtocol.AudioPayload audio = new UdpMediaProtocol.AudioPayload(
+                42L, 123_456L, 48_000, 2, UdpMediaProtocol.AudioPayload.FORMAT_S16LE_PCM, pcm);
+        byte[] encodedAudio = audio.encode();
+        assertEquals(UdpMediaProtocol.AudioPayload.HEADER_BYTES + pcm.length, encodedAudio.length);
+        UdpMediaProtocol.AudioPayload decodedAudio = UdpMediaProtocol.AudioPayload.decode(encodedAudio);
+        assertEquals(42L, decodedAudio.audioSeq);
+        assertEquals(123_456L, decodedAudio.captureTimestampMs);
+        assertEquals(48_000, decodedAudio.sampleRate);
+        assertEquals(2, decodedAudio.channels);
+        assertEquals(0, decodedAudio.formatFlags);
+        assertTrue(java.util.Arrays.equals(pcm, decodedAudio.pcmBytes));
+
+        // Reject oversize (>1152), unaligned stereo (odd byte count), and non-zero formatFlags.
+        for (int badCase = 0; badCase < 3; badCase++) {
+            boolean rejected = false;
+            try {
+                if (badCase == 0) {
+                    new UdpMediaProtocol.AudioPayload(1L, 1L, 48_000, 2, 0, new byte[1156]);
+                } else if (badCase == 1) {
+                    new UdpMediaProtocol.AudioPayload(1L, 1L, 48_000, 2, 0, new byte[6]);
+                } else {
+                    new UdpMediaProtocol.AudioPayload(1L, 1L, 48_000, 2, 1, new byte[8]);
+                }
+            } catch (IllegalArgumentException expected) {
+                rejected = true;
+            }
+            assertTrue(rejected);
+        }
+
+        // Loopback through UdpMediaReceiverSession for PACKET_CURSOR (5) and PACKET_AUDIO (6).
+        byte[] secret = UdpMediaProtocol.KeyMaterial.generateRootSecret();
+        long epoch = 21L;
+        try (java.net.DatagramSocket senderSock =
+                new java.net.DatagramSocket(new java.net.InetSocketAddress("127.0.0.1", 0))) {
+            String b64Secret = java.util.Base64.getEncoder().encodeToString(secret);
+            String cfgJson = "{\"type\":\"udpMediaConfig\",\"version\":1,\"sessionEpoch\":"
+                    + epoch + ",\"udpPort\":" + senderSock.getLocalPort()
+                    + ",\"rootSecret\":\"" + b64Secret + "\",\"maxPayloadBytes\":1200}";
+            UdpMediaProtocol.ConfigMessage cfg = UdpMediaProtocol.ConfigMessage.parseJson(cfgJson);
+            java.util.concurrent.CountDownLatch cursorLatch = new java.util.concurrent.CountDownLatch(1);
+            java.util.concurrent.CountDownLatch audioLatch = new java.util.concurrent.CountDownLatch(1);
+            java.util.concurrent.atomic.AtomicReference<UdpMediaProtocol.CursorPayload> gotCursor =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+            java.util.concurrent.atomic.AtomicReference<UdpMediaProtocol.AudioPayload> gotAudio =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+
+            try (UdpMediaReceiverSession session = UdpMediaReceiverSession.start(
+                    2L,
+                    cfg,
+                    "127.0.0.1",
+                    new UdpMediaReceiverSession.Listener() {
+                        @Override
+                        public void onFrameReady(
+                                long gen, long sesEpoch, UdpMediaProtocol.FrameEnvelope frame) {
+                        }
+
+                        @Override
+                        public void onKeyframeNeeded(long gen, long sesEpoch, String reason) {
+                        }
+
+                        @Override
+                        public void onCursor(
+                                long gen, long sesEpoch, UdpMediaProtocol.CursorPayload c) {
+                            gotCursor.set(c);
+                            cursorLatch.countDown();
+                        }
+
+                        @Override
+                        public void onAudio(
+                                long gen, long sesEpoch, UdpMediaProtocol.AudioPayload a) {
+                            gotAudio.set(a);
+                            audioLatch.countDown();
+                        }
+                    })) {
+                UdpMediaProtocol.CryptoSession senderCrypto =
+                        new UdpMediaProtocol.CryptoSession(UdpMediaProtocol.KeyMaterial.derive(secret, epoch));
+                byte[] dgCursor = senderCrypto.seal(
+                        UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                        UdpMediaProtocol.PACKET_CURSOR,
+                        0, 60_000L, 0L, 0, 1, encodedCursor);
+                byte[] dgAudio = senderCrypto.seal(
+                        UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                        UdpMediaProtocol.PACKET_AUDIO,
+                        0, 61_000L, 42L, 0, 1, encodedAudio);
+                java.net.InetSocketAddress dest =
+                        new java.net.InetSocketAddress("127.0.0.1", session.localPort());
+                senderSock.send(new java.net.DatagramPacket(dgCursor, dgCursor.length, dest));
+                senderSock.send(new java.net.DatagramPacket(dgAudio, dgAudio.length, dest));
+
+                assertTrue(cursorLatch.await(2, java.util.concurrent.TimeUnit.SECONDS));
+                assertTrue(audioLatch.await(2, java.util.concurrent.TimeUnit.SECONDS));
+                assertEquals(99L, gotCursor.get().sequence);
+                assertEquals(42L, gotAudio.get().audioSeq);
+                assertTrue(java.util.Arrays.equals(pcm, gotAudio.get().pcmBytes));
+            }
+        }
     }
 
     private static void testAndroidStylusInputTranslation() {

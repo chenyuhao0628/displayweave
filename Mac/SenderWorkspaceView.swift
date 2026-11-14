@@ -19,6 +19,16 @@ struct SenderWorkspaceView: View {
                         ForEach(StreamTransportMode.allCases, id: \.self) { Text($0.label).tag($0) }
                     }
                     .onChange(of: controller.settings.transportMode) { _, _ in controller.restartAll() }
+                    Toggle("同步系统音频（局域网 UDP）", isOn: Binding(
+                        get: { controller.settings.audioEnabled },
+                        set: { value in
+                            guard controller.settings.audioEnabled != value else { return }
+                            controller.settings.audioEnabled = value
+                            controller.restartAll()
+                        }
+                    ))
+                    Text("默认关闭。开启后在支持 udpAudioV1 的局域网连接上传输 48 kHz 立体声系统音频（自动排除 DisplayWeave 自身声音）。")
+                        .font(.caption).foregroundStyle(.secondary)
                     Divider()
                     ConnectionModeControl()
                 }

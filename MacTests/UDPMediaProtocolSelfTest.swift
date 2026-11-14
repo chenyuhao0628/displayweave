@@ -160,6 +160,97 @@ struct UDPMediaProtocolSelfTest {
         expect(!UDPMediaHeader.isFrameIdNewer(0xFFFF_FFFE, than: 2), "older wrapped frameId is not newer")
         expect(UDPMediaHeader.frameIdDelta(2, 0xFFFF_FFFF) == 3, "signed modular delta across UInt32 wrap")
 
+        // 5. Cursor (type 5) & Audio (type 6) packet header and payload wire validation
+        let cursorHdr = UDPMediaHeader(
+            packetType: .cursor,
+            flags: [],
+            epochTag: 1,
+            packetSeq: 43,
+            sendTimeUs: 123_500,
+            frameId: 0,
+            fragIndex: 0,
+            fragCount: 1
+        )
+        expect(try UDPMediaHeader.decode(from: cursorHdr.encode()) == cursorHdr, "cursor header round-trips")
+        var badCursorHdr = cursorHdr.encode()
+        badCursorHdr[15] = 2 // fragCount = 2 must be rejected on .cursor
+        do {
+            _ = try UDPMediaHeader.decode(from: badCursorHdr)
+            fatalError("expected invalidFragmentBounds for multi-fragment cursor header")
+        } catch let error as UDPMediaError {
+            expect(error == .invalidFragmentBounds, "cursor header requires fragIndex=0, fragCount=1")
+        }
+
+        let audioHdr = UDPMediaHeader(
+            packetType: .audio,
+            flags: [],
+            epochTag: 1,
+            packetSeq: 44,
+            sendTimeUs: 123_600,
+            frameId: 0,
+            fragIndex: 0,
+            fragCount: 1
+        )
+        expect(try UDPMediaHeader.decode(from: audioHdr.encode()) == audioHdr, "audio header round-trips")
+        var badAudioHdr = audioHdr.encode()
+        badAudioHdr[13] = 1 // fragIndex = 1 must be rejected on .audio
+        do {
+            _ = try UDPMediaHeader.decode(from: badAudioHdr)
+            fatalError("expected invalidFragmentBounds for fragIndex=1 audio header")
+        } catch let error as UDPMediaError {
+            expect(error == .invalidFragmentBounds, "audio header requires fragIndex=0, fragCount=1")
+        }
+
+        let cursorPayload = UDPMediaCursorPayload(sequence: 9, normalizedX: Float32(0.25), normalizedY: Float32(0.75), visible: true)
+        expect(cursorPayload.isValid && cursorPayload.encode().count == 17, "cursor payload is 17B BE")
+        expect(try UDPMediaCursorPayload.decode(from: cursorPayload.encode()) == cursorPayload,
+               "cursor payload round-trips losslessly")
+        var invalidCursorVisible = cursorPayload.encode()
+        invalidCursorVisible[16] = 2
+        do {
+            _ = try UDPMediaCursorPayload.decode(from: invalidCursorVisible)
+            fatalError("expected malformedControlPayload for visible=2")
+        } catch let error as UDPMediaError {
+            expect(error == .malformedControlPayload, "cursor visible must be 0 or 1")
+        }
+        var nanCursorBytes = cursorPayload.encode()
+        nanCursorBytes[8] = 0x7F; nanCursorBytes[9] = 0xC0; nanCursorBytes[10] = 0x00; nanCursorBytes[11] = 0x00
+        do {
+            _ = try UDPMediaCursorPayload.decode(from: nanCursorBytes)
+            fatalError("expected malformedControlPayload for NaN coordinate")
+        } catch let error as UDPMediaError {
+            expect(error == .malformedControlPayload, "NaN cursor coordinate must be rejected")
+        }
+
+        let pcmSample = Data([0x10, 0x00, 0xF0, 0xFF, 0x20, 0x01, 0xE0, 0xFE])
+        let audioPayload = UDPMediaAudioPayload(
+            audioSeq: 5,
+            captureTimestampMs: 1_700_000_000_250,
+            sampleRate: 48_000,
+            channels: 2,
+            formatFlags: 0,
+            pcmBytes: pcmSample
+        )
+        expect(audioPayload.isValid && audioPayload.encode().count == 16 + pcmSample.count,
+               "audio payload encodes 16B header + S16LE PCM")
+        expect(try UDPMediaAudioPayload.decode(from: audioPayload.encode()) == audioPayload,
+               "audio payload round-trips losslessly")
+        let oversizeAudio = UDPMediaAudioPayload(
+            audioSeq: 6,
+            captureTimestampMs: 1_700_000_000_260,
+            sampleRate: 48_000,
+            channels: 2,
+            formatFlags: 0,
+            pcmBytes: Data(repeating: 0, count: 1156)
+        )
+        expect(!oversizeAudio.isValid, "audio PCM > 1152 bytes must be marked invalid")
+        do {
+            _ = try UDPMediaAudioPayload.decode(from: oversizeAudio.encode())
+            fatalError("expected malformedControlPayload for >1152B audio")
+        } catch let error as UDPMediaError {
+            expect(error == .malformedControlPayload, "oversize audio payload must fail decode")
+        }
+
         // 6. Golden vector byte-for-byte parity check against tools/fixtures/wire-contract-v1.properties
         let repoRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -204,6 +295,42 @@ struct UDPMediaProtocolSelfTest {
             fragCount: 1
         )
         expect(expectedVideoHdr.encode() == fixtureHex("udpHeaderVideoData"), "udpHeaderVideoData matches golden vector")
+        expect(cursorHdr.encode() == fixtureHex("udpHeaderCursor"), "udpHeaderCursor matches golden vector")
+        expect(audioHdr.encode() == fixtureHex("udpHeaderAudio"), "udpHeaderAudio matches golden vector")
+        expect(cursorPayload.encode() == fixtureHex("udpCursorPayload"), "udpCursorPayload matches golden vector")
+        expect(audioPayload.encode() == fixtureHex("udpAudioPayload"), "udpAudioPayload matches golden vector")
+
+        var vectorSender = UDPMediaCryptoSession(keyMaterial: keysEpoch1)
+        var vectorReceiver = UDPMediaCryptoSession(keyMaterial: keysEpoch1)
+        let (sealedCursor, _, _) = try vectorSender.seal(
+            direction: .senderToReceiver,
+            packetType: .cursor,
+            flags: [],
+            sendTimeUs: 123_500,
+            frameId: 0,
+            fragIndex: 0,
+            fragCount: 1,
+            payload: cursorPayload.encode()
+        )
+        let (sealedAudio, _, _) = try vectorSender.seal(
+            direction: .senderToReceiver,
+            packetType: .audio,
+            flags: [],
+            sendTimeUs: 123_600,
+            frameId: 0,
+            fragIndex: 0,
+            fragCount: 1,
+            payload: audioPayload.encode()
+        )
+        expect(sealedCursor == fixtureHex("udpCursorSealedDatagram"), "sealed cursor datagram matches golden vector")
+        expect(sealedAudio == fixtureHex("udpAudioSealedDatagram"), "sealed audio datagram matches golden vector")
+
+        let openedCursor = try vectorReceiver.open(datagram: fixtureHex("udpCursorSealedDatagram"), expectedDirection: .senderToReceiver)
+        expect(try UDPMediaCursorPayload.decode(from: openedCursor.payload) == cursorPayload,
+               "golden cursor sealed datagram authenticates and decodes")
+        let openedAudio = try vectorReceiver.open(datagram: fixtureHex("udpAudioSealedDatagram"), expectedDirection: .senderToReceiver)
+        expect(try UDPMediaAudioPayload.decode(from: openedAudio.payload) == audioPayload,
+               "golden audio sealed datagram authenticates and decodes")
 
         print("UDPMediaProtocolSelfTest PASS")
     }

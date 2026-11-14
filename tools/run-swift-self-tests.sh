@@ -235,10 +235,17 @@ run_test WireContractSelfTest \
   "${settings[@]}" Mac/BinaryFrameHeaderV2.swift Shared/ReceiverFrameDecoder.swift Shared/SenderHealthTelemetry.swift \
   Shared/DesktopInputProtocol.swift Shared/PencilProtocol.swift Shared/PencilActions.swift MacTests/WireContractSelfTest.swift
 
+run_test MacCoreUpgradeSelfTest \
+  "${settings[@]}" \
+  Mac/LatestValueRelay.swift Mac/CursorEcho.swift Shared/ReceiverFrameDecoder.swift \
+  Mac/NetworkDiagnosticsPolicy.swift Mac/AudioCapturePacketizer.swift \
+  Mac/Receiver/MacVideoRenderer.swift Mac/Receiver/MacAudioPlayer.swift \
+  MacTests/MacCoreUpgradeSelfTest.swift
+
 python3 tools/test-capture-configuration.py
 python3 tools/test-encoder-load-integration.py
 python3 tools/test-ios-video-admission.py
 python3 tools/test-desktop-match-update.py
 python3 tools/test-collect-mac-display-evidence.py
 
-echo "Swift standalone self-tests PASS (65 suites + capture/load/admission/desktop-update/collector fixtures)"
+echo "Swift standalone self-tests PASS (66 suites + capture/load/admission/desktop-update/collector fixtures)"

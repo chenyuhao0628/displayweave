@@ -28,6 +28,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     private var wireInputGrant: String? // receiver queue only
     let displayLayer: AVSampleBufferDisplayLayer
     private let videoRenderer: any MacVideoRendering
+    let audioPlayer: any MacAudioPlaying
     private let monotonicTime: () -> TimeInterval
     var onReset: (() -> Void)?
     var onCursor: ((Double, Double, Bool) -> Void)?
@@ -36,6 +37,10 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     static let installID = TransportInstallIdentity.value
     private static let maxH264LongEdge = 4096
     private static let maxH264ShortEdge = 2304
+    private static let maxHEVC5KLongEdge = 5120
+    private static let maxHEVC5KShortEdge = 2880
+    private static let maxHEVC5KFrameRate = 60
+    private static let maxHEVC5KPixelsPerSecond = 5120 * 2880 * 60
 
     private let queue = DispatchQueue(label: "displayweave.receiver", qos: .userInteractive)
     private let cursorDelivery = LatestValueRelay<(x: Double, y: Double, visible: Bool)>()
@@ -82,6 +87,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     private var queueRenderedFps = 0
     private var statsStart = Date()
     private var lastCursorSequence: UInt64 = 0
+    private var lastAudioSequence: UInt32?
     private var lastUdpMediaEpoch: Int64 = 0
     private var udpMediaSession: UDPMediaReceiverSession?
 
@@ -90,6 +96,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
          inputBudget: InputSendBudget = InputSendBudget(),
          diagnostic: ((String) -> Void)? = nil,
          videoRenderer: (any MacVideoRendering)? = nil,
+         audioPlayer: (any MacAudioPlaying)? = nil,
          monotonicTime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          securityProvider: @escaping () throws -> AppleReceiverSecurity = { try .live(localID: StreamReceiver.installID) }) {
         self.diagnostic = diagnostic
@@ -98,6 +105,14 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         self.supportsHEVC = hardwareHEVCDecode ?? VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
         self.displayLayer = displayLayer
         self.videoRenderer = videoRenderer ?? MacSampleBufferVideoRenderer(renderer: displayLayer.sampleBufferRenderer)
+        if let audioPlayer {
+            self.audioPlayer = audioPlayer
+        } else if let cls = NSClassFromString("DisplayWeaveMacAudioPlayer") as? NSObject.Type,
+                  let live = cls.init() as? any MacAudioPlaying {
+            self.audioPlayer = live
+        } else {
+            self.audioPlayer = NullMacAudioPlayer()
+        }
         self.monotonicTime = monotonicTime
         displayLayer.videoGravity = .resizeAspect
         securityObserver = NotificationCenter.default.addObserver(forName: TransportSecurityChange.notification,
@@ -107,7 +122,10 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         }
     }
 
-    deinit { if let securityObserver { NotificationCenter.default.removeObserver(securityObserver) } }
+    deinit {
+        audioPlayer.stop()
+        if let securityObserver { NotificationCenter.default.removeObserver(securityObserver) }
+    }
 
     /// Populates `millimetersWide` / `millimetersHigh` from `CGDisplayScreenSize`
     /// when caller omitted physical dimensions and a valid hardware EDID size exists.
@@ -180,6 +198,12 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         }
     }
 
+    func setAudioMuted(_ muted: Bool) {
+        queue.async { [weak self] in
+            self?.audioPlayer.isMuted = muted
+        }
+    }
+
     private var service: NWListener.Service {
         var txt = NWTXTRecord()
         txt["id"] = Self.installID
@@ -196,6 +220,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             self.generation &+= 1
             self.port = port
             self.advertiseService = advertiseService
+            self.audioPlayer.isMuted = false
             self.startListener()
             self.armTimer()
         }
@@ -220,6 +245,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             let old = self.connection
             self.connection = nil
             self.peerID = nil
+            self.audioPlayer.stop()
             self.resetStream()
             self.publish(connected: false, status: "接收已停止", port: 0)
             var finished = false
@@ -247,6 +273,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             }
             self.connection = nil
             self.peerID = nil
+            self.audioPlayer.stop()
             self.resetStream()
             self.publish(connected: false, status: "等待发送端连接")
         }
@@ -388,31 +415,58 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                 "maxPixelsPerSecond": AppleVideoPolicy.maxPixelsPerSecond
             ])
         }
+        if supportsHEVC {
+            let fps5K = min(maxFps, Self.maxHEVC5KFrameRate)
+            caps.append([
+                "codec": "hevc",
+                "maxWidth": Self.maxHEVC5KLongEdge,
+                "maxHeight": Self.maxHEVC5KShortEdge,
+                "maxFrameRate": fps5K,
+                "maxPixelsPerSecond": Self.maxHEVC5KPixelsPerSecond
+            ])
+            caps.append([
+                "codec": "hevc",
+                "maxWidth": Self.maxHEVC5KShortEdge,
+                "maxHeight": Self.maxHEVC5KLongEdge,
+                "maxFrameRate": fps5K,
+                "maxPixelsPerSecond": Self.maxHEVC5KPixelsPerSecond
+            ])
+        }
         return caps
     }
 
     private func acceptsStreamConfiguration(_ obj: [String: Any]) -> AppleVideoConfiguration? {
         AppleVideoConfiguration(
             obj,
-            maxWidth: Self.maxH264LongEdge,
-            maxHeight: Self.maxH264LongEdge,
-            maxFps: maxFps
+            maxWidth: AppleVideoPolicy.maxHEVC5KWidth,
+            maxHeight: AppleVideoPolicy.maxHEVC5KWidth,
+            maxFps: maxFps,
+            allowHEVC5K: true
         )
     }
 
     private func fitsHardwareEnvelope(width: Int32, height: Int32, codec: ReceiverVideoCodec) -> Bool {
-        _ = codec
         guard width > 0, height > 0 else { return false }
         let w = Int(width)
         let h = Int(height)
-        return (w <= Self.maxH264LongEdge && h <= Self.maxH264ShortEdge)
-            || (w <= Self.maxH264ShortEdge && h <= Self.maxH264LongEdge)
+        let maxLong = (codec == .hevc && supportsHEVC) ? Self.maxHEVC5KLongEdge : Self.maxH264LongEdge
+        let maxShort = (codec == .hevc && supportsHEVC) ? Self.maxHEVC5KShortEdge : Self.maxH264ShortEdge
+        return (w <= maxLong && h <= maxShort) || (w <= maxShort && h <= maxLong)
     }
 
     private func sendHello(on conn: NWConnection) {
         let codecs = supportsHEVC ? ["h264", "hevc"] : ["h264"]
         let caps = advertisedVideoCapabilities()
-        let maxEdge = Self.maxH264LongEdge
+        var capabilities = [
+            AppleVideoPolicy.udpMediaCapability,
+            AppleVideoPolicy.udpCursorCapability,
+            AppleVideoPolicy.udpAudioCapability,
+            AppleVideoPolicy.displayP3Capability
+        ]
+        if supportsHEVC {
+            capabilities.append(AppleVideoPolicy.hevc5kCapability)
+        }
+        let maxEdge = supportsHEVC ? Self.maxHEVC5KLongEdge : Self.maxH264LongEdge
         send(["type": "hello", "device": "Mac", "id": Self.installID,
               "pixelsWide": panel.pixelsWide, "pixelsHigh": panel.pixelsHigh, "scale": panel.scale,
               "panel": panel.json, "pv": WireProtocol.version,
@@ -420,7 +474,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
               "refreshRate": maxFps, "maxFps": maxFps, "displayMaxFrameRate": maxFps,
               "maxEncodeWide": maxEdge, "maxEncodeHigh": maxEdge,
               "videoCaps": caps,
-              "capabilities": ["udpMediaV1"],
+              "capabilities": capabilities,
               "udpMediaV1": true,
               "inputCaps": peerID != nil ? [DesktopInputProtocol.capability] : [],
               "transport": "lan"], on: conn)
@@ -655,6 +709,10 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         ) else { return }
         udpMediaSession?.stop()
         udpMediaSession = nil
+        if lastUdpMediaEpoch > 0 {
+            audioPlayer.stop()
+        }
+        lastAudioSequence = nil
         lastUdpMediaEpoch = config.sessionEpoch
         session.onFrameReady = { [weak self, weak conn] gen, frame in
             guard let self else { return }
@@ -697,6 +755,45 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                       self.connection === conn,
                       self.cursorDelivery.generation == gen else { return }
                 self.requestKeyframe()
+            }
+        }
+        session.onCursor = { [weak self, weak conn] gen, cursor in
+            guard let self else { return }
+            self.queue.async { [weak self, weak conn] in
+                guard let self,
+                      self.running,
+                      let conn,
+                      self.connection === conn,
+                      self.cursorDelivery.generation == gen,
+                      cursor.isValid,
+                      cursor.sequence > self.lastCursorSequence else { return }
+                self.lastReceived = Date()
+                self.lastCursorSequence = cursor.sequence
+                let point = (Double(cursor.normalizedX), Double(cursor.normalizedY), cursor.visible)
+                if let token = self.cursorDelivery.offer(point) {
+                    self.deliverCursor(token)
+                }
+            }
+        }
+        session.onAudio = { [weak self, weak conn] gen, audio in
+            guard let self else { return }
+            self.queue.async { [weak self, weak conn] in
+                guard let self,
+                      self.running,
+                      let conn,
+                      self.connection === conn,
+                      self.cursorDelivery.generation == gen,
+                      audio.isValid,
+                      audio.sampleRate == 48_000,
+                      audio.channels == 2,
+                      audio.formatFlags == UDPMediaAudioPayload.formatPCM16LE else { return }
+                if let prev = self.lastAudioSequence,
+                   !UDPMediaHeader.isFrameIdNewer(audio.audioSeq, than: prev) {
+                    return
+                }
+                self.lastAudioSequence = audio.audioSeq
+                self.lastReceived = Date()
+                self.audioPlayer.enqueueS16LE(audio.pcmBytes)
             }
         }
         udpMediaSession = session
@@ -886,6 +983,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     private func resetStream() {
         udpMediaSession?.stop()
         udpMediaSession = nil
+        audioPlayer.stop()
         cursorDelivery.reset()
         diagnosticsStart = ProcessInfo.processInfo.systemUptime
         enqueuedFrames = 0
@@ -908,6 +1006,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         lastRttMs = 0
         resetVideo()
         lastCursorSequence = 0
+        lastAudioSequence = nil
         sampleCount = 0
         queueRenderedFps = 0
         statsStart = Date()

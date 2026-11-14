@@ -81,7 +81,16 @@ import Foundation
         precondition(hugePanel.width <= 2000 && hugePanel.height <= 2000 && hugePanel.width * hugePanel.height >= 20_000,
                      "oversized physical dimensions must clamp to <= 2000 mm")
 
-        // H.264 4K fallback clamp
+        // Native 5K HEVC (`hevc5kV1`) + H.264 4K fallback clamp
+        let mac5K = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":5120,"pixelsHigh":2880,"scale":2,"device":"Mac","supportedCodecs":["h264","hevc"],"maxEncodeWide":5120,"maxEncodeHigh":5120,"capabilities":["udpMediaV1","hevc5kV1","displayP3"],"panel":{"pixelsWide":5120,"pixelsHigh":2880,"scale":2,"pointsWide":2560,"pointsHigh":1440},"videoCaps":[{"codec":"h264","maxWidth":4096,"maxHeight":2304,"maxFrameRate":60,"maxPixelsPerSecond":566231040},{"codec":"hevc","maxWidth":4096,"maxHeight":2304,"maxFrameRate":60,"maxPixelsPerSecond":566231040},{"codec":"hevc","maxWidth":5120,"maxHeight":2880,"maxFrameRate":60,"maxPixelsPerSecond":884736000}]}"#.utf8))
+        let plan5K = MacReceiverPolicy.plan(info: mac5K, settings: settings, hardwareHEVCEncode: true)
+        precondition(plan5K.codec == .hevc && plan5K.width == 5120 && plan5K.height == 2880 && plan5K.fps == 60,
+                     "hevc5kV1 must negotiate native 5120x2880@60 HEVC")
+        var h264Forced = settings
+        h264Forced.codecMode = .h264
+        let plan5KH264 = MacReceiverPolicy.plan(info: mac5K, settings: h264Forced, hardwareHEVCEncode: true)
+        precondition(plan5KH264.codec == .h264 && plan5KH264.width == 4096 && plan5KH264.height == 2304,
+                     "H.264 on a 5K panel must clamp back to 4096x2304")
         let clampedFallback = MacReceiverPolicy.clampedH264Dimensions(width: 5120, height: 2880)
         precondition(clampedFallback.width == 4096 && clampedFallback.height == 2304,
                      "runtime HEVC-to-H.264 fallback helper must clamp 5120x2880 to 4096x2304")

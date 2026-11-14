@@ -44,6 +44,8 @@ public final class UdpMediaProtocol {
     public static final int PACKET_NACK = 2;
     public static final int PACKET_FEEDBACK = 3;
     public static final int PACKET_PROBE = 4;
+    public static final int PACKET_CURSOR = 5;
+    public static final int PACKET_AUDIO = 6;
 
     public static final int FLAG_KEYFRAME = 1 << 0;
     public static final int FLAG_END_OF_FRAME = 1 << 1;
@@ -119,7 +121,7 @@ public final class UdpMediaProtocol {
                 throw new IllegalArgumentException("unsupported UDP version: " + version);
             }
             int packetType = (byte0 >> 3) & 0x07;
-            if (packetType < PACKET_VIDEO_DATA || packetType > PACKET_PROBE) {
+            if (packetType < PACKET_VIDEO_DATA || packetType > PACKET_AUDIO) {
                 throw new IllegalArgumentException("invalid UDP packetType: " + packetType);
             }
             int flags = byte0 & 0x07;
@@ -132,6 +134,10 @@ public final class UdpMediaProtocol {
             if (packetType == PACKET_VIDEO_DATA) {
                 if (fragCount < 1 || fragCount > MAX_FRAGMENTS_PER_FRAME || fragIndex >= fragCount) {
                     throw new IllegalArgumentException("invalid UDP video fragment bounds");
+                }
+            } else if (packetType == PACKET_CURSOR || packetType == PACKET_AUDIO) {
+                if (fragIndex != 0 || fragCount != 1) {
+                    throw new IllegalArgumentException("invalid UDP cursor/audio fragment bounds");
                 }
             }
             return new Header(
@@ -535,6 +541,120 @@ public final class UdpMediaProtocol {
                     readUInt16(data, 20),
                     readUInt16(data, 22),
                     readUInt32(data, 24));
+        }
+    }
+
+    /** 17-byte cursor position payload matching {@code UDPMediaCursorPayload}. */
+    public static final class CursorPayload {
+        public static final int BYTE_LENGTH = 17;
+
+        public final long sequence;
+        public final float normalizedX;
+        public final float normalizedY;
+        public final boolean visible;
+
+        public CursorPayload(
+                long sequence, float normalizedX, float normalizedY, boolean visible) {
+            if (!Float.isFinite(normalizedX) || normalizedX < 0.0f || normalizedX > 1.0f
+                    || !Float.isFinite(normalizedY) || normalizedY < 0.0f || normalizedY > 1.0f) {
+                throw new IllegalArgumentException("cursor coordinates out of [0,1] bounds");
+            }
+            this.sequence = sequence;
+            this.normalizedX = normalizedX == 0.0f ? 0.0f : normalizedX;
+            this.normalizedY = normalizedY == 0.0f ? 0.0f : normalizedY;
+            this.visible = visible;
+        }
+
+        public byte[] encode() {
+            byte[] out = new byte[BYTE_LENGTH];
+            writeInt64(out, 0, sequence);
+            writeUInt32(out, 8, Integer.toUnsignedLong(Float.floatToRawIntBits(normalizedX)));
+            writeUInt32(out, 12, Integer.toUnsignedLong(Float.floatToRawIntBits(normalizedY)));
+            out[16] = (byte) (visible ? 1 : 0);
+            return out;
+        }
+
+        public static CursorPayload decode(byte[] data) {
+            if (data == null || data.length != BYTE_LENGTH) {
+                throw new IllegalArgumentException("invalid CursorPayload byte length");
+            }
+            long seq = readInt64(data, 0);
+            float nx = Float.intBitsToFloat((int) readUInt32(data, 8));
+            float ny = Float.intBitsToFloat((int) readUInt32(data, 12));
+            int visByte = Byte.toUnsignedInt(data[16]);
+            if (visByte != 0 && visByte != 1) {
+                throw new IllegalArgumentException("invalid CursorPayload visible byte");
+            }
+            return new CursorPayload(seq, nx, ny, visByte == 1);
+        }
+    }
+
+    /** 16-byte BE header + S16LE PCM payload matching {@code UDPMediaAudioPayload}. */
+    public static final class AudioPayload {
+        public static final int HEADER_BYTES = 16;
+        public static final int MAX_PCM_BYTES = 1152;
+        public static final int FORMAT_S16LE_PCM = 0;
+
+        public final long audioSeq;
+        public final long captureTimestampMs;
+        public final int sampleRate;
+        public final int channels;
+        public final int formatFlags;
+        public final byte[] pcmBytes;
+
+        public AudioPayload(
+                long audioSeq,
+                long captureTimestampMs,
+                int sampleRate,
+                int channels,
+                int formatFlags,
+                byte[] pcmBytes) {
+            if (formatFlags != FORMAT_S16LE_PCM) {
+                throw new IllegalArgumentException("unsupported audio formatFlags: " + formatFlags);
+            }
+            if (channels != 1 && channels != 2) {
+                throw new IllegalArgumentException("unsupported audio channels: " + channels);
+            }
+            if (sampleRate < 1 || sampleRate > 65_535) {
+                throw new IllegalArgumentException("invalid audio sampleRate: " + sampleRate);
+            }
+            int frameBytes = channels * 2;
+            if (pcmBytes == null || pcmBytes.length == 0
+                    || pcmBytes.length > MAX_PCM_BYTES
+                    || (pcmBytes.length % frameBytes) != 0) {
+                throw new IllegalArgumentException("invalid S16LE PCM payload length");
+            }
+            this.audioSeq = audioSeq & 0xFFFF_FFFFL;
+            this.captureTimestampMs = captureTimestampMs;
+            this.sampleRate = sampleRate & 0xFFFF;
+            this.channels = channels & 0xFF;
+            this.formatFlags = formatFlags & 0xFF;
+            this.pcmBytes = Arrays.copyOf(pcmBytes, pcmBytes.length);
+        }
+
+        public byte[] encode() {
+            byte[] out = new byte[HEADER_BYTES + pcmBytes.length];
+            writeUInt32(out, 0, audioSeq);
+            writeInt64(out, 4, captureTimestampMs);
+            writeUInt16(out, 12, sampleRate);
+            out[14] = (byte) (channels & 0xFF);
+            out[15] = (byte) (formatFlags & 0xFF);
+            System.arraycopy(pcmBytes, 0, out, HEADER_BYTES, pcmBytes.length);
+            return out;
+        }
+
+        public static AudioPayload decode(byte[] data) {
+            if (data == null || data.length <= HEADER_BYTES
+                    || data.length > HEADER_BYTES + MAX_PCM_BYTES) {
+                throw new IllegalArgumentException("invalid AudioPayload byte length");
+            }
+            long seq = readUInt32(data, 0);
+            long captureMs = readInt64(data, 4);
+            int rate = readUInt16(data, 12);
+            int ch = Byte.toUnsignedInt(data[14]);
+            int fmt = Byte.toUnsignedInt(data[15]);
+            byte[] pcm = Arrays.copyOfRange(data, HEADER_BYTES, data.length);
+            return new AudioPayload(seq, captureMs, rate, ch, fmt, pcm);
         }
     }
 
