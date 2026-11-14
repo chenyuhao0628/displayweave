@@ -107,6 +107,10 @@ enum StreamEncodingPolicy {
     static func frameDurationTimescale(fps: Int) -> Int {
         RefreshRatePolicy.sanitize(fps)
     }
+
+    static func prioritizeEncodingSpeedOverQuality(quality: StreamQuality) -> Bool {
+        quality != .high
+    }
 }
 
 struct StreamDebugStats {

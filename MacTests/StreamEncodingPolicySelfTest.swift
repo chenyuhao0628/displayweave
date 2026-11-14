@@ -86,6 +86,12 @@ struct StreamEncodingPolicySelfTest {
             width: 1920, height: 1080, fps: 120, codec: .hevc, quality: .gaming)
         assertTrue(lowBitrate < gamingBitrate && gamingBitrate < hevc1080p120,
                    "quality mode should tune bitrate without changing codec/fps negotiation")
+        assertTrue(StreamEncodingPolicy.prioritizeEncodingSpeedOverQuality(quality: .high) == false,
+                   "high quality mode disables speed-over-quality to preserve text/UI clarity")
+        assertTrue(StreamEncodingPolicy.prioritizeEncodingSpeedOverQuality(quality: .balanced) == true
+                    && StreamEncodingPolicy.prioritizeEncodingSpeedOverQuality(quality: .gaming) == true
+                    && StreamEncodingPolicy.prioritizeEncodingSpeedOverQuality(quality: .low) == true,
+                   "non-high quality modes keep speed-over-quality enabled")
 
         assertEqual(12_000_000,
                     StreamEncodingPolicy.bitrateBounds(codec: .hevc, transport: .wifi).lowerBound,

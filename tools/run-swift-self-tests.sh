@@ -28,6 +28,11 @@ security=(
   Shared/SecurePairingProtocol.swift Shared/SecurePairingState.swift
   Shared/AppleSecurityStore.swift Shared/AppleSecureAdmission.swift Shared/AppleTransportSecurity.swift
 )
+udp_media=(
+  Shared/UDPMediaProtocol.swift Shared/UDPMediaFEC.swift
+  Shared/UDPMediaEngine.swift Shared/UDPDelayGradientBWE.swift
+  Shared/UDPMediaTransport.swift
+)
 
 run_test ReceiverVideoFlowSelfTest \
   Shared/ReceiverVideoFlowPolicy.swift MacTests/ReceiverVideoFlowSelfTest.swift
@@ -56,6 +61,18 @@ run_test BenchmarkRecorderSelfTest \
 run_test BinaryFrameHeaderV2SelfTest \
   "${settings[@]}" Mac/BinaryFrameHeaderV2.swift \
   MacTests/BinaryFrameHeaderV2SelfTest.swift
+run_test UDPMediaProtocolSelfTest \
+  Shared/UDPMediaProtocol.swift MacTests/UDPMediaProtocolSelfTest.swift
+run_test UDPMediaFECSelfTest \
+  Shared/UDPMediaProtocol.swift Shared/UDPMediaFEC.swift MacTests/UDPMediaFECSelfTest.swift
+run_test UDPMediaEngineSelfTest \
+  Shared/UDPMediaProtocol.swift Shared/UDPMediaFEC.swift Shared/UDPMediaEngine.swift \
+  MacTests/UDPMediaEngineSelfTest.swift
+run_test UDPDelayGradientBWESelfTest \
+  Shared/UDPMediaProtocol.swift Shared/UDPMediaFEC.swift Shared/UDPDelayGradientBWE.swift \
+  MacTests/UDPDelayGradientBWESelfTest.swift
+run_test UDPMediaTransportSelfTest \
+  "${udp_media[@]}" MacTests/UDPMediaTransportSelfTest.swift
 run_test DeviceCapabilitiesSelfTest \
   Mac/FrameSizePolicy.swift Mac/DeviceCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift \
   MacTests/DeviceCapabilitiesSelfTest.swift
@@ -70,6 +87,8 @@ run_test EncoderLoadControllerSelfTest \
   "${settings[@]}" Mac/EncoderLoadController.swift MacTests/EncoderLoadControllerSelfTest.swift
 run_test CaptureRecoverySelfTest \
   Mac/CaptureRecovery.swift Mac/CaptureSourceCheck.swift MacTests/CaptureRecoverySelfTest.swift
+run_test CaptureFramePolicySelfTest \
+  Mac/CaptureFramePolicy.swift MacTests/CaptureFramePolicySelfTest.swift
 run_test DisplayRecoverySelfTest \
   Mac/OriginRestore.swift Mac/DisplayArrangement.swift Mac/DisplayUnitCoordinator.swift MacTests/DisplayRecoverySelfTest.swift
 run_test LogPoliciesSelfTest \
@@ -129,17 +148,17 @@ run_test MacReceiverPolicySelfTest \
   MacTests/MacReceiverPolicySelfTest.swift
 
 run_test MacReceiverNetworkSelfTest \
-  "${security[@]}" \
+  "${security[@]}" "${udp_media[@]}" \
   Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
   Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift Shared/DesktopInputProtocol.swift Shared/InputSendBudget.swift Mac/LatestValueRelay.swift Shared/ReceiverVideoFlowPolicy.swift Mac/Receiver/MacVideoRenderer.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverNetworkSelfTest.swift
 
 run_test MacReceiverBackpressureSelfTest \
-  "${security[@]}" \
+  "${security[@]}" "${udp_media[@]}" \
   Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
   Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift Shared/DesktopInputProtocol.swift Shared/InputSendBudget.swift Mac/LatestValueRelay.swift Shared/ReceiverVideoFlowPolicy.swift Mac/Receiver/MacVideoRenderer.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverBackpressureSelfTest.swift
 
 run_test MacReceiverFirstVideoSelfTest \
-  "${security[@]}" \
+  "${security[@]}" "${udp_media[@]}" \
   Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
   Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift Shared/DesktopInputProtocol.swift Shared/InputSendBudget.swift Mac/LatestValueRelay.swift Shared/ReceiverVideoFlowPolicy.swift Mac/Receiver/MacVideoRenderer.swift Mac/Receiver/StreamReceiver.swift MacTests/ReceiverTestSupport.swift MacTests/MacReceiverFirstVideoSelfTest.swift
 
@@ -190,7 +209,7 @@ run_test UsbmuxTLSRelaySelfTest \
 run_test SecureTransportPlanSelfTest \
   "${security[@]}" MacTests/SecureTransportPlanSelfTest.swift
 run_test MacSecureReceiverSelfTest \
-  "${security[@]}" \
+  "${security[@]}" "${udp_media[@]}" \
   Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
   Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift \
   Shared/DesktopInputProtocol.swift Shared/InputSendBudget.swift Mac/LatestValueRelay.swift Shared/ReceiverVideoFlowPolicy.swift Mac/Receiver/MacVideoRenderer.swift Mac/Receiver/StreamReceiver.swift Shared/PencilProtocol.swift Shared/PencilActions.swift MacTests/ReceiverTestSupport.swift MacTests/MacSecureReceiverSelfTest.swift

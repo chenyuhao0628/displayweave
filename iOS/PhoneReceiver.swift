@@ -121,6 +121,7 @@ final class PhoneReceiver: ObservableObject {
     private var macInputP50 = 0.0
     private var macInputP95 = 0.0
     private var macCapFps = 0
+    private var udpMediaSession: UDPMediaReceiverSession?
 
     private var nowMs: Double { Date().timeIntervalSince1970 * 1000 }
 
@@ -543,6 +544,8 @@ final class PhoneReceiver: ObservableObject {
                 guard self.inputSendBudget.generation == generation else { return }
                 self.onCursorImage?(image, cursor.anchor, cursor.normalizedSize)
             }
+        case "udpMediaConfig":
+            configureUDPMedia(obj)
         default:
             break
         }
@@ -567,6 +570,8 @@ final class PhoneReceiver: ObservableObject {
     }
 
     private func resetStreamState(acceptingInput: Bool = false) {
+        udpMediaSession?.stop()
+        udpMediaSession = nil
         let generation = inputSendBudget.reset(accepting: acceptingInput)
         pencilNegotiated = false
         pencilExtendedNegotiated = false
@@ -648,7 +653,8 @@ final class PhoneReceiver: ObservableObject {
             "device": UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone",
             "id": Self.installID,
             "inputCaps": peerID != nil ? [PencilProtocol.capability, PencilProtocol.extendedCapability] : [PencilProtocol.capability],
-            "capabilities": [AppleVideoPolicy.capability],
+            "capabilities": [AppleVideoPolicy.capability, "udpMediaV1"],
+            "udpMediaV1": true,
             "refreshRate": displayMaxFps, "maxFps": displayMaxFps,
             "displayMaxFrameRate": displayMaxFps,
             "supportedCodecs": codecs, "preferredCodec": supportsHEVC ? "hevc" : "h264",
@@ -898,6 +904,57 @@ final class PhoneReceiver: ObservableObject {
         dropInputConnection(generation: inputSendBudget.generation, status: message)
     }
 
+    private func configureUDPMedia(_ object: [String: Any]) {
+        udpMediaSession?.stop()
+        udpMediaSession = nil
+        guard let config = UDPMediaConfigMessage(jsonObject: object),
+              let conn = connection else { return }
+        let generation = inputSendBudget.generation
+        let senderHost = UDPEndpointResolver.hostString(from: conn.currentPath?.remoteEndpoint)
+            ?? UDPEndpointResolver.hostString(from: conn.endpoint)
+        guard let session = UDPMediaReceiverSession(
+            config: config,
+            generation: generation,
+            senderHost: senderHost
+        ) else { return }
+
+        session.onFrameReady = { [weak self, weak conn] gen, frame in
+            guard let self else { return }
+            self.queue.async {
+                guard self.running,
+                      self.connection === conn,
+                      self.inputSendBudget.generation == gen else { return }
+                self.lastDataReceived = Date()
+                self.bytesThisWindow += frame.annexB.count
+                let prefix = Data("{\"cap\":\(frame.captureTimestampMs),\"snd\":\(frame.captureTimestampMs)}".utf8)
+                var combined = Data(capacity: prefix.count + frame.annexB.count)
+                combined.append(prefix)
+                combined.append(frame.annexB)
+                self.handleAnnexB(combined)
+                session.updateReceiverTelemetry(
+                    rttMs: self.lastRttMs,
+                    decodeQueueMs: Int(self.decodeWindow.last ?? 0),
+                    renderFps: self.fps
+                )
+            }
+        }
+        session.onKeyframeNeeded = { [weak self, weak conn] gen, _ in
+            guard let self else { return }
+            self.queue.async {
+                guard self.running,
+                      self.connection === conn,
+                      self.inputSendBudget.generation == gen else { return }
+                self.requestKeyframeIfNeeded()
+            }
+        }
+        udpMediaSession = session
+        sendControl([
+            "type": "udpMediaReady",
+            "sessionEpoch": config.sessionEpoch,
+            "udpPort": Int(session.localPort),
+        ], on: conn)
+    }
+
     private func failVideo() {
         guard videoCodec == .hevc else {
             rejectVideo("视频解码失败，请重新连接"); return
@@ -1059,10 +1116,10 @@ final class PhoneReceiver: ObservableObject {
             stallsThisWindow = 0
             fpsWindowStart = now
 
-            // Every 5s, report the aggregate to the Mac so its log holds the
-            // full pipeline picture for offline analysis.
+            // Every 1s, report the aggregate to the Mac so its log and adaptive
+            // bitrate controller receive timely feedback aligned with Android.
             statsReportCounter += 1
-            if statsReportCounter >= 5 {
+            if statsReportCounter >= 1 {
                 statsReportCounter = 0
                 sendControl([
                     "type": "stats",

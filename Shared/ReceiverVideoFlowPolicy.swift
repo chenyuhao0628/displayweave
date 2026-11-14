@@ -60,3 +60,30 @@ struct ReceiverMonitorSchedule {
         active && generation == candidate
     }
 }
+
+/// Bounds local receive-to-enqueue queue age on Apple receivers using the
+/// local monotonic clock (and optional synchronized sender-to-receiver age
+/// when clock offset is known) so stale P-frames queued behind transient
+/// decoder or main-thread stalls are dropped cleanly with keyframe recovery.
+struct ReceiverFrameAgePolicy {
+    static let maxLocalQueueAgeSeconds: TimeInterval = 0.065
+    static let maxSynchronizedFrameAgeMs: Double = 120.0
+
+    static func isExpired(
+        receivedAtUptime: TimeInterval,
+        nowUptime: TimeInterval,
+        isKeyframe: Bool,
+        synchronizedAgeMs: Double? = nil
+    ) -> Bool {
+        if isKeyframe { return false }
+        if nowUptime.isFinite, receivedAtUptime.isFinite,
+           nowUptime - receivedAtUptime >= maxLocalQueueAgeSeconds {
+            return true
+        }
+        if let age = synchronizedAgeMs, age.isFinite,
+           age >= maxSynchronizedFrameAgeMs {
+            return true
+        }
+        return false
+    }
+}

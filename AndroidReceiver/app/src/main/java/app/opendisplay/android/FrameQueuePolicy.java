@@ -2,13 +2,11 @@ package app.opendisplay.android;
 
 /** Queue sizing for short transport and MediaCodec scheduling bursts. */
 final class FrameQueuePolicy {
-    // Twelve frames absorb up to 200 ms at 60 fps (100 ms at 120 fps). The
-    // queues remain empty in steady state; this is a burst ceiling, not fixed
-    // latency. Real-device testing showed occasional scheduler stalls longer
-    // than the previous six-frame (100 ms) ceiling.
-    static final int MAX_PENDING_FRAMES = 12;
-    // One receive-to-codec budget shared across both FIFOs; no clock sync needed.
-    static final long MAX_QUEUE_AGE_NANOS = 150_000_000L;
+    // Four frames per FIFO (66 ms at 60 fps, 33 ms at 120 fps) absorb short
+    // scheduling bursts while preventing deep 200+ ms latency accumulation.
+    static final int MAX_PENDING_FRAMES = 4;
+    // One receive-to-codec budget (75 ms) shared across both FIFOs; no clock sync needed.
+    static final long MAX_QUEUE_AGE_NANOS = 75_000_000L;
     static boolean expired(long receivedNanos, long nowNanos) {
         return nowNanos - receivedNanos >= MAX_QUEUE_AGE_NANOS;
     }

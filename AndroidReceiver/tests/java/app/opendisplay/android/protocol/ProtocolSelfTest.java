@@ -17,6 +17,7 @@ import app.opendisplay.android.AndroidDropTracker;
 import app.opendisplay.android.ScrollGestureTracker;
 import app.opendisplay.android.TouchGestureCoordinator;
 import app.opendisplay.android.TouchEventMapper;
+import app.opendisplay.android.UdpMediaReceiverSession;
 
 public final class ProtocolSelfTest {
     public static void main(String[] args) throws Exception {
@@ -47,6 +48,9 @@ public final class ProtocolSelfTest {
         testTouchGestureCoordinatorDefersTapUntilGestureIsKnown();
         testTouchGestureCoordinatorCancelsPendingTapForScroll();
         testControlMessageWriterDoesNotWriteOnCallerThread();
+        testUdpMediaHeaderAndKeyDerivation();
+        testUdpMediaFecReassemblyAndJitterBuffer();
+        testUdpMediaReceiverSessionLoopback();
         System.out.println("ProtocolSelfTest PASS");
     }
 
@@ -128,15 +132,24 @@ public final class ProtocolSelfTest {
     }
 
     private static void testHelloJsonAdvertisesNegotiatedProtocolV2() {
-        String json = LengthPrefixedProtocol.helloJson(
+        String wifiJson = LengthPrefixedProtocol.helloJson(
                 2560, 1600, 2.0, 120, 120,
                 new String[] {"hevc", "h264"}, "hevc", "Android Tablet", 35,
                 "wifi", "Android", "install-1");
-        assertContains(json, "\"protocolVersion\":2");
-        assertContains(json, "\"maxFrameBytes\":8388608");
-        assertContains(json, "\"capabilities\":[\"streamConfigAck\",\"decoderReady\","
+        assertContains(wifiJson, "\"protocolVersion\":2");
+        assertContains(wifiJson, "\"maxFrameBytes\":8388608");
+        assertContains(wifiJson, "\"capabilities\":[\"streamConfigAck\",\"decoderReady\","
+                + "\"firstFrameRendered\",\"sessionEpoch\",\"configVersion\","
+                + "\"frameSequence\",\"maxFrameBytes\",\"binaryFrameHeaderV2\",\"udpMediaV1\"]");
+
+        String usbJson = LengthPrefixedProtocol.helloJson(
+                2560, 1600, 2.0, 120, 120,
+                new String[] {"hevc", "h264"}, "hevc", "Android Tablet", 35,
+                "usb", "Android", "install-1");
+        assertContains(usbJson, "\"capabilities\":[\"streamConfigAck\",\"decoderReady\","
                 + "\"firstFrameRendered\",\"sessionEpoch\",\"configVersion\","
                 + "\"frameSequence\",\"maxFrameBytes\",\"binaryFrameHeaderV2\"]");
+        assertFalse(usbJson.contains("\"udpMediaV1\""));
     }
 
     private static void testBinaryFrameHeaderV2RoundTrip() throws Exception {
@@ -635,6 +648,236 @@ public final class ProtocolSelfTest {
     private static void assertContains(String value, String expectedSubstring) {
         if (!value.contains(expectedSubstring)) {
             throw new AssertionError("expected " + value + " to contain " + expectedSubstring);
+        }
+    }
+
+    private static void testUdpMediaHeaderAndKeyDerivation() throws Exception {
+        UdpMediaProtocol.Header header = new UdpMediaProtocol.Header(
+                UdpMediaProtocol.CURRENT_VERSION,
+                UdpMediaProtocol.PACKET_VIDEO_DATA,
+                UdpMediaProtocol.FLAG_KEYFRAME | UdpMediaProtocol.FLAG_END_OF_FRAME,
+                0x2A,
+                1025,
+                500_000L,
+                42L,
+                0,
+                1);
+        byte[] encodedHeader = header.encode();
+        assertEquals(16, encodedHeader.length);
+        UdpMediaProtocol.Header decodedHeader =
+                UdpMediaProtocol.Header.decode(encodedHeader, encodedHeader.length);
+        assertEquals(header.packetType, decodedHeader.packetType);
+        assertEquals(header.flags, decodedHeader.flags);
+        assertEquals(header.epochTag, decodedHeader.epochTag);
+        assertEquals(header.packetSeq, decodedHeader.packetSeq);
+        assertEquals(header.sendTimeUs, decodedHeader.sendTimeUs);
+        assertEquals(header.frameId, decodedHeader.frameId);
+        assertEquals(header.fragIndex, decodedHeader.fragIndex);
+        assertEquals(header.fragCount, decodedHeader.fragCount);
+
+        byte[] rootSecret = new byte[32];
+        for (int i = 0; i < 32; i++) {
+            rootSecret[i] = (byte) (i + 1);
+        }
+        UdpMediaProtocol.KeyMaterial km1 = UdpMediaProtocol.KeyMaterial.derive(rootSecret, 7L);
+        UdpMediaProtocol.KeyMaterial km2 = UdpMediaProtocol.KeyMaterial.derive(rootSecret, 7L);
+        assertTrue(java.util.Arrays.equals(km1.senderToReceiverKey, km2.senderToReceiverKey));
+        assertTrue(java.util.Arrays.equals(km1.receiverToSenderKey, km2.receiverToSenderKey));
+        assertFalse(java.util.Arrays.equals(km1.senderToReceiverKey, km1.receiverToSenderKey));
+
+        UdpMediaProtocol.CryptoSession sender = new UdpMediaProtocol.CryptoSession(km1);
+        UdpMediaProtocol.CryptoSession receiver = new UdpMediaProtocol.CryptoSession(km2);
+        byte[] payload = "hello-udp-media-v1".getBytes("UTF-8");
+        byte[] datagram = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_DATA,
+                UdpMediaProtocol.FLAG_KEYFRAME,
+                12_345L,
+                1L,
+                0,
+                1,
+                payload);
+
+        // Tampered header AAD must be rejected without polluting the anti-replay window.
+        byte[] tampered = datagram.clone();
+        tampered[8] ^= 0x01;
+        boolean rejectedTampered = false;
+        try {
+            receiver.open(tampered, tampered.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER);
+        } catch (java.security.GeneralSecurityException expected) {
+            rejectedTampered = true;
+        }
+        assertTrue(rejectedTampered);
+        assertFalse(receiver.replayWindow().hasAuthenticatedAny());
+
+        // Authentic packet succeeds, and replay is rejected.
+        UdpMediaProtocol.AuthenticatedPacket opened =
+                receiver.open(datagram, datagram.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER);
+        assertEquals(1L, opened.extendedSequence);
+        assertTrue(java.util.Arrays.equals(payload, opened.payload));
+
+        boolean rejectedReplay = false;
+        try {
+            receiver.open(datagram, datagram.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER);
+        } catch (java.security.GeneralSecurityException expected) {
+            rejectedReplay = true;
+        }
+        assertTrue(rejectedReplay);
+
+        // 64-bit ROC rollover across 65535 -> 65536
+        sender.setNextOutgoingSequenceForTesting(65535L);
+        receiver.replayWindow().recordAuthenticated(65534L);
+        byte[] pkt65535 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_DATA,
+                0, 20_000L, 2L, 0, 1, payload);
+        byte[] pkt65536 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_DATA,
+                0, 21_000L, 3L, 0, 1, payload);
+        assertEquals(65535L, receiver.open(
+                pkt65535, pkt65535.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER).extendedSequence);
+        assertEquals(65536L, receiver.open(
+                pkt65536, pkt65536.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER).extendedSequence);
+    }
+
+    private static void testUdpMediaFecReassemblyAndJitterBuffer() throws Exception {
+        byte[] secret = UdpMediaProtocol.KeyMaterial.generateRootSecret();
+        UdpMediaProtocol.KeyMaterial km = UdpMediaProtocol.KeyMaterial.derive(secret, 9L);
+        UdpMediaProtocol.CryptoSession sender = new UdpMediaProtocol.CryptoSession(km);
+        UdpMediaProtocol.CryptoSession receiver = new UdpMediaProtocol.CryptoSession(km);
+        UdpMediaProtocol.Reassembler reassembler = new UdpMediaProtocol.Reassembler();
+        UdpMediaProtocol.JitterBuffer jitterBuffer = new UdpMediaProtocol.JitterBuffer();
+
+        byte[] annexB = new byte[2800];
+        annexB[0] = 0;
+        annexB[1] = 0;
+        annexB[2] = 0;
+        annexB[3] = 1;
+        annexB[4] = 0x65;
+        for (int i = 5; i < annexB.length; i++) {
+            annexB[i] = (byte) ((i * 31) & 0xFF);
+        }
+
+        List<byte[]> shards = UdpMediaProtocol.makeDataFragments(annexB, 1_500L, 3L, 1000);
+        assertEquals(3, shards.size());
+
+        // Build XOR parity shard (row 0, coefficient = 1) across the 3 data shards
+        int stride = shards.get(0).length;
+        int lastLen = shards.get(2).length;
+        byte[] parityPayload = new byte[stride];
+        for (int col = 0; col < shards.size(); col++) {
+            UdpMediaProtocol.GF256.addScaled(
+                    parityPayload, shards.get(col), UdpMediaProtocol.GF256.coefficient(0, col));
+        }
+        UdpMediaProtocol.ParityDescriptor desc =
+                new UdpMediaProtocol.ParityDescriptor(0, 3, 0, 1, lastLen);
+
+        // Drop shard 1; deliver shard 0, shard 2, and parity shard 0
+        byte[] dg0 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_DATA,
+                UdpMediaProtocol.FLAG_KEYFRAME,
+                100_000L, 1L, 0, 3, shards.get(0));
+        byte[] dg2 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_DATA,
+                UdpMediaProtocol.FLAG_KEYFRAME | UdpMediaProtocol.FLAG_END_OF_FRAME,
+                100_000L, 1L, 2, 3, shards.get(2));
+        byte[] dgParity = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_PARITY,
+                UdpMediaProtocol.FLAG_KEYFRAME,
+                100_000L, 1L, desc.encodedFragIndex(), desc.encodedFragCount(), parityPayload);
+
+        long t0 = 1_000_000_000L;
+        assertTrue(reassembler.ingest(
+                receiver.open(dg0, dg0.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER), t0) == null);
+        assertTrue(reassembler.ingest(
+                receiver.open(dg2, dg2.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER), t0 + 500_000L) == null);
+
+        // Out-of-order shard 2 arrival exposes missing shard 1 for NACK
+        List<UdpMediaProtocol.NackPayload> nacks = reassembler.pollNacks(t0 + 600_000L, 10_000L);
+        assertEquals(1, nacks.size());
+        assertEquals(1, nacks.get(0).baseFragIndex);
+        assertEquals(1, nacks.get(0).missingCount);
+
+        // Parity arrives and completes frame 1 via FEC without waiting for NACK retransmit
+        UdpMediaProtocol.FrameEnvelope env = reassembler.ingest(
+                receiver.open(dgParity, dgParity.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER),
+                t0 + 1_000_000L);
+        assertTrue(env != null);
+        assertTrue(env.recoveredByFec);
+        assertEquals(1_500L, env.captureTimestampMs);
+        assertEquals(3L, env.configVersion);
+        assertTrue(java.util.Arrays.equals(annexB, env.annexB));
+
+        UdpMediaProtocol.JitterBuffer.PollResult poll = jitterBuffer.insert(env, t0 + 1_000_000L);
+        assertEquals(1, poll.deliverable.size());
+        assertEquals(1L, poll.deliverable.get(0).frameId);
+    }
+
+    private static void testUdpMediaReceiverSessionLoopback() throws Exception {
+        byte[] secret = UdpMediaProtocol.KeyMaterial.generateRootSecret();
+        long epoch = 11L;
+        try (java.net.DatagramSocket mockSenderSocket =
+                new java.net.DatagramSocket(new java.net.InetSocketAddress("127.0.0.1", 0))) {
+            mockSenderSocket.setSoTimeout(500);
+            int senderPort = mockSenderSocket.getLocalPort();
+            String b64Secret = java.util.Base64.getEncoder().encodeToString(secret);
+            String cfgJson = "{\"type\":\"udpMediaConfig\",\"version\":1,\"sessionEpoch\":"
+                    + epoch + ",\"udpPort\":" + senderPort
+                    + ",\"rootSecret\":\"" + b64Secret + "\",\"maxPayloadBytes\":1200}";
+            UdpMediaProtocol.ConfigMessage cfg = UdpMediaProtocol.ConfigMessage.parseJson(cfgJson);
+            assertTrue(cfg != null);
+
+            java.util.concurrent.CountDownLatch frameLatch = new java.util.concurrent.CountDownLatch(1);
+            java.util.concurrent.atomic.AtomicReference<UdpMediaProtocol.FrameEnvelope> receivedRef =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+
+            try (UdpMediaReceiverSession session = UdpMediaReceiverSession.start(
+                    1L,
+                    cfg,
+                    "127.0.0.1",
+                    new UdpMediaReceiverSession.Listener() {
+                        @Override
+                        public void onFrameReady(
+                                long gen, long sesEpoch, UdpMediaProtocol.FrameEnvelope frame) {
+                            receivedRef.set(frame);
+                            frameLatch.countDown();
+                        }
+
+                        @Override
+                        public void onKeyframeNeeded(long gen, long sesEpoch, String reason) {
+                        }
+                    })) {
+                UdpMediaProtocol.KeyMaterial km = UdpMediaProtocol.KeyMaterial.derive(secret, epoch);
+                UdpMediaProtocol.CryptoSession senderCrypto = new UdpMediaProtocol.CryptoSession(km);
+
+                byte[] annexB = new byte[] {0, 0, 0, 1, 0x67, 0x42, 0x00, 0x1f, 0, 0, 0, 1, 0x65, 1, 2, 3, 4};
+                List<byte[]> shards = UdpMediaProtocol.makeDataFragments(annexB, 2_000L, 5L, 1200);
+                byte[] dg = senderCrypto.seal(
+                        UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                        UdpMediaProtocol.PACKET_VIDEO_DATA,
+                        UdpMediaProtocol.FLAG_KEYFRAME | UdpMediaProtocol.FLAG_END_OF_FRAME,
+                        50_000L,
+                        1L,
+                        0,
+                        1,
+                        shards.get(0));
+                java.net.DatagramPacket packet = new java.net.DatagramPacket(
+                        dg, dg.length,
+                        new java.net.InetSocketAddress("127.0.0.1", session.localPort()));
+                mockSenderSocket.send(packet);
+
+                assertTrue(frameLatch.await(2, java.util.concurrent.TimeUnit.SECONDS));
+                UdpMediaProtocol.FrameEnvelope delivered = receivedRef.get();
+                assertTrue(delivered != null);
+                assertEquals(1L, delivered.frameId);
+                assertEquals(2_000L, delivered.captureTimestampMs);
+                assertEquals(5L, delivered.configVersion);
+                assertTrue(java.util.Arrays.equals(annexB, delivered.annexB));
+            }
         }
     }
 

@@ -28,16 +28,18 @@ struct AdaptiveBitrateControllerSelfTest {
         expect(increase?.newBitrate == 42_800_000, "stable window increases seven percent")
         expect(increase?.reason == "stableRecoveryIncrease"
                 && increase?.trigger == "stable-5s"
-                && increase?.networkState == .stable,
-               "increase records reason and state")
+                && increase?.networkState == .stable
+                && increase?.requiresStreamConfig == false,
+               "increase records reason and state without forcing streamConfig")
 
         let decrease = controller.evaluate(metrics(6, pending: 2), mode: .auto)
         expect(decrease?.previousBitrate == 42_800_000, "decrease uses current bitrate")
         expect(decrease?.newBitrate == 34_240_000, "congestion decreases twenty percent")
         expect(decrease?.reason == "receiverCongestionDecrease"
                 && decrease?.trigger == "pending-sends"
-                && decrease?.networkState == .congested,
-               "congestion records reason and state")
+                && decrease?.networkState == .congested
+                && decrease?.requiresStreamConfig == false,
+               "congestion records reason and state without forcing streamConfig")
         expect(controller.evaluate(metrics(6.5, pending: 3), mode: .auto) == nil,
                "minimum hold prevents rapid repeated decreases")
 

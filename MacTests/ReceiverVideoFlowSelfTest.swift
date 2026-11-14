@@ -39,6 +39,15 @@ import Foundation
         precondition(gen2 != gen1 && monitors.isCurrent(gen2) && !monitors.isCurrent(gen1),
                      "foreground resume must activate a fresh monitor generation and reject stale pre-stop timers")
 
+        precondition(!ReceiverFrameAgePolicy.isExpired(receivedAtUptime: 10.0, nowUptime: 10.060, isKeyframe: false),
+                     "sub-65ms local queue age is admissible")
+        precondition(ReceiverFrameAgePolicy.isExpired(receivedAtUptime: 10.0, nowUptime: 10.066, isKeyframe: false),
+                     "local queue age >= 65ms expires P-frame")
+        precondition(!ReceiverFrameAgePolicy.isExpired(receivedAtUptime: 10.0, nowUptime: 10.200, isKeyframe: true),
+                     "keyframes are never dropped on age alone during recovery")
+        precondition(ReceiverFrameAgePolicy.isExpired(receivedAtUptime: 10.0, nowUptime: 10.010, isKeyframe: false, synchronizedAgeMs: 125.0),
+                     "synchronized frame age >= 120ms expires P-frame")
+
         print("Shared Apple video flow: transient pressure, bounded flush, first-frame, idle and monitor-schedule semantics PASS")
     }
 }

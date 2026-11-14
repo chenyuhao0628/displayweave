@@ -155,14 +155,14 @@ public final class VideoStreamPolicySelfTest {
     }
 
     private static void testFrameQueueBurstCapacity() {
-        assertEquals(12, FrameQueuePolicy.MAX_PENDING_FRAMES);
+        assertEquals(4, FrameQueuePolicy.MAX_PENDING_FRAMES);
         BoundedOrderedQueue<Integer> queue =
                 new BoundedOrderedQueue<>(FrameQueuePolicy.MAX_PENDING_FRAMES);
-        for (int frame = 1; frame <= 12; frame++) {
+        for (int frame = 1; frame <= 4; frame++) {
             assertTrue(queue.offer(frame));
         }
-        assertFalse(queue.offer(13));
-        for (int frame = 1; frame <= 12; frame++) {
+        assertFalse(queue.offer(5));
+        for (int frame = 1; frame <= 4; frame++) {
             assertEquals(frame, queue.poll().intValue());
         }
         assertTrue(queue.isEmpty());

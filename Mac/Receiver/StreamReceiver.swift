@@ -73,6 +73,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     private var sampleCount = 0
     private var statsStart = Date()
     private var lastCursorSequence: UInt64 = 0
+    private var udpMediaSession: UDPMediaReceiverSession?
 
     init(displayLayer: AVSampleBufferDisplayLayer = AVSampleBufferDisplayLayer(),
          hardwareHEVCDecode: Bool? = nil,
@@ -321,6 +322,8 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
               "refreshRate": maxFps, "maxFps": maxFps, "displayMaxFrameRate": maxFps,
               "maxEncodeWide": limits.width, "maxEncodeHigh": limits.height,
               "videoCaps": caps,
+              "capabilities": ["udpMediaV1"],
+              "udpMediaV1": true,
               "inputCaps": peerID != nil ? [DesktopInputProtocol.capability] : [],
               "transport": "lan"], on: conn)
     }
@@ -485,6 +488,8 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                 if let token = cursorDelivery.offer((x, y, visible)) { deliverCursor(token) }
             case "cursorImg", "cursorImage":
                 handleCursorImage(obj)
+            case "udpMediaConfig":
+                configureUDPMedia(obj, on: conn)
             default: break
             }
             return
@@ -499,6 +504,47 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             guard self.cursorDelivery.generation == epoch else { return }
             self.onCursorImage?(cursor.image, cursor.anchor, cursor.normalizedSize)
         }
+    }
+
+    private func configureUDPMedia(_ obj: [String: Any], on conn: NWConnection) {
+        udpMediaSession?.stop()
+        udpMediaSession = nil
+        guard let config = UDPMediaConfigMessage(jsonObject: obj) else { return }
+        let currentGen = cursorDelivery.generation
+        let senderHost = UDPEndpointResolver.hostString(from: conn.currentPath?.remoteEndpoint)
+            ?? UDPEndpointResolver.hostString(from: conn.endpoint)
+        guard let session = UDPMediaReceiverSession(
+            config: config,
+            generation: currentGen,
+            senderHost: senderHost
+        ) else { return }
+        session.onFrameReady = { [weak self, weak conn] gen, frame in
+            guard let self else { return }
+            self.queue.async {
+                guard self.running,
+                      let conn,
+                      self.connection === conn,
+                      self.cursorDelivery.generation == gen else { return }
+                self.lastReceived = Date()
+                self.handleAnnexB(frame.annexB, on: conn)
+            }
+        }
+        session.onKeyframeNeeded = { [weak self, weak conn] gen, _ in
+            guard let self else { return }
+            self.queue.async {
+                guard self.running,
+                      let conn,
+                      self.connection === conn,
+                      self.cursorDelivery.generation == gen else { return }
+                self.requestKeyframe()
+            }
+        }
+        udpMediaSession = session
+        send([
+            "type": "udpMediaReady",
+            "sessionEpoch": config.sessionEpoch,
+            "udpPort": Int(session.localPort),
+        ], on: conn)
     }
 
     private func deliverCursor(_ token: LatestValueRelay<(x: Double, y: Double, visible: Bool)>.Token) {
@@ -652,6 +698,8 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     }
 
     private func resetStream() {
+        udpMediaSession?.stop()
+        udpMediaSession = nil
         cursorDelivery.reset()
         diagnosticsStart = ProcessInfo.processInfo.systemUptime
         enqueuedFrames = 0
