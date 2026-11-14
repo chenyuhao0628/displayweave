@@ -58,7 +58,7 @@ do {
     process.executableURL = URL(fileURLWithPath: "\(root)/script/build_and_run.sh")
     process.currentDirectoryURL = URL(fileURLWithPath: root)
     process.environment = [
-        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/Applications/Xcode.app/Contents/Developer/usr/bin",
+        "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Applications/Xcode.app/Contents/Developer/usr/bin",
         "HOME": NSHomeDirectory()
     ]
     process.standardOutput = logHandle

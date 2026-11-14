@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.AlertDialog;
 import android.app.Activity;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.content.pm.PackageManager;
@@ -69,7 +70,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private TextView idleStatusView;
     private Button connectionModeButton;
     private View idlePanel;
-    private OpenDisplayServer server;
+    private volatile OpenDisplayServer server;
+    private DisplaySpec lastSentDisplaySpec;
+    private final Runnable dispatchLiveDisplaySpecUpdate = this::applyLiveDisplaySpecIfChanged;
     private SurfaceHolder activeSurface;
     private ReceiverLifecycleCoordinator receiverLifecycle;
     private SharedPreferences prefs;
@@ -179,11 +182,28 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     @Override
     protected void onDestroy() {
         uiHandler.removeCallbacks(hideStreamSettingsButton);
+        uiHandler.removeCallbacks(dispatchLiveDisplaySpecUpdate);
         surfaceFrameRateLifecycle.onDestroy();
         wifiLowLatencyLifecycle.shutdown("activityDestroyed");
         updateCoordinator.shutdown();
         receiverLifecycle.onDestroy();
         super.onDestroy();
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        ui = new ReceiverUi(this);
+        updateVideoViewport();
+        scheduleLiveDisplayUpdate();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (!hasFocus) {
+            cancelTouchGesture();
+        }
     }
 
     @Override
@@ -364,7 +384,10 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
         root.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
-            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) updateVideoViewport();
+            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                updateVideoViewport();
+                scheduleLiveDisplayUpdate();
+            }
         });
 
         idlePanel = buildIdlePanel();
@@ -413,9 +436,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
 
             @Override
             public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-                if (server != null) {
-                    server.updateDisplay(currentDisplaySpec());
-                }
+                applyLiveDisplaySpecIfChanged();
                 surfaceFrameRateLifecycle.onSurfaceChanged();
             }
 
@@ -431,6 +452,24 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
 
         surfaceView.setContentDescription("远程画面，单指点击或拖动，双指滚动");
         surfaceView.setOnTouchListener(this::handleTouch);
+    }
+
+    private void scheduleLiveDisplayUpdate() {
+        uiHandler.removeCallbacks(dispatchLiveDisplaySpecUpdate);
+        uiHandler.postDelayed(dispatchLiveDisplaySpecUpdate, 120L);
+    }
+
+    private void applyLiveDisplaySpecIfChanged() {
+        uiHandler.removeCallbacks(dispatchLiveDisplaySpecUpdate);
+        OpenDisplayServer activeServer = server;
+        if (activeServer == null) {
+            return;
+        }
+        DisplaySpec nextSpec = currentDisplaySpec();
+        if (!nextSpec.sameDisplayConfiguration(lastSentDisplaySpec)) {
+            lastSentDisplaySpec = nextSpec;
+            activeServer.updateDisplay(nextSpec);
+        }
     }
 
     private void updateVideoViewport() {
@@ -897,14 +936,22 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         }
         boolean advertiseWifi = ReceiverPermissionPolicy.shouldAdvertiseWifi(
                 hasNearbyWifiPermission());
+        DisplaySpec initialSpec = currentDisplaySpec();
+        OpenDisplayServer createdServer;
         try {
-            server = new OpenDisplayServer(MainActivity.this, currentDisplaySpec(), MainActivity.this, advertiseWifi);
+            createdServer = new OpenDisplayServer(MainActivity.this, initialSpec, MainActivity.this, advertiseWifi);
+        } catch (java.security.cert.CertificateExpiredException
+                | java.security.cert.CertificateNotYetValidException certValidityError) {
+            setStatus(certValidityError.getMessage());
+            return false;
         } catch (java.io.IOException | java.security.GeneralSecurityException failure) {
             setStatus("安全身份不可用：请在设置 → 安全与配对中重新载入或显式重置身份。" + failure.getMessage());
             return false;
         }
-        server.setDecoderLowLatencyMode(currentDecoderLowLatencyMode());
-        server.start(activeSurface.getSurface());
+        lastSentDisplaySpec = initialSpec;
+        server = createdServer;
+        createdServer.setDecoderLowLatencyMode(currentDecoderLowLatencyMode());
+        createdServer.start(activeSurface.getSurface());
         if (!advertiseWifi) {
             setStatus("USB 已就绪；授予附近设备权限后可使用 WiFi 发现");
         }
@@ -912,11 +959,13 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     private void stopServer() {
-        if (server == null) {
+        OpenDisplayServer activeServer = server;
+        if (activeServer == null) {
             return;
         }
-        server.stop();
         server = null;
+        lastSentDisplaySpec = null;
+        activeServer.stop();
         updateKeepAliveService(false);
     }
 
@@ -965,7 +1014,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     private boolean handleTouch(View view, MotionEvent event) {
-        if (!streaming || server == null || view.getWidth() <= 0 || view.getHeight() <= 0) {
+        OpenDisplayServer activeServer = server;
+        if (!streaming || activeServer == null || view.getWidth() <= 0 || view.getHeight() <= 0) {
             return true;
         }
         if (event.getPointerCount() >= 2 || scrollGesture.isActive()) {

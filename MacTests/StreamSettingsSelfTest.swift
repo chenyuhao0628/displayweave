@@ -122,6 +122,8 @@ struct StreamSettingsSelfTest {
         let invalid = StreamSettings.load(from: emptyDefaults)
         assertTrue(invalid.bitrateMode == .auto && invalid.bitratePreset == .mbps40,
                    "invalid stored bitrate settings fall back safely")
+        assertEqual(.gaming, StreamQuality.smooth,
+                    "StreamQuality.smooth aliases low-latency gaming preset")
 
         print("StreamSettingsSelfTest PASS")
     }

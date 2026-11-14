@@ -5,6 +5,9 @@ import Foundation
 enum StreamQuality: String, CaseIterable {
     case low, balanced, high, gaming
 
+    /// Architectural alias for `.gaming` ("流畅").
+    static var smooth: Self { .gaming }
+
     var scale: Double {
         switch self {
         case .low: return 0.5

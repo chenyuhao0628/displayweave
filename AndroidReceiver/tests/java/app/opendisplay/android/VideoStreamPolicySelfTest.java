@@ -26,6 +26,7 @@ public final class VideoStreamPolicySelfTest {
         testProtocolV2FrameIdentity();
         testProtocolV2SessionFiltering();
         testProtocolV2UdpEpochOrdering();
+        testExpiredTransportCertificateRejectedWithRecoveryMessage();
         testRefreshModeSelection();
         testFrameClassifier();
         testVideoFramePacketUsesZeroCopyBinaryPayloadView();
@@ -344,6 +345,36 @@ public final class VideoStreamPolicySelfTest {
         legacy.onConnected(12);
         assertTrue(legacy.acceptStreamConfig(12, 1, 0, 0));
         assertFalse(legacy.acceptUdpMediaEpoch(12, 1));
+    }
+
+    private static void testExpiredTransportCertificateRejectedWithRecoveryMessage() throws Exception {
+        java.security.KeyPairGenerator kpg = java.security.KeyPairGenerator.getInstance("EC");
+        kpg.initialize(new java.security.spec.ECGenParameterSpec("secp256r1"));
+        java.security.KeyPair pair = kpg.generateKeyPair();
+        long now = System.currentTimeMillis();
+        java.security.cert.X509Certificate expired = TransportCertificate.create(
+                pair.getPrivate(),
+                pair.getPublic(),
+                new java.util.Date(now - 400L * 86_400_000L),
+                new java.util.Date(now - 86_400_000L));
+
+        boolean localRejected = false;
+        try {
+            SecureTls.checkCertificateValidity(expired, true);
+        } catch (java.security.cert.CertificateExpiredException error) {
+            localRejected = true;
+            assertTrue(error.getMessage().contains("重置本机传输身份并重新配对"));
+        }
+        assertTrue(localRejected);
+
+        boolean peerRejected = false;
+        try {
+            SecureTls.validate(new java.security.cert.X509Certificate[] {expired}, false, pin -> true);
+        } catch (java.security.cert.CertificateExpiredException error) {
+            peerRejected = true;
+            assertTrue(error.getMessage().contains("重置传输身份并重新配对"));
+        }
+        assertTrue(peerRejected);
     }
 
     private static VideoFrameTelemetry telemetry(long epoch, long version, long sequence) {

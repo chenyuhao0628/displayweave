@@ -63,8 +63,9 @@ struct AndroidAdbPresentation: Equatable, Sendable {
                 connectableSerials: [])
         }
         guard !usbDevices.isEmpty else {
-            return AndroidAdbPresentation(message: "未检测到 Android USB 设备",
-                                          connectableSerials: [])
+            return AndroidAdbPresentation(
+                message: "未检测到 Android USB 设备；请使用支持数据传输的 USB 线连接，并在开发者选项中开启 USB 调试",
+                connectableSerials: [])
         }
         let ready = usbDevices.filter { $0.state == .device }.map(\.serial)
         if ready.count > 1 {
@@ -86,7 +87,9 @@ struct AndroidAdbPresentation: Equatable, Sendable {
                 message: AndroidAdbFailure.offline(offline.serial).localizedDescription,
                 connectableSerials: [])
         }
-        return AndroidAdbPresentation(message: "ADB 设备不可用", connectableSerials: [])
+        return AndroidAdbPresentation(
+            message: "ADB 设备不可用；请重新插拔 USB 数据线并确认已开启 USB 调试",
+            connectableSerials: [])
     }
 }
 
@@ -139,19 +142,19 @@ enum AndroidAdbFailure: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .executableNotFound(let paths):
-            return "未找到 ADB。已检查：\(paths.joined(separator: "、"))"
+            return "未找到 ADB，请安装 Android SDK Platform-Tools 或在设置中指定 adb 路径。已检查：\(paths.joined(separator: "、"))"
         case .noDevices:
-            return "未检测到 Android 设备"
+            return "未检测到 Android 设备；请连接支持数据传输的 USB 线，并在开发者选项中开启 USB 调试"
         case .unauthorized:
-            return "设备尚未授权 USB 调试，请在 Android 设备上允许当前 Mac"
+            return "设备尚未授权 USB 调试，请解锁 Android 设备并在弹窗中允许当前 Mac"
         case .offline:
-            return "ADB 设备离线"
+            return "ADB 设备离线；请重新插拔 USB 数据线，或重启手机上的 USB 调试后重试"
         case .multipleDevices:
-            return "检测到多个 Android 设备，请选择目标设备"
+            return "检测到多个 Android 设备，请在列表中选择目标设备后连接"
         case .commandFailed(let exitCode, let message):
-            return "ADB 命令失败（退出码 \(exitCode)）：\(message)"
+            return "ADB 命令失败（退出码 \(exitCode)）：\(message)；请检查 USB 连接或执行 adb kill-server 后重试"
         case .timedOut:
-            return "ADB 命令超时"
+            return "ADB 命令超时；请检查 USB 数据线连接或执行 adb kill-server 后重试"
         }
     }
 }

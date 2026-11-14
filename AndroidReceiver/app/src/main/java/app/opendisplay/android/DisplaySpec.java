@@ -1,5 +1,8 @@
 package app.opendisplay.android;
 
+import java.util.Arrays;
+import java.util.Objects;
+
 public final class DisplaySpec {
     public final int pixelsWide;
     public final int pixelsHigh;
@@ -37,5 +40,18 @@ public final class DisplaySpec {
                 : deviceModel;
         this.androidSdk = androidSdk;
         this.transport = transport == null || transport.length() == 0 ? "wifi" : transport;
+    }
+
+    public boolean sameDisplayConfiguration(DisplaySpec other) {
+        if (other == null) {
+            return false;
+        }
+        return pixelsWide == other.pixelsWide
+                && pixelsHigh == other.pixelsHigh
+                && Math.abs(scale - other.scale) < 0.001
+                && refreshRate == other.refreshRate
+                && maxFps == other.maxFps
+                && Objects.equals(preferredCodec, other.preferredCodec)
+                && Arrays.equals(supportedCodecs, other.supportedCodecs);
     }
 }

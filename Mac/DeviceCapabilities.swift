@@ -25,6 +25,69 @@ struct PhoneInfo: Decodable {
     let displayMaxFrameRate: Int?
     let maxEncodeWide: Int?
     let maxEncodeHigh: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case pixelsWide, pixelsHigh, scale, device, id, refreshRate, maxFps
+        case supportedCodecs, preferredCodec, deviceModel, androidSdk, transport
+        case protocolVersion, capabilities, inputCaps, maxFrameBytes, udpMediaV1, udpPort
+        case panel, videoCaps, displayMaxFrameRate, maxEncodeWide, maxEncodeHigh
+    }
+
+    private struct PartialPanelMillimeters: Decodable {
+        let pixelsWide: Int?
+        let pixelsHigh: Int?
+        let millimetersWide: Double?
+        let millimetersHigh: Double?
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        pixelsWide = try values.decode(Int.self, forKey: .pixelsWide)
+        pixelsHigh = try values.decode(Int.self, forKey: .pixelsHigh)
+        scale = try values.decode(Double.self, forKey: .scale)
+        device = try values.decodeIfPresent(String.self, forKey: .device)
+        id = try values.decodeIfPresent(String.self, forKey: .id)
+        refreshRate = try values.decodeIfPresent(Int.self, forKey: .refreshRate)
+        maxFps = try values.decodeIfPresent(Int.self, forKey: .maxFps)
+        supportedCodecs = try values.decodeIfPresent([String].self, forKey: .supportedCodecs)
+        preferredCodec = try values.decodeIfPresent(String.self, forKey: .preferredCodec)
+        deviceModel = try values.decodeIfPresent(String.self, forKey: .deviceModel)
+        androidSdk = try values.decodeIfPresent(Int.self, forKey: .androidSdk)
+        transport = try values.decodeIfPresent(String.self, forKey: .transport)
+        protocolVersion = try values.decodeIfPresent(Int.self, forKey: .protocolVersion)
+        capabilities = try values.decodeIfPresent([String].self, forKey: .capabilities)
+        inputCaps = try values.decodeIfPresent([String].self, forKey: .inputCaps)
+        maxFrameBytes = try values.decodeIfPresent(Int.self, forKey: .maxFrameBytes)
+        udpMediaV1 = try values.decodeIfPresent(Bool.self, forKey: .udpMediaV1)
+        udpPort = try values.decodeIfPresent(Int.self, forKey: .udpPort)
+        videoCaps = try values.decodeIfPresent([VideoCapability].self, forKey: .videoCaps)
+        displayMaxFrameRate = try values.decodeIfPresent(Int.self, forKey: .displayMaxFrameRate)
+        maxEncodeWide = try values.decodeIfPresent(Int.self, forKey: .maxEncodeWide)
+        maxEncodeHigh = try values.decodeIfPresent(Int.self, forKey: .maxEncodeHigh)
+
+        if values.contains(.panel) {
+            if let fullPanel = try? values.decodeIfPresent(PanelAnnouncement.self, forKey: .panel) {
+                panel = fullPanel
+            } else if let partial = try? values.decodeIfPresent(PartialPanelMillimeters.self, forKey: .panel),
+                      partial.pixelsWide == nil, partial.pixelsHigh == nil {
+                func clampInt(_ v: Double?) -> Int? {
+                    guard let v, v.isFinite, v >= Double(Int.min), v <= Double(Int.max) else { return nil }
+                    return Int(v.rounded())
+                }
+                let safeScale = scale.isFinite ? min(max(scale, 0.1), 4.0) : 2.0
+                panel = PanelAnnouncement(
+                    pixelsWide: pixelsWide,
+                    pixelsHigh: pixelsHigh,
+                    scale: safeScale,
+                    millimetersWide: clampInt(partial.millimetersWide),
+                    millimetersHigh: clampInt(partial.millimetersHigh))
+            } else {
+                panel = nil
+            }
+        } else {
+            panel = nil
+        }
+    }
     /// Validate peer-controlled geometry before multiplication or capture setup.
     var hasValidGeometry: Bool {
         func valid(_ width: Int, _ height: Int, _ scale: Double) -> Bool {

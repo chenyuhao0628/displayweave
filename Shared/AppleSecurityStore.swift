@@ -38,8 +38,17 @@ final class AppleSecurityStore: @unchecked Sendable {
     }
 
     private func identityLocked() throws -> AppleTransportIdentity {
-            if let cached { return cached }
+            if let cached {
+                if AppleTransportIdentity.isCertificateExpired(cached.certificateDER) {
+                    self.cached = nil
+                    throw TransportSecurityError.failed(AppleTransportIdentity.expiredLocalCertificateMessage)
+                }
+                return cached
+            }
             let certificate = try load(account: "certificate")
+            if let certificate, AppleTransportIdentity.isCertificateExpired(certificate) {
+                throw TransportSecurityError.failed(AppleTransportIdentity.expiredLocalCertificateMessage)
+            }
             var result: CFTypeRef?
             let status = SecItemCopyMatching(keyQuery.merging([kSecReturnRef: true]) { _, new in new } as CFDictionary, &result)
             if status == errSecSuccess {

@@ -155,7 +155,7 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
         }
         window?.makeKeyAndOrderFront(nil)
         window?.makeFirstResponder(videoView)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         applyFullscreen()
     }
 

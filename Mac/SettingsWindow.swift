@@ -21,6 +21,6 @@ enum SettingsWindow {
             window = panel
         }
         window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
     }
 }

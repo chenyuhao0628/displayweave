@@ -49,7 +49,7 @@ public final class NsdAdvertiser {
             @Override
             public void onRegistrationFailed(NsdServiceInfo serviceInfo, int errorCode) {
                 if (registration != this) return;
-                listener.onNsdStatus("广播失败：" + errorCode);
+                listener.onNsdStatus("广播失败：" + errorCode + "；请确认已开启 Wi-Fi 与本地网络/附近设备权限后重新打开接收端，或改用 USB 连接");
             }
 
             @Override
@@ -61,7 +61,7 @@ public final class NsdAdvertiser {
             @Override
             public void onUnregistrationFailed(NsdServiceInfo serviceInfo, int errorCode) {
                 if (registration != this) return;
-                listener.onNsdStatus("停止广播失败：" + errorCode);
+                listener.onNsdStatus("停止广播失败：" + errorCode + "；请重新打开接收端或切换 Wi-Fi 后重试");
             }
         };
         nsdManager.registerService(info, NsdManager.PROTOCOL_DNS_SD, registration);

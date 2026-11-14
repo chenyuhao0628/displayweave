@@ -254,6 +254,14 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 // Admission errors are diagnostics only: never overwrite the
                 // status of an unrelated authenticated application session.
                 android.util.Log.w("DisplayWeave", "Secure admission rejected: " + diagnostic);
+                if (diagnostic != null && diagnostic.contains("证书")) {
+                    executeTransportEvent(() -> {
+                        if (!connectionCoordinator.isCurrent(
+                                connectionCoordinator.currentGeneration())) {
+                            listener.onStatus(OpenDisplayServer.this, diagnostic);
+                        }
+                    });
+                }
             }
 
             @Override

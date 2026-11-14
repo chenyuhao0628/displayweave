@@ -150,7 +150,7 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
                     }
                 } catch (IOException error) {
                     disconnectAfterFailure(context, "transportWriteFailure",
-                            "发送失败：" + error.getMessage());
+                            "发送失败：" + error.getMessage() + "；请检查局域网或 USB 连接后从 Mac 重新连接");
                 }
             });
         } catch (RejectedExecutionException ignored) {
@@ -264,7 +264,10 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
                     SecureSocketAdmission.Accepted accepted = security.authenticate(raw);
                     adopt(raw, accepted.socket, accepted.input, accepted.output, accepted.peer);
                 } catch (IOException | java.security.GeneralSecurityException | RuntimeException error) {
-                    String diagnostic = error.getClass().getSimpleName() + ": " + error.getMessage();
+                    String causeMessage = extractCertificateExpiryMessage(error);
+                    String diagnostic = causeMessage != null
+                            ? causeMessage
+                            : (error.getClass().getSimpleName() + ": " + error.getMessage());
                     if (running) listener.onAdmissionRejected(diagnostic.substring(0, Math.min(diagnostic.length(), 512)));
                     // A rejected candidate is not an application session. It must
                     // neither replace the active peer nor mutate its UI state.
@@ -443,6 +446,22 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
         if (context != null) {
             closeSocket(context.rawSocket);
         }
+    }
+
+    private static String extractCertificateExpiryMessage(Throwable error) {
+        Throwable cursor = error;
+        int depth = 0;
+        while (cursor != null && depth++ < 8) {
+            if (cursor instanceof java.security.cert.CertificateExpiredException
+                    || cursor instanceof java.security.cert.CertificateNotYetValidException) {
+                String msg = cursor.getMessage();
+                if (msg != null && !msg.isEmpty()) {
+                    return msg;
+                }
+            }
+            cursor = cursor.getCause();
+        }
+        return null;
     }
 
     private static void closeSocket(Socket socket) {

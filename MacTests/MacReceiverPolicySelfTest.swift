@@ -63,6 +63,32 @@ import Foundation
             do { _ = try bad.append(Data(bytes: &value, count: 4)); fatalError("invalid size accepted") }
             catch ReceiverFrameDecoder.Failure.invalidLength { }
         }
+        // C1: macOS 26.1 >=200 cm² (20,000 mm²) virtual display physical size floor & clamping
+        let mobileDefault = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":2400,"pixelsHigh":1080,"scale":2,"device":"Android"}"#.utf8))
+        let landscapeMm = VirtualDisplayPhysicalSizePolicy.millimeters(for: mobileDefault, pointsWide: 1200, pointsHigh: 540)
+        precondition(landscapeMm.width == 208 && landscapeMm.height == 96 && landscapeMm.width * landscapeMm.height >= 19_968,
+                     "default landscape mobile virtual display must be 208x96 mm (~200 cm²)")
+        let portraitMm = VirtualDisplayPhysicalSizePolicy.millimeters(for: mobileDefault, pointsWide: 540, pointsHigh: 1200)
+        precondition(portraitMm.width == 96 && portraitMm.height == 208,
+                     "default portrait mobile virtual display must be 96x208 mm (~200 cm²)")
+        let tinyPhone = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":2556,"pixelsHigh":1179,"scale":3,"device":"iPhone","panel":{"millimetersWide":147,"millimetersHigh":68}}"#.utf8))
+        let scaledPhoneMm = VirtualDisplayPhysicalSizePolicy.millimeters(for: tinyPhone, pointsWide: 852, pointsHigh: 393)
+        precondition(scaledPhoneMm.width * scaledPhoneMm.height >= 20_000,
+                     "small mobile panel mm must scale proportionally above 200 cm²")
+        precondition(abs((scaledPhoneMm.width / scaledPhoneMm.height) - (147.0 / 68.0)) < 0.01,
+                     "proportional scaling must preserve physical aspect ratio")
+        let hugePanel = VirtualDisplayPhysicalSizePolicy.clampedMillimeters(width: 4000, height: 2250)!
+        precondition(hugePanel.width <= 2000 && hugePanel.height <= 2000 && hugePanel.width * hugePanel.height >= 20_000,
+                     "oversized physical dimensions must clamp to <= 2000 mm")
+
+        // H.264 4K fallback clamp
+        let clampedFallback = MacReceiverPolicy.clampedH264Dimensions(width: 5120, height: 2880)
+        precondition(clampedFallback.width == 4096 && clampedFallback.height == 2304,
+                     "runtime HEVC-to-H.264 fallback helper must clamp 5120x2880 to 4096x2304")
+        let clampedPortraitFallback = MacReceiverPolicy.clampedH264Dimensions(width: 2880, height: 5120)
+        precondition(clampedPortraitFallback.width == 2304 && clampedPortraitFallback.height == 4096,
+                     "runtime HEVC-to-H.264 fallback helper must clamp portrait 2880x5120 to 2304x4096")
+
         print("Mac receiver geometry, negotiation and framing passed")
     }
 }

@@ -56,11 +56,16 @@ enum Usbmux {
 
         var errorDescription: String? {
             switch self {
-            case .noDevice: return "未连接 USB 设备"
-            case .refused: return "设备端尚未监听该端口"
-            case .result(let code): return "usbmuxd 返回结果 \(code)"
-            case .protocolError(let detail): return "usbmuxd 协议错误：\(detail)"
-            case .timedOut: return "usbmuxd 握手超时"
+            case .noDevice:
+                return "未连接 USB 设备；请使用支持数据传输的线缆连接 iPhone 或 iPad，解锁屏幕并点击“信任此电脑”"
+            case .refused:
+                return "设备端尚未监听该端口；请在 iPhone 或 iPad 上打开 DisplayWeave 并保持在前台"
+            case .result(let code):
+                return "usbmuxd 返回结果 \(code)；请重新插拔数据线并在设备上确认“信任此电脑”后重试"
+            case .protocolError(let detail):
+                return "usbmuxd 协议错误（\(detail)）；请重新插拔数据线或重启 DisplayWeave 后重试"
+            case .timedOut:
+                return "usbmuxd 握手超时；请检查 USB 数据线连接并确保设备已解锁后重试"
             }
         }
     }

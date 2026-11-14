@@ -86,12 +86,21 @@ struct StreamEncodingPolicySelfTest {
             width: 1920, height: 1080, fps: 120, codec: .hevc, quality: .gaming)
         assertTrue(lowBitrate < gamingBitrate && gamingBitrate < hevc1080p120,
                    "quality mode should tune bitrate without changing codec/fps negotiation")
-        assertTrue(StreamEncodingPolicy.prioritizeEncodingSpeedOverQuality(quality: .high) == false,
-                   "high quality mode disables speed-over-quality to preserve text/UI clarity")
-        assertTrue(StreamEncodingPolicy.prioritizeEncodingSpeedOverQuality(quality: .balanced) == true
-                    && StreamEncodingPolicy.prioritizeEncodingSpeedOverQuality(quality: .gaming) == true
-                    && StreamEncodingPolicy.prioritizeEncodingSpeedOverQuality(quality: .low) == true,
-                   "non-high quality modes keep speed-over-quality enabled")
+        assertTrue(StreamEncodingPolicy.prioritizesEncodingSpeed(quality: .high, fps: 60) == false
+                    && StreamEncodingPolicy.prioritizesEncodingSpeed(quality: .balanced, fps: 60) == false
+                    && StreamEncodingPolicy.prioritizesEncodingSpeed(quality: .low, fps: 60) == false,
+                   "sub-90fps non-smooth modes preserve quality over encoding speed")
+        assertTrue(StreamEncodingPolicy.prioritizesEncodingSpeed(quality: .smooth, fps: 60) == true
+                    && StreamEncodingPolicy.prioritizesEncodingSpeed(quality: .gaming, fps: 30) == true
+                    && StreamEncodingPolicy.prioritizesEncodingSpeed(quality: .high, fps: 90) == true
+                    && StreamEncodingPolicy.prioritizesEncodingSpeed(quality: .balanced, fps: 120) == true,
+                   "smooth/gaming quality or >=90fps enables encoding speed priority")
+        let vbv40Mbps = StreamEncodingPolicy.dataRateLimits(bitrate: 40_000_000, fps: 120)
+        assertEqual(2, vbv40Mbps.count, "VBV DataRateLimits uses [bytes, windowSeconds]")
+        assertEqual(375_000, vbv40Mbps[0].intValue, "40 Mbps 50ms 1.5x VBV burst ceiling is 375 KB")
+        assertTrue(abs(vbv40Mbps[1].doubleValue - 0.05) < 0.0001, "VBV window is 50 ms")
+        let vbvFloor = StreamEncodingPolicy.dataRateLimits(bitrate: 100_000, fps: 30)
+        assertEqual(16_384, vbvFloor[0].intValue, "VBV burst ceiling enforces 16 KiB floor")
 
         assertEqual(12_000_000,
                     StreamEncodingPolicy.bitrateBounds(codec: .hevc, transport: .wifi).lowerBound,

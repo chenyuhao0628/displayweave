@@ -55,7 +55,7 @@ struct SettingsView: View {
 
                 PencilSettingsSection(receiver: receiver)
 
-                if receiver.supportsNativeHighRefreshTrial {
+                if receiver.nativeHighRefreshTrialSupported {
                     Section {
                         Toggle("原生分辨率高刷（实验性）", isOn: $nativeHighRefreshTrial)
                     } header: {

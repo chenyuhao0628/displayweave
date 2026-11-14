@@ -49,6 +49,7 @@ final class PhoneReceiver: ObservableObject {
     @Published private(set) var encrypted = false
     @Published var videoSize = CGSize.zero   // for touch coordinate mapping
     @Published var perf = PerfStats()
+    @Published private(set) var nativeHighRefreshTrialSupported = false
     @Published private(set) var pencilAvailable = false
     @Published private(set) var pencilExtendedAvailable = false
     @Published private(set) var pencilShortcutsAvailable = false
@@ -248,18 +249,37 @@ final class PhoneReceiver: ObservableObject {
     }
 
     func setNativePanel(long: Int, short: Int, scale: Double, maxFps: Int = 60) {
-        displayMaxFps = AppleVideoPolicy.frameRate(maximum: maxFps)
-        nativeLong = long
-        nativeShort = short
-        deviceScale = scale
-        if devicePixelsWide == 0 {   // default landscape until the view reports
-            devicePixelsWide = long
-            devicePixelsHigh = short
+        let resolvedMaxFps = AppleVideoPolicy.frameRate(maximum: maxFps)
+        let supportsTrial = AppleVideoPolicy.nativeHighRefreshEnvelope(
+            width: long, height: short, maxFps: resolvedMaxFps) != nil
+        if Thread.isMainThread {
+            if nativeHighRefreshTrialSupported != supportsTrial {
+                nativeHighRefreshTrialSupported = supportsTrial
+            }
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if self.nativeHighRefreshTrialSupported != supportsTrial {
+                    self.nativeHighRefreshTrialSupported = supportsTrial
+                }
+            }
+        }
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.displayMaxFps = resolvedMaxFps
+            self.nativeLong = long
+            self.nativeShort = short
+            self.deviceScale = scale
+            if self.devicePixelsWide == 0 {   // default landscape until the view reports
+                self.devicePixelsWide = long
+                self.devicePixelsHigh = short
+            }
         }
     }
 
     func setOrientation(portrait: Bool) {
-        queue.async {
+        queue.async { [weak self] in
+            guard let self else { return }
             let w = portrait ? self.nativeShort : self.nativeLong
             let h = portrait ? self.nativeLong : self.nativeShort
             guard w > 0, w != self.devicePixelsWide else { return }
@@ -746,9 +766,9 @@ final class PhoneReceiver: ObservableObject {
         switch inputSendBudget.reserve(expectedGeneration: expectedGeneration) {
         case .unavailable: return
         case .overflow(let generation):
-            queue.async { self.dropInputConnection(generation: generation, status: "输入发送拥堵，请在 Mac 重新连接") }
+            queue.async { [self] in self.dropInputConnection(generation: generation, status: "输入发送拥堵，请在 Mac 重新连接") }
         case .accepted(let ticket):
-            queue.async {
+            queue.async { [self] in
                 guard self.inputSendBudget.generation == ticket.generation,
                       let conn = self.connection, selected == nil || selected === conn else {
                     self.inputSendBudget.complete(ticket); return
@@ -765,8 +785,9 @@ final class PhoneReceiver: ObservableObject {
                 guard !framed.isEmpty else { self.inputSendBudget.complete(ticket); return }
                 conn.send(content: framed, completion: .contentProcessed { [weak self, weak conn] error in
                     guard let self, let conn else { return }
-                    self.queue.async {
-                        guard self.connection === conn, self.inputSendBudget.complete(ticket) else { return }
+                    self.queue.async { [weak self, weak conn] in
+                        guard let self, let conn,
+                              self.connection === conn, self.inputSendBudget.complete(ticket) else { return }
                         if error != nil {
                             self.dropInputConnection(generation: ticket.generation, status: "输入连接已结束，等待 Mac 重新连接")
                         }
@@ -780,8 +801,8 @@ final class PhoneReceiver: ObservableObject {
 
     private func receive(on conn: NWConnection) {
         conn.receive(minimumIncompleteLength: 1, maximumLength: 256 * 1024) {
-            [weak self] data, _, isComplete, error in
-            guard let self, self.running, self.connection === conn else { return }
+            [weak self, weak conn] data, _, isComplete, error in
+            guard let self, let conn, self.running, self.connection === conn else { return }
             if let data, !data.isEmpty {
                 let receivedAtUptime = ProcessInfo.processInfo.systemUptime
                 self.lastDataReceived = Date()

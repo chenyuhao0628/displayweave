@@ -207,13 +207,13 @@ struct SenderSettingsView: View {
             anchor: "Privacy_Accessibility",
             request: { permissions.requestAccessibility() }
         )
-        // macOS offers no API to query Local Network access, so
-        // infer from discovery results and let the user check.
+        // macOS offers no preflight API to query Local Network access, so
+        // combine NWBrowser PolicyDenied diagnostics with discovery results.
         permissionRow(
             "本地网络",
-            granted: !controller.discovered.isEmpty,
-            uncertain: controller.discovered.isEmpty,
-            help: "局域网模式（Wi-Fi/以太网）需要此权限。如果设备列表为空，请在两端的“隐私与安全性”→“本地网络”中允许 DisplayWeave，并保持设备端 app 打开。",
+            granted: !controller.localNetworkDenied && !controller.discovered.isEmpty,
+            uncertain: !controller.localNetworkDenied && controller.discovered.isEmpty,
+            help: controller.discoveryStatus ?? "局域网模式（Wi-Fi/以太网）需要此权限。如果设备列表为空，请在两端的“隐私与安全性”→“本地网络”中允许 DisplayWeave，并保持设备端 app 打开。",
             anchor: "Privacy_LocalNetwork"
         )
     }

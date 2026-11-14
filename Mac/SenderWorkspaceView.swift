@@ -23,6 +23,21 @@ struct SenderWorkspaceView: View {
                     ConnectionModeControl()
                 }
                 WorkspaceSection(title: "设备", symbol: "display.2", detail: "\(controller.deviceEntries.count) 台设备") {
+                    if let discoveryStatus = controller.discoveryStatus {
+                        Label(discoveryStatus, systemImage: controller.localNetworkDenied ? "wifi.exclamationmark" : "exclamationmark.triangle")
+                            .font(.callout).fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 8) {
+                            if controller.localNetworkDenied {
+                                Button("打开本地网络设置…") { PermissionMonitor.openPrivacyPane("Privacy_LocalNetwork") }
+                            }
+                            Button("重试发现") { controller.retryDiscovery() }
+                        }
+                    }
+                    if let wifiAdvisory = controller.wifiAdvisoryStatus {
+                        Label(wifiAdvisory, systemImage: "info.circle")
+                            .font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     if let status = controller.securityStatus {
                         Label(status, systemImage: "lock.trianglebadge.exclamationmark")
                             .font(.callout).fixedSize(horizontal: false, vertical: true)
