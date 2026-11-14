@@ -49,7 +49,10 @@ public final class ProtocolSelfTest {
         testTouchGestureCoordinatorCancelsPendingTapForScroll();
         testControlMessageWriterDoesNotWriteOnCallerThread();
         testUdpMediaHeaderAndKeyDerivation();
+        testUdpSharedGoldenVectors();
         testUdpMediaFecReassemblyAndJitterBuffer();
+        testUdpMediaMultiBlockParityBeforeDataAndRollover();
+        testUdpMediaJitterGapDropsPFramesAndArrivalEstimator();
         testUdpMediaReceiverSessionLoopback();
         System.out.println("ProtocolSelfTest PASS");
     }
@@ -741,6 +744,37 @@ public final class ProtocolSelfTest {
                 pkt65536, pkt65536.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER).extendedSequence);
     }
 
+    private static void testUdpSharedGoldenVectors() throws Exception {
+        byte[] rootSecret = fromHex("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
+        UdpMediaProtocol.KeyMaterial km = UdpMediaProtocol.KeyMaterial.derive(rootSecret, 1L);
+        assertTrue(java.util.Arrays.equals(
+                fromHex("4f8faae469fe3bcb0d6dbbd28f85d016"), km.senderToReceiverKey));
+        assertTrue(java.util.Arrays.equals(
+                fromHex("18a311a1c1be2e1e8a3e4ecf"), km.senderToReceiverSalt));
+        assertTrue(java.util.Arrays.equals(
+                fromHex("92c66fff72ff4efe5dd1f1785f9cd2cb"), km.receiverToSenderKey));
+        assertTrue(java.util.Arrays.equals(
+                fromHex("b599336c4b890afc9f36192a"), km.receiverToSenderSalt));
+        assertTrue(java.util.Arrays.equals(
+                fromHex("18a311a1c1be2e1e8a3e4ece"),
+                km.nonce(UdpMediaProtocol.DIR_SENDER_TO_RECEIVER, 1L)));
+        assertTrue(java.util.Arrays.equals(
+                fromHex("b599336ccb890afc9f36192b"),
+                km.nonce(UdpMediaProtocol.DIR_RECEIVER_TO_SENDER, 1L)));
+
+        byte[] hdrVideo = fromHex("4301002a0001e2400000000700000001");
+        assertTrue(java.util.Arrays.equals(
+                hdrVideo, UdpMediaProtocol.Header.decode(hdrVideo, hdrVideo.length).encode()));
+    }
+
+    private static byte[] fromHex(String hex) {
+        byte[] out = new byte[hex.length() / 2];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+        }
+        return out;
+    }
+
     private static void testUdpMediaFecReassemblyAndJitterBuffer() throws Exception {
         byte[] secret = UdpMediaProtocol.KeyMaterial.generateRootSecret();
         UdpMediaProtocol.KeyMaterial km = UdpMediaProtocol.KeyMaterial.derive(secret, 9L);
@@ -879,6 +913,241 @@ public final class ProtocolSelfTest {
                 assertTrue(java.util.Arrays.equals(annexB, delivered.annexB));
             }
         }
+    }
+
+    private static void testUdpMediaMultiBlockParityBeforeDataAndRollover() throws Exception {
+        byte[] secret = UdpMediaProtocol.KeyMaterial.generateRootSecret();
+        UdpMediaProtocol.KeyMaterial km = UdpMediaProtocol.KeyMaterial.derive(secret, 15L);
+        UdpMediaProtocol.CryptoSession sender = new UdpMediaProtocol.CryptoSession(km);
+        UdpMediaProtocol.CryptoSession receiver = new UdpMediaProtocol.CryptoSession(km);
+        UdpMediaProtocol.Reassembler reassembler = new UdpMediaProtocol.Reassembler();
+
+        // Build a 70-shard frame (block 0: 64 shards, block 1: 6 shards).
+        byte[] annexB = new byte[55_500];
+        annexB[0] = 0;
+        annexB[1] = 0;
+        annexB[2] = 0;
+        annexB[3] = 1;
+        annexB[4] = 0x65;
+        for (int i = 5; i < annexB.length; i++) {
+            annexB[i] = (byte) ((i * 37 + 11) & 0xFF);
+        }
+        List<byte[]> shards = UdpMediaProtocol.makeDataFragments(annexB, 3_333L, 7L, 800);
+        assertEquals(70, shards.size());
+
+        // Block 0 XOR parity across shards 0..63 (blockDataCount = 64 != totalCount = 70).
+        int stride0 = shards.get(0).length;
+        byte[] parity0 = new byte[stride0];
+        for (int col = 0; col < 64; col++) {
+            UdpMediaProtocol.GF256.addScaled(parity0, shards.get(col), 1);
+        }
+        UdpMediaProtocol.ParityDescriptor desc0 =
+                new UdpMediaProtocol.ParityDescriptor(0, 64, 0, 1, shards.get(63).length);
+
+        // Block 1 XOR parity across shards 64..69 (blockDataCount = 6).
+        int stride1 = shards.get(64).length;
+        byte[] parity1 = new byte[stride1];
+        for (int col = 0; col < 6; col++) {
+            UdpMediaProtocol.GF256.addScaled(parity1, shards.get(64 + col), 1);
+        }
+        UdpMediaProtocol.ParityDescriptor desc1 =
+                new UdpMediaProtocol.ParityDescriptor(1, 6, 0, 1, shards.get(69).length);
+
+        long t0 = 5_000_000_000L;
+        // U6 critical check: deliver BOTH parity packets BEFORE any PACKET_VIDEO_DATA arrives!
+        byte[] dgP0 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_PARITY,
+                UdpMediaProtocol.FLAG_KEYFRAME,
+                100_000L, 10L, desc0.encodedFragIndex(), desc0.encodedFragCount(), parity0);
+        byte[] dgP1 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_PARITY,
+                UdpMediaProtocol.FLAG_KEYFRAME,
+                100_000L, 10L, desc1.encodedFragIndex(), desc1.encodedFragCount(), parity1);
+        assertEquals(null, reassembler.ingest(
+                receiver.open(dgP0, dgP0.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER), t0));
+        assertEquals(null, reassembler.ingest(
+                receiver.open(dgP1, dgP1.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER), t0 + 1_000L));
+
+        // Drop shard 5 (in block 0) and shard 67 (in block 1); deliver the remaining 68 data shards.
+        UdpMediaProtocol.FrameEnvelope completed = null;
+        for (int i = 0; i < shards.size(); i++) {
+            if (i == 5 || i == 67) {
+                continue;
+            }
+            int flags = UdpMediaProtocol.FLAG_KEYFRAME
+                    | (i == shards.size() - 1 ? UdpMediaProtocol.FLAG_END_OF_FRAME : 0);
+            byte[] dg = sender.seal(
+                    UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                    UdpMediaProtocol.PACKET_VIDEO_DATA,
+                    flags,
+                    100_000L, 10L, i, shards.size(), shards.get(i));
+            UdpMediaProtocol.FrameEnvelope env = reassembler.ingest(
+                    receiver.open(dg, dg.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER),
+                    t0 + 2_000L + i * 100L);
+            if (env != null) {
+                // Must NOT complete early at shard 63 due to blockDataCount=64 poisoning!
+                assertEquals(shards.size() - 1, i);
+                completed = env;
+            }
+        }
+        assertTrue(completed != null);
+        assertTrue(completed.recoveredByFec);
+        assertEquals(3_333L, completed.captureTimestampMs);
+        assertEquals(7L, completed.configVersion);
+        assertTrue(java.util.Arrays.equals(annexB, completed.annexB));
+
+        // Conflicting totalCount must evict the poisoned frameId entry and flag keyframe request.
+        byte[] conflict0 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_DATA,
+                0, 110_000L, 11L, 0, 4, shards.get(0));
+        byte[] conflict1 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_DATA,
+                0, 110_000L, 11L, 1, 5, shards.get(1));
+        assertEquals(null, reassembler.ingest(
+                receiver.open(conflict0, conflict0.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER),
+                t0 + 50_000L));
+        assertEquals(null, reassembler.ingest(
+                receiver.open(conflict1, conflict1.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER),
+                t0 + 51_000L));
+        assertTrue(reassembler.consumeKeyframeRequestFlag());
+
+        // After eviction, clean shards for the same frameId=11 (2-shard frame) can reassemble cleanly!
+        byte[] cleanFrame = new byte[700];
+        cleanFrame[0] = 0;
+        cleanFrame[1] = 0;
+        cleanFrame[2] = 0;
+        cleanFrame[3] = 1;
+        cleanFrame[4] = 0x65;
+        for (int i = 5; i < cleanFrame.length; i++) {
+            cleanFrame[i] = (byte) (i & 0xFF);
+        }
+        List<byte[]> cleanShards = UdpMediaProtocol.makeDataFragments(cleanFrame, 4_000L, 7L, 400);
+        assertEquals(2, cleanShards.size());
+        byte[] c0 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_DATA,
+                UdpMediaProtocol.FLAG_KEYFRAME,
+                112_000L, 11L, 0, 2, cleanShards.get(0));
+        byte[] c1 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_DATA,
+                UdpMediaProtocol.FLAG_KEYFRAME | UdpMediaProtocol.FLAG_END_OF_FRAME,
+                112_000L, 11L, 1, 2, cleanShards.get(1));
+        assertEquals(null, reassembler.ingest(
+                receiver.open(c0, c0.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER), t0 + 60_000L));
+        UdpMediaProtocol.FrameEnvelope recoveredClean = reassembler.ingest(
+                receiver.open(c1, c1.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER), t0 + 61_000L);
+        assertTrue(recoveredClean != null);
+        assertTrue(java.util.Arrays.equals(cleanFrame, recoveredClean.annexB));
+
+        // 32-bit wrap-safe frameId ordering across 0xFFFFFFFE -> 0xFFFFFFFF -> 0 -> 1.
+        assertTrue(UdpMediaProtocol.compareFrameId(0L, 0xFFFF_FFFFL) > 0);
+        assertTrue(UdpMediaProtocol.compareFrameId(1L, 0xFFFF_FFFEL) > 0);
+        assertTrue(UdpMediaProtocol.compareFrameId(0xFFFF_FFFEL, 0L) < 0);
+
+        UdpMediaProtocol.JitterBuffer rolloverJitter = new UdpMediaProtocol.JitterBuffer();
+        long[] rolloverIds = new long[] {0xFFFF_FFFEL, 0xFFFF_FFFFL, 0L, 1L};
+        for (int idx = 0; idx < rolloverIds.length; idx++) {
+            UdpMediaProtocol.FrameEnvelope env = new UdpMediaProtocol.FrameEnvelope(
+                    rolloverIds[idx],
+                    idx == 0,
+                    1_000L + idx,
+                    10_000L + idx,
+                    1L,
+                    cleanFrame,
+                    t0 + idx * 1_000_000L,
+                    false);
+            UdpMediaProtocol.JitterBuffer.PollResult res =
+                    rolloverJitter.insert(env, t0 + idx * 1_000_000L);
+            assertEquals(1, res.deliverable.size());
+            assertEquals(rolloverIds[idx], res.deliverable.get(0).frameId);
+            assertFalse(res.needsKeyframe);
+        }
+    }
+
+    private static void testUdpMediaJitterGapDropsPFramesAndArrivalEstimator() {
+        UdpMediaProtocol.JitterBuffer jb = new UdpMediaProtocol.JitterBuffer();
+        byte[] dummy = new byte[] {0, 0, 0, 1, 0x41, 1};
+        long t0 = 10_000_000_000L;
+
+        // 1. Frame 1 (IDR) decodes immediately.
+        UdpMediaProtocol.JitterBuffer.PollResult r1 = jb.insert(
+                new UdpMediaProtocol.FrameEnvelope(1L, true, 100L, 1000L, 1L, dummy, t0, false),
+                t0);
+        assertEquals(1, r1.deliverable.size());
+        assertEquals(1L, r1.deliverable.get(0).frameId);
+        assertFalse(r1.needsKeyframe);
+
+        // 2. Frame 2 is lost; Frame 3 (P-frame) arrives at t0 + 5ms -> held waiting for Frame 2.
+        long t3 = t0 + 5_000_000L;
+        UdpMediaProtocol.JitterBuffer.PollResult r3 = jb.insert(
+                new UdpMediaProtocol.FrameEnvelope(3L, false, 116L, 2000L, 1L, dummy, t3, false),
+                t3);
+        assertEquals(0, r3.deliverable.size());
+        assertFalse(r3.needsKeyframe);
+
+        // 3. Hold deadline (35ms) expires at t3 + 36ms: MUST NOT deliver unreferenced P-frame 3!
+        UdpMediaProtocol.JitterBuffer.PollResult expired =
+                jb.pollDeliverable(t3 + UdpMediaProtocol.JitterBuffer.FRAME_HOLD_DEADLINE_NS + 1_000_000L);
+        assertEquals(0, expired.deliverable.size());
+        assertTrue(expired.needsKeyframe);
+
+        // 4. Subsequent P-frame 4 while chain is broken is immediately rejected & requests keyframe.
+        long t4 = t3 + 40_000_000L;
+        UdpMediaProtocol.JitterBuffer.PollResult r4 = jb.insert(
+                new UdpMediaProtocol.FrameEnvelope(4L, false, 133L, 3000L, 1L, dummy, t4, false),
+                t4);
+        assertEquals(0, r4.deliverable.size());
+        assertTrue(r4.needsKeyframe);
+
+        // 5. Keyframe 5 arrives -> heals broken reference chain and delivers across the gap!
+        long t5 = t3 + 50_000_000L;
+        UdpMediaProtocol.JitterBuffer.PollResult r5 = jb.insert(
+                new UdpMediaProtocol.FrameEnvelope(5L, true, 150L, 4000L, 1L, dummy, t5, false),
+                t5);
+        assertEquals(1, r5.deliverable.size());
+        assertEquals(5L, r5.deliverable.get(0).frameId);
+        assertFalse(r5.needsKeyframe);
+
+        // 6. Contiguous P-frame 6 now delivers normally.
+        long t6 = t5 + 8_000_000L;
+        UdpMediaProtocol.JitterBuffer.PollResult r6 = jb.insert(
+                new UdpMediaProtocol.FrameEnvelope(6L, false, 166L, 5000L, 1L, dummy, t6, false),
+                t6);
+        assertEquals(1, r6.deliverable.size());
+        assertEquals(6L, r6.deliverable.get(0).frameId);
+        assertFalse(r6.needsKeyframe);
+
+        // 7. ArrivalEstimator: ignore out-of-order burst packets & reset hasCurrentBurst on pollFeedbackIfDue.
+        UdpMediaProtocol.ArrivalEstimator est = new UdpMediaProtocol.ArrivalEstimator();
+        // Burst 1: send=10_000us, arrival=10_000_000ns (10_000us)
+        est.recordPacket(1L, 10_000L, 10_000_000L);
+        // Burst 2: send=20_000us (+10ms), arrival=22_000_000ns (22_000us, +12ms -> +2000us queueing)
+        est.recordPacket(3L, 20_000L, 22_000_000L);
+        // Out-of-order packet 2 from Burst 1 (send=10_500us < 20_000us) arrives late at 23ms:
+        // Must still count toward receivedInWindow (so lostCount == 0), without corrupting currentBurst!
+        est.recordPacket(2L, 10_500L, 23_000_000L);
+
+        UdpMediaProtocol.FeedbackPayload fb1 = est.pollFeedbackIfDue(45_000_000L, 2, 120);
+        assertTrue(fb1 != null);
+        assertEquals(3L, fb1.highestSeq);
+        assertEquals(3L, fb1.receivedCount);
+        assertEquals(0L, fb1.lostCount);
+        // rawGrad = (22_000 - 10_000) - (20_000 - 10_000) = +2000us; EWMA = round(0.30 * 2000) = 600us.
+        assertEquals(600, fb1.arrivalGradientUs);
+
+        // Next burst after pollFeedbackIfDue: because hasCurrentBurst was reset to false,
+        // packet 4 starts a clean burst at send=30_000us, arrival=32_000_000ns (32_000us, 0us extra gradient)
+        // instead of computing dSend=0, dArr=0!
+        est.recordPacket(4L, 30_000L, 32_000_000L);
+        UdpMediaProtocol.FeedbackPayload fb2 = est.pollFeedbackIfDue(80_000_000L, 1, 120);
+        assertTrue(fb2 != null);
+        // dSend = 30_000 - 20_000 = 10_000us, dArr = 32_000 - 22_000 = 10_000us -> rawGrad = 0 -> EWMA = round(0.7 * 600) = 420.
+        assertEquals(420, fb2.arrivalGradientUs);
     }
 
     private static final class BitWriter {

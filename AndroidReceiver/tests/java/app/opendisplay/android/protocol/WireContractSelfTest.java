@@ -58,6 +58,23 @@ final class WireContractSelfTest {
             catch (BinaryFrameHeaderV2.ParseException expected) { }
         }
         equal(AnnexB.stripTelemetryPrefix(hex(vectors, "legacyPayload")), hex(vectors, "annexB"));
+
+        if (vectors.getProperty("udpHeaderVideoData") != null) {
+            byte[] rawHeader = hex(vectors, "udpHeaderVideoData");
+            UdpMediaProtocol.Header decoded = UdpMediaProtocol.Header.decode(rawHeader, rawHeader.length);
+            equal(decoded.encode(), rawHeader);
+        }
+        if (vectors.getProperty("udpRootSecret") != null && vectors.getProperty("udpS2RKeyEpoch1") != null) {
+            UdpMediaProtocol.KeyMaterial km = UdpMediaProtocol.KeyMaterial.derive(
+                    hex(vectors, "udpRootSecret"), 1L);
+            equal(km.senderToReceiverKey, hex(vectors, "udpS2RKeyEpoch1"));
+            equal(km.senderToReceiverSalt, hex(vectors, "udpS2RSaltEpoch1"));
+            equal(km.receiverToSenderKey, hex(vectors, "udpR2SKeyEpoch1"));
+            equal(km.receiverToSenderSalt, hex(vectors, "udpR2SSaltEpoch1"));
+            equal(km.nonce(UdpMediaProtocol.DIR_SENDER_TO_RECEIVER, 1L), hex(vectors, "udpS2RNonceSeq1"));
+            equal(km.nonce(UdpMediaProtocol.DIR_RECEIVER_TO_SENDER, 1L), hex(vectors, "udpR2SNonceSeq1"));
+        }
+
         System.out.println("Shared wire fixtures: Java framing/fragmentation/EOF, DWV2 and legacy Annex-B PASS");
     }
     private static byte[] hex(Properties fixtures, String key) {

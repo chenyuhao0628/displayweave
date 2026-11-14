@@ -65,6 +65,41 @@ struct UDPMediaFECSelfTest {
         expect(recovered?[9] == dataShards[9] && recovered?[9]?.count == 437,
                "Cauchy RS recovers final variable-length 437B shard without padding")
 
+        // 4. U5 safety: addScaled clamps to min(destination.count, source.count) and recoverBlockDataShards rejects short/malformed parity
+        var shortDest: [UInt8] = [0x11, 0x22, 0x33]
+        let longerSource = Data([0x01, 0x02, 0x03, 0x04, 0x05, 0x06])
+        UDPMediaGF256.addScaled(destination: &shortDest, source: longerSource, coeff: 1)
+        expect(shortDest == [0x11 ^ 0x01, 0x22 ^ 0x02, 0x33 ^ 0x03],
+               "UDPMediaGF256.addScaled clamps safely when source is longer than destination")
+
+        let truncatedParity: [Int: Data] = [
+            0: parityShards[0].payload.prefix(120), // shorter than 1200B stride!
+            1: parityShards[1].payload.prefix(120),
+        ]
+        let rejectedShortParity = UDPMediaFECEncoder.recoverBlockDataShards(
+            blockDataCount: 10,
+            lastDataShardLength: 437,
+            shardStrideLength: 1200,
+            presentDataShards: presentData,
+            presentParityShards: truncatedParity
+        )
+        expect(rejectedShortParity == nil,
+               "recoverBlockDataShards must safely reject truncated .videoParity shards without out-of-bounds crash")
+
+        var corruptedFinalLenData = presentData
+        corruptedFinalLenData[9] = Data(repeating: 0xAA, count: 300) // != lastDataShardLength 437
+        var singleLossData = corruptedFinalLenData
+        singleLossData.removeValue(forKey: 1)
+        let rejectedBadFinalLen = UDPMediaFECEncoder.recoverBlockDataShards(
+            blockDataCount: 10,
+            lastDataShardLength: 437,
+            shardStrideLength: 1200,
+            presentDataShards: singleLossData,
+            presentParityShards: [0: parityShards[0].payload]
+        )
+        expect(rejectedBadFinalLen == nil,
+               "recoverBlockDataShards must reject mismatched final data shard length")
+
         print("UDPMediaFECSelfTest PASS")
     }
 }

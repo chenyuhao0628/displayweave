@@ -162,6 +162,7 @@ struct StreamConfigMessage {
     var bitrate: Int
     var transport: String
     var identity: StreamProtocolFrameIdentity? = nil
+    var udpConfigVersion: Int64? = nil
     var maxFrameBytes: Int? = nil
     var exactFrameRate = false
 
@@ -180,7 +181,12 @@ struct StreamConfigMessage {
             + "\"bitrate\":\(max(bitrate, 0)),"
             + "\"profile\":\"\(profile)\","
             + "\"transport\":\"\(escaped(transport))\""
-        guard let identity else { return legacy + "}" }
+        guard let identity else {
+            if let udpConfigVersion, udpConfigVersion > 0 {
+                return legacy + ",\"configVersion\":\(udpConfigVersion)}"
+            }
+            return legacy + "}"
+        }
         var negotiated = legacy
             + ",\"protocolVersion\":2"
             + ",\"sessionEpoch\":\(identity.sessionEpoch)"

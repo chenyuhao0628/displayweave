@@ -46,6 +46,7 @@ struct AdaptiveBitrateDecision: Equatable {
 final class AdaptiveBitrateController {
     private let bounds: ClosedRange<Int>
     private let decreaseHoldSeconds: TimeInterval
+    private let fastDropHoldSeconds: TimeInterval
     private let stableIncreaseSeconds: TimeInterval
     private let increaseCooldownSeconds: TimeInterval
     private let localRecovery: Bool
@@ -66,16 +67,24 @@ final class AdaptiveBitrateController {
 
     init(initialBitrate: Int, bounds: ClosedRange<Int>,
          decreaseHoldSeconds: TimeInterval = 1,
+         fastDropHoldSeconds: TimeInterval = 0.25,
          stableIncreaseSeconds: TimeInterval = 5,
          increaseCooldownSeconds: TimeInterval = 3,
          localRecovery: Bool = false) {
         self.bounds = bounds
         self.decreaseHoldSeconds = decreaseHoldSeconds
+        self.fastDropHoldSeconds = fastDropHoldSeconds
         self.stableIncreaseSeconds = stableIncreaseSeconds
         self.increaseCooldownSeconds = increaseCooldownSeconds
         self.localRecovery = localRecovery
         self.localRecoveryCeiling = Self.clamp(initialBitrate, to: bounds)
         currentBitrate = Self.clamp(initialBitrate, to: bounds)
+    }
+
+    func syncCurrentBitrate(_ bitrate: Int) {
+        currentBitrate = Self.clamp(bitrate, to: bounds)
+        resetTemporalBaseline(keepLastChange: true)
+        resetLocalBaseline()
     }
 
     func evaluate(_ metrics: AdaptiveBitrateMetrics,
@@ -112,9 +121,12 @@ final class AdaptiveBitrateController {
             consecutiveAndroidCongestionWindows = 0
         }
 
+        let receiverHold = isSevereReceiverSpike(metrics)
+            ? min(decreaseHoldSeconds, fastDropHoldSeconds)
+            : decreaseHoldSeconds
         if let reason = congestionReason(metrics),
            metrics.timestamp - (lastDecreaseAt ?? -Double.greatestFiniteMagnitude)
-                >= decreaseHoldSeconds {
+                >= receiverHold {
             let previous = currentBitrate
             let decreased = Self.clamp(
                 Int((Double(previous) * 0.80).rounded()), to: bounds)
@@ -198,9 +210,15 @@ final class AdaptiveBitrateController {
 
         if !congested, let recovery = recoverLocally(metrics) { return recovery }
 
-        guard consecutiveLocalCongestionSamples >= 2,
+        let severeLocal = isSevereLocalSpike(metrics)
+        let requiredSamples = (metrics.pendingSends > metrics.queueBudget
+            && metrics.oldestPendingSendAgeMs >= 50) ? 1 : 2
+        let localHold = severeLocal
+            ? min(decreaseHoldSeconds, fastDropHoldSeconds)
+            : decreaseHoldSeconds
+        guard consecutiveLocalCongestionSamples >= requiredSamples,
               metrics.timestamp - (lastDecreaseAt ?? -Double.greatestFiniteMagnitude)
-                >= decreaseHoldSeconds else {
+                >= localHold else {
             return nil
         }
         let previous = currentBitrate
@@ -272,6 +290,19 @@ final class AdaptiveBitrateController {
             }
         }
         return nil
+    }
+
+    private func isSevereReceiverSpike(_ metrics: AdaptiveBitrateMetrics) -> Bool {
+        metrics.pendingSends >= 4
+            || metrics.androidQueueDepth >= 4
+            || metrics.androidCongestionDrops >= 3
+            || (metrics.transport == .wifi && metrics.encodedFps > 0
+                && metrics.sentFps / metrics.encodedFps < 0.60)
+    }
+
+    private func isSevereLocalSpike(_ metrics: LocalCongestionMetrics) -> Bool {
+        metrics.pendingSends > metrics.queueBudget
+            || (metrics.pendingSends >= metrics.queueBudget && metrics.oldestPendingSendAgeMs >= 50)
     }
 
     private func isNormal(_ metrics: AdaptiveBitrateMetrics) -> Bool {

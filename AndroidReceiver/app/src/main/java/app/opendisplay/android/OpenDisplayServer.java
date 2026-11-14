@@ -763,10 +763,16 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 UdpMediaProtocol.ConfigMessage udpCfg = UdpMediaProtocol.ConfigMessage.parseJson(json);
                 if (udpCfg != null
                         && "wifi".equalsIgnoreCase(transport.name())
-                        && protocolSession.sessionEpoch() == udpCfg.sessionEpoch) {
+                        && protocolSession.acceptUdpMediaEpoch(generation, udpCfg.sessionEpoch)) {
+                    synchronized (this) {
+                        if (!running || !connectionCoordinator.isCurrent(generation)) {
+                            return;
+                        }
+                    }
                     stopUdpMediaSession();
+                    UdpMediaReceiverSession session = null;
                     try {
-                        UdpMediaReceiverSession session = UdpMediaReceiverSession.start(
+                        session = UdpMediaReceiverSession.start(
                                 generation,
                                 udpCfg,
                                 lastConnectedPeerHost,
@@ -791,10 +797,30 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                                         });
                                     }
                                 });
-                        udpMediaReceiverSession = session;
-                        sendJson(UdpMediaProtocol.ConfigMessage.readyJson(
-                                udpCfg.sessionEpoch, session.localPort()));
+                        UdpMediaReceiverSession displacedSession;
+                        boolean adopted;
+                        synchronized (this) {
+                            adopted = running
+                                    && connectionCoordinator.isCurrent(generation)
+                                    && protocolSession.sessionEpoch() == udpCfg.sessionEpoch;
+                            if (adopted) {
+                                displacedSession = udpMediaReceiverSession;
+                                udpMediaReceiverSession = session;
+                            } else {
+                                displacedSession = session;
+                            }
+                        }
+                        if (displacedSession != null) {
+                            displacedSession.close();
+                        }
+                        if (adopted) {
+                            sendJson(UdpMediaProtocol.ConfigMessage.readyJson(
+                                    udpCfg.sessionEpoch, session.localPort()));
+                        }
                     } catch (java.io.IOException error) {
+                        if (session != null) {
+                            session.close();
+                        }
                         android.util.Log.w("DisplayWeave", "UDP media receiver start failed", error);
                     }
                 }
@@ -847,11 +873,14 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     }
 
     private void stopUdpMediaSession() {
-        UdpMediaReceiverSession active = udpMediaReceiverSession;
-        udpMediaReceiverSession = null;
-        udpFrameSequenceOffset = 0;
-        if (active != null) {
-            active.close();
+        UdpMediaReceiverSession activeSession;
+        synchronized (this) {
+            activeSession = udpMediaReceiverSession;
+            udpMediaReceiverSession = null;
+            udpFrameSequenceOffset = 0;
+        }
+        if (activeSession != null) {
+            activeSession.close();
         }
     }
 
@@ -880,7 +909,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 ? envelope.configVersion
                 : Math.max(1L, protocolSession.configVersion());
         long capMs = Math.max(0L, envelope.captureTimestampMs);
-        long sndMs = Math.max(capMs, System.currentTimeMillis());
+        long sndMs = capMs;
         try {
             byte[] dwv2 = BinaryFrameHeaderV2.encode(
                     flags,

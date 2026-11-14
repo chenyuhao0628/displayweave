@@ -24,7 +24,7 @@ final class ReceiverProtocolSession {
             return false;
         }
         boolean requestedV2 = protocolVersion >= 2;
-        if (configured && negotiatedV2 && !requestedV2) {
+        if ((configured && negotiatedV2 || (!configured && this.sessionEpoch > 0)) && !requestedV2) {
             return false;
         }
         if (requestedV2 && (sessionEpoch <= 0 || configVersion <= 0)) {
@@ -35,12 +35,41 @@ final class ReceiverProtocolSession {
                     || (sessionEpoch == this.sessionEpoch && configVersion <= this.configVersion)) {
                 return false;
             }
+        } else if (requestedV2 && this.sessionEpoch > 0 && sessionEpoch < this.sessionEpoch) {
+            return false;
         }
         negotiatedV2 = requestedV2;
         this.sessionEpoch = requestedV2 ? sessionEpoch : 0;
         this.configVersion = requestedV2 ? configVersion : 0;
         lastFrameSequence = 0;
         configured = true;
+        return true;
+    }
+
+    /**
+     * Accepts or pre-binds a {@code udpMediaConfig} {@code sessionEpoch} whether it arrives
+     * just before or just after the initial {@code streamConfig}, while rejecting stale epochs.
+     */
+    synchronized boolean acceptUdpMediaEpoch(long generation, long udpSessionEpoch) {
+        if (generation <= 0 || generation != this.generation || udpSessionEpoch <= 0) {
+            return false;
+        }
+        if (configured && !negotiatedV2) {
+            return false;
+        }
+        if (this.sessionEpoch == 0) {
+            this.sessionEpoch = udpSessionEpoch;
+            return true;
+        }
+        if (udpSessionEpoch < this.sessionEpoch) {
+            return false;
+        }
+        if (udpSessionEpoch > this.sessionEpoch) {
+            this.sessionEpoch = udpSessionEpoch;
+            this.configVersion = 0;
+            this.lastFrameSequence = 0;
+            this.configured = false;
+        }
         return true;
     }
 

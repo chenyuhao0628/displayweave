@@ -11,10 +11,10 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.crypto.Cipher;
@@ -888,6 +888,16 @@ public final class UdpMediaProtocol {
         return shards;
     }
 
+    /** Wrap-safe 32-bit unsigned {@code frameId} comparator matching RFC 1982 serial arithmetic. */
+    public static int compareFrameId(long a, long b) {
+        long ua = a & 0xFFFF_FFFFL;
+        long ub = b & 0xFFFF_FFFFL;
+        if (ua == ub) {
+            return 0;
+        }
+        return ((int) (ua - ub)) > 0 ? 1 : -1;
+    }
+
     /** Bounded 4-frame reassembler with immediate data-complete submission and FEC recovery. */
     public static final class Reassembler {
         public static final int MAX_CONCURRENT_FRAMES = 4;
@@ -913,7 +923,7 @@ public final class UdpMediaProtocol {
             boolean recoveredByFec;
 
             FrameAssembly(long frameId, boolean isKeyframe, long sendTimestampUs, long nowMonoNs) {
-                this.frameId = frameId;
+                this.frameId = frameId & 0xFFFF_FFFFL;
                 this.isKeyframe = isKeyframe;
                 this.sendTimestampUs = sendTimestampUs;
                 this.firstArrivalMonoNs = nowMonoNs;
@@ -921,7 +931,7 @@ public final class UdpMediaProtocol {
             }
         }
 
-        private final Map<Long, FrameAssembly> frames = new TreeMap<>();
+        private final Map<Long, FrameAssembly> frames = new LinkedHashMap<>();
         private Long lastCompletedFrameId = null;
         private boolean needsKeyframeRequest = false;
 
@@ -937,13 +947,15 @@ public final class UdpMediaProtocol {
             if (header.packetType != PACKET_VIDEO_DATA && header.packetType != PACKET_VIDEO_PARITY) {
                 return null;
             }
-            long frameId = header.frameId;
+            long frameId = header.frameId & 0xFFFF_FFFFL;
             if (lastCompletedFrameId != null && !isNewerFrame(frameId, lastCompletedFrameId)) {
                 return null;
             }
             if (!frames.containsKey(frameId) && frames.size() >= MAX_CONCURRENT_FRAMES) {
-                Long oldestId = frames.keySet().iterator().next();
-                frames.remove(oldestId);
+                Long oldestId = findOldestFrameId(frames.keySet());
+                if (oldestId != null) {
+                    frames.remove(oldestId);
+                }
                 needsKeyframeRequest = true;
             }
 
@@ -969,6 +981,8 @@ public final class UdpMediaProtocol {
                 if (assembly.expectedDataCount == 0) {
                     assembly.expectedDataCount = totalCount;
                 } else if (assembly.expectedDataCount != totalCount) {
+                    frames.remove(frameId);
+                    needsKeyframeRequest = true;
                     return null;
                 }
                 assembly.dataShards.put(fragIdx, packet.payload);
@@ -991,27 +1005,36 @@ public final class UdpMediaProtocol {
                         .put(descriptor.parityIndexInBlock, packet.payload);
                 assembly.standardShardLength =
                         Math.max(assembly.standardShardLength, packet.payload.length);
-                if (assembly.expectedDataCount == 0 && descriptor.blockIndex == 0) {
-                    assembly.expectedDataCount = descriptor.blockDataCount;
-                }
+                // NEVER set assembly.expectedDataCount from PACKET_VIDEO_PARITY: multi-block
+                // (>64 shard) frames carry blockDataCount=64 on block 0, not totalCount.
             }
 
             tryRecoverBlocksWithFec(assembly);
 
-            if (assembly.expectedDataCount > 0
-                    && assembly.dataShards.size() == assembly.expectedDataCount) {
-                frames.remove(frameId);
-                FrameEnvelope completed = buildFrameEnvelope(assembly);
-                if (completed != null) {
-                    lastCompletedFrameId = frameId;
-                    Iterator<Long> it = frames.keySet().iterator();
-                    while (it.hasNext()) {
-                        long otherId = it.next();
-                        if (!isNewerFrame(otherId, frameId)) {
-                            it.remove();
+            if (assembly.expectedDataCount > 0) {
+                boolean allDataPresent = assembly.dataShards.size() >= assembly.expectedDataCount;
+                if (allDataPresent) {
+                    for (int idx = 0; idx < assembly.expectedDataCount; idx++) {
+                        if (!assembly.dataShards.containsKey(idx)) {
+                            allDataPresent = false;
+                            break;
                         }
                     }
-                    return completed;
+                }
+                if (allDataPresent) {
+                    frames.remove(frameId);
+                    FrameEnvelope completed = buildFrameEnvelope(assembly);
+                    if (completed != null) {
+                        lastCompletedFrameId = frameId;
+                        Iterator<Long> it = frames.keySet().iterator();
+                        while (it.hasNext()) {
+                            long otherId = it.next();
+                            if (!isNewerFrame(otherId, frameId)) {
+                                it.remove();
+                            }
+                        }
+                        return completed;
+                    }
                 }
             }
             return null;
@@ -1022,9 +1045,12 @@ public final class UdpMediaProtocol {
             if (rttUs > MAX_RTT_FOR_NACK_US) {
                 return Collections.emptyList();
             }
+            List<Long> sortedIds = new ArrayList<>(frames.keySet());
+            sortedIds.sort(UdpMediaProtocol::compareFrameId);
             List<NackPayload> result = new ArrayList<>();
-            for (FrameAssembly assembly : frames.values()) {
-                if (assembly.expectedDataCount <= 1) {
+            for (Long frameId : sortedIds) {
+                FrameAssembly assembly = frames.get(frameId);
+                if (assembly == null || assembly.expectedDataCount <= 1) {
                     continue;
                 }
                 boolean outOfOrderTrigger = assembly.highestSeenDataFrag > 0;
@@ -1034,7 +1060,7 @@ public final class UdpMediaProtocol {
                 }
                 int searchLimit = timerTrigger
                         ? assembly.expectedDataCount
-                        : (assembly.highestSeenDataFrag + 1);
+                        : Math.min(assembly.expectedDataCount, assembly.highestSeenDataFrag + 1);
                 Integer baseFrag = null;
                 long bitmap = 0L;
                 int missingCount = 0;
@@ -1082,6 +1108,10 @@ public final class UdpMediaProtocol {
                     continue;
                 }
                 int startFrag = blockIdx * strideSize;
+                if (assembly.expectedDataCount > 0
+                        && startFrag + descriptor.blockDataCount > assembly.expectedDataCount) {
+                    continue;
+                }
                 Map<Integer, byte[]> presentData = new HashMap<>();
                 for (int col = 0; col < descriptor.blockDataCount; col++) {
                     byte[] shard = assembly.dataShards.get(startFrag + col);
@@ -1116,16 +1146,19 @@ public final class UdpMediaProtocol {
         }
 
         private FrameEnvelope buildFrameEnvelope(FrameAssembly assembly) {
-            int totalBytes = 0;
+            long totalBytesLong = 0L;
             for (int idx = 0; idx < assembly.expectedDataCount; idx++) {
                 byte[] shard = assembly.dataShards.get(idx);
                 if (shard == null) {
                     return null;
                 }
-                totalBytes += shard.length;
+                totalBytesLong += shard.length;
+                if (totalBytesLong > FRAME_METADATA_PREFIX_BYTES + MAX_FRAME_BYTES) {
+                    return null;
+                }
             }
-            if (totalBytes <= FRAME_METADATA_PREFIX_BYTES
-                    || totalBytes > FRAME_METADATA_PREFIX_BYTES + MAX_FRAME_BYTES) {
+            int totalBytes = (int) totalBytesLong;
+            if (totalBytes <= FRAME_METADATA_PREFIX_BYTES) {
                 return null;
             }
             byte[] combined = new byte[totalBytes];
@@ -1160,12 +1193,18 @@ public final class UdpMediaProtocol {
             }
         }
 
-        public static boolean isNewerFrame(long candidate, long reference) {
-            if (candidate == reference) {
-                return false;
+        private static Long findOldestFrameId(Iterable<Long> ids) {
+            Long oldest = null;
+            for (Long id : ids) {
+                if (oldest == null || compareFrameId(id, oldest) < 0) {
+                    oldest = id;
+                }
             }
-            int diff = (int) (candidate - reference);
-            return diff > 0;
+            return oldest;
+        }
+
+        public static boolean isNewerFrame(long candidate, long reference) {
+            return compareFrameId(candidate, reference) > 0;
         }
     }
 
@@ -1184,20 +1223,34 @@ public final class UdpMediaProtocol {
             }
         }
 
-        private final Map<Long, FrameEnvelope> buffered = new TreeMap<>();
+        private final Map<Long, FrameEnvelope> buffered = new LinkedHashMap<>();
         private Long lastDecodedFrameId = null;
+        private boolean referenceChainBroken = false;
 
         public PollResult insert(FrameEnvelope frame, long nowMonoNs) {
+            long frameId = frame.frameId & 0xFFFF_FFFFL;
             if (lastDecodedFrameId != null
-                    && !Reassembler.isNewerFrame(frame.frameId, lastDecodedFrameId)) {
+                    && !Reassembler.isNewerFrame(frameId, lastDecodedFrameId)) {
                 return new PollResult(Collections.emptyList(), false);
             }
-            buffered.put(frame.frameId, frame);
-            while (buffered.size() > MAX_BUFFERED_FRAMES) {
-                Long oldestKey = buffered.keySet().iterator().next();
-                buffered.remove(oldestKey);
+            if (referenceChainBroken && !frame.isKeyframe) {
+                return new PollResult(Collections.emptyList(), true);
             }
-            return pollDeliverable(nowMonoNs);
+            buffered.put(frameId, frame);
+            boolean overflowDropped = false;
+            while (buffered.size() > MAX_BUFFERED_FRAMES) {
+                Long oldestKey = Reassembler.findOldestFrameId(buffered.keySet());
+                if (oldestKey == null) {
+                    break;
+                }
+                buffered.remove(oldestKey);
+                overflowDropped = true;
+            }
+            PollResult polled = pollDeliverable(nowMonoNs);
+            if (overflowDropped && !polled.needsKeyframe && buffered.isEmpty() && referenceChainBroken) {
+                return new PollResult(polled.deliverable, true);
+            }
+            return polled;
         }
 
         public PollResult pollDeliverable(long nowMonoNs) {
@@ -1206,62 +1259,67 @@ public final class UdpMediaProtocol {
 
             while (!buffered.isEmpty()) {
                 List<Long> sortedIds = new ArrayList<>(buffered.keySet());
-                for (int i = sortedIds.size() - 1; i >= 0; i--) {
-                    FrameEnvelope candidate = buffered.get(sortedIds.get(i));
-                    if (candidate != null && candidate.isKeyframe) {
-                        long kfId = candidate.frameId;
-                        if (lastDecodedFrameId == null || kfId != ((lastDecodedFrameId + 1) & 0xFFFF_FFFFL)) {
-                            Iterator<Long> it = buffered.keySet().iterator();
-                            while (it.hasNext()) {
-                                long id = it.next();
-                                if (id != kfId && !Reassembler.isNewerFrame(id, kfId)) {
-                                    it.remove();
-                                }
-                            }
-                            buffered.remove(kfId);
-                            lastDecodedFrameId = kfId;
-                            deliverable.add(candidate);
-                            break;
-                        }
-                    }
-                }
-                if (buffered.isEmpty()) {
-                    break;
-                }
-                Long nextId = buffered.keySet().iterator().next();
+                sortedIds.sort(UdpMediaProtocol::compareFrameId);
+
+                Long nextId = sortedIds.get(0);
                 FrameEnvelope nextFrame = buffered.get(nextId);
                 if (nextFrame == null) {
-                    break;
+                    buffered.remove(nextId);
+                    continue;
                 }
-                if (lastDecodedFrameId == null) {
-                    if (nextFrame.isKeyframe || nextId == 1L) {
+
+                // 1. In-order contiguous delivery when reference chain is healthy
+                if (lastDecodedFrameId != null && !referenceChainBroken) {
+                    long expectedNext = (lastDecodedFrameId + 1L) & 0xFFFF_FFFFL;
+                    if (nextId == expectedNext) {
                         buffered.remove(nextId);
                         lastDecodedFrameId = nextId;
                         deliverable.add(nextFrame);
                         continue;
                     }
-                    if ((nowMonoNs - nextFrame.firstArrivalMonoNs) >= FRAME_HOLD_DEADLINE_NS) {
-                        buffered.remove(nextId);
-                        needsKeyframe = true;
-                        continue;
+                }
+
+                // 2. If initial frame or across a gap / broken chain, jump to newest buffered keyframe
+                FrameEnvelope recoveryKeyframe = null;
+                Long recoveryKfId = null;
+                for (int i = sortedIds.size() - 1; i >= 0; i--) {
+                    Long id = sortedIds.get(i);
+                    FrameEnvelope candidate = buffered.get(id);
+                    if (candidate != null && candidate.isKeyframe) {
+                        recoveryKeyframe = candidate;
+                        recoveryKfId = id;
+                        break;
                     }
+                }
+                if (recoveryKeyframe != null && recoveryKfId != null) {
+                    final long kfId = recoveryKfId;
+                    Iterator<Long> it = buffered.keySet().iterator();
+                    while (it.hasNext()) {
+                        long id = it.next();
+                        if (compareFrameId(id, kfId) <= 0) {
+                            it.remove();
+                        }
+                    }
+                    referenceChainBroken = false;
+                    lastDecodedFrameId = kfId;
+                    deliverable.add(recoveryKeyframe);
+                    continue;
+                }
+
+                // 3. No keyframe available in buffer; non-keyframes cannot bridge a gap!
+                if (referenceChainBroken) {
+                    buffered.clear();
+                    needsKeyframe = true;
                     break;
                 }
 
-                long expectedNext = (lastDecodedFrameId + 1L) & 0xFFFF_FFFFL;
-                if (nextId == expectedNext) {
-                    buffered.remove(nextId);
-                    lastDecodedFrameId = nextId;
-                    deliverable.add(nextFrame);
-                    continue;
-                }
-
                 if ((nowMonoNs - nextFrame.firstArrivalMonoNs) >= FRAME_HOLD_DEADLINE_NS) {
-                    buffered.remove(nextId);
-                    lastDecodedFrameId = nextId;
-                    deliverable.add(nextFrame);
+                    // Hold deadline expired across a missing frame gap (or before first IDR):
+                    // NEVER feed unreferenced P-frames into MediaCodec.
+                    buffered.clear();
+                    referenceChainBroken = true;
                     needsKeyframe = true;
-                    continue;
+                    break;
                 }
                 break;
             }
@@ -1271,6 +1329,7 @@ public final class UdpMediaProtocol {
         public void reset() {
             buffered.clear();
             lastDecodedFrameId = null;
+            referenceChainBroken = false;
         }
     }
 
@@ -1295,37 +1354,45 @@ public final class UdpMediaProtocol {
 
         public void recordPacket(long extendedSequence, long sendTimeUs, long arrivalMonoNs) {
             long arrivalUs = arrivalMonoNs / 1_000L;
-            latestSendTimeUs = sendTimeUs;
             if (!hasPacketsInWindow) {
                 hasPacketsInWindow = true;
                 firstSeqInWindow = extendedSequence;
                 highestSeq = extendedSequence;
+                latestSendTimeUs = sendTimeUs & 0xFFFF_FFFFL;
             } else if (extendedSequence > highestSeq) {
                 highestSeq = extendedSequence;
+                latestSendTimeUs = sendTimeUs & 0xFFFF_FFFFL;
             }
             receivedInWindow++;
 
             if (!hasCurrentBurst) {
                 hasCurrentBurst = true;
-                currentBurstSendTimeUs = sendTimeUs;
+                currentBurstSendTimeUs = sendTimeUs & 0xFFFF_FFFFL;
                 currentBurstArrivalUs = arrivalUs;
                 return;
             }
 
-            int sendDelta = (int) (sendTimeUs - currentBurstSendTimeUs);
-            if (sendDelta >= 0 && sendDelta <= BURST_WINDOW_US) {
+            int sendDelta = (int) ((sendTimeUs & 0xFFFF_FFFFL) - (currentBurstSendTimeUs & 0xFFFF_FFFFL));
+            if (sendDelta < 0) {
+                // Ignore out-of-order packets from earlier bursts without polluting burst state.
+                return;
+            }
+            if (sendDelta <= BURST_WINDOW_US) {
                 currentBurstArrivalUs = arrivalUs;
-                currentBurstSendTimeUs = sendTimeUs;
+                currentBurstSendTimeUs = sendTimeUs & 0xFFFF_FFFFL;
             } else {
                 if (previousBurstSendTimeUs != null && previousBurstArrivalUs != null) {
-                    long dSend = (int) (currentBurstSendTimeUs - previousBurstSendTimeUs);
+                    long dSend = (int) ((currentBurstSendTimeUs & 0xFFFF_FFFFL)
+                            - (previousBurstSendTimeUs & 0xFFFF_FFFFL));
                     long dArr = currentBurstArrivalUs - previousBurstArrivalUs;
-                    long rawGrad = Math.max(-250_000L, Math.min(250_000L, dArr - dSend));
-                    smoothedGradientUs = (int) Math.round(0.70 * smoothedGradientUs + 0.30 * rawGrad);
+                    if (dSend > 0) {
+                        long rawGrad = Math.max(-250_000L, Math.min(250_000L, dArr - dSend));
+                        smoothedGradientUs = (int) Math.round(0.70 * smoothedGradientUs + 0.30 * rawGrad);
+                    }
                 }
                 previousBurstSendTimeUs = currentBurstSendTimeUs;
                 previousBurstArrivalUs = currentBurstArrivalUs;
-                currentBurstSendTimeUs = sendTimeUs;
+                currentBurstSendTimeUs = sendTimeUs & 0xFFFF_FFFFL;
                 currentBurstArrivalUs = arrivalUs;
             }
         }
@@ -1338,13 +1405,19 @@ public final class UdpMediaProtocol {
             if (lastFeedbackMonoNs > 0 && (nowMonoNs - lastFeedbackMonoNs) < FEEDBACK_INTERVAL_NS) {
                 return null;
             }
-            if (hasCurrentBurst && previousBurstSendTimeUs != null && previousBurstArrivalUs != null) {
-                long dSend = (int) (currentBurstSendTimeUs - previousBurstSendTimeUs);
-                long dArr = currentBurstArrivalUs - previousBurstArrivalUs;
-                long rawGrad = Math.max(-250_000L, Math.min(250_000L, dArr - dSend));
-                smoothedGradientUs = (int) Math.round(0.70 * smoothedGradientUs + 0.30 * rawGrad);
+            if (hasCurrentBurst) {
+                if (previousBurstSendTimeUs != null && previousBurstArrivalUs != null) {
+                    long dSend = (int) ((currentBurstSendTimeUs & 0xFFFF_FFFFL)
+                            - (previousBurstSendTimeUs & 0xFFFF_FFFFL));
+                    long dArr = currentBurstArrivalUs - previousBurstArrivalUs;
+                    if (dSend > 0) {
+                        long rawGrad = Math.max(-250_000L, Math.min(250_000L, dArr - dSend));
+                        smoothedGradientUs = (int) Math.round(0.70 * smoothedGradientUs + 0.30 * rawGrad);
+                    }
+                }
                 previousBurstSendTimeUs = currentBurstSendTimeUs;
                 previousBurstArrivalUs = currentBurstArrivalUs;
+                hasCurrentBurst = false;
             }
             long expected = highestSeq >= firstSeqInWindow
                     ? (highestSeq - firstSeqInWindow + 1L)

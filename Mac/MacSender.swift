@@ -236,6 +236,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private var lastAdaptiveDecision: AdaptiveBitrateDecision?
     private var lastMacDropsSnapshot = 0
     private var udpMediaSession: UDPMediaSenderSession?
+    private var activeUDPMediaSessionEpoch: Int64 = 0
 
     private let benchmarkClock = ContinuousClock()
     private var benchmarkRecorder: BenchmarkRecorder?
@@ -1112,6 +1113,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private func adoptConnection(_ conn: NWConnection) -> UInt64 {
         udpMediaSession?.stop()
         udpMediaSession = nil
+        activeUDPMediaSessionEpoch = 0
         cancelDropReplay()
         desktopInput.reset()
         pencilActions.reset(); pencilExtendedNegotiated = false
@@ -1137,6 +1139,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private func invalidateConnection() {
         udpMediaSession?.stop()
         udpMediaSession = nil
+        activeUDPMediaSessionEpoch = 0
         keyframeRequests.retireInFlightRequest()
         stopCursorEcho()
         desktopInput.reset()
@@ -1450,7 +1453,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             self.localSentFrames = 0
             self.localCongestionWindowStart = timestamp
 
-            if self.connectionReady, let controller = self.adaptiveBitrateController,
+            if self.connectionReady,
+               self.udpMediaSession?.isReady != true,
+               let controller = self.adaptiveBitrateController,
                let decision = controller.evaluateLocal(
                 LocalCongestionMetrics(
                     timestamp: timestamp,
@@ -1513,6 +1518,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                     Log.info("PIPELINE-STATS captureFps=\(capFps) encodedFps=\(Double(self.pipelineEncodedFrames) / seconds) sentFps=\(Double(self.pipelineSentFrames) / seconds) preEncodeAndOutputDrops=\(self.dropsThisWindow) pendingEncodes=\(self.pendingEncodes) encodeBudget=\(SendQueuePolicy.encodeBudget(fps: self.requestedCaptureFps)) pendingSends=\(self.pendingSends) sendCompletionMs=\(self.lastSendCompletionDelayMs) actualMbps=\(Double(self.pipelineSentBytes) * 8 / seconds / 1_000_000) encodeSubmitMaxMs=\(self.maxEncodeSubmissionMs) encodeSubmitAverageMs=\(self.encodeSubmissionMsTotal / Double(max(1, self.encodeSubmissionCount))) encoderPressureDrops=\(self.encoderDropsThisWindow)")
                 }
                 self.evaluateEncoderLoad(captures: capturedFrames, seconds: elapsed)
+                self.syncUDPEncoderLoadCeiling()
                 self.encodeSubmissionMsTotal = 0
                 self.encodeSubmissionCount = 0
                 self.encoderDropsThisWindow = 0
@@ -1909,7 +1915,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 } else {
                     Task { await self.status("已连接到 \(self.endpointName)") }
                 }
-                startUDPMediaPlaneIfSupported(for: info)
+                if encoder != nil, activeStreamWidth > 0, activeStreamHeight > 0, protocolIdentity.configVersion > 0 {
+                    ensureUDPMediaPlaneAfterStreamConfig()
+                }
                 Task { @MainActor in self.onHello?(info) }
                 if let continuation = helloContinuation {
                     helloContinuation = nil
@@ -1993,6 +2001,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                     )
                 case .forceKeyframe:
                     requestKeyframe(.receiverKeyframeRequest)
+                    replayStaticKeyframeImmediatelyIfNeeded()
                 }
             }
         case "codecFailure":
@@ -2617,22 +2626,30 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             bytes: data.count,
             isKeyframe: isKeyframe,
             latencyMs: Date().timeIntervalSince(encodeStart) * 1000)
-        let hadInitialFrame = staticFrameGate.hasEncodedFrameInCurrentConfig
         staticFrameGate.markFrameEncoded()
         if case .tcp = transport,
-           hadInitialFrame,
            let udp = udpMediaSession,
            udp.isReady,
-           lastHello?.supportsProtocolV2 != true || protocolHandshake.phase == .streaming,
            udp.sendFrame(
                annexB: data,
                isKeyframe: isKeyframe,
                captureTimestampMs: capturedAtMs,
-               configVersion: protocolFrameIdentity?.configVersion ?? protocolIdentity.configVersion
+               configVersion: protocolFrameIdentity?.configVersion ?? max(protocolIdentity.configVersion, 1)
            ) {
             return
         }
         sendFramed(framed)
+    }
+
+    private func replayStaticKeyframeImmediatelyIfNeeded() {
+        guard connectionReady, needsKeyframe, stream != nil, encoder != nil,
+              encoderLoadAdjustmentID == nil, !decoderFpsAdjustmentInFlight,
+              let pixelBuffer = lastPixelBuffer,
+              CVPixelBufferGetWidth(pixelBuffer) == activeStreamWidth,
+              CVPixelBufferGetHeight(pixelBuffer) == activeStreamHeight else { return }
+        if Date().timeIntervalSince(lastCaptureAt) > 0.020 || pendingEncodes == 0 {
+            encode(pixelBuffer, pts: CMClockGetTime(CMClockGetHostTimeClock()))
+        }
     }
 
     private func handleEncodeFailure(status: OSStatus) {
@@ -2823,18 +2840,20 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         case .usb, .androidAdb:
             transportName = "usb"
         }
+        let currentIdentity = protocolIdentity.beginConfiguration()
         let identity: StreamProtocolFrameIdentity?
+        let udpConfigVersion: Int64?
         if lastHello?.supportsProtocolV2 == true {
-            identity = protocolIdentity.beginConfiguration()
-            if let identity {
-                if protocolRetry {
-                    protocolHandshake.retrying(identity)
-                } else {
-                    protocolHandshake.begin(identity)
-                }
+            identity = currentIdentity
+            udpConfigVersion = nil
+            if protocolRetry {
+                protocolHandshake.retrying(currentIdentity)
+            } else {
+                protocolHandshake.begin(currentIdentity)
             }
         } else {
             identity = nil
+            udpConfigVersion = lastHello?.supportsUDPMediaV1 == true ? currentIdentity.configVersion : nil
         }
         let message = StreamConfigMessage(
             codec: streamCodec,
@@ -2844,9 +2863,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             bitrate: streamBitrate,
             transport: transportName,
             identity: identity,
+            udpConfigVersion: udpConfigVersion,
             maxFrameBytes: lastHello?.negotiatedMaxFrameBytes,
             exactFrameRate: lastHello?.usesAppleVideoCapabilities == true)
         sendJSONFrame(message.json)
+        ensureUDPMediaPlaneAfterStreamConfig()
         let description = "编码 \(width)×\(height) · \(streamCodec.label) · 目标 \(requestedCaptureFps) fps"
         var limits: [String] = []
         if settings.bitrateMode == .manual, settings.bitratePreset.bitsPerSecond != streamBitrate {
@@ -2867,7 +2888,30 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         if let identity {
             scheduleProtocolTimeout(identity: identity, phase: .awaitingStreamConfigAck)
         }
-        Log.info("stream config sent: codec=\(streamCodec.rawValue) fps=\(requestedCaptureFps) width=\(width) height=\(height) bitrate=\(streamBitrate) profile=\(message.profile) transport=\(transportName) sessionEpoch=\(identity?.sessionEpoch ?? 0) configVersion=\(identity?.configVersion ?? 0)")
+        Log.info("stream config sent: codec=\(streamCodec.rawValue) fps=\(requestedCaptureFps) width=\(width) height=\(height) bitrate=\(streamBitrate) profile=\(message.profile) transport=\(transportName) sessionEpoch=\(currentIdentity.sessionEpoch) configVersion=\(currentIdentity.configVersion)")
+    }
+
+    private func recordSentMedia(bytes: Int, frames: Int) {
+        if frames > 0 {
+            localSentFrames += frames
+            pipelineSentFrames += frames
+            framesSent += frames
+        }
+        if bytes > 0 {
+            pipelineSentBytes += bytes
+            bytesSent += bytes
+        }
+        let elapsed = Date().timeIntervalSince(statsWindowStart)
+        if elapsed >= 1.0 {
+            let mbps = Double(bytesSent) * 8 / elapsed / 1_000_000
+            lastActualBitrateMbps = mbps
+            let windowFrames = framesSent
+            lastSentFps = Int((Double(framesSent) / elapsed).rounded())
+            framesSent = 0
+            bytesSent = 0
+            statsWindowStart = Date()
+            Task { @MainActor [weak self] in self?.onStats?(windowFrames, mbps) }
+        }
     }
 
     private func sendFramed(_ payload: Data) {
@@ -2910,23 +2954,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 self.requestKeyframe(.transportWriteFailure)
                 return
             }
-            self.localSentFrames += 1
-            self.pipelineSentFrames += 1
-            self.pipelineSentBytes += frame.count
-            self.framesSent += 1
-            self.bytesSent += frame.count
-            // Report stats roughly once a second.
-            let elapsed = Date().timeIntervalSince(self.statsWindowStart)
-            if elapsed >= 1.0 {
-                let mbps = Double(self.bytesSent) * 8 / elapsed / 1_000_000
-                self.lastActualBitrateMbps = mbps
-                let frames = self.framesSent
-                self.lastSentFps = Int((Double(self.framesSent) / elapsed).rounded())
-                self.framesSent = 0
-                self.bytesSent = 0
-                self.statsWindowStart = Date()
-                Task { @MainActor in self.onStats?(frames, mbps) }
-            }
+            self.recordSentMedia(bytes: frame.count, frames: 1)
         })
     }
 
@@ -2972,7 +3000,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     }
 
     private func updateAdaptiveBitrate(receiver: ReceiverStats) {
-        guard let controller = adaptiveBitrateController else { return }
+        guard udpMediaSession?.isReady != true,
+              let controller = adaptiveBitrateController else { return }
         let decision = controller.evaluate(
             AdaptiveBitrateMetrics(
                 timestamp: ProcessInfo.processInfo.systemUptime,
@@ -2990,10 +3019,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         applyAdaptiveDecision(decision)
     }
 
-    private func applyAdaptiveDecision(_ decision: AdaptiveBitrateDecision) {
+    private func applyAdaptiveDecision(_ decision: AdaptiveBitrateDecision, updateUDPPacer: Bool = true) {
         guard let encoder else { return }
         streamBitrate = decision.newBitrate
-        udpMediaSession?.updateTargetBitrate(streamBitrate)
+        if updateUDPPacer {
+            udpMediaSession?.updateTargetBitrate(streamBitrate)
+        }
         encoderWork.perform {
             VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_AverageBitRate,
                                  value: streamBitrate as CFNumber)
@@ -3008,11 +3039,59 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         Log.info("adaptive bitrate previousBitrate=\(decision.previousBitrate) newBitrate=\(decision.newBitrate) reason=\(decision.reason) trigger=\(decision.trigger) decisionEpoch=\(decision.decisionEpoch) networkState=\(decision.networkState.rawValue)")
     }
 
+    private func syncUDPEncoderLoadCeiling() {
+        guard let session = udpMediaSession else { return }
+        guard let controller = encoderLoad, controller.current != controller.original else {
+            session.updateEncoderLoadCeiling(nil)
+            return
+        }
+        let ceiling = StreamEncodingPolicy.bitrate(
+            width: controller.current.width,
+            height: controller.current.height,
+            fps: controller.current.fps,
+            codec: streamCodec,
+            quality: settings.quality,
+            transport: bitrateTransport
+        )
+        session.updateEncoderLoadCeiling(ceiling)
+    }
+
+    private func ensureUDPMediaPlaneAfterStreamConfig() {
+        guard connectionReady, let info = lastHello else { return }
+        guard case .tcp(_, let interface) = transport,
+              UDPMediaActivationPolicy.shouldActivateUDPMedia(
+                peerSupportsUDP: info.supportsUDPMediaV1,
+                pinnedInterfaceName: interface?.name
+              ) else {
+            if udpMediaSession != nil {
+                udpMediaSession?.stop()
+                udpMediaSession = nil
+                activeUDPMediaSessionEpoch = 0
+            }
+            return
+        }
+        if protocolIdentity.sessionEpoch == 0 {
+            protocolIdentity.beginConnection()
+        }
+        if udpMediaSession != nil, activeUDPMediaSessionEpoch == protocolIdentity.sessionEpoch {
+            if settings.bitrateMode == .manual {
+                udpMediaSession?.syncManualTargetBitrate(streamBitrate)
+            }
+            syncUDPEncoderLoadCeiling()
+            return
+        }
+        startUDPMediaPlaneIfSupported(for: info)
+    }
+
     private func startUDPMediaPlaneIfSupported(for info: PhoneInfo) {
         udpMediaSession?.stop()
         udpMediaSession = nil
-        guard case .tcp(let endpoint, _) = transport,
-              info.supportsUDPMediaV1 else { return }
+        activeUDPMediaSessionEpoch = 0
+        guard case .tcp(let endpoint, let interface) = transport,
+              UDPMediaActivationPolicy.shouldActivateUDPMedia(
+                peerSupportsUDP: info.supportsUDPMediaV1,
+                pinnedInterfaceName: interface?.name
+              ) else { return }
         if protocolIdentity.sessionEpoch == 0 {
             protocolIdentity.beginConnection()
         }
@@ -3028,23 +3107,36 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             initialBitrate: initialBps,
             bitrateBounds: bounds,
             peerHost: peerHost,
-            peerPort: info.advertisedUDPPort
+            peerPort: info.advertisedUDPPort,
+            boundInterfaceName: interface?.name
         ) else { return }
 
+        let localPort = session.localPort
         session.onReady = { [weak self] gen, sessionEpoch in
             guard let self else { return }
-            self.queue.async {
-                guard !self.stopped,
+            self.queue.async { [weak self] in
+                guard let self, !self.stopped,
                       self.wireConnectionGeneration == gen,
                       self.protocolIdentity.sessionEpoch == sessionEpoch else { return }
-                Log.info("UDP-MEDIA-READY sessionEpoch=\(sessionEpoch) localPort=\(session.localPort)")
+                Log.info("UDP-MEDIA-READY sessionEpoch=\(sessionEpoch) localPort=\(localPort)")
                 self.requestKeyframe(.streamReconfigure)
+                self.replayStaticKeyframeImmediatelyIfNeeded()
+            }
+        }
+        session.onKeyframeRequested = { [weak self] gen, sessionEpoch in
+            guard let self else { return }
+            self.queue.async { [weak self] in
+                guard let self, !self.stopped,
+                      self.wireConnectionGeneration == gen,
+                      self.protocolIdentity.sessionEpoch == sessionEpoch else { return }
+                self.requestKeyframe(.receiverKeyframeRequest)
+                self.replayStaticKeyframeImmediatelyIfNeeded()
             }
         }
         session.onBandwidthDecision = { [weak self] gen, sessionEpoch, udpDecision, effectiveEncoderBps in
             guard let self else { return }
-            self.queue.async {
-                guard !self.stopped,
+            self.queue.async { [weak self] in
+                guard let self, !self.stopped,
                       self.wireConnectionGeneration == gen,
                       self.protocolIdentity.sessionEpoch == sessionEpoch,
                       self.settings.bitrateMode == .auto else { return }
@@ -3056,35 +3148,34 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                     networkState: udpDecision.isCongested ? .congested : .recovering,
                     decisionEpoch: udpDecision.decisionEpoch
                 )
-                self.applyAdaptiveDecision(decision)
+                self.applyAdaptiveDecision(decision, updateUDPPacer: false)
             }
         }
         session.onFallbackToTCP = { [weak self] gen, sessionEpoch, reason in
             guard let self else { return }
-            self.queue.async {
-                guard !self.stopped,
+            self.queue.async { [weak self] in
+                guard let self, !self.stopped,
                       self.wireConnectionGeneration == gen,
                       self.protocolIdentity.sessionEpoch == sessionEpoch else { return }
                 Log.info("UDP-MEDIA-FALLBACK sessionEpoch=\(sessionEpoch) reason=\(reason); resuming TCP media framing")
                 self.udpMediaSession?.stop()
                 self.udpMediaSession = nil
+                self.activeUDPMediaSessionEpoch = 0
+                self.adaptiveBitrateController?.syncCurrentBitrate(self.streamBitrate)
                 self.requestKeyframe(.streamReconfigure)
+                self.replayStaticKeyframeImmediatelyIfNeeded()
             }
         }
         session.onBytesSent = { [weak self] bytes, completedFrame in
             guard let self else { return }
-            self.queue.async {
-                guard !self.stopped, self.wireConnectionGeneration == wireGen else { return }
-                self.bytesSent += bytes
-                self.pipelineSentBytes += bytes
-                if completedFrame {
-                    self.framesSent += 1
-                    self.localSentFrames += 1
-                    self.pipelineSentFrames += 1
-                }
+            self.queue.async { [weak self] in
+                guard let self, !self.stopped, self.wireConnectionGeneration == wireGen else { return }
+                self.recordSentMedia(bytes: bytes, frames: completedFrame ? 1 : 0)
             }
         }
         udpMediaSession = session
+        activeUDPMediaSessionEpoch = epoch
+        syncUDPEncoderLoadCeiling()
         sendJSONFrame(session.makeConfigMessage().jsonString)
     }
 

@@ -25,6 +25,7 @@ public final class VideoStreamPolicySelfTest {
         testCodecMapping();
         testProtocolV2FrameIdentity();
         testProtocolV2SessionFiltering();
+        testProtocolV2UdpEpochOrdering();
         testRefreshModeSelection();
         testFrameClassifier();
         testVideoFramePacketUsesZeroCopyBinaryPayloadView();
@@ -303,6 +304,46 @@ public final class VideoStreamPolicySelfTest {
         assertTrue(session.matchesIdentity(0, 0));
         assertTrue(session.acceptFrame(4, VideoFrameTelemetry.fromWirePayload(
                 new byte[] {0, 0, 0, 1, 0x65}, 5)));
+    }
+
+    private static void testProtocolV2UdpEpochOrdering() {
+        // Order A (U1 critical bug fix): udpMediaConfig (sessionEpoch=1) arrives BEFORE initial streamConfig!
+        ReceiverProtocolSession beforeCfg = new ReceiverProtocolSession();
+        beforeCfg.onConnected(10);
+        assertEquals(0L, beforeCfg.sessionEpoch());
+        assertTrue(beforeCfg.acceptUdpMediaEpoch(10, 1));
+        assertEquals(1L, beforeCfg.sessionEpoch());
+        assertFalse(beforeCfg.matchesIdentity(1, 1));
+        // Downgrade to V1 after pre-binding V2 UDP epoch must be rejected.
+        assertFalse(beforeCfg.acceptStreamConfig(10, 1, 0, 0));
+        // Initial streamConfig with matching sessionEpoch=1 must succeed without rejecting!
+        assertTrue(beforeCfg.acceptStreamConfig(10, 2, 1, 1));
+        assertTrue(beforeCfg.isNegotiatedV2());
+        assertTrue(beforeCfg.matchesIdentity(1, 1));
+        assertTrue(beforeCfg.acceptFrame(10, telemetry(1, 1, 1)));
+
+        // Order B: initial streamConfig (sessionEpoch=1) arrives BEFORE udpMediaConfig (sessionEpoch=1).
+        ReceiverProtocolSession afterCfg = new ReceiverProtocolSession();
+        afterCfg.onConnected(11);
+        assertTrue(afterCfg.acceptStreamConfig(11, 2, 1, 1));
+        assertTrue(afterCfg.acceptUdpMediaEpoch(11, 1));
+        assertTrue(afterCfg.matchesIdentity(1, 1));
+        // Stale udpMediaConfig (< current epoch) must be rejected.
+        assertTrue(afterCfg.acceptStreamConfig(11, 2, 2, 1));
+        assertFalse(afterCfg.acceptUdpMediaEpoch(11, 1));
+        assertTrue(afterCfg.acceptUdpMediaEpoch(11, 2));
+        // Newer udpMediaConfig (> current epoch) advances epoch cleanly and awaits matching streamConfig.
+        assertTrue(afterCfg.acceptUdpMediaEpoch(11, 3));
+        assertEquals(3L, afterCfg.sessionEpoch());
+        assertFalse(afterCfg.acceptStreamConfig(11, 2, 2, 2));
+        assertTrue(afterCfg.acceptStreamConfig(11, 2, 3, 1));
+        assertTrue(afterCfg.matchesIdentity(3, 1));
+
+        // Legacy V1 session must reject udpMediaConfig.
+        ReceiverProtocolSession legacy = new ReceiverProtocolSession();
+        legacy.onConnected(12);
+        assertTrue(legacy.acceptStreamConfig(12, 1, 0, 0));
+        assertFalse(legacy.acceptUdpMediaEpoch(12, 1));
     }
 
     private static VideoFrameTelemetry telemetry(long epoch, long version, long sequence) {

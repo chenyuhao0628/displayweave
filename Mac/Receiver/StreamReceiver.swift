@@ -63,6 +63,8 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     private var videoCodec: ReceiverVideoCodec = .h264
     private var bitstream = ReceiverVideoBitstream(codec: .h264)
     private var configuredSize: CGSize?
+    private var activeConfigVersion: Int64 = 0
+    private var pendingKeyframeAfterStreamConfig = false
     private var hevcFailureSent = false
     private var fallbackDeadline: Date?
     private var firstVideoDeadline: TimeInterval?
@@ -70,9 +72,12 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     private var waitingForKeyframe = true
     private var lastKeyframeRequest = Date.distantPast
     private var lastReceived = Date()
+    private var lastRttMs: Double = 0
     private var sampleCount = 0
+    private var queueRenderedFps = 0
     private var statsStart = Date()
     private var lastCursorSequence: UInt64 = 0
+    private var lastUdpMediaEpoch: Int64 = 0
     private var udpMediaSession: UDPMediaReceiverSession?
 
     init(displayLayer: AVSampleBufferDisplayLayer = AVSampleBufferDisplayLayer(),
@@ -394,10 +399,11 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             guard let self, self.running, self.connection === conn else { return }
             if let data, !data.isEmpty {
                 self.lastReceived = Date()
+                let receivedAtUptime = self.monotonicTime()
                 do {
                     for frame in try self.decoder.append(data) {
                         guard self.connection === conn else { return }
-                        self.handle(frame, on: conn)
+                        self.handle(frame, on: conn, receivedAtUptime: receivedAtUptime)
                     }
                 } catch {
                     self.drop(conn, status: "已拒绝无效数据，等待发送端")
@@ -434,17 +440,23 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             }
             self.send(["type": "ping", "t": Date().timeIntervalSince1970 * 1000])
             let elapsed = max(0.001, Date().timeIntervalSince(self.statsStart))
-            let fps = Int((Double(self.sampleCount) / elapsed).rounded())
+            let renderedFps = Int((Double(self.sampleCount) / elapsed).rounded())
+            self.queueRenderedFps = renderedFps
             self.sampleCount = 0
             self.statsStart = Date()
-            DispatchQueue.main.async { self.fps = fps }
+            self.udpMediaSession?.updateReceiverTelemetry(
+                rttMs: self.lastRttMs,
+                decodeQueueMs: self.videoRenderer.isReadyForMoreMediaData ? 0 : 12,
+                renderFps: self.queueRenderedFps
+            )
+            DispatchQueue.main.async { self.fps = renderedFps }
             self.reportDiagnostics()
         }
         timer.resume()
         self.timer = timer
     }
 
-    private func handle(_ data: Data, on conn: NWConnection) {
+    private func handle(_ data: Data, on conn: NWConnection, receivedAtUptime: TimeInterval? = nil) {
         if data.first == UInt8(ascii: "{"), !data.contains(0) {
             guard data.count <= 256 * 1024,
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -455,6 +467,14 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                 configureDesktopInput(obj)
             case "ping":
                 send(["type": "pong", "t": obj["t"] ?? 0, "mt": Date().timeIntervalSince1970 * 1000])
+            case "pong":
+                if let sentMs = (obj["t"] as? NSNumber)?.doubleValue, sentMs.isFinite {
+                    let nowMs = Date().timeIntervalSince1970 * 1000
+                    let rtt = nowMs - sentMs
+                    if rtt.isFinite, rtt >= 0, rtt <= 10_000 {
+                        lastRttMs = rtt
+                    }
+                }
             case "streamConfig":
                 guard let config = AppleVideoConfiguration(obj, maxWidth: limits.width,
                         maxHeight: limits.height, maxFps: maxFps) else {
@@ -465,6 +485,11 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                 if codec == .hevc, hevcFailureSent {
                     drop(conn, status: "HEVC 回退失败，请选择 H.264 后重连"); return
                 }
+                if let explicitVer = (obj["configVersion"] as? NSNumber)?.int64Value, explicitVer > 0 {
+                    activeConfigVersion = explicitVer
+                } else {
+                    activeConfigVersion &+= 1
+                }
                 if videoCodec != codec || configuredSize != size {
                     videoCodec = codec
                     DispatchQueue.main.async { self.codecLabel = codec == .hevc ? "HEVC" : "H.264" }
@@ -474,6 +499,11 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                 configuredSize = size
                 if codec == .hevc, !supportsHEVC { failVideo(on: conn); return }
                 fallbackDeadline = nil
+                if pendingKeyframeAfterStreamConfig {
+                    pendingKeyframeAfterStreamConfig = false
+                    lastKeyframeRequest = .distantPast
+                    requestKeyframe()
+                }
             case "cursor":
                 let x = obj["x"] as? Double ?? 0, y = obj["y"] as? Double ?? 0
                 guard x.isFinite, y.isFinite, x >= 0, x <= 1, y >= 0, y <= 1 else { return }
@@ -494,7 +524,7 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             }
             return
         }
-        handleAnnexB(data, on: conn)
+        handleAnnexB(data, on: conn, receivedAtUptime: receivedAtUptime)
     }
 
     private func handleCursorImage(_ obj: [String: Any]) {
@@ -507,9 +537,16 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
     }
 
     private func configureUDPMedia(_ obj: [String: Any], on conn: NWConnection) {
-        udpMediaSession?.stop()
-        udpMediaSession = nil
         guard let config = UDPMediaConfigMessage(jsonObject: obj) else { return }
+        if config.sessionEpoch < lastUdpMediaEpoch { return }
+        if config.sessionEpoch == lastUdpMediaEpoch, let activeSession = udpMediaSession {
+            send([
+                "type": "udpMediaReady",
+                "sessionEpoch": config.sessionEpoch,
+                "udpPort": Int(activeSession.localPort),
+            ], on: conn)
+            return
+        }
         let currentGen = cursorDelivery.generation
         let senderHost = UDPEndpointResolver.hostString(from: conn.currentPath?.remoteEndpoint)
             ?? UDPEndpointResolver.hostString(from: conn.endpoint)
@@ -518,21 +555,46 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             generation: currentGen,
             senderHost: senderHost
         ) else { return }
+        udpMediaSession?.stop()
+        udpMediaSession = nil
+        lastUdpMediaEpoch = config.sessionEpoch
         session.onFrameReady = { [weak self, weak conn] gen, frame in
             guard let self else { return }
-            self.queue.async {
-                guard self.running,
+            let receivedAtUptime = self.monotonicTime()
+            self.queue.async { [weak self, weak conn] in
+                guard let self,
+                      self.running,
                       let conn,
                       self.connection === conn,
                       self.cursorDelivery.generation == gen else { return }
                 self.lastReceived = Date()
-                self.handleAnnexB(frame.annexB, on: conn)
+                guard self.configuredSize != nil else {
+                    self.pendingKeyframeAfterStreamConfig = true
+                    return
+                }
+                if self.activeConfigVersion > 0,
+                   frame.configVersion > 0,
+                   frame.configVersion != self.activeConfigVersion {
+                    if frame.configVersion > self.activeConfigVersion {
+                        self.pendingKeyframeAfterStreamConfig = true
+                    } else if self.waitingForKeyframe {
+                        self.requestKeyframe()
+                    }
+                    return
+                }
+                self.handleAnnexB(frame.annexB, on: conn, receivedAtUptime: receivedAtUptime, isUDP: true)
+                self.udpMediaSession?.updateReceiverTelemetry(
+                    rttMs: self.lastRttMs,
+                    decodeQueueMs: self.videoRenderer.isReadyForMoreMediaData ? 0 : 12,
+                    renderFps: self.queueRenderedFps
+                )
             }
         }
         session.onKeyframeNeeded = { [weak self, weak conn] gen, _ in
             guard let self else { return }
-            self.queue.async {
-                guard self.running,
+            self.queue.async { [weak self, weak conn] in
+                guard let self,
+                      self.running,
                       let conn,
                       self.connection === conn,
                       self.cursorDelivery.generation == gen else { return }
@@ -540,6 +602,11 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             }
         }
         udpMediaSession = session
+        session.updateReceiverTelemetry(
+            rttMs: lastRttMs,
+            decodeQueueMs: videoRenderer.isReadyForMoreMediaData ? 0 : 12,
+            renderFps: queueRenderedFps
+        )
         send([
             "type": "udpMediaReady",
             "sessionEpoch": config.sessionEpoch,
@@ -578,7 +645,10 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         backpressureToleratedFrames = 0
     }
 
-    private func handleAnnexB(_ data: Data, on conn: NWConnection) {
+    private func handleAnnexB(_ data: Data,
+                              on conn: NWConnection,
+                              receivedAtUptime: TimeInterval? = nil,
+                              isUDP: Bool = false) {
         guard fallbackDeadline == nil else { return }
         let packet: ReceiverVideoBitstream.Packet
         do { packet = try bitstream.parse(data) }
@@ -588,9 +658,17 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         if packet.formatChanged {
             let dims = CMVideoFormatDescriptionGetDimensions(format)
             let size = CGSize(width: Int(dims.width), height: Int(dims.height))
-            guard dims.width > 0, dims.height > 0, dims.width <= limits.width, dims.height <= limits.height,
-                  configuredSize == nil || configuredSize == size else {
-                drop(conn, status: "视频尺寸与配置不符，请重新连接"); return
+            let fitsEnvelope = dims.width > 0 && dims.height > 0 && dims.width <= limits.width && dims.height <= limits.height
+            let matchesConfigured = configuredSize == nil || configuredSize == size
+            if !fitsEnvelope || !matchesConfigured {
+                if isUDP && fitsEnvelope {
+                    bitstream = ReceiverVideoBitstream(codec: videoCodec)
+                    waitingForKeyframe = true
+                    requestKeyframe()
+                    return
+                }
+                drop(conn, status: "视频尺寸与配置不符，请重新连接")
+                return
             }
             videoRenderer.flush(removingDisplayedImage: true)
             videoBackpressure = ReceiverVideoBackpressurePolicy()
@@ -600,6 +678,16 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             failVideo(on: conn); return
         }
         if waitingForKeyframe && !packet.keyframe { requestKeyframe(); return }
+        if let receivedAtUptime,
+           ReceiverFrameAgePolicy.isExpired(
+               receivedAtUptime: receivedAtUptime,
+               nowUptime: monotonicTime(),
+               isKeyframe: packet.keyframe
+           ) {
+            waitingForKeyframe = true
+            requestKeyframe()
+            return
+        }
         let isReady = videoRenderer.isReadyForMoreMediaData
         switch videoBackpressure.action(isReady: isReady, now: monotonicTime()) {
         case .enqueue:
@@ -712,12 +800,17 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         }
         decoder = ReceiverFrameDecoder()
         videoCodec = .h264
+        activeConfigVersion = 0
+        pendingKeyframeAfterStreamConfig = false
+        lastUdpMediaEpoch = 0
         hevcFailureSent = false
         fallbackDeadline = nil
         firstVideoDeadline = nil
+        lastRttMs = 0
         resetVideo()
         lastCursorSequence = 0
         sampleCount = 0
+        queueRenderedFps = 0
         statsStart = Date()
         DispatchQueue.main.async { self.fps = 0; self.codecLabel = "H.264"; self.encrypted = false; self.onReset?(); self.onCursor?(0, 0, false) }
     }

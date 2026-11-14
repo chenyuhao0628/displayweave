@@ -1,7 +1,11 @@
 import Foundation
 
-private func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
-    if !condition() { fatalError(message) }
+private func expect(_ condition: @autoclosure () throws -> Bool, _ message: String) {
+    do {
+        if !(try condition()) { fatalError(message) }
+    } catch {
+        fatalError("\(message): \(error)")
+    }
 }
 
 @main
@@ -149,6 +153,57 @@ struct UDPMediaProtocolSelfTest {
         let parsedConfig = UDPMediaConfigMessage(jsonObject: parsedJson)
         expect(parsedConfig == configMsg && parsedConfig?.rootSecretData == rootSecret,
                "UDPMediaConfigMessage serializes and parses 32-byte rootSecret losslessly")
+
+        // 4. Modular 32-bit frameId wrap-safe comparison
+        expect(UDPMediaHeader.isFrameIdNewer(0, than: 0xFFFF_FFFF), "0 is newer than UInt32.max across wrap")
+        expect(UDPMediaHeader.isFrameIdNewer(5, than: 0xFFFF_FFFE), "5 is newer than UInt32.max - 1 across wrap")
+        expect(!UDPMediaHeader.isFrameIdNewer(0xFFFF_FFFE, than: 2), "older wrapped frameId is not newer")
+        expect(UDPMediaHeader.frameIdDelta(2, 0xFFFF_FFFF) == 3, "signed modular delta across UInt32 wrap")
+
+        // 6. Golden vector byte-for-byte parity check against tools/fixtures/wire-contract-v1.properties
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fixturePath = FileManager.default.fileExists(atPath: "tools/fixtures/wire-contract-v1.properties")
+            ? "tools/fixtures/wire-contract-v1.properties"
+            : repoRoot.appendingPathComponent("tools/fixtures/wire-contract-v1.properties").path
+        let fixtureText = try String(contentsOfFile: fixturePath, encoding: .utf8)
+        let fixtures = Dictionary(uniqueKeysWithValues: fixtureText.split(separator: "\n").compactMap { line -> (String, String)? in
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { return nil }
+            let parts = trimmed.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            return parts.count == 2 ? (String(parts[0]), String(parts[1])) : nil
+        })
+        func fixtureHex(_ key: String) -> Data {
+            guard let raw = fixtures[key] else { fatalError("missing fixture key \(key)") }
+            let utf8 = Array(raw.utf8)
+            expect(utf8.count % 2 == 0, "even hex length for \(key)")
+            return Data(stride(from: 0, to: utf8.count, by: 2).map {
+                UInt8(String(decoding: utf8[$0..<($0 + 2)], as: UTF8.self), radix: 16)!
+            })
+        }
+
+        expect(fixtureHex("udpRootSecret") == fixedSecret, "udpRootSecret matches bytes 01..20")
+        expect(keysEpoch1.senderToReceiverKey == fixtureHex("udpS2RKeyEpoch1"), "HKDF s2r key matches golden vector")
+        expect(keysEpoch1.senderToReceiverSalt == fixtureHex("udpS2RSaltEpoch1"), "HKDF s2r salt matches golden vector")
+        expect(keysEpoch1.receiverToSenderKey == fixtureHex("udpR2SKeyEpoch1"), "HKDF r2s key matches golden vector")
+        expect(keysEpoch1.receiverToSenderSalt == fixtureHex("udpR2SSaltEpoch1"), "HKDF r2s salt matches golden vector")
+        expect(keysEpoch1.nonce(for: .senderToReceiver, extendedSequence: 1) == fixtureHex("udpS2RNonceSeq1"),
+               "s2r nonce seq=1 matches golden vector")
+        expect(keysEpoch1.nonce(for: .receiverToSender, extendedSequence: 1) == fixtureHex("udpR2SNonceSeq1"),
+               "r2s nonce seq=1 matches golden vector")
+
+        let expectedVideoHdr = UDPMediaHeader(
+            packetType: .videoData,
+            flags: [.keyframe, .endOfFrame],
+            epochTag: 1,
+            packetSeq: 42,
+            sendTimeUs: 123_456,
+            frameId: 7,
+            fragIndex: 0,
+            fragCount: 1
+        )
+        expect(expectedVideoHdr.encode() == fixtureHex("udpHeaderVideoData"), "udpHeaderVideoData matches golden vector")
 
         print("UDPMediaProtocolSelfTest PASS")
     }

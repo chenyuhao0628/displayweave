@@ -67,6 +67,16 @@ struct UDPMediaHeader: Equatable, Sendable {
         UInt8(truncatingIfNeeded: UInt64(bitPattern: sessionEpoch))
     }
 
+    @inline(__always)
+    static func frameIdDelta(_ lhs: UInt32, _ rhs: UInt32) -> Int32 {
+        Int32(bitPattern: lhs &- rhs)
+    }
+
+    @inline(__always)
+    static func isFrameIdNewer(_ candidate: UInt32, than baseline: UInt32) -> Bool {
+        Int32(bitPattern: candidate &- baseline) > 0
+    }
+
     func encode() -> Data {
         var data = Data(capacity: Self.byteLength)
         let byte0 = ((version & 0x03) << 6)

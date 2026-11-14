@@ -167,6 +167,143 @@ struct UDPMediaEngineSelfTest {
         expect(expiredPoll.deliverable.isEmpty && expiredPoll.needsKeyframe && jitter.referenceChainBroken,
                "expiring buffered frame past 45ms breaks reference chain and requests keyframe")
 
+        // Subsequent P-frame while referenceChainBroken is rejected until an IDR arrives
+        var f6 = f1; f6.frameId = 6; f6.isKeyframe = false; f6.firstArrivalMonoNs = 72_000_000
+        let brokenInsert = jitter.insert(f6, nowMonoNs: 72_000_000)
+        expect(brokenInsert.deliverable.isEmpty && brokenInsert.needsKeyframe,
+               "unreferenced P-frame must be dropped while referenceChainBroken")
+        var f7Key = f1; f7Key.frameId = 7; f7Key.isKeyframe = true; f7Key.firstArrivalMonoNs = 75_000_000
+        let recoveredInsert = jitter.insert(f7Key, nowMonoNs: 75_000_000)
+        expect(recoveredInsert.deliverable.map(\.frameId) == [7] && !jitter.referenceChainBroken,
+               "keyframe restores broken reference chain immediately")
+
+        // 6. U6 Regression: Multi-block (>64 fragments) parity-before-data reassembly + FEC recovery
+        let largeAnnexB = Data((0..<112_000).map { UInt8(($0 * 13 + 7) & 0xFF) })
+        let multiBlockShards = try UDPMediaFramePacketizer.makeDataFragments(
+            annexB: largeAnnexB,
+            captureTimestampMs: 1_700_000_009_999,
+            configVersion: 5
+        )
+        expect(multiBlockShards.count > 64, "112KB Annex-B spans 2 FEC blocks (>64 fragments)")
+        let multiBlockParity = UDPMediaFECEncoder.encodeParityShards(
+            dataShards: multiBlockShards,
+            lossFraction: 0.04,
+            isKeyframe: true
+        )
+        expect(multiBlockParity.contains(where: { $0.descriptor.blockIndex == 0 })
+                && multiBlockParity.contains(where: { $0.descriptor.blockIndex == 1 }),
+               "parity shards generated for both Block 0 (64 shards) and Block 1")
+
+        var multiReassembler = UDPMediaReassembler()
+        // Deliver ALL .videoParity packets FIRST (before any .videoData arrives, so fragCount starts at 0)
+        for parity in multiBlockParity {
+            let (pDg, _, _) = try senderCrypto.seal(
+                direction: .senderToReceiver,
+                packetType: .videoParity,
+                flags: [.keyframe],
+                sendTimeUs: 90_000,
+                frameId: 50,
+                fragIndex: parity.descriptor.encodedFragIndex,
+                fragCount: parity.descriptor.encodedFragCount,
+                payload: parity.payload
+            )
+            let authP = try receiverCrypto.open(datagram: pDg, expectedDirection: .senderToReceiver)
+            expect(multiReassembler.ingest(packet: authP, nowMonoNs: 100_000_000) == nil,
+                   "pre-arriving parity packets create partial frame with unknown fragCount=0 without premature completion")
+        }
+        // Now deliver .videoData shards, dropping 1 shard in Block 0 (idx 11) and 1 shard in Block 1 (idx 70)
+        var assembledMulti: UDPMediaFrameEnvelope?
+        for (idx, shard) in multiBlockShards.enumerated() {
+            if idx == 11 || idx == 70 { continue }
+            var flags: UDPMediaFlags = [.keyframe]
+            if idx == multiBlockShards.count - 1 { flags.insert(.endOfFrame) }
+            let (dDg, _, _) = try senderCrypto.seal(
+                direction: .senderToReceiver,
+                packetType: .videoData,
+                flags: flags,
+                sendTimeUs: 90_000,
+                frameId: 50,
+                fragIndex: UInt16(idx),
+                fragCount: UInt16(multiBlockShards.count),
+                payload: shard
+            )
+            let authD = try receiverCrypto.open(datagram: dDg, expectedDirection: .senderToReceiver)
+            if let done = multiReassembler.ingest(packet: authD, nowMonoNs: 101_000_000) {
+                assembledMulti = done
+            }
+        }
+        expect(assembledMulti != nil
+                && assembledMulti?.recoveredByFEC == true
+                && assembledMulti?.annexB == largeAnnexB,
+               "multi-block (>64 fragments) frame reassembles and recovers lost shards when parity arrives before data")
+
+        // 7. 32-bit frameId modular wrap-around across UInt32.max -> 0 in Reassembler, JitterBuffer, and Pacer
+        var wrapReassembler = UDPMediaReassembler()
+        var wrapJitter = UDPJitterBuffer()
+        let wrapFrameIds: [UInt32] = [0xFFFF_FFFE, 0xFFFF_FFFF, 0, 1]
+        var deliveredWrapIds: [UInt32] = []
+        for (offset, fid) in wrapFrameIds.enumerated() {
+            let smallShards = try UDPMediaFramePacketizer.makeDataFragments(
+                annexB: Data([0x00, 0x00, 0x00, 0x01, UInt8(offset)]),
+                captureTimestampMs: Int64(1000 + offset),
+                configVersion: 1
+            )
+            let isKey = offset == 0
+            let flags: UDPMediaFlags = isKey ? [.keyframe, .endOfFrame] : [.endOfFrame]
+            let (dg, _, _) = try senderCrypto.seal(
+                direction: .senderToReceiver,
+                packetType: .videoData,
+                flags: flags,
+                sendTimeUs: UInt32(100_000 + offset * 1000),
+                frameId: fid,
+                fragIndex: 0,
+                fragCount: UInt16(smallShards.count),
+                payload: smallShards[0]
+            )
+            let auth = try receiverCrypto.open(datagram: dg, expectedDirection: .senderToReceiver)
+            guard let env = wrapReassembler.ingest(packet: auth, nowMonoNs: UInt64(200_000_000 + offset * 5_000_000)) else {
+                fatalError("wrap frame \(fid) must reassemble")
+            }
+            let out = wrapJitter.insert(env, nowMonoNs: UInt64(200_000_000 + offset * 5_000_000))
+            deliveredWrapIds.append(contentsOf: out.deliverable.map(\.frameId))
+        }
+        expect(deliveredWrapIds == wrapFrameIds,
+               "Reassembler and JitterBuffer deliver consecutive frames cleanly across UInt32.max -> 0 wrap")
+
+        // 8. Pacer cursor/audio priorities, latest-wins cursor coalescing, bounded audio queue, and wrap-safe purge
+        var prioPacer = UDPDebtPacer(targetBitrateBps: 100_000_000)
+        let smallDg = Data(repeating: 0x55, count: 64)
+        prioPacer.enqueueFrameDatagrams([
+            UDPQueuedDatagram(
+                priority: .normalVideo,
+                packetType: .videoData,
+                flags: [.endOfFrame],
+                frameId: 0xFFFF_FFFF,
+                fragIndex: 0,
+                isParity: false,
+                datagram: smallDg
+            ),
+        ], isKeyframe: false, frameId: 0xFFFF_FFFF)
+        // New keyframe at wrapped frameId 0 must purge older frameId 0xFFFF_FFFF!
+        prioPacer.enqueueFrameDatagrams([
+            UDPQueuedDatagram(
+                priority: .keyframe,
+                packetType: .videoData,
+                flags: [.keyframe, .endOfFrame],
+                frameId: 0,
+                fragIndex: 0,
+                isParity: false,
+                datagram: smallDg
+            ),
+        ], isKeyframe: true, frameId: 0)
+        expect(prioPacer.purgedStaleFragments == 1,
+               "UDPDebtPacer purges stale normalVideo across UInt32.max -> 0 frameId wrap")
+
+        let prioBurst = prioPacer.pollTransmitBurst(nowUptime: 200.0)
+        let videoSent = prioBurst.filter { $0.packetType == .videoData }
+        expect(videoSent.count == 1 && videoSent[0].completesVideoFrame,
+               "completesVideoFrame is true only for non-retransmit .videoData with .endOfFrame")
+
         print("UDPMediaEngineSelfTest PASS")
     }
 }

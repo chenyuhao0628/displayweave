@@ -28,10 +28,37 @@ enum UDPPacerPriority: Int, Comparable, Sendable {
 
 struct UDPQueuedDatagram: Sendable, Equatable {
     let priority: UDPPacerPriority
+    let packetType: UDPMediaPacketType
+    let flags: UDPMediaFlags
     let frameId: UInt32
     let fragIndex: UInt16
     let isParity: Bool
     let datagram: Data
+
+    init(
+        priority: UDPPacerPriority,
+        packetType: UDPMediaPacketType = .videoData,
+        flags: UDPMediaFlags = [],
+        frameId: UInt32,
+        fragIndex: UInt16,
+        isParity: Bool,
+        datagram: Data
+    ) {
+        self.priority = priority
+        self.packetType = isParity ? .videoParity : packetType
+        self.flags = flags
+        self.frameId = frameId
+        self.fragIndex = fragIndex
+        self.isParity = isParity
+        self.datagram = datagram
+    }
+
+    var completesVideoFrame: Bool {
+        !isParity
+            && packetType == .videoData
+            && flags.contains(.endOfFrame)
+            && !flags.contains(.retransmit)
+    }
 }
 
 /// WebRTC-inspired debt-based packet pacer with priority ordering
@@ -66,8 +93,8 @@ struct UDPDebtPacer: Sendable {
         if isKeyframe {
             let before = queue.count
             queue.removeAll { queued in
-                queued.frameId < frameId
-                    && (queued.priority == .normalVideo || queued.priority == .fecParity)
+                (queued.priority == .normalVideo || queued.priority == .fecParity)
+                    && UDPMediaHeader.isFrameIdNewer(frameId, than: queued.frameId)
             }
             purgedStaleFragments += max(0, before - queue.count)
         }
@@ -270,7 +297,8 @@ struct UDPMediaReassembler: Sendable {
 
     private struct PartialFrame: Sendable {
         let frameId: UInt32
-        let fragCount: UInt16
+        /// `0` while unknown (frame entry created by `.videoParity` before any `.videoData` arrives).
+        var fragCount: UInt16
         var isKeyframe: Bool
         var sendTimeUs: UInt32
         let firstArrivalMonoNs: UInt64
@@ -309,28 +337,33 @@ struct UDPMediaReassembler: Sendable {
             return nil
         }
         if let highest = highestCompletedFrameId,
-           Int64(frameId) < Int64(highest) - 16 {
+           UDPMediaHeader.frameIdDelta(frameId, highest) < -16 {
             return nil
         }
 
         if partialFrames[frameId] == nil {
+            let initialFragCount: UInt16
+            if header.packetType == .videoData {
+                guard header.fragCount >= 1,
+                      header.fragCount <= UDPMediaHeader.maxFragmentsPerFrame,
+                      header.fragIndex < header.fragCount else {
+                    return nil
+                }
+                initialFragCount = header.fragCount
+            } else if let desc = UDPMediaParityDescriptor(fragIndex: header.fragIndex, fragCount: header.fragCount),
+                      desc.blockIndex >= 0,
+                      desc.blockIndex < UDPMediaFECBitratePolicy.maxBlocksPerFrame,
+                      packet.payload.count >= desc.lastDataShardLength,
+                      packet.payload.count <= UDPMediaHeader.maxPayloadLength {
+                initialFragCount = 0
+            } else {
+                return nil
+            }
             if partialFrames.count >= Self.maxConcurrentFrames,
                let oldestKey = partialFrames.min(by: { $0.value.firstArrivalMonoNs < $1.value.firstArrivalMonoNs })?.key {
                 partialFrames.removeValue(forKey: oldestKey)
                 expiredIncompleteFrames += 1
                 needsKeyframe = true
-            }
-            let initialFragCount: UInt16
-            if header.packetType == .videoData {
-                initialFragCount = header.fragCount
-            } else if let desc = UDPMediaParityDescriptor(fragIndex: header.fragIndex, fragCount: header.fragCount),
-                      desc.blockIndex == 0 {
-                initialFragCount = UInt16(desc.blockDataCount)
-            } else {
-                return nil
-            }
-            guard initialFragCount >= 1, initialFragCount <= UDPMediaHeader.maxFragmentsPerFrame else {
-                return nil
             }
             partialFrames[frameId] = PartialFrame(
                 frameId: frameId,
@@ -350,14 +383,33 @@ struct UDPMediaReassembler: Sendable {
 
         switch header.packetType {
         case .videoData:
-            guard header.fragCount == partial.fragCount,
-                  header.fragIndex < partial.fragCount else {
-                partialFrames.removeValue(forKey: frameId)
-                return nil
+            if partial.fragCount == 0 {
+                let strideSize = UDPMediaFECBitratePolicy.maxDataShardsPerBlock
+                let parityConsistent = partial.parityBlocks.allSatisfy { (blockIdx, entry) in
+                    let blockEnd = blockIdx * strideSize + entry.descriptor.blockDataCount
+                    return blockEnd <= Int(header.fragCount)
+                }
+                guard header.fragCount >= 1,
+                      header.fragCount <= UDPMediaHeader.maxFragmentsPerFrame,
+                      header.fragIndex < header.fragCount,
+                      partial.highestObservedFragIndex < Int(header.fragCount),
+                      partial.dataFragments.keys.allSatisfy({ $0 >= 0 && $0 < Int(header.fragCount) }),
+                      parityConsistent else {
+                    partialFrames.removeValue(forKey: frameId)
+                    return nil
+                }
+                partial.fragCount = header.fragCount
+            } else {
+                guard header.fragCount == partial.fragCount,
+                      header.fragIndex < partial.fragCount else {
+                    partialFrames.removeValue(forKey: frameId)
+                    return nil
+                }
             }
             let idx = Int(header.fragIndex)
             if partial.dataFragments[idx] == nil {
-                guard partial.totalDataBytes + packet.payload.count <= UDPMediaFrameEnvelope.maxFrameBytes + 64 else {
+                guard !packet.payload.isEmpty,
+                      partial.totalDataBytes + packet.payload.count <= UDPMediaFrameEnvelope.maxFrameBytes + 64 else {
                     partialFrames.removeValue(forKey: frameId)
                     return nil
                 }
@@ -370,8 +422,29 @@ struct UDPMediaReassembler: Sendable {
             guard let desc = UDPMediaParityDescriptor(
                 fragIndex: header.fragIndex,
                 fragCount: header.fragCount
-            ) else {
+            ),
+            desc.blockIndex >= 0,
+            desc.blockIndex < UDPMediaFECBitratePolicy.maxBlocksPerFrame,
+            packet.payload.count >= desc.lastDataShardLength,
+            packet.payload.count <= UDPMediaHeader.maxPayloadLength else {
                 return nil
+            }
+            if partial.fragCount > 0 {
+                let blockEnd = desc.blockIndex * UDPMediaFECBitratePolicy.maxDataShardsPerBlock + desc.blockDataCount
+                guard blockEnd <= Int(partial.fragCount) else {
+                    return nil
+                }
+            }
+            if let existing = partial.parityBlocks[desc.blockIndex] {
+                guard existing.descriptor.blockDataCount == desc.blockDataCount,
+                      existing.descriptor.lastDataShardLength == desc.lastDataShardLength else {
+                    partialFrames.removeValue(forKey: frameId)
+                    return nil
+                }
+                if let expectedLen = existing.shards.values.first?.count,
+                   packet.payload.count != expectedLen {
+                    return nil
+                }
             }
             var entry = partial.parityBlocks[desc.blockIndex] ?? (descriptor: desc, shards: [:])
             entry.descriptor = desc
@@ -383,14 +456,14 @@ struct UDPMediaReassembler: Sendable {
         }
 
         // 1. Fast path: all data fragments have arrived! Submit immediately without waiting for parity.
-        if partial.dataFragments.count == Int(partial.fragCount) {
+        if partial.fragCount > 0 && partial.dataFragments.count == Int(partial.fragCount) {
             partialFrames.removeValue(forKey: frameId)
             return finalizeFrame(partial, recoveredByFEC: false)
         }
 
         // 2. FEC Recovery check per block
         let recoveredAny = attemptFECRecovery(&partial)
-        if partial.dataFragments.count == Int(partial.fragCount) {
+        if partial.fragCount > 0 && partial.dataFragments.count == Int(partial.fragCount) {
             partialFrames.removeValue(forKey: frameId)
             if recoveredAny { fecRecoveredFrames += 1 }
             return finalizeFrame(partial, recoveredByFEC: recoveredAny)
@@ -403,13 +476,28 @@ struct UDPMediaReassembler: Sendable {
     private func attemptFECRecovery(_ partial: inout PartialFrame) -> Bool {
         guard !partial.parityBlocks.isEmpty else { return false }
         let strideSize = UDPMediaFECBitratePolicy.maxDataShardsPerBlock
-        var recoveredAny = false
 
+        // Only recover when total fragCount is known from .videoData, OR when a tiny single-block
+        // frame (< 64 fragments, guaranteed final block) lost 100% of its data shards and can be
+        // completely reconstructed from parity alone.
+        let effectiveFragCount: Int
+        if partial.fragCount > 0 {
+            effectiveFragCount = Int(partial.fragCount)
+        } else if partial.parityBlocks.count == 1,
+                  let onlyBlock = partial.parityBlocks[0],
+                  onlyBlock.descriptor.blockDataCount < strideSize,
+                  onlyBlock.shards.count >= onlyBlock.descriptor.blockDataCount {
+            effectiveFragCount = onlyBlock.descriptor.blockDataCount
+        } else {
+            return false
+        }
+
+        var recoveredAny = false
         for (blockIdx, blockEntry) in partial.parityBlocks {
             let desc = blockEntry.descriptor
             let blockStart = blockIdx * strideSize
             let blockEnd = blockStart + desc.blockDataCount
-            guard blockEnd <= Int(partial.fragCount) else { continue }
+            guard blockEnd <= effectiveFragCount else { continue }
 
             var presentData: [Int: Data] = [:]
             var maxKnownShardLen = 0
@@ -423,8 +511,11 @@ struct UDPMediaReassembler: Sendable {
             guard missingCount > 0, blockEntry.shards.count >= missingCount else {
                 continue
             }
-            let parityShardLen = blockEntry.shards.values.first?.count ?? maxKnownShardLen
-            guard parityShardLen > 0 else { continue }
+            guard let parityShardLen = blockEntry.shards.values.first?.count,
+                  parityShardLen >= max(maxKnownShardLen, desc.lastDataShardLength),
+                  parityShardLen <= UDPMediaHeader.maxPayloadLength else {
+                continue
+            }
 
             if let recovered = UDPMediaFECEncoder.recoverBlockDataShards(
                 blockDataCount: desc.blockDataCount,
@@ -436,10 +527,16 @@ struct UDPMediaReassembler: Sendable {
                 for (localCol, data) in recovered {
                     let globalIdx = blockStart + localCol
                     if partial.dataFragments[globalIdx] == nil {
+                        guard partial.totalDataBytes + data.count <= UDPMediaFrameEnvelope.maxFrameBytes + 64 else {
+                            return false
+                        }
                         partial.dataFragments[globalIdx] = data
                         partial.totalDataBytes += data.count
                         recoveredAny = true
                     }
+                }
+                if partial.fragCount == 0 && partial.dataFragments.count == effectiveFragCount {
+                    partial.fragCount = UInt16(effectiveFragCount)
                 }
             }
         }
@@ -450,6 +547,7 @@ struct UDPMediaReassembler: Sendable {
         _ partial: PartialFrame,
         recoveredByFEC: Bool
     ) -> UDPMediaFrameEnvelope? {
+        guard partial.fragCount > 0 else { return nil }
         var combined = Data(capacity: partial.totalDataBytes)
         for i in 0..<Int(partial.fragCount) {
             guard let chunk = partial.dataFragments[i] else { return nil }
@@ -470,7 +568,7 @@ struct UDPMediaReassembler: Sendable {
             completedFrameIds.removeFirst(completedFrameIds.count - 64)
         }
         if let currentHighest = highestCompletedFrameId {
-            if partial.frameId > currentHighest {
+            if UDPMediaHeader.isFrameIdNewer(partial.frameId, than: currentHighest) {
                 highestCompletedFrameId = partial.frameId
             }
         } else {
@@ -497,7 +595,8 @@ struct UDPMediaReassembler: Sendable {
         var nacks: [UDPMediaNackPayload] = []
 
         for (frameId, var partial) in partialFrames {
-            guard nowMonoNs >= partial.firstArrivalMonoNs,
+            guard partial.fragCount > 0,
+                  nowMonoNs >= partial.firstArrivalMonoNs,
                   nowMonoNs - partial.firstArrivalMonoNs >= nackWaitNs else {
                 continue
             }
@@ -578,11 +677,16 @@ struct UDPJitterBuffer: Sendable {
         _ frame: UDPMediaFrameEnvelope,
         nowMonoNs: UInt64
     ) -> (deliverable: [UDPMediaFrameEnvelope], needsKeyframe: Bool) {
+        if let last = lastDeliveredFrameId,
+           UDPMediaHeader.frameIdDelta(frame.frameId, last) <= 0 {
+            return ([], false)
+        }
+
         if frame.isKeyframe {
             // Keyframe restores reference chain immediately and supersedes any older queued frames
-            let droppedOlder = buffer.filter { $0.frameId < frame.frameId }.count
+            let droppedOlder = buffer.filter { UDPMediaHeader.isFrameIdNewer(frame.frameId, than: $0.frameId) }.count
             droppedFrames += droppedOlder
-            buffer.removeAll { $0.frameId <= frame.frameId }
+            buffer.removeAll { UDPMediaHeader.frameIdDelta(frame.frameId, $0.frameId) >= 0 }
             referenceChainBroken = false
             lastDeliveredFrameId = frame.frameId
             var ready = [frame]
@@ -590,13 +694,14 @@ struct UDPJitterBuffer: Sendable {
             return (ready, false)
         }
 
-        if let last = lastDeliveredFrameId, frame.frameId <= last {
-            return ([], false)
+        if referenceChainBroken {
+            droppedFrames += 1
+            return ([], true)
         }
 
         if !buffer.contains(where: { $0.frameId == frame.frameId }) {
             buffer.append(frame)
-            buffer.sort { $0.frameId < $1.frameId }
+            buffer.sort { UDPMediaHeader.isFrameIdNewer($1.frameId, than: $0.frameId) }
             while buffer.count > Self.maxBufferedFrames {
                 buffer.removeFirst()
                 droppedFrames += 1
@@ -632,6 +737,11 @@ struct UDPJitterBuffer: Sendable {
                 var ready = [keyframe]
                 ready.append(contentsOf: drainConsecutive())
                 return (ready, false)
+            }
+            let unreferencedCount = buffer.count
+            if unreferencedCount > 0 {
+                buffer.removeAll()
+                droppedFrames += unreferencedCount
             }
             return ([], true)
         }

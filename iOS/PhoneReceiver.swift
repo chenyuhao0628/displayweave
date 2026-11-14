@@ -36,8 +36,7 @@ struct PerfStats: Equatable {
     var inputP50 = 0.0           // touch sent → CGEvent injected on the Mac, ms
     var inputP95 = 0.0
     var capFps = 0               // frames ScreenCaptureKit delivered on the Mac
-    // Metal renderer path only:
-    var decodeP50 = 0.0          // VTDecompressionSession decode, ms
+    var decodeP50 = 0.0          // decode / display-layer submission & queue latency, ms
     var photonP50 = 0.0          // Mac capture → frame actually on glass, ms
     var photonP95 = 0.0
 }
@@ -85,6 +84,7 @@ final class PhoneReceiver: ObservableObject {
     private var videoFallback = AppleVideoFallbackPolicy()
     private var waitingForKeyframe = true
     private var videoBackpressure = ReceiverVideoBackpressurePolicy()
+    private var displayLayerNotReadySince: TimeInterval?
     private var firstVideoDeadline = ReceiverFirstVideoDeadline()
     private var displayMaxFps = 60
     @Published private(set) var requestedFps = 60
@@ -98,6 +98,7 @@ final class PhoneReceiver: ObservableObject {
     private var monitorSchedule = ReceiverMonitorSchedule()
 
     private var framesThisWindow = 0
+    private var queueRenderedFps = 0
     private var fpsWindowStart = Date()
     private var bytesThisWindow = 0
     private var stallsThisWindow = 0
@@ -122,6 +123,7 @@ final class PhoneReceiver: ObservableObject {
     private var macInputP95 = 0.0
     private var macCapFps = 0
     private var udpMediaSession: UDPMediaReceiverSession?
+    private var lastUdpMediaEpoch: Int64 = 0
 
     private var nowMs: Double { Date().timeIntervalSince1970 * 1000 }
 
@@ -169,6 +171,7 @@ final class PhoneReceiver: ObservableObject {
     }
     private var decompressionSession: VTDecompressionSession?
     private var decodeWindow: [Double] = []
+    private var latestDecodeMs: Double = 0
     private var photonWindow: [Double] = []
     private let maxWindowSamples = 600
     private var loggedDisplayPath = false
@@ -270,6 +273,11 @@ final class PhoneReceiver: ObservableObject {
     init(displayLayer: AVSampleBufferDisplayLayer) {
         self.displayLayer = displayLayer
         displayLayer.videoGravity = .resizeAspect
+        requestKeyframeAfterConfigHook = { [weak self] in
+            guard let self else { return }
+            self.lastKeyframeRequest = .distantPast
+            self.requestKeyframeIfNeeded()
+        }
         securityObserver = NotificationCenter.default.addObserver(forName: TransportSecurityChange.notification,
             object: nil, queue: nil) { [weak self] notification in
             let kind = notification.userInfo?["kind"] as? String, peer = notification.userInfo?["peer"] as? String
@@ -572,6 +580,7 @@ final class PhoneReceiver: ObservableObject {
     private func resetStreamState(acceptingInput: Bool = false) {
         udpMediaSession?.stop()
         udpMediaSession = nil
+        lastUdpMediaEpoch = 0
         let generation = inputSendBudget.reset(accepting: acceptingInput)
         pencilNegotiated = false
         pencilExtendedNegotiated = false
@@ -591,6 +600,8 @@ final class PhoneReceiver: ObservableObject {
         videoCodec = .h264
         videoFallback = AppleVideoFallbackPolicy()
         configuredVideo = nil
+        activeConfigVersion = 0
+        pendingKeyframeAfterStreamConfig = false
         nativeHighRefreshTrialForConnection = false
         resetVideoDecoder()
         DispatchQueue.main.async {
@@ -601,7 +612,7 @@ final class PhoneReceiver: ObservableObject {
         lastFrameAt = nil
         frameIntervals.removeAll()
         decodeFlushes = 0
-        framesThisWindow = 0; bytesThisWindow = 0; stallsThisWindow = 0
+        framesThisWindow = 0; queueRenderedFps = 0; bytesThisWindow = 0; stallsThisWindow = 0
         fpsWindowStart = Date()
         offsetSamples.removeAll(); clockOffsetMs = nil; lastRttMs = 0
         e2eWindow.removeAll(); e2eRing.removeAll(); encodeWindow.removeAll()
@@ -612,6 +623,7 @@ final class PhoneReceiver: ObservableObject {
             self.perf = PerfStats()
             self.onCursor?(0, 0, false)
         }
+        latestDecodeMs = 0
         decodeWindow.removeAll(keepingCapacity: true)
         photonWindow.removeAll(keepingCapacity: true)
     }
@@ -621,6 +633,10 @@ final class PhoneReceiver: ObservableObject {
     private var videoLimits: (width: Int, height: Int) {
         devicePixelsHigh > devicePixelsWide ? (2304, 4096) : (4096, 2304)
     }
+
+    private var activeConfigVersion: Int64 = 0
+    private var pendingKeyframeAfterStreamConfig = false
+    private var requestKeyframeAfterConfigHook: (() -> Void)?
 
     var supportsNativeHighRefreshTrial: Bool {
         AppleVideoPolicy.nativeHighRefreshEnvelope(
@@ -767,12 +783,13 @@ final class PhoneReceiver: ObservableObject {
             [weak self] data, _, isComplete, error in
             guard let self, self.running, self.connection === conn else { return }
             if let data, !data.isEmpty {
+                let receivedAtUptime = ProcessInfo.processInfo.systemUptime
                 self.lastDataReceived = Date()
                 self.bytesThisWindow += data.count
                 do {
                     for frame in try self.frameDecoder.append(data) {
                         guard self.connection === conn else { return }
-                        self.handleAnnexB(frame)
+                        self.handleAnnexB(frame, receivedAtUptime: receivedAtUptime, isUDP: false)
                     }
                 } catch {
                     self.connection = nil
@@ -795,7 +812,11 @@ final class PhoneReceiver: ObservableObject {
 
     // MARK: - Annex B -> CMSampleBuffer
 
-    private func handleAnnexB(_ data: Data) {
+    private func handleAnnexB(
+        _ data: Data,
+        receivedAtUptime: TimeInterval = ProcessInfo.processInfo.systemUptime,
+        isUDP: Bool = false
+    ) {
         // Pure JSON payload = control message (pong, cursor sprite etc.).
         // Video frames also begin with '{' (telemetry prefix) but always
         // contain start codes — the null bytes make them unambiguous even
@@ -819,14 +840,25 @@ final class PhoneReceiver: ObservableObject {
             let withinUnconfiguredLimits = (Int(dims.width) <= maxDim && Int(dims.height) <= minDim)
                 || (Int(dims.width) <= minDim && Int(dims.height) <= maxDim)
             guard dims.width > 0, dims.height > 0, dims.width <= 8192, dims.height <= 8192,
-                  Int64(dims.width) * Int64(dims.height) <= 33_554_432,
-                  (configuredVideo == nil && withinUnconfiguredLimits)
-                    || (Int(dims.width) == configuredVideo?.width
-                      && Int(dims.height) == configuredVideo?.height) else {
+                  Int64(dims.width) * Int64(dims.height) <= 33_554_432 else {
+                rejectVideo("视频尺寸与配置不符，请重新连接"); return
+            }
+            let matchesConfigured = (configuredVideo == nil && withinUnconfiguredLimits)
+                || (Int(dims.width) == configuredVideo?.width
+                  && Int(dims.height) == configuredVideo?.height)
+            if !matchesConfigured {
+                if isUDP, withinUnconfiguredLimits {
+                    bitstream = ReceiverVideoBitstream(codec: videoCodec)
+                    pendingKeyframeAfterStreamConfig = true
+                    waitingForKeyframe = true
+                    requestKeyframeIfNeeded()
+                    return
+                }
                 rejectVideo("视频尺寸与配置不符，请重新连接"); return
             }
             displayLayer.flush()
             videoBackpressure = ReceiverVideoBackpressurePolicy()
+            displayLayerNotReadySince = nil
             formatDesc = format
             let generation = inputSendBudget.generation
             DispatchQueue.main.async {
@@ -853,13 +885,46 @@ final class PhoneReceiver: ObservableObject {
         }
         waitingForKeyframe = false
         let metadata = packet.metadata.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        let captureMs = metadata?["cap"] as? Double
+        let sendMs = metadata?["snd"] as? Double
+        let nowUptime = ProcessInfo.processInfo.systemUptime
+        if !isUDP {
+            let syncAgeMs: Double?
+            if let captureMs, let offset = clockOffsetMs {
+                syncAgeMs = (nowMs + offset) - captureMs
+            } else {
+                syncAgeMs = nil
+            }
+            if ReceiverFrameAgePolicy.isExpired(
+                receivedAtUptime: receivedAtUptime,
+                nowUptime: nowUptime,
+                isKeyframe: packet.keyframe,
+                synchronizedAgeMs: syncAgeMs
+            ) {
+                waitingForKeyframe = true
+                requestKeyframeIfNeeded()
+                return
+            }
+        }
+        if !(useMetalPath && onDecodedFrame != nil) {
+            if displayLayer.isReadyForMoreMediaData {
+                displayLayerNotReadySince = nil
+            } else if displayLayerNotReadySince == nil {
+                displayLayerNotReadySince = nowUptime
+            }
+        } else {
+            displayLayerNotReadySince = nil
+        }
         enqueueFrame(packet.slices, isKeyframe: packet.keyframe,
-                     captureMs: metadata?["cap"] as? Double,
-                     sendMs: metadata?["snd"] as? Double)
+                     captureMs: captureMs,
+                     sendMs: sendMs,
+                     receivedAtUptime: receivedAtUptime)
     }
 
     private func resetVideoDecoder() {
         videoBackpressure = ReceiverVideoBackpressurePolicy()
+        displayLayerNotReadySince = nil
+        latestDecodeMs = 0
         formatDesc = nil
         bitstream = ReceiverVideoBitstream(codec: videoCodec)
         waitingForKeyframe = true
@@ -885,6 +950,9 @@ final class PhoneReceiver: ObservableObject {
         guard videoFallback.accepts(config.codec) else {
             rejectVideo("HEVC 回退失败，请选择 H.264 后重连"); return
         }
+        if let version = (object["configVersion"] as? NSNumber)?.int64Value, version >= 0 {
+            activeConfigVersion = version
+        }
         let changed = configuredVideo?.codec != config.codec
             || configuredVideo?.width != config.width || configuredVideo?.height != config.height
         videoCodec = config.codec
@@ -892,6 +960,10 @@ final class PhoneReceiver: ObservableObject {
         if changed { resetVideoDecoder() }
         if config.codec == .hevc, !supportsHEVC { failVideo(); return }
         if config.codec == .h264 { videoFallback.receivedH264() }
+        if pendingKeyframeAfterStreamConfig {
+            pendingKeyframeAfterStreamConfig = false
+            requestKeyframeAfterConfigHook?()
+        }
         let generation = inputSendBudget.generation
         DispatchQueue.main.async {
             guard self.inputSendBudget.generation == generation else { return }
@@ -905,10 +977,21 @@ final class PhoneReceiver: ObservableObject {
     }
 
     private func configureUDPMedia(_ object: [String: Any]) {
-        udpMediaSession?.stop()
-        udpMediaSession = nil
         guard let config = UDPMediaConfigMessage(jsonObject: object),
               let conn = connection else { return }
+        if config.sessionEpoch < lastUdpMediaEpoch {
+            return
+        }
+        if config.sessionEpoch == lastUdpMediaEpoch, let existing = udpMediaSession {
+            sendControl([
+                "type": "udpMediaReady",
+                "sessionEpoch": config.sessionEpoch,
+                "udpPort": Int(existing.localPort),
+            ], on: conn)
+            return
+        }
+        udpMediaSession?.stop()
+        udpMediaSession = nil
         let generation = inputSendBudget.generation
         let senderHost = UDPEndpointResolver.hostString(from: conn.currentPath?.remoteEndpoint)
             ?? UDPEndpointResolver.hostString(from: conn.endpoint)
@@ -917,31 +1000,51 @@ final class PhoneReceiver: ObservableObject {
             generation: generation,
             senderHost: senderHost
         ) else { return }
+        lastUdpMediaEpoch = config.sessionEpoch
 
         session.onFrameReady = { [weak self, weak conn] gen, frame in
             guard let self else { return }
-            self.queue.async {
-                guard self.running,
+            let receivedAtUptime = ProcessInfo.processInfo.systemUptime
+            self.queue.async { [weak self, weak conn] in
+                guard let self, let conn,
+                      self.running,
                       self.connection === conn,
                       self.inputSendBudget.generation == gen else { return }
                 self.lastDataReceived = Date()
+                if self.configuredVideo == nil {
+                    self.pendingKeyframeAfterStreamConfig = true
+                    self.waitingForKeyframe = true
+                    return
+                }
+                if self.activeConfigVersion > 0, frame.configVersion > 0,
+                   frame.configVersion != self.activeConfigVersion {
+                    self.waitingForKeyframe = true
+                    if frame.configVersion < self.activeConfigVersion {
+                        self.requestKeyframeIfNeeded()
+                    } else {
+                        self.pendingKeyframeAfterStreamConfig = true
+                    }
+                    return
+                }
                 self.bytesThisWindow += frame.annexB.count
                 let prefix = Data("{\"cap\":\(frame.captureTimestampMs),\"snd\":\(frame.captureTimestampMs)}".utf8)
                 var combined = Data(capacity: prefix.count + frame.annexB.count)
                 combined.append(prefix)
                 combined.append(frame.annexB)
-                self.handleAnnexB(combined)
+                self.handleAnnexB(combined, receivedAtUptime: receivedAtUptime, isUDP: true)
+                let decodeMs = self.decodeWindow.last ?? self.latestDecodeMs
                 session.updateReceiverTelemetry(
                     rttMs: self.lastRttMs,
-                    decodeQueueMs: Int(self.decodeWindow.last ?? 0),
-                    renderFps: self.fps
+                    decodeQueueMs: Int(decodeMs.rounded()),
+                    renderFps: self.queueRenderedFps
                 )
             }
         }
         session.onKeyframeNeeded = { [weak self, weak conn] gen, _ in
             guard let self else { return }
-            self.queue.async {
-                guard self.running,
+            self.queue.async { [weak self, weak conn] in
+                guard let self, let conn,
+                      self.running,
                       self.connection === conn,
                       self.inputSendBudget.generation == gen else { return }
                 self.requestKeyframeIfNeeded()
@@ -972,7 +1075,8 @@ final class PhoneReceiver: ObservableObject {
     }
 
     private func enqueueFrame(_ nalus: [Data], isKeyframe: Bool = false,
-                              captureMs: Double? = nil, sendMs: Double? = nil) {
+                              captureMs: Double? = nil, sendMs: Double? = nil,
+                              receivedAtUptime: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         guard let formatDesc else { return }
 
         // Build one AVCC buffer: each NALU prefixed with 4-byte big-endian length.
@@ -1025,6 +1129,7 @@ final class PhoneReceiver: ObservableObject {
             }
             decodeErrorCount = 0
             lastKeyframeRequest = .distantPast
+            displayLayerNotReadySince = nil
             displayLayer.flushAndRemoveImage()
             if !isKeyframe {
                 waitingForKeyframe = true
@@ -1047,9 +1152,22 @@ final class PhoneReceiver: ObservableObject {
             if displayLayer.status == .failed {
                 Log.info("display layer failed (\(String(describing: displayLayer.error))) — flushing")
                 decodeFlushes += 1
+                displayLayerNotReadySince = nil
                 displayLayer.flush()
             }
             displayLayer.enqueue(sample)
+
+            let postEnqueueUptime = ProcessInfo.processInfo.systemUptime
+            let localSubmitMs = max(0, (postEnqueueUptime - receivedAtUptime) * 1000)
+            let occupancyMs = displayLayerNotReadySince.map { max(0, (postEnqueueUptime - $0) * 1000) } ?? 0
+            let sampleDecodeMs = localSubmitMs + occupancyMs
+            if sampleDecodeMs.isFinite, sampleDecodeMs >= 0, sampleDecodeMs < 5000 {
+                latestDecodeMs = sampleDecodeMs
+                decodeWindow.append(sampleDecodeMs)
+                if decodeWindow.count > maxWindowSamples {
+                    decodeWindow.removeFirst()
+                }
+            }
         }
 
         firstVideoDeadline.receivedFrame()
@@ -1087,6 +1205,7 @@ final class PhoneReceiver: ObservableObject {
         let elapsed = now.timeIntervalSince(fpsWindowStart)
         if elapsed >= 1.0 {
             let fps = Int(Double(framesThisWindow) / elapsed)
+            queueRenderedFps = fps
             var stats = PerfStats()
             stats.fps = fps
             stats.mbps = Double(bytesThisWindow) * 8 / elapsed / 1_000_000
@@ -1197,6 +1316,7 @@ final class PhoneReceiver: ObservableObject {
                 self.decodeErrorCount = 0
                 let decodeMs = self.nowMs - t0
                 if decodeMs.isFinite, decodeMs >= 0, decodeMs < 5000 {
+                    self.latestDecodeMs = decodeMs
                     self.decodeWindow.append(decodeMs)
                     if self.decodeWindow.count > self.maxWindowSamples {
                         self.decodeWindow.removeFirst()

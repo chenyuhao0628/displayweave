@@ -45,11 +45,12 @@ enum UDPMediaGF256 {
     }
 
     static func addScaled(destination: inout [UInt8], source: Data, coeff: UInt8) {
-        guard coeff != 0 else { return }
+        let limit = min(destination.count, source.count)
+        guard coeff != 0, limit > 0 else { return }
         if coeff == 1 {
             source.withUnsafeBytes { raw in
                 guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
-                for i in 0..<source.count {
+                for i in 0..<limit {
                     destination[i] ^= base[i]
                 }
             }
@@ -59,7 +60,7 @@ enum UDPMediaGF256 {
             let log = tables.log
             source.withUnsafeBytes { raw in
                 guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
-                for i in 0..<source.count {
+                for i in 0..<limit {
                     let b = base[i]
                     if b != 0 {
                         destination[i] ^= exp[logCoeff + Int(log[Int(b)])]
@@ -227,9 +228,25 @@ enum UDPMediaFECEncoder {
         presentDataShards: [Int: Data],
         presentParityShards: [Int: Data]
     ) -> [Int: Data]? {
+        guard blockDataCount >= 1,
+              blockDataCount <= UDPMediaFECBitratePolicy.maxDataShardsPerBlock,
+              shardStrideLength >= 1,
+              shardStrideLength <= UDPMediaHeader.maxPayloadLength,
+              lastDataShardLength >= 1,
+              lastDataShardLength <= shardStrideLength else {
+            return nil
+        }
+
         var missingCols: [Int] = []
         for col in 0..<blockDataCount {
-            if presentDataShards[col] == nil {
+            if let knownData = presentDataShards[col] {
+                guard !knownData.isEmpty, knownData.count <= shardStrideLength else {
+                    return nil
+                }
+                if col == blockDataCount - 1, knownData.count != lastDataShardLength {
+                    return nil
+                }
+            } else {
                 missingCols.append(col)
             }
         }
@@ -237,7 +254,12 @@ enum UDPMediaFECEncoder {
         let m = missingCols.count
         guard presentParityShards.count >= m else { return nil }
 
-        let sortedParityRows = presentParityShards.keys.sorted().prefix(m)
+        let validParityRows = presentParityShards
+            .filter { $0.key >= 0 && $0.key < UDPMediaFECBitratePolicy.maxParityShardsPerBlock && $0.value.count == shardStrideLength }
+            .map(\.key)
+            .sorted()
+        guard validParityRows.count >= m else { return nil }
+        let sortedParityRows = validParityRows.prefix(m)
         var matrix = [[UInt8]](repeating: [UInt8](repeating: 0, count: m), count: m)
         var rhs = [[UInt8]](repeating: [UInt8](repeating: 0, count: shardStrideLength), count: m)
 
