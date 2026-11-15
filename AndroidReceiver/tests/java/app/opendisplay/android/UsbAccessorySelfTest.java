@@ -463,6 +463,10 @@ public final class UsbAccessorySelfTest {
         AtomicInteger wifiPort = new AtomicInteger();
         CountDownLatch listening = new CountDownLatch(1);
         AtomicReference<CountDownLatch> connectGate = new AtomicReference<>(new CountDownLatch(1));
+        AtomicReference<CountDownLatch> disconnectGate = new AtomicReference<>(new CountDownLatch(1));
+        AtomicLong latestConnectedGen = new AtomicLong();
+        AtomicLong latestDisconnectedGen = new AtomicLong();
+        AtomicInteger disconnectCount = new AtomicInteger();
 
         composite.start(new ReceiverTransport.Listener() {
             @Override
@@ -473,6 +477,7 @@ public final class UsbAccessorySelfTest {
 
             @Override
             public void onConnected(long generation, String peer) {
+                latestConnectedGen.set(generation);
                 connectGate.get().countDown();
             }
 
@@ -483,6 +488,9 @@ public final class UsbAccessorySelfTest {
 
             @Override
             public void onDisconnected(long generation) {
+                latestDisconnectedGen.set(generation);
+                disconnectCount.incrementAndGet();
+                disconnectGate.get().countDown();
             }
 
             @Override
@@ -568,6 +576,51 @@ public final class UsbAccessorySelfTest {
                                             wifiClient2.getInputStream(),
                                             LengthPrefixedProtocol.LEGACY_MAX_FRAME_BYTES)),
                                     "Active Wi-Fi session must round-trip frames after superseding USB");
+                            expect(disconnectCount.get() == 0,
+                                    "Wi-Fi <-> USB handovers must suppress superseded disconnect callbacks");
+
+                            // 4. Hand back over to USB AOA, then trigger physical detach while idle:
+                            //    downstream onDisconnected must fire once and reset Composite.name() to 'wifi'.
+                            connectGate.set(new CountDownLatch(1));
+                            disconnectGate.set(new CountDownLatch(1));
+                            try (SimulatedAccessoryLink usbLink2 = new SimulatedAccessoryLink()) {
+                                expect(usb.attachStream(
+                                        "USB 配件",
+                                        usbLink2.receiverIn,
+                                        usbLink2.receiverOut,
+                                        usbLink2.receiverCloseToken()),
+                                        "Second USB AOA stream must attach cleanly");
+                                try (SSLSocket usbClient2 = usbLink2.openTlsClient(sender, receiverPin)) {
+                                    SecureSocketAdmission.writeFrame(
+                                            usbClient2.getOutputStream(),
+                                            new SecurePairingProtocol.Auth("sender-mac", "MacBook Pro", null)
+                                                    .encode());
+                                    expect("receiver-android".equals(SecurePairingProtocol.readyIdentity(
+                                            SecureSocketAdmission.readFrame(usbClient2.getInputStream()))),
+                                            "Second USB AOA session must receive DWR1");
+                                    expect(connectGate.get().await(3, TimeUnit.SECONDS),
+                                            "Second USB AOA session must activate");
+                                    long activeUsbGen = latestConnectedGen.get();
+                                    expect("usb".equals(composite.name()),
+                                            "Composite name must switch to 'usb' for second USB session");
+                                    expect(closed(wifiClient2),
+                                            "Superseded second Wi-Fi socket must close cleanly");
+                                    expect(disconnectCount.get() == 0,
+                                            "Superseding second Wi-Fi session must not emit spurious disconnect");
+
+                                    usb.detachAccessory(null);
+                                    expect(disconnectGate.get().await(3, TimeUnit.SECONDS),
+                                            "Physical USB detach while idle must notify downstream onDisconnected");
+                                    expect(disconnectCount.get() == 1 && latestDisconnectedGen.get() == activeUsbGen,
+                                            "Physical USB detach must report exact server generation once");
+                                    expect("wifi".equals(composite.name()),
+                                            "Composite name must reset to 'wifi' after active USB detach");
+                                    expect(closed(usbClient2),
+                                            "Physical USB detach must close active USB TLS stream");
+                                    expect(usbLink2.accessoryClosed.get(),
+                                            "Physical USB detach must release accessory file descriptor token");
+                                }
+                            }
                         }
                     }
                 }

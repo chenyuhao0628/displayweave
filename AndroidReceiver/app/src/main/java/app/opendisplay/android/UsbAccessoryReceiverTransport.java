@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2026 DisplayWeave contributors
- * Adapted from OpenDisplay (https://github.com/OpenDisplay/OpenDisplay,
+ * Adapted from OpenDisplay (https://github.com/peetzweg/opendisplay,
  * commit e8a7f0f), Copyright (C) OpenDisplay contributors.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -436,7 +436,8 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
     }
 
     public void detachAccessory(UsbAccessory accessory) {
-        ConnectionContext toClose = null;
+        final ConnectionContext toClose;
+        final Listener activeListener;
         synchronized (this) {
             if (accessory != null && attachedAccessory != null && !accessory.equals(attachedAccessory)) {
                 return;
@@ -445,8 +446,14 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
             cancelPendingAdmissions();
             toClose = currentConnection;
             currentConnection = null;
+            activeListener = (running && toClose != null) ? listener : null;
         }
-        closeConnection(toClose);
+        if (toClose != null) {
+            closeConnection(toClose);
+            if (activeListener != null) {
+                activeListener.onDisconnected(toClose.generation);
+            }
+        }
     }
 
     public synchronized void cancelPendingAdmissions() {
@@ -964,7 +971,9 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
 
         @Override
         public void stop(byte[] finalPayload) {
-            activeRoute = null;
+            synchronized (this) {
+                activeRoute = null;
+            }
             usb.stop(finalPayload);
             wifi.stop(finalPayload);
         }
@@ -1032,6 +1041,16 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
             return 0;
         }
 
+        private synchronized long consumeDisconnectedGeneration(
+                ReceiverTransport child, long childGeneration) {
+            Route route = activeRoute;
+            if (route != null && route.transport == child && route.childGeneration == childGeneration) {
+                activeRoute = null;
+                return route.serverGeneration;
+            }
+            return 0;
+        }
+
         private Listener wrap(ReceiverTransport child, Listener downstream) {
             return new Listener() {
                 @Override
@@ -1090,7 +1109,7 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
 
                 @Override
                 public void onDisconnected(long childGen) {
-                    long serverGen = mappedGeneration(child, childGen);
+                    long serverGen = consumeDisconnectedGeneration(child, childGen);
                     if (serverGen > 0) {
                         downstream.onDisconnected(serverGen);
                     }

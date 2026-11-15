@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2026 DisplayWeave contributors
-// Adapted from OpenDisplay (https://github.com/OpenDisplay/OpenDisplay,
+// Adapted from OpenDisplay (https://github.com/peetzweg/opendisplay,
 // commits e8a7f0f, bcf8e2b, 710c45c), Copyright (C) OpenDisplay contributors.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -27,6 +27,7 @@ final class AccessoryDeviceWatcher: @unchecked Sendable {
     static let detachGrace: Duration = .seconds(10)
     private static let busyRetryInterval: Duration = .seconds(2)
     private static let maxTrackedEntries = PersistedDeviceCollectionPolicy.defaultMaxEntries
+    private static let queueKey = DispatchSpecificKey<ObjectIdentifier>()
 
     private let queue = DispatchQueue(label: "displayweave.usb.aoa-watcher")
     private var port: IONotificationPortRef?
@@ -52,6 +53,7 @@ final class AccessoryDeviceWatcher: @unchecked Sendable {
     ) {
         self.onChange = onChange
         self.onBusyChange = onBusyChange
+        queue.setSpecific(key: Self.queueKey, value: ObjectIdentifier(queue))
         queue.async { [weak self] in self?.startOnQueue() }
     }
 
@@ -60,25 +62,34 @@ final class AccessoryDeviceWatcher: @unchecked Sendable {
     }
 
     func stop() {
-        queue.sync {
-            guard !stopped else { return }
-            stopped = true
-            pendingDetach.values.forEach { $0.cancel() }
-            pendingDetach.removeAll()
-            probes.values.forEach { $0.cancel() }
-            probes.removeAll()
-            deferredByAdb.removeAll()
-            serialByEntry.removeAll()
-            nameBySerial.removeAll()
-            busyDevices.removeAll()
-            for iter in iterators where iter != IO_OBJECT_NULL {
-                IOObjectRelease(iter)
-            }
-            iterators.removeAll()
-            if let port {
-                IONotificationPortDestroy(port)
-                self.port = nil
-            }
+        onQueueSync { stopOnQueue() }
+    }
+
+    private func onQueueSync<T>(_ body: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: Self.queueKey) == ObjectIdentifier(queue) {
+            return body()
+        }
+        return queue.sync(execute: body)
+    }
+
+    private func stopOnQueue() {
+        guard !stopped else { return }
+        stopped = true
+        pendingDetach.values.forEach { $0.cancel() }
+        pendingDetach.removeAll()
+        probes.values.forEach { $0.cancel() }
+        probes.removeAll()
+        deferredByAdb.removeAll()
+        serialByEntry.removeAll()
+        nameBySerial.removeAll()
+        busyDevices.removeAll()
+        for iter in iterators where iter != IO_OBJECT_NULL {
+            IOObjectRelease(iter)
+        }
+        iterators.removeAll()
+        if let port {
+            IONotificationPortDestroy(port)
+            self.port = nil
         }
     }
 
@@ -122,7 +133,7 @@ final class AccessoryDeviceWatcher: @unchecked Sendable {
         let refcon = Unmanaged.passUnretained(self).toOpaque()
 
         for fn in AndroidUSBFunction.candidates {
-            guard let match = IOServiceMatching("IOUSBHostInterface") as? NSMutableDictionary else { continue }
+            guard let match = IOServiceMatching("IOUSBHostInterface") as NSMutableDictionary? else { continue }
             match[kIOPropertyMatchKey] = [
                 "bInterfaceClass": Int(fn.class),
                 "bInterfaceSubClass": Int(fn.subclass),
@@ -247,7 +258,7 @@ final class AccessoryDeviceWatcher: @unchecked Sendable {
             }
         }
         while !Task.isCancelled {
-            let claimedByAdb = queue.sync { stopped || adbClaimedSerials.contains(serial) }
+            let claimedByAdb = onQueueSync { stopped || adbClaimedSerials.contains(serial) }
             if claimedByAdb {
                 queue.async { [weak self] in
                     guard let self, !self.stopped else { return }

@@ -41,6 +41,18 @@ capability negotiation, conservative fallback envelopes, strict address parsing,
 interface pinning, opt-in auto-connect, bounded controls and lifecycle tests.
 See `docs/reference/hevc-wired-pencil-plan.md`. All adaptations retain GPL-3.0.
 
+The Android Open Accessory (`AOA 2.0`) wired USB source iteration selectively
+adapts upstream commits `e8a7f0f` (user-space IOKit `USBAccessory` /
+`AccessoryDeviceWatcher` on macOS and `UsbAccessory` bulk framing on Android),
+`bcf8e2b` (`AndroidUSBFunction` interface-gated probing to avoid raw USB control
+requests on non-Android peripherals), and `710c45c` (handling exclusive USB
+access `0xE00002C5` when `adb` claims the interface). Local adaptations retain
+`AndroidAdb` port forwarding with deterministic ADB-first arbitration, preserve
+default certificate-pinned mutual TLS (`UsbmuxTLSRelay` and
+`SecureSocketAdmission`) over AOA streams, add composite TCP/AOA handover on
+Android (`UsbAccessoryReceiverTransport` in Java), keep GitHub-only accessory
+release metadata, and add Swift/Java self-tests. All adaptations retain GPL-3.0.
+
 ## SideScreen
 
 - Project: SideScreen

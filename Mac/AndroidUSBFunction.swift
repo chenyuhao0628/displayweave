@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2026 DisplayWeave contributors
-// Adapted from OpenDisplay (https://github.com/OpenDisplay/OpenDisplay,
+// Adapted from OpenDisplay (https://github.com/peetzweg/opendisplay,
 // commit bcf8e2b), Copyright (C) OpenDisplay contributors.
 //
 // This program is free software: you can redistribute it and/or modify
