@@ -149,7 +149,7 @@ public final class ProtocolSelfTest {
         assertContains(wifiJson, "\"capabilities\":[\"streamConfigAck\",\"decoderReady\","
                 + "\"firstFrameRendered\",\"sessionEpoch\",\"configVersion\","
                 + "\"frameSequence\",\"maxFrameBytes\",\"binaryFrameHeaderV2\","
-                + "\"udpMediaV1\",\"udpCursorV1\",\"udpAudioV1\"]");
+                + "\"udpMediaV1\",\"udpCursorV1\",\"udpAudioV1\",\"tcpAudioV1\"]");
 
         int[] mm = LengthPrefixedProtocol.computePhysicalMillimeters(2560, 1600, 254.0, 254.0);
         assertTrue(mm != null);
@@ -170,16 +170,32 @@ public final class ProtocolSelfTest {
         assertContains(encryptedWifiJson,
                 "\"inputCaps\":[\"pencil-v1\",\"pencil-v2\",\"mac-input-v1\"]");
 
+        String opusP3WifiJson = LengthPrefixedProtocol.helloJson(
+                2560, 1600, 2.0, 120, 120,
+                new String[] {"hevc", "h264"}, "hevc", "Android Tablet", 35,
+                "wifi", "Android", "install-1", mm[0], mm[1], true, true, true);
+        assertContains(opusP3WifiJson, "\"audioOpusV1\"");
+        assertContains(opusP3WifiJson, "\"displayP3\"");
+        assertContains(opusP3WifiJson, "\"tcpAudioV1\"");
+
         String usbJson = LengthPrefixedProtocol.helloJson(
                 2560, 1600, 2.0, 120, 120,
                 new String[] {"hevc", "h264"}, "hevc", "Android Tablet", 35,
                 "usb", "Android", "install-1");
         assertContains(usbJson, "\"capabilities\":[\"streamConfigAck\",\"decoderReady\","
                 + "\"firstFrameRendered\",\"sessionEpoch\",\"configVersion\","
-                + "\"frameSequence\",\"maxFrameBytes\",\"binaryFrameHeaderV2\"]");
+                + "\"frameSequence\",\"maxFrameBytes\",\"binaryFrameHeaderV2\",\"tcpAudioV1\"]");
         assertFalse(usbJson.contains("\"udpMediaV1\""));
         assertFalse(usbJson.contains("\"udpCursorV1\""));
         assertFalse(usbJson.contains("\"udpAudioV1\""));
+
+        String usbOpusP3Json = LengthPrefixedProtocol.helloJson(
+                2560, 1600, 2.0, 120, 120,
+                new String[] {"hevc", "h264"}, "hevc", "Android Tablet", 35,
+                "usb", "Android", "install-1", null, null, false, true, true);
+        assertContains(usbOpusP3Json, "\"tcpAudioV1\"");
+        assertContains(usbOpusP3Json, "\"audioOpusV1\"");
+        assertContains(usbOpusP3Json, "\"displayP3\"");
     }
 
     private static void testBinaryFrameHeaderV2RoundTrip() throws Exception {
@@ -1287,21 +1303,44 @@ public final class ProtocolSelfTest {
         assertTrue(java.util.Arrays.equals(pcm, decodedAudio.pcmBytes));
 
         // Reject oversize (>1152), unaligned stereo (odd byte count), and non-zero formatFlags.
-        for (int badCase = 0; badCase < 3; badCase++) {
+        for (int badCase = 0; badCase < 4; badCase++) {
             boolean rejected = false;
             try {
                 if (badCase == 0) {
                     new UdpMediaProtocol.AudioPayload(1L, 1L, 48_000, 2, 0, new byte[1156]);
                 } else if (badCase == 1) {
                     new UdpMediaProtocol.AudioPayload(1L, 1L, 48_000, 2, 0, new byte[6]);
+                } else if (badCase == 2) {
+                    new UdpMediaProtocol.AudioPayload(1L, 1L, 48_000, 2, 2, new byte[8]);
                 } else {
-                    new UdpMediaProtocol.AudioPayload(1L, 1L, 48_000, 2, 1, new byte[8]);
+                    new UdpMediaProtocol.AudioPayload(1L, 1L, 44_100, 2, 1, new byte[7]);
                 }
             } catch (IllegalArgumentException expected) {
                 rejected = true;
             }
             assertTrue(rejected);
         }
+
+        // Opus non-4-byte-aligned compressed payload + TcpAudioFrame <= 4 KiB roundtrip
+        UdpMediaProtocol.AudioPayload opusPkt = new UdpMediaProtocol.AudioPayload(
+                77L, 1_700_000_000_500L, 48_000, 2,
+                UdpMediaProtocol.AudioPayload.FORMAT_OPUS,
+                new byte[] {(byte) 0xF8, (byte) 0xFF, (byte) 0xFE, 1, 2, 3, 4});
+        String tcpAudioJson = UdpMediaProtocol.TcpAudioFrame.encodeJson(opusPkt);
+        assertTrue(tcpAudioJson != null && tcpAudioJson.length() <= UdpMediaProtocol.TcpAudioFrame.MAX_CONTROL_BYTES);
+        UdpMediaProtocol.AudioPayload decodedTcpOpus = UdpMediaProtocol.TcpAudioFrame.decodeJson(tcpAudioJson);
+        assertTrue(decodedTcpOpus != null);
+        assertEquals(77L, decodedTcpOpus.audioSeq);
+        assertEquals(UdpMediaProtocol.AudioPayload.FORMAT_OPUS, decodedTcpOpus.formatFlags);
+        assertTrue(java.util.Arrays.equals(opusPkt.pcmBytes, decodedTcpOpus.pcmBytes));
+
+        StringBuilder oversizeAudioJson = new StringBuilder(5_000);
+        oversizeAudioJson.append("{\"type\":\"audioFrame\",\"payload\":\"");
+        while (oversizeAudioJson.length() <= UdpMediaProtocol.TcpAudioFrame.MAX_CONTROL_BYTES) {
+            oversizeAudioJson.append("AAAA");
+        }
+        oversizeAudioJson.append("\"}");
+        assertEquals(null, UdpMediaProtocol.TcpAudioFrame.decodeJson(oversizeAudioJson.toString()));
 
         // Loopback through UdpMediaReceiverSession for PACKET_CURSOR (5) and PACKET_AUDIO (6).
         byte[] secret = UdpMediaProtocol.KeyMaterial.generateRootSecret();

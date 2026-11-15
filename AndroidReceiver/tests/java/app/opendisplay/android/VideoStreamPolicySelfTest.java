@@ -379,31 +379,31 @@ public final class VideoStreamPolicySelfTest {
     }
 
     private static void testUdpAudioRingBufferBoundsAndDeduplication() {
-        // 48kHz stereo S16LE (4 bytes/frame) * 60ms = 2880 frames = 11520 bytes max capacity.
+        // 48kHz stereo S16LE (4 bytes/frame) * 120ms = 5,760 frames = 23,040 bytes max capacity.
         UdpAudioPlayer.PcmRingBuffer ring = new UdpAudioPlayer.PcmRingBuffer(48_000, 2);
-        assertEquals(11_520, ring.capacityBytes());
+        assertEquals(23_040, ring.capacityBytes());
 
         byte[] chunk960 = new byte[960]; // 5ms stereo
         for (int i = 0; i < chunk960.length; i++) {
             chunk960[i] = (byte) ((i * 7) & 0xFF);
         }
-        // Offer 15 packets (75ms = 14,400 bytes) -> bounded at 60ms (11,520 bytes) with 2,880 bytes dropped.
-        for (int seq = 1; seq <= 15; seq++) {
+        // Offer 27 packets (135ms = 25,920 bytes) -> bounded at 120ms (23,040 bytes) with 2,880 bytes dropped.
+        for (int seq = 1; seq <= 27; seq++) {
             assertTrue(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
                     seq, 1_000L + seq, 48_000, 2, 0, chunk960)));
         }
-        assertEquals(11_520, ring.availableBytes());
+        assertEquals(23_040, ring.availableBytes());
         assertEquals(2_880L, ring.droppedOverflowBytes());
         assertEquals(0, ring.availableBytes() % 4);
 
         // Duplicate or out-of-order audioSeq must be ignored.
         assertFalse(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
-                15L, 1_020L, 48_000, 2, 0, chunk960)));
+                27L, 1_030L, 48_000, 2, 0, chunk960)));
         assertFalse(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
-                14L, 1_020L, 48_000, 2, 0, chunk960)));
+                26L, 1_030L, 48_000, 2, 0, chunk960)));
 
-        byte[] drained = new byte[12_000];
-        assertEquals(11_520, ring.drain(drained, drained.length));
+        byte[] drained = new byte[24_000];
+        assertEquals(23_040, ring.drain(drained, drained.length));
         assertEquals(0, ring.availableBytes());
 
         // 32-bit wrap-safe audioSeq rollover across 0xFFFFFFFF -> 0.
@@ -414,10 +414,53 @@ public final class VideoStreamPolicySelfTest {
                 0L, 2_005L, 48_000, 2, 0, chunk960)));
         assertEquals(1_920, ring.availableBytes());
 
-        // Format change (48kHz mono = 5,760 bytes cap) reconfigures cleanly.
+        // Lip-sync watermark steering + drift trimming + Opus CSD golden checks:
+        UdpAudioPlayer.LipSyncPolicy lipSync = new UdpAudioPlayer.LipSyncPolicy();
+        assertEquals(960, lipSync.targetFrames(48_000)); // 20ms wired default
+        lipSync.updateVideoPipelineDelay(true, -1.0);
+        assertEquals(2_160, lipSync.targetFrames(48_000)); // 45ms UDP default
+        // Clock-offset cancellation: Mac clock ~1.7e12, Android mono ~10_000ms -> relative video lead = +60ms
+        for (int step = 0; step < 25; step++) {
+            long capMs = 1_700_000_050_000L + step * 20L;
+            double monoMs = 10_000.0 + step * 20.0;
+            lipSync.recordVideoRender(capMs, monoMs + 65.0);
+            lipSync.recordAudioArrival(capMs + 10L, monoMs + 15.0);
+        }
+        assertTrue(Math.abs(lipSync.targetMs() - 60.0) < 2.0);
+        lipSync.updateVideoPipelineDelay(false, 20.0);
+        lipSync.reset();
+
+        ring.clear();
+        int targetBytes20ms = lipSync.targetBytes(48_000, 2); // 3,840B
+        int trimThreshold45ms = lipSync.driftTrimThresholdBytes(48_000, 2); // 8,640B
+        // Unprimed drain must hold back until >= targetBytes20ms
         assertTrue(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
-                1L, 3_000L, 48_000, 1, 0, new byte[480])));
-        assertEquals(5_760, ring.capacityBytes());
+                10L, 4_000L, 48_000, 2, 0, chunk960)));
+        assertEquals(0, ring.drainPrimed(drained, 960, targetBytes20ms, false));
+        // Fill past 45ms (10 * 960 = 9,600B > 8,640B) and verify drift trimming back to 3,840B
+        for (int seq = 11; seq <= 20; seq++) {
+            assertTrue(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
+                    seq, 4_000L + seq, 48_000, 2, 0, chunk960)));
+        }
+        ring.applyLipSyncWatermark(targetBytes20ms, trimThreshold45ms);
+        assertEquals(targetBytes20ms, ring.availableBytes());
+        assertTrue(ring.driftTrimmedBytes() > 0L);
+
+        // Verify RFC 7845 19-byte OpusHead + 8-byte LE CSD-1 / CSD-2 builders
+        byte[] opusHead = UdpAudioPlayer.buildOpusHead(48_000, 2);
+        assertEquals(19, opusHead.length);
+        assertEquals("OpusHead", new String(opusHead, 0, 8, StandardCharsets.US_ASCII));
+        assertEquals(1, opusHead[8] & 0xFF);
+        assertEquals(2, opusHead[9] & 0xFF);
+        assertEquals(8, UdpAudioPlayer.buildLittleEndianLongCsd(UdpAudioPlayer.OPUS_PRE_SKIP_NS).length);
+        byte[] seekPreRoll = UdpAudioPlayer.buildLittleEndianLongCsd(UdpAudioPlayer.OPUS_SEEK_PREROLL_NS);
+        assertEquals(80_000_000L,
+                java.nio.ByteBuffer.wrap(seekPreRoll).order(java.nio.ByteOrder.LITTLE_ENDIAN).getLong());
+
+        // Format change (48kHz mono = 11,520 bytes cap @ 120ms) reconfigures cleanly.
+        assertTrue(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
+                1L, 5_000L, 48_000, 1, 0, new byte[480])));
+        assertEquals(11_520, ring.capacityBytes());
         assertEquals(480, ring.availableBytes());
     }
 
@@ -603,6 +646,21 @@ public final class VideoStreamPolicySelfTest {
                 current, VideoStreamConfig.from("hevc", 60, 3040, 1904, 64_000_000)));
         assertTrue(DecoderReconfigurationPolicy.requiresReplacement(
                 current, VideoStreamConfig.from("hevc", 120, 2280, 1428, 64_000_000)));
+        VideoStreamConfig p3Config = VideoStreamConfig.from(
+                "hevc", 120, 3040, 1904, 80_000_000, "displayP3");
+        assertTrue(p3Config.isDisplayP3());
+        assertFalse(current.isDisplayP3());
+        assertTrue(DecoderReconfigurationPolicy.requiresReplacement(current, p3Config));
+
+        H264SurfaceDecoder.ColorSpaceFormatSpec sdrSpec =
+                H264SurfaceDecoder.colorSpaceFormatSpec(current);
+        assertFalse(sdrSpec.wideColorGamut);
+        H264SurfaceDecoder.ColorSpaceFormatSpec p3Spec =
+                H264SurfaceDecoder.colorSpaceFormatSpec(p3Config);
+        assertTrue(p3Spec.wideColorGamut);
+        assertEquals(H264SurfaceDecoder.COLOR_STANDARD_DISPLAY_P3, p3Spec.colorStandard);
+        assertEquals(android.media.MediaFormat.COLOR_TRANSFER_SDR_VIDEO, p3Spec.colorTransfer);
+        assertEquals(android.media.MediaFormat.COLOR_RANGE_LIMITED, p3Spec.colorRange);
     }
 
     private static void testFreshDecoderRequestsKeyframeForDefaultConfig() {

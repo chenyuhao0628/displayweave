@@ -1,6 +1,31 @@
 import Foundation
 import CoreGraphics
 
+enum VirtualDisplayColorPolicy {
+    /// CIE 1931 xy chromaticity coordinates for Display P3 (D65 white point).
+    static let displayP3RedPrimary = CGPoint(x: 0.680, y: 0.320)
+    static let displayP3GreenPrimary = CGPoint(x: 0.265, y: 0.690)
+    static let displayP3BluePrimary = CGPoint(x: 0.150, y: 0.060)
+    static let displayP3WhitePoint = CGPoint(x: 0.3127, y: 0.3290)
+
+    /// Configures `CGVirtualDisplayDescriptor` with Display P3 primaries so macOS
+    /// WindowServer composites the virtual display in wide-gamut Display P3.
+    static func applyDisplayP3Primaries(to descriptor: CGVirtualDisplayDescriptor) {
+        if descriptor.responds(to: #selector(setter: CGVirtualDisplayDescriptor.redPrimary)) {
+            descriptor.redPrimary = displayP3RedPrimary
+        }
+        if descriptor.responds(to: #selector(setter: CGVirtualDisplayDescriptor.greenPrimary)) {
+            descriptor.greenPrimary = displayP3GreenPrimary
+        }
+        if descriptor.responds(to: #selector(setter: CGVirtualDisplayDescriptor.bluePrimary)) {
+            descriptor.bluePrimary = displayP3BluePrimary
+        }
+        if descriptor.responds(to: #selector(setter: CGVirtualDisplayDescriptor.whitePoint)) {
+            descriptor.whitePoint = displayP3WhitePoint
+        }
+    }
+}
+
 /// Wraps the private CGVirtualDisplay API: makes macOS believe a real monitor
 /// is attached. Sized in points at HiDPI (@2x), so a phone with native pixels
 /// W×H gets a virtual display of (W/2)×(H/2) points backed by a W×H framebuffer.
@@ -50,6 +75,7 @@ final class VirtualDisplay {
         descriptor.productID = 0x4F53   // "OS"
         descriptor.vendorID = 0x5043    // "PC"
         descriptor.serialNum = serialNum
+        VirtualDisplayColorPolicy.applyDisplayP3Primaries(to: descriptor)
         descriptor.terminationHandler = { _, _ in
             Log.info("virtual display terminated by the system")
         }

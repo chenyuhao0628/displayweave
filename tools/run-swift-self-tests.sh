@@ -232,15 +232,28 @@ run_test PencilAdvancedSelfTest \
   Mac/InputValidationPolicy.swift Mac/InputInjector.swift Mac/PencilActionSender.swift MacTests/PencilAdvancedSelfTest.swift
 
 run_test WireContractSelfTest \
-  "${settings[@]}" Mac/BinaryFrameHeaderV2.swift Shared/ReceiverFrameDecoder.swift Shared/SenderHealthTelemetry.swift \
+  "${settings[@]}" Shared/UDPMediaProtocol.swift Mac/BinaryFrameHeaderV2.swift Shared/ReceiverFrameDecoder.swift Shared/SenderHealthTelemetry.swift \
   Shared/DesktopInputProtocol.swift Shared/PencilProtocol.swift Shared/PencilActions.swift MacTests/WireContractSelfTest.swift
 
 run_test MacCoreUpgradeSelfTest \
-  "${settings[@]}" \
+  "${settings[@]}" Shared/UDPMediaProtocol.swift \
   Mac/LatestValueRelay.swift Mac/CursorEcho.swift Shared/ReceiverFrameDecoder.swift \
   Mac/NetworkDiagnosticsPolicy.swift Mac/AudioCapturePacketizer.swift \
   Mac/Receiver/MacVideoRenderer.swift Mac/Receiver/MacAudioPlayer.swift \
   MacTests/MacCoreUpgradeSelfTest.swift
+
+run_test AudioVisualFidelitySelfTest \
+  -import-objc-header Mac/OpenSidecarMac-Bridging-Header.h \
+  "${settings[@]}" "${security[@]}" "${udp_media[@]}" \
+  Shared/BoundedLogWriter.swift Mac/Log.swift Mac/OriginRestore.swift Mac/DisplayArrangement.swift \
+  Mac/DisplayUnitCoordinator.swift Mac/DisplayTopology.swift Mac/VirtualDisplay.swift \
+  Mac/CaptureFramePolicy.swift Mac/AudioCapturePacketizer.swift \
+  Mac/EncoderHardwareCapabilities.swift Mac/Receiver/ReceiverWireProtocol.swift Shared/ReceiverFrameDecoder.swift \
+  Shared/ReceiverCursorImage.swift Shared/ReceiverVideoBitstream.swift Shared/AppleVideoPolicy.swift \
+  Shared/DesktopInputProtocol.swift Shared/InputSendBudget.swift Mac/LatestValueRelay.swift \
+  Shared/ReceiverVideoFlowPolicy.swift Mac/Receiver/MacVideoRenderer.swift Mac/Receiver/MacAudioPlayer.swift \
+  Mac/Receiver/StreamReceiver.swift iOS/IOSAudioPlayer.swift MacTests/ReceiverTestSupport.swift \
+  MacTests/AudioVisualFidelitySelfTest.swift
 
 python3 tools/test-capture-configuration.py
 python3 tools/test-encoder-load-integration.py
@@ -248,4 +261,4 @@ python3 tools/test-ios-video-admission.py
 python3 tools/test-desktop-match-update.py
 python3 tools/test-collect-mac-display-evidence.py
 
-echo "Swift standalone self-tests PASS (66 suites + capture/load/admission/desktop-update/collector fixtures)"
+echo "Swift standalone self-tests PASS (67 suites + capture/load/admission/desktop-update/collector fixtures)"

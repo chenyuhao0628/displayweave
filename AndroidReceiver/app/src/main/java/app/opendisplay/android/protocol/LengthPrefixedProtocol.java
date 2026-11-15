@@ -25,6 +25,9 @@ public final class LengthPrefixedProtocol {
     public static final int ABSOLUTE_MAX_FRAME_BYTES = 16 << 20;
     public static final int MAX_FRAME_BYTES = LEGACY_MAX_FRAME_BYTES;
     public static final int NEGOTIATED_PROTOCOL_VERSION = 2;
+    public static final String CAPABILITY_TCP_AUDIO_V1 = "tcpAudioV1";
+    public static final String CAPABILITY_AUDIO_OPUS_V1 = "audioOpusV1";
+    public static final String CAPABILITY_DISPLAY_P3 = "displayP3";
     public static final String[] NEGOTIATED_CAPABILITIES = new String[] {
             "streamConfigAck",
             "decoderReady",
@@ -33,7 +36,8 @@ public final class LengthPrefixedProtocol {
             "configVersion",
             "frameSequence",
             "maxFrameBytes",
-            "binaryFrameHeaderV2"
+            "binaryFrameHeaderV2",
+            CAPABILITY_TCP_AUDIO_V1
     };
     public static final String[] NEGOTIATED_WIFI_CAPABILITIES = new String[] {
             "streamConfigAck",
@@ -46,7 +50,8 @@ public final class LengthPrefixedProtocol {
             "binaryFrameHeaderV2",
             "udpMediaV1",
             "udpCursorV1",
-            "udpAudioV1"
+            "udpAudioV1",
+            CAPABILITY_TCP_AUDIO_V1
     };
     public static final String[] INPUT_CAPS_LEGACY = new String[] {
             AndroidStylusInput.CAPABILITY_V1
@@ -247,6 +252,27 @@ public final class LengthPrefixedProtocol {
         return new int[] {(int) mmWide, (int) mmHigh};
     }
 
+    public static String[] capabilitiesFor(
+            String transport, boolean audioOpusSupported, boolean wideColorGamut) {
+        String[] base = "wifi".equalsIgnoreCase(transport)
+                ? NEGOTIATED_WIFI_CAPABILITIES
+                : NEGOTIATED_CAPABILITIES;
+        int extra = (audioOpusSupported ? 1 : 0) + (wideColorGamut ? 1 : 0);
+        if (extra == 0) {
+            return base.clone();
+        }
+        String[] merged = new String[base.length + extra];
+        System.arraycopy(base, 0, merged, 0, base.length);
+        int idx = base.length;
+        if (audioOpusSupported) {
+            merged[idx++] = CAPABILITY_AUDIO_OPUS_V1;
+        }
+        if (wideColorGamut) {
+            merged[idx] = CAPABILITY_DISPLAY_P3;
+        }
+        return merged;
+    }
+
     public static String helloJson(int pixelsWide, int pixelsHigh, double scale,
                                    String device, String installId) {
         return helloJson(pixelsWide, pixelsHigh, scale, 60, 60,
@@ -260,7 +286,7 @@ public final class LengthPrefixedProtocol {
                                    String device, String installId) {
         return helloJson(pixelsWide, pixelsHigh, scale, refreshRate, maxFps,
                 supportedCodecs, preferredCodec, deviceModel, androidSdk, transport,
-                device, installId, null, null, false);
+                device, installId, null, null, false, false, false);
     }
 
     public static String helloJson(int pixelsWide, int pixelsHigh, double scale,
@@ -270,6 +296,21 @@ public final class LengthPrefixedProtocol {
                                    String device, String installId,
                                    Integer millimetersWide, Integer millimetersHigh,
                                    boolean tlsEncrypted) {
+        return helloJson(pixelsWide, pixelsHigh, scale, refreshRate, maxFps,
+                supportedCodecs, preferredCodec, deviceModel, androidSdk, transport,
+                device, installId, millimetersWide, millimetersHigh, tlsEncrypted,
+                false, false);
+    }
+
+    public static String helloJson(int pixelsWide, int pixelsHigh, double scale,
+                                   int refreshRate, int maxFps,
+                                   String[] supportedCodecs, String preferredCodec,
+                                   String deviceModel, int androidSdk, String transport,
+                                   String device, String installId,
+                                   Integer millimetersWide, Integer millimetersHigh,
+                                   boolean tlsEncrypted,
+                                   boolean audioOpusSupported,
+                                   boolean wideColorGamut) {
         int safeWidth = Math.max(2, pixelsWide);
         int safeHeight = Math.max(2, pixelsHigh);
         double safeScale = Double.isFinite(scale) && scale > 0.0
@@ -278,6 +319,8 @@ public final class LengthPrefixedProtocol {
         String panel = panelJson(
                 safeWidth, safeHeight, safeScale, millimetersWide, millimetersHigh);
         String[] inputCaps = tlsEncrypted ? INPUT_CAPS_ENCRYPTED : INPUT_CAPS_LEGACY;
+        String[] capabilities = capabilitiesFor(
+                transport, audioOpusSupported, wideColorGamut);
         return String.format(Locale.US,
                 "{\"type\":\"hello\",\"pixelsWide\":%d,\"pixelsHigh\":%d,\"scale\":%.3f,"
                         + "\"panel\":%s,\"inputCaps\":%s,"
@@ -299,9 +342,7 @@ public final class LengthPrefixedProtocol {
                 escape(installId),
                 NEGOTIATED_PROTOCOL_VERSION,
                 V2_DEFAULT_MAX_FRAME_BYTES,
-                stringArrayJson("wifi".equalsIgnoreCase(transport)
-                        ? NEGOTIATED_WIFI_CAPABILITIES
-                        : NEGOTIATED_CAPABILITIES));
+                stringArrayJson(capabilities));
     }
 
     private static String panelJson(

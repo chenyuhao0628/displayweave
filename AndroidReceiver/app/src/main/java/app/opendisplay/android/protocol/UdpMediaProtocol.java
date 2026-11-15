@@ -589,11 +589,12 @@ public final class UdpMediaProtocol {
         }
     }
 
-    /** 16-byte BE header + S16LE PCM payload matching {@code UDPMediaAudioPayload}. */
+    /** 16-byte BE header + S16LE PCM or Opus payload matching {@code UDPMediaAudioPayload}. */
     public static final class AudioPayload {
         public static final int HEADER_BYTES = 16;
         public static final int MAX_PCM_BYTES = 1152;
         public static final int FORMAT_S16LE_PCM = 0;
+        public static final int FORMAT_OPUS = 1;
 
         public final long audioSeq;
         public final long captureTimestampMs;
@@ -609,20 +610,27 @@ public final class UdpMediaProtocol {
                 int channels,
                 int formatFlags,
                 byte[] pcmBytes) {
-            if (formatFlags != FORMAT_S16LE_PCM) {
+            if (formatFlags != FORMAT_S16LE_PCM && formatFlags != FORMAT_OPUS) {
                 throw new IllegalArgumentException("unsupported audio formatFlags: " + formatFlags);
             }
             if (channels != 1 && channels != 2) {
                 throw new IllegalArgumentException("unsupported audio channels: " + channels);
             }
-            if (sampleRate < 1 || sampleRate > 65_535) {
-                throw new IllegalArgumentException("invalid audio sampleRate: " + sampleRate);
+            if (pcmBytes == null || pcmBytes.length == 0 || pcmBytes.length > MAX_PCM_BYTES) {
+                throw new IllegalArgumentException("invalid audio payload length");
             }
-            int frameBytes = channels * 2;
-            if (pcmBytes == null || pcmBytes.length == 0
-                    || pcmBytes.length > MAX_PCM_BYTES
-                    || (pcmBytes.length % frameBytes) != 0) {
-                throw new IllegalArgumentException("invalid S16LE PCM payload length");
+            if (formatFlags == FORMAT_S16LE_PCM) {
+                if (sampleRate < 1 || sampleRate > 65_535) {
+                    throw new IllegalArgumentException("invalid audio sampleRate: " + sampleRate);
+                }
+                int frameBytes = channels * 2;
+                if ((pcmBytes.length % frameBytes) != 0) {
+                    throw new IllegalArgumentException("invalid S16LE PCM payload length");
+                }
+            } else {
+                if (sampleRate != 48_000) {
+                    throw new IllegalArgumentException("invalid Opus sampleRate: " + sampleRate);
+                }
             }
             this.audioSeq = audioSeq & 0xFFFF_FFFFL;
             this.captureTimestampMs = captureTimestampMs;
@@ -655,6 +663,65 @@ public final class UdpMediaProtocol {
             int fmt = Byte.toUnsignedInt(data[15]);
             byte[] pcm = Arrays.copyOfRange(data, HEADER_BYTES, data.length);
             return new AudioPayload(seq, captureMs, rate, ch, fmt, pcm);
+        }
+    }
+
+    /**
+     * Bounded {@code tcpAudioV1} JSON control message carrying one encoded
+     * {@link AudioPayload} chunk over an authenticated TCP session (<= 4 KiB).
+     */
+    public static final class TcpAudioFrame {
+        public static final String MESSAGE_TYPE = "audioFrame";
+        public static final int MAX_CONTROL_BYTES = 4_096;
+        public static final int MAX_ENCODED_PAYLOAD_CHARS = 2_048;
+
+        private static final Pattern TYPE_PATTERN =
+                Pattern.compile("\"type\"\\s*:\\s*\"audioFrame\"");
+        private static final Pattern PAYLOAD_PATTERN =
+                Pattern.compile("\"payload\"\\s*:\\s*\"([A-Za-z0-9+/=\\r\\n]+)\"");
+
+        private TcpAudioFrame() {}
+
+        public static String encodeJson(AudioPayload payload) {
+            if (payload == null) {
+                return null;
+            }
+            String b64 = Base64.getEncoder().encodeToString(payload.encode());
+            if (b64.isEmpty() || b64.length() > MAX_ENCODED_PAYLOAD_CHARS) {
+                return null;
+            }
+            String json = "{\"type\":\"audioFrame\",\"payload\":\"" + b64 + "\"}";
+            if (json.getBytes(StandardCharsets.UTF_8).length > MAX_CONTROL_BYTES) {
+                return null;
+            }
+            return json;
+        }
+
+        public static AudioPayload decodeJson(String json) {
+            if (json == null || json.isEmpty()) {
+                return null;
+            }
+            byte[] utf8 = json.getBytes(StandardCharsets.UTF_8);
+            if (utf8.length == 0 || utf8.length > MAX_CONTROL_BYTES) {
+                return null;
+            }
+            if (!TYPE_PATTERN.matcher(json).find()) {
+                return null;
+            }
+            Matcher payloadMatcher = PAYLOAD_PATTERN.matcher(json);
+            if (!payloadMatcher.find()) {
+                return null;
+            }
+            String b64 = payloadMatcher.group(1);
+            if (b64 == null || b64.isEmpty() || b64.length() > MAX_ENCODED_PAYLOAD_CHARS) {
+                return null;
+            }
+            try {
+                byte[] raw = Base64.getMimeDecoder().decode(b64);
+                return AudioPayload.decode(raw);
+            } catch (IllegalArgumentException invalid) {
+                return null;
+            }
         }
     }
 

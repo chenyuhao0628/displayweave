@@ -185,6 +185,7 @@ struct StreamConfigMessage {
     var udpConfigVersion: Int64? = nil
     var maxFrameBytes: Int? = nil
     var exactFrameRate = false
+    var colorSpace: String? = nil
 
     var profile: String {
         codec == .hevc ? "main" : "high"
@@ -192,7 +193,7 @@ struct StreamConfigMessage {
 
     var json: String {
         let frameRate = exactFrameRate ? max(1, min(120, fps)) : RefreshRatePolicy.sanitize(fps)
-        let legacy = "{\"type\":\"streamConfig\","
+        var legacy = "{\"type\":\"streamConfig\","
             + "\"codec\":\"\(codec.rawValue)\","
             + "\"fps\":\(frameRate),"
             + "\"framesPerSecond\":\(frameRate),"
@@ -201,6 +202,9 @@ struct StreamConfigMessage {
             + "\"bitrate\":\(max(bitrate, 0)),"
             + "\"profile\":\"\(profile)\","
             + "\"transport\":\"\(escaped(transport))\""
+        if let colorSpace, !colorSpace.isEmpty {
+            legacy += ",\"colorSpace\":\"\(escaped(colorSpace))\""
+        }
         guard let identity else {
             if let udpConfigVersion, udpConfigVersion > 0 {
                 return legacy + ",\"configVersion\":\(udpConfigVersion)}"

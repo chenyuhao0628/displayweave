@@ -1,5 +1,9 @@
 import CryptoKit
 import Foundation
+#if canImport(AudioToolbox)
+import AudioToolbox
+import CoreAudioTypes
+#endif
 
 enum UDPMediaPacketType: UInt8, Sendable, Equatable {
     case videoData = 0
@@ -614,15 +618,17 @@ struct UDPMediaCursorPayload: Equatable, Sendable {
     }
 }
 
-/// Compact sender-to-receiver PCM audio packet payload (`packetType = .audio`).
-/// Wire layout (big-endian header + S16LE PCM body `<= 1152` bytes):
+/// Compact sender-to-receiver audio packet payload (`packetType = .audio` or TCP `"audioFrame"`).
+/// Wire layout (big-endian header + encoded audio body `<= 1152` bytes):
 /// `[0..3]` `audioSeq: UInt32`, `[4..11]` `captureTimestampMs: Int64`,
 /// `[12..13]` `sampleRate: UInt16`, `[14]` `channels: UInt8` (`1` or `2`),
-/// `[15]` `formatFlags: UInt8` (`0` = S16LE PCM), `[16...]` raw S16LE PCM bytes.
+/// `[15]` `formatFlags: UInt8` (`0` = S16LE PCM, `1` = Opus), `[16...]` audio payload bytes.
 struct UDPMediaAudioPayload: Equatable, Sendable {
     static let headerByteLength = 16
     static let maxPCMBytes = 1152
+    static let maxOpusBytes = 1152
     static let formatPCM16LE: UInt8 = 0
+    static let formatOpus: UInt8 = 1
 
     var audioSeq: UInt32
     var captureTimestampMs: Int64
@@ -648,12 +654,20 @@ struct UDPMediaAudioPayload: Equatable, Sendable {
     }
 
     var isValid: Bool {
-        sampleRate > 0
-            && (channels == 1 || channels == 2)
-            && formatFlags == Self.formatPCM16LE
-            && !pcmBytes.isEmpty
-            && pcmBytes.count <= Self.maxPCMBytes
-            && pcmBytes.count % (Int(channels) * 2) == 0
+        guard sampleRate > 0,
+              (channels == 1 || channels == 2),
+              !pcmBytes.isEmpty,
+              pcmBytes.count <= Self.maxPCMBytes else {
+            return false
+        }
+        switch formatFlags {
+        case Self.formatPCM16LE:
+            return pcmBytes.count % (Int(channels) * 2) == 0
+        case Self.formatOpus:
+            return sampleRate == 48_000
+        default:
+            return false
+        }
     }
 
     func encode() -> Data {
@@ -680,10 +694,16 @@ struct UDPMediaAudioPayload: Equatable, Sendable {
         let rate = UDPMediaHeader.readUInt16(data, offset: 12)
         let ch = data[data.startIndex + 14]
         let fmt = data[data.startIndex + 15]
-        guard rate > 0,
-              (ch == 1 || ch == 2),
-              fmt == formatPCM16LE,
-              pcmCount % (Int(ch) * 2) == 0 else {
+        let validBody: Bool
+        switch fmt {
+        case formatPCM16LE:
+            validBody = rate > 0 && (ch == 1 || ch == 2) && pcmCount % (Int(ch) * 2) == 0
+        case formatOpus:
+            validBody = rate == 48_000 && (ch == 1 || ch == 2) && pcmCount >= 1
+        default:
+            validBody = false
+        }
+        guard validBody else {
             throw UDPMediaError.malformedControlPayload
         }
         let pcm = data.subdata(in: (data.startIndex + headerByteLength)..<data.endIndex)
@@ -697,6 +717,356 @@ struct UDPMediaAudioPayload: Equatable, Sendable {
         )
     }
 }
+
+/// Bounded JSON control envelope delivering `UDPMediaAudioPayload` over authenticated TCP (`tcpAudioV1`).
+enum TCPAudioFrameMessage {
+    static let messageType = "audioFrame"
+    static let maxControlBytes = 4_096
+    static let maxEncodedPayloadChars = 2_048
+
+    static func encodeJSONString(_ payload: UDPMediaAudioPayload) -> String? {
+        guard payload.isValid else { return nil }
+        let raw = payload.encode()
+        guard raw.count <= UDPMediaAudioPayload.headerByteLength + UDPMediaAudioPayload.maxPCMBytes else {
+            return nil
+        }
+        let b64 = raw.base64EncodedString()
+        let json = "{\"type\":\"\(messageType)\",\"payload\":\"\(b64)\"}"
+        guard json.utf8.count <= maxControlBytes else { return nil }
+        return json
+    }
+
+    static func encodeJSONData(_ payload: UDPMediaAudioPayload) -> Data? {
+        guard let json = encodeJSONString(payload) else { return nil }
+        return Data(json.utf8)
+    }
+
+    static func decode(jsonData: Data) throws -> UDPMediaAudioPayload {
+        guard !jsonData.isEmpty, jsonData.count <= maxControlBytes else {
+            throw UDPMediaError.malformedControlPayload
+        }
+        guard let object = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            throw UDPMediaError.malformedControlPayload
+        }
+        return try decode(jsonObject: object, rawByteCount: jsonData.count)
+    }
+
+    static func decode(jsonObject: [String: Any], rawByteCount: Int = 0) throws -> UDPMediaAudioPayload {
+        guard rawByteCount <= maxControlBytes,
+              (jsonObject["type"] as? String) == messageType else {
+            throw UDPMediaError.malformedControlPayload
+        }
+        let b64String = (jsonObject["payload"] as? String) ?? (jsonObject["d"] as? String)
+        guard let b64 = b64String,
+              !b64.isEmpty,
+              b64.utf8.count <= maxEncodedPayloadChars,
+              let raw = Data(base64Encoded: b64) else {
+            throw UDPMediaError.malformedControlPayload
+        }
+        return try UDPMediaAudioPayload.decode(from: raw)
+    }
+}
+
+/// Strict TCP audio backpressure policy ensuring outgoing audio never stalls video or input.
+enum TCPAudioBackpressurePolicy {
+    static let maxPendingVideoSends = 2
+    static let maxPendingAudioSends = 2
+
+    static func shouldSend(
+        connectionReady: Bool,
+        pendingVideoSends: Int,
+        pendingAudioSends: Int,
+        jsonByteCount: Int
+    ) -> Bool {
+        connectionReady
+            && pendingVideoSends <= maxPendingVideoSends
+            && pendingAudioSends < maxPendingAudioSends
+            && jsonByteCount > 0
+            && jsonByteCount <= TCPAudioFrameMessage.maxControlBytes
+    }
+}
+
+/// Dynamic A/V lip-sync target watermark policy shared by Mac and iOS audio players.
+/// Aligns audio playout buffering (`15ms...90ms` within a `120ms` hard ring cap) to active
+/// video jitter/decode delay and trims drift whenever buffered audio exceeds `target + 25ms`.
+struct AudioLipSyncPolicy: Sendable, Equatable {
+    static let maxCapacityMs: Double = 120.0
+    static let minTargetMs: Double = 15.0
+    static let maxTargetMs: Double = 90.0
+    static let defaultWiredTargetMs: Double = 20.0
+    static let defaultUDPJitterTargetMs: Double = 45.0
+    static let driftTrimMarginMs: Double = 25.0
+    static let maxVideoSampleAgeMs: Double = 2_000.0
+    static let maxClockDeltaSanityMs: Double = 500.0
+    static let defaultMaxCapacityFrames: Int = 5_760
+    static let defaultMinTargetFrames: Int = 720
+    static let defaultMaxTargetFrames: Int = 4_320
+
+    private(set) var sampleRate: Int
+    private(set) var udpJitterActive: Bool
+    private(set) var targetDelayMs: Double
+    private var lastVideoCaptureToRenderDeltaMs: Double?
+    private var lastVideoRenderMonoMs: Double?
+    private var explicitPipelineDelayMs: Double?
+
+    init(sampleRate: Int = 48_000, udpJitterActive: Bool = false) {
+        self.sampleRate = max(8_000, sampleRate)
+        self.udpJitterActive = udpJitterActive
+        self.targetDelayMs = udpJitterActive ? Self.defaultUDPJitterTargetMs : Self.defaultWiredTargetMs
+    }
+
+    static func frames(forMilliseconds ms: Double, sampleRate: Int = 48_000) -> Int {
+        max(1, Int((Double(max(8_000, sampleRate)) * ms / 1_000.0).rounded()))
+    }
+
+    var maxCapacityFrames: Int {
+        Self.frames(forMilliseconds: Self.maxCapacityMs, sampleRate: sampleRate)
+    }
+
+    var minTargetFrames: Int {
+        Self.frames(forMilliseconds: Self.minTargetMs, sampleRate: sampleRate)
+    }
+
+    var maxTargetFrames: Int {
+        Self.frames(forMilliseconds: Self.maxTargetMs, sampleRate: sampleRate)
+    }
+
+    var targetBufferedFrames: Int {
+        let raw = Self.frames(forMilliseconds: targetDelayMs, sampleRate: sampleRate)
+        return min(max(raw, minTargetFrames), maxTargetFrames)
+    }
+
+    var driftTrimMarginFrames: Int {
+        Self.frames(forMilliseconds: Self.driftTrimMarginMs, sampleRate: sampleRate)
+    }
+
+    var driftTrimThresholdFrames: Int {
+        min(maxCapacityFrames, targetBufferedFrames + driftTrimMarginFrames)
+    }
+
+    mutating func setSampleRate(_ rate: Int) {
+        sampleRate = max(8_000, rate)
+    }
+
+    mutating func reset(udpJitterActive: Bool = false) {
+        self.udpJitterActive = udpJitterActive
+        self.targetDelayMs = udpJitterActive ? Self.defaultUDPJitterTargetMs : Self.defaultWiredTargetMs
+        self.lastVideoCaptureToRenderDeltaMs = nil
+        self.lastVideoRenderMonoMs = nil
+        self.explicitPipelineDelayMs = nil
+    }
+
+    mutating func updateTransportMode(udpJitterActive: Bool, explicitVideoDelayMs: Double? = nil) {
+        let modeChanged = (self.udpJitterActive != udpJitterActive)
+        self.udpJitterActive = udpJitterActive
+        if let explicitVideoDelayMs, explicitVideoDelayMs.isFinite, explicitVideoDelayMs >= 0 {
+            let clamped = min(max(explicitVideoDelayMs, Self.minTargetMs), Self.maxTargetMs)
+            self.explicitPipelineDelayMs = clamped
+            if modeChanged {
+                targetDelayMs = clamped
+            } else {
+                targetDelayMs = min(max(0.80 * targetDelayMs + 0.20 * clamped, Self.minTargetMs), Self.maxTargetMs)
+            }
+        } else {
+            self.explicitPipelineDelayMs = nil
+            if modeChanged {
+                targetDelayMs = udpJitterActive ? Self.defaultUDPJitterTargetMs : Self.defaultWiredTargetMs
+            }
+        }
+    }
+
+    mutating func recordVideoRender(captureTimestampMs: Int64, renderMonoMs: Double) {
+        guard captureTimestampMs > 0, renderMonoMs.isFinite else { return }
+        lastVideoCaptureToRenderDeltaMs = renderMonoMs - Double(captureTimestampMs)
+        lastVideoRenderMonoMs = renderMonoMs
+    }
+
+    @discardableResult
+    mutating func observeAudioArrival(captureTimestampMs: Int64, arrivalMonoMs: Double) -> Int {
+        let baseline = explicitPipelineDelayMs
+            ?? (udpJitterActive ? Self.defaultUDPJitterTargetMs : Self.defaultWiredTargetMs)
+        if captureTimestampMs > 0,
+           arrivalMonoMs.isFinite,
+           let videoDelta = lastVideoCaptureToRenderDeltaMs,
+           let videoMono = lastVideoRenderMonoMs {
+            let videoAgeMs = arrivalMonoMs - videoMono
+            if videoAgeMs >= -250.0 && videoAgeMs <= Self.maxVideoSampleAgeMs {
+                let audioDelta = arrivalMonoMs - Double(captureTimestampMs)
+                let relativeLeadMs = videoDelta - audioDelta
+                if relativeLeadMs.isFinite && abs(relativeLeadMs) <= Self.maxClockDeltaSanityMs {
+                    let clampedSample = min(max(relativeLeadMs, Self.minTargetMs), Self.maxTargetMs)
+                    targetDelayMs = min(max(0.80 * targetDelayMs + 0.20 * clampedSample, Self.minTargetMs), Self.maxTargetMs)
+                    return targetBufferedFrames
+                }
+            }
+        }
+        let clampedBase = min(max(baseline, Self.minTargetMs), Self.maxTargetMs)
+        targetDelayMs = min(max(0.90 * targetDelayMs + 0.10 * clampedBase, Self.minTargetMs), Self.maxTargetMs)
+        return targetBufferedFrames
+    }
+
+    func excessFramesToTrim(currentBufferedFrames: Int) -> Int {
+        guard currentBufferedFrames > driftTrimThresholdFrames else { return 0 }
+        return max(0, currentBufferedFrames - targetBufferedFrames)
+    }
+}
+
+#if canImport(AudioToolbox)
+/// Native `AudioToolbox` Opus -> S16LE PCM packet decoder shared by Mac and iOS receivers.
+final class AppleOpusAudioDecoder {
+    private static let endOfSinglePacketStatus: OSStatus = -77_401
+    private static let maxDecodedFramesPerPacket: UInt32 = 2_880
+
+    private var converter: AudioConverterRef?
+    private var configuredChannels: UInt32 = 0
+    private var configuredSampleRate: Double = 0
+    private var decodeScratch = [UInt8]()
+
+    private final class InputContext {
+        var packetBytes: UnsafeRawPointer?
+        var packetLength: Int = 0
+        var packetDesc = AudioStreamPacketDescription()
+        var consumed: Bool = false
+    }
+
+    private let inputContext = InputContext()
+
+    deinit {
+        reset()
+    }
+
+    func reset() {
+        if let converter {
+            AudioConverterDispose(converter)
+            self.converter = nil
+        }
+        configuredChannels = 0
+        configuredSampleRate = 0
+    }
+
+    func decodeToInterleavedS16LE(
+        opusPacket: Data,
+        sampleRate: Int = 48_000,
+        channels: Int = 2
+    ) -> Data? {
+        guard sampleRate == 48_000,
+              (1...2).contains(channels),
+              !opusPacket.isEmpty,
+              opusPacket.count <= UDPMediaAudioPayload.maxPCMBytes else {
+            return nil
+        }
+        let ch = UInt32(channels)
+        let rate = Double(sampleRate)
+        if converter == nil || configuredChannels != ch || configuredSampleRate != rate {
+            reset()
+            var srcFormat = AudioStreamBasicDescription(
+                mSampleRate: rate,
+                mFormatID: kAudioFormatOpus,
+                mFormatFlags: 0,
+                mBytesPerPacket: 0,
+                mFramesPerPacket: 960,
+                mBytesPerFrame: 0,
+                mChannelsPerFrame: ch,
+                mBitsPerChannel: 0,
+                mReserved: 0
+            )
+            let bytesPerFrame = ch * 2
+            var dstFormat = AudioStreamBasicDescription(
+                mSampleRate: rate,
+                mFormatID: kAudioFormatLinearPCM,
+                mFormatFlags: kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked,
+                mBytesPerPacket: bytesPerFrame,
+                mFramesPerPacket: 1,
+                mBytesPerFrame: bytesPerFrame,
+                mChannelsPerFrame: ch,
+                mBitsPerChannel: 16,
+                mReserved: 0
+            )
+            var created: AudioConverterRef?
+            let status = AudioConverterNew(&srcFormat, &dstFormat, &created)
+            guard status == noErr, let created else {
+                return nil
+            }
+            self.converter = created
+            self.configuredChannels = ch
+            self.configuredSampleRate = rate
+        }
+
+        guard let activeConverter = converter else { return nil }
+        let bytesPerFrame = Int(ch) * 2
+        let maxOutBytes = Int(Self.maxDecodedFramesPerPacket) * bytesPerFrame
+        if decodeScratch.count < maxOutBytes {
+            decodeScratch = [UInt8](repeating: 0, count: maxOutBytes)
+        }
+
+        return opusPacket.withUnsafeBytes { rawInput -> Data? in
+            guard let inputBase = rawInput.baseAddress else { return nil }
+            inputContext.packetBytes = inputBase
+            inputContext.packetLength = opusPacket.count
+            inputContext.packetDesc = AudioStreamPacketDescription(
+                mStartOffset: 0,
+                mVariableFramesInPacket: 0,
+                mDataByteSize: UInt32(opusPacket.count)
+            )
+            inputContext.consumed = false
+
+            return decodeScratch.withUnsafeMutableBytes { rawOut -> Data? in
+                guard let outBase = rawOut.baseAddress else { return nil }
+                var outBufferList = AudioBufferList(
+                    mNumberBuffers: 1,
+                    mBuffers: AudioBuffer(
+                        mNumberChannels: ch,
+                        mDataByteSize: UInt32(maxOutBytes),
+                        mData: outBase
+                    )
+                )
+                var ioOutputDataPackets = Self.maxDecodedFramesPerPacket
+                let callback: AudioConverterComplexInputDataProc = { _, ioNumberDataPackets, ioData, outDataPacketDescription, userData in
+                    guard let userData else {
+                        ioNumberDataPackets.pointee = 0
+                        return -50
+                    }
+                    let ctx = Unmanaged<InputContext>.fromOpaque(userData).takeUnretainedValue()
+                    if ctx.consumed {
+                        ioNumberDataPackets.pointee = 0
+                        ioData.pointee.mBuffers.mData = nil
+                        ioData.pointee.mBuffers.mDataByteSize = 0
+                        return AppleOpusAudioDecoder.endOfSinglePacketStatus
+                    }
+                    ctx.consumed = true
+                    ioNumberDataPackets.pointee = 1
+                    ioData.pointee.mBuffers.mData = UnsafeMutableRawPointer(mutating: ctx.packetBytes)
+                    ioData.pointee.mBuffers.mDataByteSize = UInt32(ctx.packetLength)
+                    if let outDataPacketDescription {
+                        withUnsafeMutablePointer(to: &ctx.packetDesc) { descPtr in
+                            outDataPacketDescription.pointee = descPtr
+                        }
+                    }
+                    return noErr
+                }
+
+                let status = AudioConverterFillComplexBuffer(
+                    activeConverter,
+                    callback,
+                    Unmanaged.passUnretained(inputContext).toOpaque(),
+                    &ioOutputDataPackets,
+                    &outBufferList,
+                    nil
+                )
+                guard status == noErr || status == Self.endOfSinglePacketStatus else {
+                    return nil
+                }
+                let decodedFrames = Int(ioOutputDataPackets)
+                let producedBytes = min(decodedFrames * bytesPerFrame, Int(outBufferList.mBuffers.mDataByteSize))
+                guard producedBytes > 0, producedBytes % bytesPerFrame == 0 else {
+                    return nil
+                }
+                return Data(bytes: outBase, count: producedBytes)
+            }
+        }
+    }
+}
+#endif
 
 /// Control-channel JSON message exchanged over authenticated mTLS TCP to set up
 /// a session-scoped UDP media plane.

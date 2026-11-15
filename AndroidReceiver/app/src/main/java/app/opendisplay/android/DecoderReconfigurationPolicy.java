@@ -11,6 +11,7 @@ final class DecoderReconfigurationPolicy {
         return !current.codec.equals(next.codec)
                 || current.fps != next.fps
                 || current.width != next.width
-                || current.height != next.height;
+                || current.height != next.height
+                || !current.colorSpace.equals(next.colorSpace);
     }
 }

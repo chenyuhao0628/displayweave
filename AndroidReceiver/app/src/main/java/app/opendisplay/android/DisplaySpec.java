@@ -16,10 +16,13 @@ public final class DisplaySpec {
     public final String transport;
     public final Integer millimetersWide;
     public final Integer millimetersHigh;
+    public final boolean audioOpusSupported;
+    public final boolean wideColorGamut;
 
     public DisplaySpec(int pixelsWide, int pixelsHigh, double scale) {
         this(pixelsWide, pixelsHigh, scale, 60, 60,
-                new String[] {"h264"}, "h264", "Android Tablet", 0, "wifi", null, null);
+                new String[] {"h264"}, "h264", "Android Tablet", 0, "wifi", null, null,
+                false, false);
     }
 
     public DisplaySpec(int pixelsWide, int pixelsHigh, double scale,
@@ -28,7 +31,7 @@ public final class DisplaySpec {
                        String deviceModel, int androidSdk, String transport) {
         this(pixelsWide, pixelsHigh, scale, refreshRate, maxFps,
                 supportedCodecs, preferredCodec, deviceModel, androidSdk, transport,
-                null, null);
+                null, null, false, false);
     }
 
     public DisplaySpec(int pixelsWide, int pixelsHigh, double scale,
@@ -36,6 +39,17 @@ public final class DisplaySpec {
                        String[] supportedCodecs, String preferredCodec,
                        String deviceModel, int androidSdk, String transport,
                        Integer millimetersWide, Integer millimetersHigh) {
+        this(pixelsWide, pixelsHigh, scale, refreshRate, maxFps,
+                supportedCodecs, preferredCodec, deviceModel, androidSdk, transport,
+                millimetersWide, millimetersHigh, false, false);
+    }
+
+    public DisplaySpec(int pixelsWide, int pixelsHigh, double scale,
+                       int refreshRate, int maxFps,
+                       String[] supportedCodecs, String preferredCodec,
+                       String deviceModel, int androidSdk, String transport,
+                       Integer millimetersWide, Integer millimetersHigh,
+                       boolean audioOpusSupported, boolean wideColorGamut) {
         this.pixelsWide = pixelsWide;
         this.pixelsHigh = pixelsHigh;
         this.scale = scale;
@@ -54,6 +68,8 @@ public final class DisplaySpec {
         this.transport = transport == null || transport.length() == 0 ? "wifi" : transport;
         this.millimetersWide = millimetersWide;
         this.millimetersHigh = millimetersHigh;
+        this.audioOpusSupported = audioOpusSupported;
+        this.wideColorGamut = wideColorGamut;
     }
 
     public boolean sameDisplayConfiguration(DisplaySpec other) {
@@ -68,6 +84,8 @@ public final class DisplaySpec {
                 && Objects.equals(preferredCodec, other.preferredCodec)
                 && Arrays.equals(supportedCodecs, other.supportedCodecs)
                 && Objects.equals(millimetersWide, other.millimetersWide)
-                && Objects.equals(millimetersHigh, other.millimetersHigh);
+                && Objects.equals(millimetersHigh, other.millimetersHigh)
+                && audioOpusSupported == other.audioOpusSupported
+                && wideColorGamut == other.wideColorGamut;
     }
 }

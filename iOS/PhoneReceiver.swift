@@ -16,6 +16,16 @@ import UIKit
 @objc protocol IOSAudioPlayback: AnyObject {
     init()
     func enqueuePCM(_ pcmData: Data, sampleRate: Int, channels: Int)
+    @objc optional func enqueueEncodedAudio(
+        _ payloadData: Data,
+        formatFlags: Int,
+        sampleRate: Int,
+        channels: Int,
+        captureTimestampMs: Int64,
+        arrivalMonoMs: Double
+    )
+    @objc optional func updateVideoPipelineDelay(udpJitterActive: Bool, explicitDelayMs: Double)
+    @objc optional func recordVideoRender(captureTimestampMs: Int64, renderMonoMs: Double)
     func stop()
 }
 
@@ -803,6 +813,12 @@ final class PhoneReceiver: ObservableObject {
             }
         case "udpMediaConfig":
             configureUDPMedia(obj)
+        case TCPAudioFrameMessage.messageType:
+            guard data.count <= TCPAudioFrameMessage.maxControlBytes,
+                  let audioPayload = try? TCPAudioFrameMessage.decode(jsonObject: obj, rawByteCount: data.count) else {
+                return
+            }
+            handleIncomingAudio(audioPayload, isUDP: false)
         default:
             break
         }
@@ -982,6 +998,8 @@ final class PhoneReceiver: ObservableObject {
                 AppleVideoPolicy.udpMediaCapability,
                 AppleVideoPolicy.udpCursorCapability,
                 AppleVideoPolicy.udpAudioCapability,
+                AppleVideoPolicy.tcpAudioCapability,
+                AppleVideoPolicy.audioOpusCapability,
                 AppleVideoPolicy.displayP3Capability,
             ],
             "udpMediaV1": true,
@@ -1340,6 +1358,14 @@ final class PhoneReceiver: ObservableObject {
         } else {
             displayLayerNotReadySince = nil
         }
+        let explicitDelayMs = latestDecodeMs > 0 ? latestDecodeMs : -1
+        audioPlayer?.updateVideoPipelineDelay?(udpJitterActive: isUDP, explicitDelayMs: explicitDelayMs)
+        if let captureMs, captureMs.isFinite {
+            audioPlayer?.recordVideoRender?(
+                captureTimestampMs: Int64(captureMs.rounded()),
+                renderMonoMs: nowUptime * 1_000.0
+            )
+        }
         enqueueFrame(packet.slices, isKeyframe: packet.keyframe,
                      captureMs: captureMs,
                      sendMs: sendMs,
@@ -1417,8 +1443,6 @@ final class PhoneReceiver: ObservableObject {
         }
         udpMediaSession?.stop()
         udpMediaSession = nil
-        audioPlayer?.stop()
-        lastAudioSequence = nil
         let generation = inputSendBudget.generation
         let senderHost = UDPEndpointResolver.hostString(from: conn.currentPath?.remoteEndpoint)
             ?? UDPEndpointResolver.hostString(from: conn.endpoint)
@@ -1498,22 +1522,14 @@ final class PhoneReceiver: ObservableObject {
         }
         session.onAudio = { [weak self, weak conn] gen, audio in
             guard let self, audio.isValid,
-                  audio.formatFlags == UDPMediaAudioPayload.formatPCM16LE else { return }
+                  audio.formatFlags == UDPMediaAudioPayload.formatPCM16LE
+                    || audio.formatFlags == UDPMediaAudioPayload.formatOpus else { return }
             self.queue.async { [weak self, weak conn] in
                 guard let self, let conn,
                       self.running,
                       self.connection === conn,
                       self.inputSendBudget.generation == gen else { return }
-                self.lastDataReceived = Date()
-                if let prevSeq = self.lastAudioSequence {
-                    guard UDPMediaHeader.isFrameIdNewer(audio.audioSeq, than: prevSeq) else { return }
-                }
-                self.lastAudioSequence = audio.audioSeq
-                self.audioPlayer?.enqueuePCM(
-                    audio.pcmBytes,
-                    sampleRate: Int(audio.sampleRate),
-                    channels: Int(audio.channels)
-                )
+                self.handleIncomingAudio(audio, isUDP: true)
             }
         }
         udpMediaSession = session
@@ -1522,6 +1538,36 @@ final class PhoneReceiver: ObservableObject {
             "sessionEpoch": config.sessionEpoch,
             "udpPort": Int(session.localPort),
         ], on: conn)
+    }
+
+    private func handleIncomingAudio(_ audio: UDPMediaAudioPayload, isUDP: Bool) {
+        guard audio.isValid,
+              audio.formatFlags == UDPMediaAudioPayload.formatPCM16LE
+                || audio.formatFlags == UDPMediaAudioPayload.formatOpus else { return }
+        lastDataReceived = Date()
+        if let prevSeq = lastAudioSequence {
+            guard UDPMediaHeader.isFrameIdNewer(audio.audioSeq, than: prevSeq) else { return }
+        }
+        lastAudioSequence = audio.audioSeq
+        let arrivalMonoMs = ProcessInfo.processInfo.systemUptime * 1_000.0
+        let explicitDelayMs = latestDecodeMs > 0 ? latestDecodeMs : -1
+        audioPlayer?.updateVideoPipelineDelay?(udpJitterActive: isUDP, explicitDelayMs: explicitDelayMs)
+        if let enqueueEncoded = audioPlayer?.enqueueEncodedAudio {
+            enqueueEncoded(
+                audio.pcmBytes,
+                Int(audio.formatFlags),
+                Int(audio.sampleRate),
+                Int(audio.channels),
+                audio.captureTimestampMs,
+                arrivalMonoMs
+            )
+        } else if audio.formatFlags == UDPMediaAudioPayload.formatPCM16LE {
+            audioPlayer?.enqueuePCM(
+                audio.pcmBytes,
+                sampleRate: Int(audio.sampleRate),
+                channels: Int(audio.channels)
+            )
+        }
     }
 
     private func failVideo() {

@@ -178,6 +178,15 @@ struct PhoneInfo: Decodable {
     var supportsUDPAudioV1: Bool {
         Set(capabilities ?? []).contains("udpAudioV1")
     }
+    var supportsTCPAudioV1: Bool {
+        Set(capabilities ?? []).contains("tcpAudioV1")
+    }
+    var supportsAudioOpusV1: Bool {
+        Set(capabilities ?? []).contains("audioOpusV1")
+    }
+    var supportsAnyAudioV1: Bool {
+        supportsUDPAudioV1 || supportsTCPAudioV1
+    }
     var supportsHEVC5KV1: Bool {
         Set(capabilities ?? []).contains("hevc5kV1")
     }

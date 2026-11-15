@@ -277,6 +277,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                         return;
                     }
                     stopUdpMediaSession();
+                    stopAudioPlayer();
                     stylusInput.reset();
                     desktopInput.reset();
                     lastConnectedPeerHost = peer;
@@ -365,6 +366,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                         return;
                     }
                     stopUdpMediaSession();
+                    stopAudioPlayer();
                     stylusInput.reset();
                     desktopInput.reset();
                     resetClockSynchronization();
@@ -401,6 +403,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         listeningPort = 0;
         advertiser.stop();
         stopUdpMediaSession();
+        stopAudioPlayer();
         transport.stop(LengthPrefixedProtocol.goodbyeJson().getBytes(StandardCharsets.UTF_8));
         resetQueuedFrames();
         for (Runnable pending : transportEvents.shutdownNow()) {
@@ -655,12 +658,26 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         if (!connectionCoordinator.isCurrent(generation)) {
             return;
         }
+        if (json.contains("\"audioFrame\"")) {
+            UdpMediaProtocol.AudioPayload tcpAudio =
+                    UdpMediaProtocol.TcpAudioFrame.decodeJson(json);
+            if (tcpAudio != null) {
+                handleIncomingAudio(generation, tcpAudio, false);
+                return;
+            }
+            if (json.length() > UdpMediaProtocol.TcpAudioFrame.MAX_CONTROL_BYTES) {
+                return;
+            }
+        }
         String messageType = "unknown";
         boolean streamConfigCommitted = false;
         try {
             JSONObject object = new JSONObject(json);
             String type = object.optString("type", "");
             messageType = type;
+            if (UdpMediaProtocol.TcpAudioFrame.MESSAGE_TYPE.equals(type)) {
+                return;
+            }
             if ("ping".equals(type)) {
                 double t = object.optDouble("t", 0);
                 MacPingMetrics macMetrics = MacPingMetrics.parse(
@@ -729,7 +746,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                             object.optInt("fps", 60),
                             object.optInt("width", activeDisplaySpec.pixelsWide),
                             object.optInt("height", activeDisplaySpec.pixelsHigh),
-                            object.optInt("bitrate", 0));
+                            object.optInt("bitrate", 0),
+                            object.optString("colorSpace", VideoStreamConfig.COLOR_SPACE_SRGB));
                     if (config.width <= 0 || config.height <= 0
                             || config.width > 8192 || config.height > 8192
                             || (long) config.width * config.height > 33_554_432L) {
@@ -822,10 +840,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                     }
                     stopUdpMediaSession();
                     UdpMediaReceiverSession session = null;
-                    UdpAudioPlayer nextAudioPlayer = null;
                     try {
-                        nextAudioPlayer = new UdpAudioPlayer();
-                        final UdpAudioPlayer sessionAudioPlayer = nextAudioPlayer;
                         session = UdpMediaReceiverSession.start(
                                 generation,
                                 udpCfg,
@@ -867,44 +882,39 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                                         if (running
                                                 && connectionCoordinator.isCurrent(gen)
                                                 && protocolSession.sessionEpoch() == epoch) {
-                                            sessionAudioPlayer.offer(audio);
+                                            handleIncomingAudio(gen, audio, true);
                                         }
                                     }
                                 });
                         UdpMediaReceiverSession displacedSession;
-                        UdpAudioPlayer displacedAudio;
+                        UdpAudioPlayer activeAudio;
                         boolean adopted;
                         synchronized (this) {
                             adopted = running
                                     && connectionCoordinator.isCurrent(generation)
                                     && protocolSession.sessionEpoch() == udpCfg.sessionEpoch;
+                            activeAudio = udpAudioPlayer;
                             if (adopted) {
                                 displacedSession = udpMediaReceiverSession;
-                                displacedAudio = udpAudioPlayer;
                                 udpMediaReceiverSession = session;
-                                udpAudioPlayer = sessionAudioPlayer;
                                 lastUdpCursorSequence = null;
                             } else {
                                 displacedSession = session;
-                                displacedAudio = sessionAudioPlayer;
                             }
                         }
                         if (displacedSession != null) {
                             displacedSession.close();
                         }
-                        if (displacedAudio != null) {
-                            displacedAudio.close();
-                        }
                         if (adopted) {
+                            if (activeAudio != null) {
+                                activeAudio.updateVideoPipelineMode(true, -1.0);
+                            }
                             sendJson(UdpMediaProtocol.ConfigMessage.readyJson(
                                     udpCfg.sessionEpoch, session.localPort()));
                         }
                     } catch (java.io.IOException error) {
                         if (session != null) {
                             session.close();
-                        }
-                        if (nextAudioPlayer != null) {
-                            nextAudioPlayer.close();
                         }
                         android.util.Log.w("DisplayWeave", "UDP media receiver start failed", error);
                     }
@@ -939,7 +949,9 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 installId,
                 spec.millimetersWide,
                 spec.millimetersHigh,
-                transport.secure()));
+                transport.secure(),
+                spec.audioOpusSupported,
+                spec.wideColorGamut));
         long generation = connectionCoordinator.currentGeneration();
         if (protocolSession.isNegotiatedV2()) {
             connectionCoordinator.transition(
@@ -967,7 +979,6 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             activeSession = udpMediaReceiverSession;
             udpMediaReceiverSession = null;
             activeAudio = udpAudioPlayer;
-            udpAudioPlayer = null;
             udpFrameSequenceOffset = 0;
             lastUdpCursorSequence = null;
         }
@@ -975,8 +986,38 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             activeSession.close();
         }
         if (activeAudio != null) {
+            activeAudio.updateVideoPipelineMode(false, -1.0);
+        }
+    }
+
+    private void stopAudioPlayer() {
+        UdpAudioPlayer activeAudio;
+        synchronized (this) {
+            activeAudio = udpAudioPlayer;
+            udpAudioPlayer = null;
+        }
+        if (activeAudio != null) {
             activeAudio.close();
         }
+    }
+
+    private void handleIncomingAudio(
+            long generation, UdpMediaProtocol.AudioPayload audio, boolean fromUdp) {
+        if (audio == null || !running || !connectionCoordinator.isCurrent(generation)) {
+            return;
+        }
+        UdpAudioPlayer player;
+        synchronized (this) {
+            if (!running || !connectionCoordinator.isCurrent(generation)) {
+                return;
+            }
+            if (udpAudioPlayer == null) {
+                udpAudioPlayer = new UdpAudioPlayer();
+            }
+            player = udpAudioPlayer;
+        }
+        player.updateVideoPipelineMode(fromUdp, -1.0);
+        player.offer(audio);
     }
 
     private void handleUdpCursor(
@@ -1131,7 +1172,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                         surface, nextListener, decoderLowLatencyMode);
                 decoder = next;
             }
-            next.applyStreamConfig(config.codec, config.fps, config.width, config.height);
+            next.applyStreamConfig(
+                    config.codec, config.fps, config.width, config.height, config.colorSpace);
         }, () -> {
             if (previous != null) {
                 previous.release();
@@ -1250,7 +1292,8 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                         surface, nextListener, decoderLowLatencyMode);
                 decoder = next;
             }
-            next.applyStreamConfig(config.codec, config.fps, config.width, config.height);
+            next.applyStreamConfig(
+                    config.codec, config.fps, config.width, config.height, config.colorSpace);
         }, activeDecoder::release);
     }
 
@@ -1538,6 +1581,10 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         long now = System.currentTimeMillis();
         lastFrameRenderedMs = now;
         if (telemetry != null) {
+            if (telemetry.captureMacMs > 0 && udpAudioPlayer != null) {
+                double renderMonoMs = android.os.SystemClock.elapsedRealtime();
+                udpAudioPlayer.recordVideoRender(telemetry.captureMacMs, renderMonoMs);
+            }
             long frameAgeMs = telemetry.latestFrameAgeMs(now);
             latestFrameAgeMsSum += frameAgeMs;
             latestFrameAgeSamples++;
