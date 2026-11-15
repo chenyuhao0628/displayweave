@@ -425,10 +425,49 @@ public final class UdpAudioPlayer implements AutoCloseable {
         stop();
     }
 
+    static final class OpusPendingTracker {
+        static final long INITIAL_DRAIN_WAIT_US = 2_000L;
+        static final double MAX_IN_FLIGHT_WINDOW_MS = 250.0;
+
+        private int pendingOutputs;
+        private double lastInputMonoMs;
+
+        void recordInputQueued(double nowMonoMs) {
+            pendingOutputs = Math.min(pendingOutputs + 1, 16);
+            lastInputMonoMs = nowMonoMs;
+        }
+
+        void recordOutputDrained() {
+            if (pendingOutputs > 0) {
+                pendingOutputs--;
+            }
+        }
+
+        boolean hasPendingOutput(double nowMonoMs) {
+            if (pendingOutputs <= 0) {
+                return false;
+            }
+            if ((nowMonoMs - lastInputMonoMs) >= MAX_IN_FLIGHT_WINDOW_MS) {
+                pendingOutputs = 0;
+                return false;
+            }
+            return true;
+        }
+
+        int pendingOutputs() {
+            return pendingOutputs;
+        }
+
+        static long spinTimeoutUs(int spin, long firstSpinTimeoutUs) {
+            return spin == 0 ? Math.max(0L, firstSpinTimeoutUs) : 0L;
+        }
+    }
+
     private static final class OpusDecoderState {
         final MediaCodec codec;
         final int sampleRate;
         final int channels;
+        final OpusPendingTracker pendingTracker = new OpusPendingTracker();
         int outputEncoding = AudioFormat.ENCODING_PCM_16BIT;
         long presentationTimeUs;
         byte[] decodeScratch = new byte[4096];
@@ -490,12 +529,25 @@ public final class UdpAudioPlayer implements AutoCloseable {
                 decoder.codec.queueInputBuffer(
                         inputIndex, 0, copyLen, decoder.presentationTimeUs, 0);
                 decoder.presentationTimeUs += 20_000L;
+                if (copyLen > 0) {
+                    decoder.pendingTracker.recordInputQueued(monotonicNowMs());
+                }
             } else {
                 decoder.codec.queueInputBuffer(inputIndex, 0, 0, 0L, 0);
             }
         }
+        drainDecodedOpusOutputs(
+                decoder, bufferInfo, OpusPendingTracker.INITIAL_DRAIN_WAIT_US);
+    }
+
+    private int drainDecodedOpusOutputs(
+            OpusDecoderState decoder,
+            MediaCodec.BufferInfo bufferInfo,
+            long firstSpinTimeoutUs) {
+        int totalPcmBytes = 0;
         for (int spin = 0; spin < 8; spin++) {
-            int outIndex = decoder.codec.dequeueOutputBuffer(bufferInfo, 0L);
+            long timeoutUs = OpusPendingTracker.spinTimeoutUs(spin, firstSpinTimeoutUs);
+            int outIndex = decoder.codec.dequeueOutputBuffer(bufferInfo, timeoutUs);
             if (outIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
                 break;
             }
@@ -507,6 +559,7 @@ public final class UdpAudioPlayer implements AutoCloseable {
                 continue;
             }
             if (outIndex >= 0) {
+                decoder.pendingTracker.recordOutputDrained();
                 try {
                     ByteBuffer outBuf = decoder.codec.getOutputBuffer(outIndex);
                     if (outBuf != null && bufferInfo.size > 0) {
@@ -514,13 +567,15 @@ public final class UdpAudioPlayer implements AutoCloseable {
                         outBuf.limit(bufferInfo.offset + bufferInfo.size);
                         int pcm16Bytes = extractS16LeBytes(outBuf, bufferInfo.size, decoder);
                         if (pcm16Bytes > 0) {
+                            totalPcmBytes += pcm16Bytes;
                             synchronized (lock) {
                                 if (running) {
                                     ringBuffer.writeBounded(decoder.decodeScratch, 0, pcm16Bytes);
                                     ringBuffer.applyLipSyncWatermark(
-                                            lipSync.targetBytes(packet.sampleRate, packet.channels),
+                                            lipSync.targetBytes(
+                                                    decoder.sampleRate, decoder.channels),
                                             lipSync.driftTrimThresholdBytes(
-                                                    packet.sampleRate, packet.channels));
+                                                    decoder.sampleRate, decoder.channels));
                                 }
                             }
                         }
@@ -530,6 +585,7 @@ public final class UdpAudioPlayer implements AutoCloseable {
                 }
             }
         }
+        return totalPcmBytes;
     }
 
     private static int extractS16LeBytes(
@@ -567,6 +623,18 @@ public final class UdpAudioPlayer implements AutoCloseable {
         byte[] chunk = new byte[3840];
         try {
             while (true) {
+                if (opusDecoder != null && !opusInitFailed) {
+                    try {
+                        drainDecodedOpusOutputs(opusDecoder, bufferInfo, 0L);
+                    } catch (RuntimeException decodeError) {
+                        android.util.Log.w(
+                                "DisplayWeave", "Opus MediaCodec output drain failed", decodeError);
+                        opusDecoder.close();
+                        opusDecoder = null;
+                        opusInitFailed = true;
+                    }
+                }
+
                 UdpMediaProtocol.AudioPayload pendingPacket = null;
                 int bytesRead = 0;
                 int targetRate;
@@ -587,12 +655,24 @@ public final class UdpAudioPlayer implements AutoCloseable {
                         if (bytesRead > 0) {
                             break;
                         }
+                        boolean pollPendingOpus = opusDecoder != null
+                                && !opusInitFailed
+                                && opusDecoder.pendingTracker.hasPendingOutput(monotonicNowMs());
                         try {
-                            lock.wait(10L);
+                            if (pollPendingOpus) {
+                                lock.wait(3L);
+                            } else if (ringBuffer.availableBytes() > 0) {
+                                lock.wait(10L);
+                            } else {
+                                lock.wait(50L);
+                            }
                         } catch (InterruptedException interrupted) {
                             if (!running) {
                                 return;
                             }
+                        }
+                        if (pollPendingOpus) {
+                            break;
                         }
                     }
                     if (!running) {

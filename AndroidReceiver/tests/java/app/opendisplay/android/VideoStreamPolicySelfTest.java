@@ -457,6 +457,27 @@ public final class VideoStreamPolicySelfTest {
         assertEquals(80_000_000L,
                 java.nio.ByteBuffer.wrap(seekPreRoll).order(java.nio.ByteOrder.LITTLE_ENDIAN).getLong());
 
+        // Async Opus output drain policy: spin 0 waits INITIAL_DRAIN_WAIT_US (2_000us), subsequent spins poll 0L,
+        // and in-flight outputs stay eligible for 3ms tail polling until drained or bounded 250ms expiry.
+        assertEquals(2_000L, UdpAudioPlayer.OpusPendingTracker.spinTimeoutUs(
+                0, UdpAudioPlayer.OpusPendingTracker.INITIAL_DRAIN_WAIT_US));
+        assertEquals(0L, UdpAudioPlayer.OpusPendingTracker.spinTimeoutUs(
+                1, UdpAudioPlayer.OpusPendingTracker.INITIAL_DRAIN_WAIT_US));
+        assertEquals(0L, UdpAudioPlayer.OpusPendingTracker.spinTimeoutUs(0, 0L));
+        UdpAudioPlayer.OpusPendingTracker tracker = new UdpAudioPlayer.OpusPendingTracker();
+        assertFalse(tracker.hasPendingOutput(1_000.0));
+        tracker.recordInputQueued(1_000.0);
+        assertEquals(1, tracker.pendingOutputs());
+        assertTrue(tracker.hasPendingOutput(1_005.0));
+        tracker.recordOutputDrained();
+        assertEquals(0, tracker.pendingOutputs());
+        assertFalse(tracker.hasPendingOutput(1_006.0));
+        // Malformed/dropped frame without output expires cleanly after 250ms without perpetual polling.
+        tracker.recordInputQueued(2_000.0);
+        assertTrue(tracker.hasPendingOutput(2_249.0));
+        assertFalse(tracker.hasPendingOutput(2_250.0));
+        assertEquals(0, tracker.pendingOutputs());
+
         // Format change (48kHz mono = 11,520 bytes cap @ 120ms) reconfigures cleanly.
         assertTrue(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
                 1L, 5_000L, 48_000, 1, 0, new byte[480])));

@@ -1358,8 +1358,7 @@ final class PhoneReceiver: ObservableObject {
         } else {
             displayLayerNotReadySince = nil
         }
-        let explicitDelayMs = latestDecodeMs > 0 ? latestDecodeMs : -1
-        audioPlayer?.updateVideoPipelineDelay?(udpJitterActive: isUDP, explicitDelayMs: explicitDelayMs)
+        audioPlayer?.updateVideoPipelineDelay?(udpJitterActive: isUDP, explicitDelayMs: -1)
         if let captureMs, captureMs.isFinite {
             audioPlayer?.recordVideoRender?(
                 captureTimestampMs: Int64(captureMs.rounded()),
@@ -1533,6 +1532,7 @@ final class PhoneReceiver: ObservableObject {
             }
         }
         udpMediaSession = session
+        audioPlayer?.updateVideoPipelineDelay?(udpJitterActive: true, explicitDelayMs: -1)
         sendControl([
             "type": "udpMediaReady",
             "sessionEpoch": config.sessionEpoch,
@@ -1550,8 +1550,9 @@ final class PhoneReceiver: ObservableObject {
         }
         lastAudioSequence = audio.audioSeq
         let arrivalMonoMs = ProcessInfo.processInfo.systemUptime * 1_000.0
-        let explicitDelayMs = latestDecodeMs > 0 ? latestDecodeMs : -1
-        audioPlayer?.updateVideoPipelineDelay?(udpJitterActive: isUDP, explicitDelayMs: explicitDelayMs)
+        if isUDP || udpMediaSession == nil {
+            audioPlayer?.updateVideoPipelineDelay?(udpJitterActive: isUDP, explicitDelayMs: -1)
+        }
         if let enqueueEncoded = audioPlayer?.enqueueEncodedAudio {
             enqueueEncoded(
                 audio.pcmBytes,

@@ -1581,9 +1581,10 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         long now = System.currentTimeMillis();
         lastFrameRenderedMs = now;
         if (telemetry != null) {
-            if (telemetry.captureMacMs > 0 && udpAudioPlayer != null) {
+            UdpAudioPlayer activeAudio = udpAudioPlayer;
+            if (telemetry.captureMacMs > 0 && activeAudio != null) {
                 double renderMonoMs = android.os.SystemClock.elapsedRealtime();
-                udpAudioPlayer.recordVideoRender(telemetry.captureMacMs, renderMonoMs);
+                activeAudio.recordVideoRender(telemetry.captureMacMs, renderMonoMs);
             }
             long frameAgeMs = telemetry.latestFrameAgeMs(now);
             latestFrameAgeMsSum += frameAgeMs;

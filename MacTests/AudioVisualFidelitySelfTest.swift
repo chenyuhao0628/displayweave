@@ -311,6 +311,7 @@ struct AudioVisualFidelitySelfTest {
         expect(abs(CaptureStaticFrameGate.defaultCrispRefreshDelay - 0.18) < 1e-6,
                "settled crisp text refresh delay must default to 180ms")
 
+        for codecType in [kCMVideoCodecType_HEVC, kCMVideoCodecType_H264] {
         for lowLatency in [false, true] {
             let box = CrispEncodedCounter()
             var session: VTCompressionSession?
@@ -322,7 +323,7 @@ struct AudioVisualFidelitySelfTest {
                 allocator: kCFAllocatorDefault,
                 width: 640,
                 height: 360,
-                codecType: kCMVideoCodecType_HEVC,
+                codecType: codecType,
                 encoderSpecification: spec as CFDictionary,
                 imageBufferAttributes: nil,
                 compressedDataAllocator: nil,
@@ -367,6 +368,16 @@ struct AudioVisualFidelitySelfTest {
                         restoreBitrate: bitrate,
                         restoreVBVLimits: vbvLimits
                     ) {
+                        var activeQPRef: Unmanaged<CFTypeRef>?
+                        let copyActiveStatus = VTSessionCopyProperty(
+                            session,
+                            key: kVTCompressionPropertyKey_MaxAllowedFrameQP,
+                            allocator: nil,
+                            valueOut: &activeQPRef
+                        )
+                        let activeQP = (activeQPRef?.takeRetainedValue() as? NSNumber)?.intValue
+                        expect(copyActiveStatus == noErr && activeQP == SettledCrispRefreshEncoderPolicy.settledMaxAllowedFrameQP,
+                               "inside withCrispRefreshHints (lowLatency=\(lowLatency)), MaxAllowedFrameQP must be 20 (got \(String(describing: activeQP)))")
                         _ = VTCompressionSessionEncodeFrame(
                             session,
                             imageBuffer: pixel,
@@ -377,6 +388,18 @@ struct AudioVisualFidelitySelfTest {
                             infoFlagsOut: nil
                         )
                     }
+                    var restoredQPRef: Unmanaged<CFTypeRef>?
+                    let copyRestoredStatus = VTSessionCopyProperty(
+                        session,
+                        key: kVTCompressionPropertyKey_MaxAllowedFrameQP,
+                        allocator: nil,
+                        valueOut: &restoredQPRef
+                    )
+                    let restoredQP = (restoredQPRef?.takeRetainedValue() as? NSNumber)?.intValue
+                    expect(copyRestoredStatus == noErr
+                           && restoredQP != SettledCrispRefreshEncoderPolicy.settledMaxAllowedFrameQP
+                           && restoredQP == SettledCrispRefreshEncoderPolicy.defaultMaxAllowedFrameQPCeiling,
+                           "after withCrispRefreshHints exits (lowLatency=\(lowLatency)), MaxAllowedFrameQP must restore to 51, never stay stuck at 20 (got \(String(describing: restoredQP)))")
                 } else {
                     let props = idx == 0 ? ([kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary) : nil
                     _ = VTCompressionSessionEncodeFrame(
@@ -392,7 +415,29 @@ struct AudioVisualFidelitySelfTest {
             }
             VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
             expect(box.encodedCount == 6 && box.droppedCount == 0,
-                   "SettledCrispRefreshEncoderPolicy (lowLatency=\(lowLatency)) must encode all 6 frames with 0 VBV drops (encoded=\(box.encodedCount), dropped=\(box.droppedCount))")
+                   "SettledCrispRefreshEncoderPolicy (codec=\(codecType), lowLatency=\(lowLatency)) must encode all 6 frames with 0 VBV drops (encoded=\(box.encodedCount), dropped=\(box.droppedCount))")
+
+            // Verify explicit valid caller MaxAllowedFrameQP (e.g. 36) is also preserved & restored
+            if VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxAllowedFrameQP, value: 36 as CFNumber) == noErr {
+                SettledCrispRefreshEncoderPolicy.withCrispRefreshHints(
+                    encoder: session,
+                    enabled: true,
+                    restoreSpeedOverQuality: true,
+                    restoreBitrate: bitrate,
+                    restoreVBVLimits: vbvLimits
+                ) {}
+                var customQPRef: Unmanaged<CFTypeRef>?
+                let customStatus = VTSessionCopyProperty(
+                    session,
+                    key: kVTCompressionPropertyKey_MaxAllowedFrameQP,
+                    allocator: nil,
+                    valueOut: &customQPRef
+                )
+                let customQP = (customQPRef?.takeRetainedValue() as? NSNumber)?.intValue
+                expect(customStatus == noErr && customQP == 36,
+                       "explicit MaxAllowedFrameQP=36 must restore back to 36 (got \(String(describing: customQP)))")
+            }
+        }
         }
     }
 

@@ -164,6 +164,7 @@ enum SettledCrispRefreshEncoderPolicy {
     /// frame (`~180ms` after motion stops) so text and UI edges snap sharp without
     /// altering VBV frame-size limits or dropping subsequent frames.
     static let settledMaxAllowedFrameQP: Int = 20
+    static let defaultMaxAllowedFrameQPCeiling: Int = 51
     static let settledSpatialQualityHint: Float = 0.90
 
     static func withCrispRefreshHints<T>(
@@ -183,6 +184,17 @@ enum SettledCrispRefreshEncoderPolicy {
             valueOut: &originalMaxQPRef
         ) == noErr
         let originalMaxQP = originalMaxQPRef?.takeRetainedValue()
+        // Before MaxAllowedFrameQP is explicitly set, VideoToolbox returns negative
+        // sentinels (-13 or -1) from VTSessionCopyProperty, which VTSessionSetProperty
+        // rejects with kVTPropertyErr (-12900). Restore a valid 1...51 ceiling.
+        let restoreMaxQP: Int = {
+            if hadOriginalMaxQP,
+               let number = originalMaxQP as? NSNumber,
+               (1...51).contains(number.intValue) {
+                return number.intValue
+            }
+            return defaultMaxAllowedFrameQPCeiling
+        }()
 
         VTSessionSetProperty(
             encoder,
@@ -200,13 +212,11 @@ enum SettledCrispRefreshEncoderPolicy {
             value: settledSpatialQualityHint as CFNumber
         )
         defer {
-            if hadOriginalMaxQP, let originalMaxQP {
-                VTSessionSetProperty(
-                    encoder,
-                    key: kVTCompressionPropertyKey_MaxAllowedFrameQP,
-                    value: originalMaxQP
-                )
-            }
+            VTSessionSetProperty(
+                encoder,
+                key: kVTCompressionPropertyKey_MaxAllowedFrameQP,
+                value: restoreMaxQP as CFNumber
+            )
             VTSessionSetProperty(
                 encoder,
                 key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality,
