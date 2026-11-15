@@ -64,6 +64,88 @@ struct MacCoreUpgradeSelfTest {
                "pinned DirectCable link stays on kernel TCP by default")
         expect(UDPMediaActivationPolicy.shouldActivateUDPMedia(peerSupportsUDP: true, pinnedInterfaceName: "en5", forceOnDirectCable: true),
                "explicit DirectCable override allows UDP media while retaining interface binding")
+
+        // Conservative Wi-Fi client-isolation / unreachable-LAN 8s empty discovery hint
+        let lanSubnet = IPv4SubnetSnapshot(
+            addressHostOrder: IPv4SubnetSnapshot.parseIPv4HostOrder("192.168.5.42")!,
+            netmaskHostOrder: IPv4SubnetSnapshot.parseIPv4HostOrder("255.255.255.0")!
+        )
+        expect(!WiFiEmptyDiscoveryIsolationPolicy.isVPNTunnelOwningRoute(
+            primaryIPv4Interface: "en0",
+            primaryIPv6Interface: "en0",
+            ipv4Router: "192.168.5.1",
+            physicalIPv4Subnets: [lanSubnet],
+            hasActiveUtunIPv4: true
+        ), "split-tunnel/system utun interface must NOT be flagged when en0 owns physical LAN default route")
+        expect(WiFiEmptyDiscoveryIsolationPolicy.isVPNTunnelOwningRoute(
+            primaryIPv4Interface: "utun4",
+            primaryIPv6Interface: "en0",
+            ipv4Router: "10.8.0.1",
+            physicalIPv4Subnets: [lanSubnet],
+            hasActiveUtunIPv4: true
+        ), "PrimaryInterface=utun* must be recognized as VPN route ownership")
+        expect(WiFiEmptyDiscoveryIsolationPolicy.isVPNTunnelOwningRoute(
+            primaryIPv4Interface: "en0",
+            primaryIPv6Interface: nil,
+            ipv4Router: "198.18.0.1",
+            physicalIPv4Subnets: [lanSubnet],
+            hasActiveUtunIPv4: true
+        ), "virtual TUN router outside physical en* subnet with active utun IPv4 must be recognized as VPN route ownership")
+
+        expect(WiFiEmptyDiscoveryIsolationPolicy.advisory(
+            roleEnabled: true,
+            permitsWiFi: true,
+            browserReady: true,
+            localNetworkDenied: false,
+            hasDiscoveryError: false,
+            discoveredCount: 0,
+            hasWiredDevicesOrActiveSessions: false,
+            vpnTunnelOwnsRouting: false,
+            emptyDurationSeconds: 7.9
+        ) == nil, "empty Wi-Fi discovery before 8s grace window must not emit hint")
+
+        let hint = WiFiEmptyDiscoveryIsolationPolicy.advisory(
+            roleEnabled: true,
+            permitsWiFi: true,
+            browserReady: true,
+            localNetworkDenied: false,
+            hasDiscoveryError: false,
+            discoveredCount: 0,
+            hasWiredDevicesOrActiveSessions: false,
+            vpnTunnelOwnsRouting: false,
+            emptyDurationSeconds: 8.0
+        )
+        expect(hint == WiFiEmptyDiscoveryIsolationPolicy.advisoryMessage
+            && hint?.contains("AP Isolation") == true
+            && hint?.contains("同一局域网子网") == true,
+               "empty Wi-Fi discovery after 8s must surface Chinese subnet & AP isolation diagnostic hint")
+
+        // Verify zero false positives when VPN owns routing, wired devices/sessions exist, Local Network is denied, or USB-only mode
+        expect(WiFiEmptyDiscoveryIsolationPolicy.advisory(
+            roleEnabled: true, permitsWiFi: true, browserReady: true,
+            localNetworkDenied: false, hasDiscoveryError: false, discoveredCount: 0,
+            hasWiredDevicesOrActiveSessions: false, vpnTunnelOwnsRouting: true, emptyDurationSeconds: 12.0
+        ) == nil, "utun* VPN route ownership must suppress AP isolation hint")
+        expect(WiFiEmptyDiscoveryIsolationPolicy.advisory(
+            roleEnabled: true, permitsWiFi: true, browserReady: true,
+            localNetworkDenied: false, hasDiscoveryError: false, discoveredCount: 0,
+            hasWiredDevicesOrActiveSessions: true, vpnTunnelOwnsRouting: false, emptyDurationSeconds: 12.0
+        ) == nil, "connected wired device or active session must suppress AP isolation hint")
+        expect(WiFiEmptyDiscoveryIsolationPolicy.advisory(
+            roleEnabled: true, permitsWiFi: true, browserReady: true,
+            localNetworkDenied: true, hasDiscoveryError: false, discoveredCount: 0,
+            hasWiredDevicesOrActiveSessions: false, vpnTunnelOwnsRouting: false, emptyDurationSeconds: 12.0
+        ) == nil, "Local Network permission denial must suppress AP isolation hint")
+        expect(WiFiEmptyDiscoveryIsolationPolicy.advisory(
+            roleEnabled: true, permitsWiFi: false, browserReady: true,
+            localNetworkDenied: false, hasDiscoveryError: false, discoveredCount: 0,
+            hasWiredDevicesOrActiveSessions: false, vpnTunnelOwnsRouting: false, emptyDurationSeconds: 12.0
+        ) == nil, "USB-only transport mode must suppress Wi-Fi AP isolation hint")
+        expect(WiFiEmptyDiscoveryIsolationPolicy.advisory(
+            roleEnabled: true, permitsWiFi: true, browserReady: true,
+            localNetworkDenied: false, hasDiscoveryError: false, discoveredCount: 1,
+            hasWiredDevicesOrActiveSessions: false, vpnTunnelOwnsRouting: false, emptyDurationSeconds: 12.0
+        ) == nil, "non-empty Bonjour discovery must clear AP isolation hint")
     }
 
     private static func testAudioCapturePacketizer() throws {

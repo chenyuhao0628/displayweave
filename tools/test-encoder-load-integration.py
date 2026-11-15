@@ -12,8 +12,18 @@ source = (root / 'Mac/MacSender.swift').read_text()
 start = source.index('    private func evaluateEncoderLoad(')
 end = source.index('    private func logCaptureFpsIfLimited(', start)
 method = source[start:end].replace('private func evaluateEncoderLoad', 'func evaluateEncoderLoad')
+
+dec_start = source.index('    private static let decoderFpsAdjustmentTimeoutSeconds:')
+dec_end = source.index('    private func scheduleProtocolTimeout(', dec_start)
+decoder_methods = (
+    source[dec_start:dec_end]
+    .replace('private func clearDecoderFpsAdjustmentState', 'func clearDecoderFpsAdjustmentState')
+    .replace('private func applySelectedDecoderFpsCap', 'func applySelectedDecoderFpsCap')
+)
 fixture = r'''
 import Foundation
+typealias SCStream = MockStream
+typealias SCStreamConfiguration = EncoderLoadController.Configuration
 final class MockStream: @unchecked Sendable {
     let entered = DispatchSemaphore(value: 0)
     let release = DispatchSemaphore(value: 0)
@@ -29,6 +39,10 @@ enum DisplayUnitCoordinator { static func failure(_ s: String) -> Error { NSErro
 final class Probe: @unchecked Sendable {
     let queue = DispatchQueue(label: "probe.state")
     var stopped = false, pipelineFailureReported = false, decoderFpsAdjustmentInFlight = false
+    var decoderFpsAdjustmentID: UUID?
+    var decoderFpsAdjustmentTask: Task<Void, Never>?
+    var decoderFpsAdjustmentTimeoutWork: DispatchWorkItem?
+    var decoderRecoveryEvent: String?
     var stream: MockStream? = MockStream()
     var settings = StreamSettings(fpsMode: .fps60, codecMode: .auto, quality: .high,
                                   transportMode: .auto, enableDebugStats: false)
@@ -55,7 +69,10 @@ final class Probe: @unchecked Sendable {
     }
     func sendStreamConfig(width: Int, height: Int) { configs += 1 }
     func requestKeyframe(_ reason: FrameDropReason) { keyframes += 1 }
-    func failPipeline(_ error: Error) { failures += 1 }
+    func failPipeline(_ error: Error) {
+        clearDecoderFpsAdjustmentState()
+        failures += 1
+    }
     func begin() -> MockStream {
         queue.sync {
             var load = EncoderLoadController(configuration: .init(width: 4096, height: 2304, fps: 60), priority: .frameRate)
@@ -70,7 +87,7 @@ final class Probe: @unchecked Sendable {
             return stream!
         }
     }
-''' + method + r'''
+''' + method + '\n' + decoder_methods + r'''
 }
 @main struct Test {
     static func finish(_ probe: Probe) async {
@@ -133,7 +150,65 @@ final class Probe: @unchecked Sendable {
         stalledCapture.release.signal()
         await stalledTask?.value
         stalled.queue.sync { precondition(stalled.setups.isEmpty && stalled.failures == 1) }
-        print("Encoder load integration PASS: current method, fallback, replacement, stop, SCK/encoder failures and timeout")
+
+        // Decoder FPS downgrade: normal success clears decoderFpsAdjustmentInFlight
+        let decOk = Probe()
+        let decStream = decOk.queue.sync { () -> MockStream in
+            decOk.applySelectedDecoderFpsCap(30)
+            precondition(decOk.decoderFpsAdjustmentInFlight && decOk.decoderFpsAdjustmentID != nil)
+            return decOk.stream!
+        }
+        precondition(decStream.entered.wait(timeout: .now() + 3) == .success)
+        decStream.release.signal()
+        let decOkTask = decOk.queue.sync { decOk.decoderFpsAdjustmentTask }
+        await decOkTask?.value
+        decOk.queue.sync {}
+        decOk.queue.sync {
+            precondition(!decOk.decoderFpsAdjustmentInFlight && decOk.decoderFpsAdjustmentID == nil)
+            precondition(decOk.requestedCaptureFps == 30 && decOk.configs == 1 && decOk.failures == 0)
+        }
+
+        // Decoder FPS downgrade: invalidateCapturePipeline / stop clears in-flight state & unblocks task immediately
+        let decCancel = Probe()
+        let decCancelStream = decCancel.queue.sync { () -> MockStream in
+            decCancel.applySelectedDecoderFpsCap(30)
+            precondition(decCancel.decoderFpsAdjustmentInFlight)
+            return decCancel.stream!
+        }
+        precondition(decCancelStream.entered.wait(timeout: .now() + 3) == .success)
+        let cancelTask = decCancel.queue.sync { () -> Task<Void, Never>? in
+            let existing = decCancel.decoderFpsAdjustmentTask
+            decCancel.stopped = true
+            decCancel.clearDecoderFpsAdjustmentState()
+            precondition(!decCancel.decoderFpsAdjustmentInFlight && decCancel.decoderFpsAdjustmentID == nil)
+            return existing
+        }
+        await cancelTask?.value
+        decCancelStream.release.signal()
+        decCancel.queue.sync {
+            precondition(!decCancel.decoderFpsAdjustmentInFlight && decCancel.failures == 0 && decCancel.configs == 0)
+        }
+
+        // Decoder FPS downgrade: 5-second timeout guard clears decoderFpsAdjustmentInFlight when SCStream hangs
+        let decHung = Probe()
+        let decHungStream = decHung.queue.sync { () -> MockStream in
+            decHung.applySelectedDecoderFpsCap(30)
+            precondition(decHung.decoderFpsAdjustmentInFlight)
+            return decHung.stream!
+        }
+        let decHungTask = decHung.queue.sync { decHung.decoderFpsAdjustmentTask }
+        precondition(decHungStream.entered.wait(timeout: .now() + 3) == .success)
+        let decTimeout = DispatchSemaphore(value: 0)
+        decHung.queue.asyncAfter(deadline: .now() + 5.2) {
+            precondition(!decHung.decoderFpsAdjustmentInFlight && decHung.decoderFpsAdjustmentID == nil)
+            precondition(decHung.failures == 1)
+            decTimeout.signal()
+        }
+        precondition(decTimeout.wait(timeout: .now() + 7) == .success)
+        await decHungTask?.value
+        decHungStream.release.signal()
+
+        print("Encoder load & decoder FPS cap integration PASS: current method, fallback, replacement, stop, SCK/encoder failures and 5s timeouts")
     }
 }
 '''

@@ -11,6 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import app.opendisplay.android.protocol.AndroidDesktopInput;
 import app.opendisplay.android.protocol.AndroidStylusInput;
@@ -96,10 +97,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     private volatile long lastFrameRenderedMs;
     private volatile long lastDecoderRecoveryMs;
     private volatile String lastConnectedPeerHost;
-    private volatile UdpMediaReceiverSession udpMediaReceiverSession;
-    private volatile UdpAudioPlayer udpAudioPlayer;
-    private long udpFrameSequenceOffset;
-    private Long lastUdpCursorSequence;
+    private final UdpMediaLifecycleSlot udpMediaSlot = new UdpMediaLifecycleSlot();
     private final AndroidStylusInput stylusInput = new AndroidStylusInput();
     private final AndroidDesktopInput desktopInput = new AndroidDesktopInput();
 
@@ -232,10 +230,13 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     }
 
     public void start(Surface surface) {
-        if (running) {
-            return;
+        synchronized (this) {
+            if (running) {
+                return;
+            }
+            running = true;
+            udpMediaSlot.markStarted();
         }
-        running = true;
         this.surface = surface;
         metricsWindowStartMs = System.currentTimeMillis();
         transport.start(new ReceiverTransport.Listener() {
@@ -376,6 +377,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             public void onError(long generation, String message) {
                 executeTransportEvent(() -> {
                     if (connectionCoordinator.onError(generation, message)) {
+                        stopUdpMediaSession();
                         listener.onStatus(OpenDisplayServer.this, message);
                     }
                 });
@@ -397,15 +399,16 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         synchronized (this) {
             running = false;
         }
+        udpMediaSlot.markStoppedAndClose();
         AndroidSecurityStore.stopPairingIfLoaded();
         listeningPort = 0;
         advertiser.stop();
-        stopUdpMediaSession();
         transport.stop(LengthPrefixedProtocol.goodbyeJson().getBytes(StandardCharsets.UTF_8));
         resetQueuedFrames();
         for (Runnable pending : transportEvents.shutdownNow()) {
             if (pending instanceof OwnedFrameTask) ((OwnedFrameTask) pending).close();
         }
+        stopUdpMediaSession();
         releaseDecoder();
         decoderWorker.shutdown();
         timer.shutdownNow();
@@ -754,10 +757,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                                 + " configVersion=" + configVersion);
                         return;
                     }
-                    if (udpMediaReceiverSession != null
-                            && udpMediaReceiverSession.sessionEpoch != sessionEpoch) {
-                        stopUdpMediaSession();
-                    }
+                    stopUdpMediaSessionIfEpochMismatch(sessionEpoch);
                     streamConfigCommitted = true;
                     transport.setMaxFrameBytes(generation, negotiatedMaxFrameBytes);
                     resetQueuedFrames();
@@ -815,21 +815,24 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                 if (udpCfg != null
                         && "wifi".equalsIgnoreCase(transport.name())
                         && protocolSession.acceptUdpMediaEpoch(generation, udpCfg.sessionEpoch)) {
+                    final String peerHost;
                     synchronized (this) {
                         if (!running || !connectionCoordinator.isCurrent(generation)) {
                             return;
                         }
+                        peerHost = lastConnectedPeerHost;
                     }
                     stopUdpMediaSession();
                     UdpMediaReceiverSession session = null;
                     UdpAudioPlayer nextAudioPlayer = null;
+                    boolean adopted = false;
                     try {
                         nextAudioPlayer = new UdpAudioPlayer();
                         final UdpAudioPlayer sessionAudioPlayer = nextAudioPlayer;
                         session = UdpMediaReceiverSession.start(
                                 generation,
                                 udpCfg,
-                                lastConnectedPeerHost,
+                                peerHost,
                                 new UdpMediaReceiverSession.Listener() {
                                     @Override
                                     public void onFrameReady(
@@ -864,49 +867,37 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
                                             long gen,
                                             long epoch,
                                             UdpMediaProtocol.AudioPayload audio) {
-                                        if (running
-                                                && connectionCoordinator.isCurrent(gen)
-                                                && protocolSession.sessionEpoch() == epoch) {
+                                        boolean allowAudio = udpMediaSlot.shouldDeliverAudio(
+                                                sessionAudioPlayer,
+                                                () -> running
+                                                        && connectionCoordinator.isCurrent(gen)
+                                                        && protocolSession.sessionEpoch() == epoch);
+                                        if (allowAudio) {
                                             sessionAudioPlayer.offer(audio);
                                         }
                                     }
                                 });
-                        UdpMediaReceiverSession displacedSession;
-                        UdpAudioPlayer displacedAudio;
-                        boolean adopted;
-                        synchronized (this) {
-                            adopted = running
-                                    && connectionCoordinator.isCurrent(generation)
-                                    && protocolSession.sessionEpoch() == udpCfg.sessionEpoch;
-                            if (adopted) {
-                                displacedSession = udpMediaReceiverSession;
-                                displacedAudio = udpAudioPlayer;
-                                udpMediaReceiverSession = session;
-                                udpAudioPlayer = sessionAudioPlayer;
-                                lastUdpCursorSequence = null;
-                            } else {
-                                displacedSession = session;
-                                displacedAudio = sessionAudioPlayer;
-                            }
-                        }
-                        if (displacedSession != null) {
-                            displacedSession.close();
-                        }
-                        if (displacedAudio != null) {
-                            displacedAudio.close();
-                        }
+                        adopted = udpMediaSlot.adopt(
+                                session,
+                                sessionAudioPlayer,
+                                () -> running
+                                        && connectionCoordinator.isCurrent(generation)
+                                        && protocolSession.sessionEpoch() == udpCfg.sessionEpoch);
                         if (adopted) {
                             sendJson(UdpMediaProtocol.ConfigMessage.readyJson(
                                     udpCfg.sessionEpoch, session.localPort()));
                         }
                     } catch (java.io.IOException error) {
-                        if (session != null) {
-                            session.close();
-                        }
-                        if (nextAudioPlayer != null) {
-                            nextAudioPlayer.close();
-                        }
                         android.util.Log.w("DisplayWeave", "UDP media receiver start failed", error);
+                    } finally {
+                        if (!adopted) {
+                            if (session != null) {
+                                session.close();
+                            }
+                            if (nextAudioPlayer != null) {
+                                nextAudioPlayer.close();
+                            }
+                        }
                     }
                 }
             }
@@ -960,40 +951,32 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
         sendJson(LengthPrefixedProtocol.pingJson(LengthPrefixedProtocol.nowMs()));
     }
 
+    boolean hasActiveUdpMediaSessionForTest() {
+        return udpMediaSlot.hasActiveResources();
+    }
+
+    private void stopUdpMediaSessionIfEpochMismatch(long expectedSessionEpoch) {
+        udpMediaSlot.stopIfEpochMismatch(expectedSessionEpoch);
+    }
+
     private void stopUdpMediaSession() {
-        UdpMediaReceiverSession activeSession;
-        UdpAudioPlayer activeAudio;
-        synchronized (this) {
-            activeSession = udpMediaReceiverSession;
-            udpMediaReceiverSession = null;
-            activeAudio = udpAudioPlayer;
-            udpAudioPlayer = null;
-            udpFrameSequenceOffset = 0;
-            lastUdpCursorSequence = null;
-        }
-        if (activeSession != null) {
-            activeSession.close();
-        }
-        if (activeAudio != null) {
-            activeAudio.close();
-        }
+        udpMediaSlot.stop();
     }
 
     private void handleUdpCursor(
             long generation,
             long sessionEpoch,
             UdpMediaProtocol.CursorPayload cursor) {
-        if (cursor == null || !running
-                || !connectionCoordinator.isCurrent(generation)
-                || protocolSession.sessionEpoch() != sessionEpoch) {
+        if (cursor == null || !running) {
             return;
         }
-        synchronized (this) {
-            if (lastUdpCursorSequence != null
-                    && Long.compareUnsigned(cursor.sequence, lastUdpCursorSequence) <= 0) {
-                return;
-            }
-            lastUdpCursorSequence = cursor.sequence;
+        boolean accepted = udpMediaSlot.acceptCursorSequence(
+                cursor.sequence,
+                () -> running
+                        && connectionCoordinator.isCurrent(generation)
+                        && protocolSession.sessionEpoch() == sessionEpoch);
+        if (!accepted) {
+            return;
         }
         listener.onCursor(this, cursor.normalizedX, cursor.normalizedY, cursor.visible);
     }
@@ -1014,11 +997,11 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             flags |= BinaryFrameHeaderV2.FLAG_KEYFRAME | BinaryFrameHeaderV2.FLAG_CODEC_CONFIG;
         }
         long lastSeq = protocolSession.lastFrameSequence();
-        long candidateSeq = envelope.frameId + udpFrameSequenceOffset;
-        if (candidateSeq <= lastSeq) {
-            udpFrameSequenceOffset = (lastSeq - envelope.frameId) + 1L;
-            candidateSeq = envelope.frameId + udpFrameSequenceOffset;
+        Long resolvedSeq = udpMediaSlot.nextFrameSequence(envelope.frameId, lastSeq);
+        if (resolvedSeq == null) {
+            return;
         }
+        long candidateSeq = resolvedSeq;
         long configVer = envelope.configVersion > 0
                 ? envelope.configVersion
                 : Math.max(1L, protocolSession.configVersion());
@@ -1613,7 +1596,7 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             int renderedFps = (int) Math.round(renderedFrames * 1000.0 / elapsed);
             int decodedFps = (int) Math.round(decodedFrames * 1000.0 / elapsed);
             int receivedFps = (int) Math.round(receivedFrames * 1000.0 / elapsed);
-            UdpMediaReceiverSession activeUdp = udpMediaReceiverSession;
+            UdpMediaReceiverSession activeUdp = udpMediaSlot.activeSession();
             if (activeUdp != null) {
                 activeUdp.updateTelemetry(lastRttMs, queueDepthAndroid * 8, renderedFps);
             }
@@ -1850,5 +1833,142 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
             return;
         }
         listener.onStatus(this, status);
+    }
+
+    static final class UdpMediaLifecycleSlot {
+        private boolean running;
+        private UdpMediaReceiverSession session;
+        private UdpAudioPlayer audioPlayer;
+        private long frameSequenceOffset;
+        private Long lastCursorSequence;
+
+        synchronized void markStarted() {
+            running = true;
+        }
+
+        void markStoppedAndClose() {
+            UdpMediaReceiverSession activeSession;
+            UdpAudioPlayer activeAudio;
+            synchronized (this) {
+                running = false;
+                activeSession = session;
+                session = null;
+                activeAudio = audioPlayer;
+                audioPlayer = null;
+                frameSequenceOffset = 0;
+                lastCursorSequence = null;
+            }
+            closeQuietly(activeSession, activeAudio);
+        }
+
+        boolean adopt(
+                UdpMediaReceiverSession candidateSession,
+                UdpAudioPlayer candidateAudio,
+                BooleanSupplier identityCheck) {
+            UdpMediaReceiverSession displacedSession = null;
+            UdpAudioPlayer displacedAudio = null;
+            boolean adopted;
+            synchronized (this) {
+                adopted = running
+                        && candidateSession != null
+                        && identityCheck != null
+                        && identityCheck.getAsBoolean();
+                if (adopted) {
+                    displacedSession = session;
+                    displacedAudio = audioPlayer;
+                    session = candidateSession;
+                    audioPlayer = candidateAudio;
+                    lastCursorSequence = null;
+                }
+            }
+            closeQuietly(displacedSession, displacedAudio);
+            if (!adopted) {
+                closeQuietly(candidateSession, candidateAudio);
+            }
+            return adopted;
+        }
+
+        void stop() {
+            UdpMediaReceiverSession activeSession;
+            UdpAudioPlayer activeAudio;
+            synchronized (this) {
+                activeSession = session;
+                session = null;
+                activeAudio = audioPlayer;
+                audioPlayer = null;
+                frameSequenceOffset = 0;
+                lastCursorSequence = null;
+            }
+            closeQuietly(activeSession, activeAudio);
+        }
+
+        void stopIfEpochMismatch(long expectedSessionEpoch) {
+            UdpMediaReceiverSession activeSession = null;
+            UdpAudioPlayer activeAudio = null;
+            synchronized (this) {
+                if (session != null && session.sessionEpoch != expectedSessionEpoch) {
+                    activeSession = session;
+                    session = null;
+                    activeAudio = audioPlayer;
+                    audioPlayer = null;
+                    frameSequenceOffset = 0;
+                    lastCursorSequence = null;
+                }
+            }
+            closeQuietly(activeSession, activeAudio);
+        }
+
+        synchronized UdpMediaReceiverSession activeSession() {
+            return session;
+        }
+
+        synchronized boolean hasActiveResources() {
+            return session != null || audioPlayer != null;
+        }
+
+        synchronized boolean shouldDeliverAudio(
+                UdpAudioPlayer ownerAudio, BooleanSupplier identityCheck) {
+            return running
+                    && ownerAudio != null
+                    && audioPlayer == ownerAudio
+                    && identityCheck != null
+                    && identityCheck.getAsBoolean();
+        }
+
+        synchronized boolean acceptCursorSequence(
+                long sequence, BooleanSupplier identityCheck) {
+            if (!running || identityCheck == null || !identityCheck.getAsBoolean()) {
+                return false;
+            }
+            if (lastCursorSequence != null
+                    && Long.compareUnsigned(sequence, lastCursorSequence) <= 0) {
+                return false;
+            }
+            lastCursorSequence = sequence;
+            return true;
+        }
+
+        synchronized Long nextFrameSequence(long frameId, long lastSeq) {
+            if (!running) {
+                return null;
+            }
+            long candidateSeq = frameId + frameSequenceOffset;
+            if (candidateSeq <= lastSeq) {
+                frameSequenceOffset = (lastSeq - frameId) + 1L;
+                candidateSeq = frameId + frameSequenceOffset;
+            }
+            return candidateSeq;
+        }
+
+        private static void closeQuietly(
+                UdpMediaReceiverSession sessionToClose,
+                UdpAudioPlayer audioToClose) {
+            if (sessionToClose != null) {
+                sessionToClose.close();
+            }
+            if (audioToClose != null) {
+                audioToClose.close();
+            }
+        }
     }
 }

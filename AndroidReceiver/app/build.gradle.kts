@@ -53,6 +53,11 @@ android {
         }
     }
 
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+
     lint {
         disable += setOf(
             "AndroidGradlePluginVersion",

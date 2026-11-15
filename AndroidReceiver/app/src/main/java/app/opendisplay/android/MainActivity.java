@@ -69,7 +69,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     };
     private FrameLayout root;
     private ReceiverSurfaceView surfaceView;
-    private CursorOverlayView cursorOverlay;
+    private volatile CursorOverlayView cursorOverlay;
     private TextView statusView;
     private TextView idleStatusView;
     private Button connectionModeButton;
@@ -154,8 +154,14 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 });
         securitySettings = new AndroidSecuritySettings(this, receiverLifecycle::stopForSettings,
                 () -> { receiverLifecycle.reevaluate(); refreshConnectionModeUi(); },
-                () -> { if (server != null) server.cancelPendingAdmissions(); },
-                id -> { if (server != null) server.revokePeer(id); });
+                () -> {
+                    OpenDisplayServer activeServer = server;
+                    if (activeServer != null) activeServer.cancelPendingAdmissions();
+                },
+                id -> {
+                    OpenDisplayServer activeServer = server;
+                    if (activeServer != null) activeServer.revokePeer(id);
+                });
         buildUi();
         applyKeepAwakePreference();
         showOnboardingIfNeeded();
@@ -288,8 +294,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
 
     @Override
     public void onCursor(OpenDisplayServer source, double x, double y, boolean visible) {
-        if (server != source) return;
-        cursorOverlay.offerCursor(x, y, visible);
+        CursorOverlayView overlay = cursorOverlay;
+        if (server != source || overlay == null) return;
+        overlay.offerCursor(x, y, visible);
     }
 
     @Override
@@ -305,8 +312,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         Bitmap bitmap = BitmapFactory.decodeByteArray(png, 0, png.length);
         if (bitmap == null) return;
         runOnUiThread(() -> {
-            if (server != source) return;
-            cursorOverlay.setCursorImage(
+            CursorOverlayView overlay = cursorOverlay;
+            if (server != source || overlay == null) return;
+            overlay.setCursorImage(
                     bitmap, anchorX, anchorY, normalizedWidth, normalizedHeight);
         });
     }
@@ -366,8 +374,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_NEARBY_WIFI && hasNearbyWifiPermission()) {
-            if (server != null) {
-                server.enableWifiAdvertising();
+            OpenDisplayServer activeServer = server;
+            if (activeServer != null) {
+                activeServer.enableWifiAdvertising();
             }
             receiverLifecycle.reevaluate();
         } else if (requestCode == REQUEST_NEARBY_WIFI) {
@@ -434,7 +443,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 activeSurface = holder;
                 surfaceFrameRateLifecycle.onSurfaceCreated();
                 updateWifiLowLatencyState();
-                if (server != null) server.updateOutputSurface(holder.getSurface());
+                OpenDisplayServer activeServer = server;
+                if (activeServer != null) activeServer.updateOutputSurface(holder.getSurface());
                 receiverLifecycle.onSurfaceCreated();
             }
 
@@ -449,7 +459,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 surfaceFrameRateLifecycle.onSurfaceDestroyed();
                 activeSurface = null;
                 updateWifiLowLatencyState();
-                if (server != null) server.updateOutputSurface(null);
+                OpenDisplayServer activeServer = server;
+                if (activeServer != null) activeServer.updateOutputSurface(null);
                 receiverLifecycle.onSurfaceDestroyed();
             }
         });
@@ -866,8 +877,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 .setTitle("画质/分辨率")
                 .setSingleChoiceItems(labels, checked, (dialog, which) -> {
                     prefs.edit().putString(KEY_DISPLAY_PROFILE, profiles[which].key).apply();
-                    if (server != null) {
-                        server.updateDisplay(currentDisplaySpec());
+                    OpenDisplayServer activeServer = server;
+                    if (activeServer != null) {
+                        activeServer.updateDisplay(currentDisplaySpec());
                     }
                     setStatus("已请求 " + profiles[which].label + " 分辨率，Mac 会重新配置画面");
                     dialog.dismiss();
@@ -1227,15 +1239,17 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             return;
         }
         ScrollGestureTracker.Delta delta = scrollGesture.move(x, y);
-        if (delta != null && (Math.abs(delta.dx) > 0.01 || Math.abs(delta.dy) > 0.01)) {
-            server.sendScroll(delta.dx, delta.dy);
+        OpenDisplayServer activeServer = server;
+        if (activeServer != null && delta != null && (Math.abs(delta.dx) > 0.01 || Math.abs(delta.dy) > 0.01)) {
+            activeServer.sendScroll(delta.dx, delta.dy);
         }
     }
 
     private void sendTouchEvents(java.util.List<TouchGestureCoordinator.Event> events) {
-        if (server == null) return;
+        OpenDisplayServer activeServer = server;
+        if (activeServer == null) return;
         for (TouchGestureCoordinator.Event event : events) {
-            server.sendTouch(event.phase, event.x, event.y);
+            activeServer.sendTouch(event.phase, event.x, event.y);
         }
     }
 

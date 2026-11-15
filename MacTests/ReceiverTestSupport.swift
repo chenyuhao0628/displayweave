@@ -99,15 +99,26 @@ private final class EncodedSample {
     }
 }
 
-func receiverTestH264Frame(codec: CMVideoCodecType = kCMVideoCodecType_H264) throws -> Data {
-    try receiverTestVideoFrames(codec: codec, count: 1)[0]
+func receiverTestH264Frame(
+    codec: CMVideoCodecType = kCMVideoCodecType_H264,
+    width: Int32 = 64,
+    height: Int32 = 64
+) throws -> Data {
+    try receiverTestVideoFrames(codec: codec, count: 1, width: width, height: height)[0]
 }
 
-func receiverTestVideoFrames(codec: CMVideoCodecType = kCMVideoCodecType_H264, count: Int) throws -> [Data] {
+func receiverTestVideoFrames(
+    codec: CMVideoCodecType = kCMVideoCodecType_H264,
+    count: Int,
+    width: Int32 = 64,
+    height: Int32 = 64
+) throws -> [Data] {
     precondition((1...120).contains(count))
+    let w = max(2, Int(width))
+    let h = max(2, Int(height))
     let box = EncodedSample()
     var session: VTCompressionSession?
-    let status = VTCompressionSessionCreate(allocator: kCFAllocatorDefault, width: 64, height: 64,
+    let status = VTCompressionSessionCreate(allocator: kCFAllocatorDefault, width: Int32(w), height: Int32(h),
         codecType: codec, encoderSpecification: nil, imageBufferAttributes: nil,
         compressedDataAllocator: nil, outputCallback: { context, _, status, _, sample in
             if status == noErr, let context, let sample {
@@ -119,14 +130,16 @@ func receiverTestVideoFrames(codec: CMVideoCodecType = kCMVideoCodecType_H264, c
     VTSessionSetProperty(session, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
     VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
     var pixel: CVPixelBuffer?
-    guard CVPixelBufferCreate(kCFAllocatorDefault, 64, 64, kCVPixelFormatType_32BGRA, nil, &pixel) == kCVReturnSuccess,
+    guard CVPixelBufferCreate(kCFAllocatorDefault, w, h, kCVPixelFormatType_32BGRA, nil, &pixel) == kCVReturnSuccess,
           let pixel else { throw ReceiverTestFailure(message: "pixel buffer") }
     CVPixelBufferLockBaseAddress(pixel, [])
     let base = CVPixelBufferGetBaseAddress(pixel)!.assumingMemoryBound(to: UInt8.self)
     let stride = CVPixelBufferGetBytesPerRow(pixel)
-    for y in 0..<64 { for x in 0..<64 {
+    let halfW = max(1, w / 2)
+    let halfH = max(1, h / 2)
+    for y in 0..<h { for x in 0..<w {
         let colors: [[UInt8]] = [[30, 40, 240, 255], [50, 210, 40, 255], [230, 70, 40, 255], [50, 220, 240, 255]]
-        let color = colors[(y / 32) * 2 + x / 32]
+        let color = colors[min(1, y / halfH) * 2 + min(1, x / halfW)]
         for c in 0..<4 { base[y * stride + x * 4 + c] = color[c] }
     } }
     CVPixelBufferUnlockBaseAddress(pixel, [])

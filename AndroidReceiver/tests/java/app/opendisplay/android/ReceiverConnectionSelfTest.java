@@ -1,7 +1,21 @@
 package app.opendisplay.android;
 
+import java.net.DatagramSocket;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import app.opendisplay.android.protocol.UdpMediaProtocol;
 
 public final class ReceiverConnectionSelfTest {
     private static final class RecordingActions
@@ -128,6 +142,139 @@ public final class ReceiverConnectionSelfTest {
         require(workerState.markFrameAvailable(),
                 "new work must schedule after an empty recovery teardown");
 
+        testConcurrentUdpMediaLifecycleTeardown();
+        testGradleDisablesEncryptedDependenciesInfo();
+
         System.out.println("ReceiverConnectionSelfTest PASS");
+    }
+
+    private static void testConcurrentUdpMediaLifecycleTeardown() {
+        byte[] secretBytes = new byte[32];
+        for (int i = 0; i < secretBytes.length; i++) {
+            secretBytes[i] = (byte) (0x31 + i);
+        }
+        String secretBase64 = Base64.getEncoder().encodeToString(secretBytes);
+        UdpMediaReceiverSession.Listener noopListener = new UdpMediaReceiverSession.Listener() {
+            @Override
+            public void onFrameReady(
+                    long generation, long sessionEpoch, UdpMediaProtocol.FrameEnvelope frame) {}
+
+            @Override
+            public void onKeyframeNeeded(long generation, long sessionEpoch, String reason) {}
+        };
+
+        ExecutorService pool = Executors.newFixedThreadPool(4);
+        try {
+            for (int round = 1; round <= 32; round++) {
+                final int currentRound = round;
+                final long epoch = 100L + currentRound;
+                String json = "{\"type\":\"udpMediaConfig\",\"version\":1,\"sessionEpoch\":"
+                        + epoch
+                        + ",\"udpPort\":9999,\"maxPayloadBytes\":1200,\"rootSecret\":\""
+                        + secretBase64
+                        + "\"}";
+                UdpMediaProtocol.ConfigMessage cfg =
+                        UdpMediaProtocol.ConfigMessage.parseJson(json);
+                require(cfg != null, "udpMediaConfig fixture must parse");
+
+                OpenDisplayServer.UdpMediaLifecycleSlot slot =
+                        new OpenDisplayServer.UdpMediaLifecycleSlot();
+                slot.markStarted();
+                AtomicBoolean identityCurrent = new AtomicBoolean(true);
+                CountDownLatch startGate = new CountDownLatch(1);
+
+                Future<Integer> adopter = pool.submit(() -> {
+                    startGate.await(2, TimeUnit.SECONDS);
+                    UdpAudioPlayer audio = new UdpAudioPlayer();
+                    UdpMediaReceiverSession session = null;
+                    boolean adopted = false;
+                    try {
+                        session = UdpMediaReceiverSession.start(
+                                currentRound, cfg, "127.0.0.1", noopListener);
+                        int boundPort = session.localPort();
+                        require(!slot.shouldDeliverAudio(audio, identityCurrent::get),
+                                "unadopted UDP audio player must never accept packets");
+                        adopted = slot.adopt(session, audio, identityCurrent::get);
+                        return boundPort;
+                    } finally {
+                        if (!adopted) {
+                            if (session != null) {
+                                session.close();
+                            }
+                            audio.close();
+                        }
+                    }
+                });
+
+                Future<Void> epochSweeper = pool.submit(() -> {
+                    startGate.await(2, TimeUnit.SECONDS);
+                    for (int i = 0; i < 8; i++) {
+                        slot.stopIfEpochMismatch(epoch + 1L);
+                        slot.acceptCursorSequence(i + 1L, identityCurrent::get);
+                        slot.nextFrameSequence(i + 1L, i);
+                    }
+                    return null;
+                });
+
+                Future<Void> stopper = pool.submit(() -> {
+                    startGate.await(2, TimeUnit.SECONDS);
+                    if ((currentRound & 1) == 0) {
+                        identityCurrent.set(false);
+                        slot.stop();
+                    } else {
+                        slot.markStoppedAndClose();
+                    }
+                    return null;
+                });
+
+                startGate.countDown();
+                int allocatedPort = adopter.get(5, TimeUnit.SECONDS);
+                epochSweeper.get(5, TimeUnit.SECONDS);
+                stopper.get(5, TimeUnit.SECONDS);
+                slot.markStoppedAndClose();
+
+                require(!slot.hasActiveResources() && slot.activeSession() == null,
+                        "concurrent stop/epoch sweep must never leave UDP session or audio leaked");
+                require(slot.nextFrameSequence(10L, 5L) == null,
+                        "stopped UDP slot must reject frame sequence allocation");
+
+                // Prove the UDP socket was closed cleanly by rebinding the exact ephemeral port
+                // (best-effort if another OS process grabbed it first, though reuseAddress is set).
+                try (DatagramSocket probe = new DatagramSocket(null)) {
+                    probe.setReuseAddress(true);
+                    probe.bind(new InetSocketAddress("127.0.0.1", allocatedPort));
+                } catch (java.net.BindException ignoredIfEphemeralContended) {
+                }
+            }
+        } catch (Exception error) {
+            throw new AssertionError("Concurrent UDP lifecycle test failed", error);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    private static void testGradleDisablesEncryptedDependenciesInfo() {
+        Path[] candidates = new Path[] {
+            Path.of("build.gradle.kts"),
+            Path.of("app/build.gradle.kts"),
+            Path.of("AndroidReceiver/app/build.gradle.kts")
+        };
+        Path buildGradle = null;
+        for (Path candidate : candidates) {
+            if (Files.isRegularFile(candidate)) {
+                buildGradle = candidate;
+                break;
+            }
+        }
+        require(buildGradle != null, "unable to locate AndroidReceiver/app/build.gradle.kts");
+        try {
+            String source = Files.readString(buildGradle, StandardCharsets.UTF_8);
+            require(source.contains("dependenciesInfo")
+                            && source.contains("includeInApk = false")
+                            && source.contains("includeInBundle = false"),
+                    "Android build.gradle.kts must disable encrypted DependencyInfoBlock in APK/Bundle");
+        } catch (java.io.IOException error) {
+            throw new AssertionError("failed reading build.gradle.kts", error);
+        }
     }
 }

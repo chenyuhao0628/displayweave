@@ -17,7 +17,12 @@ final class ReceiverModel: ObservableObject {
         // deprecated UIScreen.main on iOS 17+, with a safe fallback before a
         // scene attaches).
         if let scene = Self.activeWindowScene() {
-            applyScreenGeometry(scene: scene, windowBounds: .zero)
+            PhoneSceneSizing.applyMinimumSizeRestrictions(to: scene)
+            applyScreenGeometry(
+                scene: scene,
+                windowBounds: .zero,
+                allowScreenFallbackWhenWindowInvalid: true
+            )
         } else {
             receiver.setNativePanel(long: 1920, short: 1080, scale: 2.0, maxFps: 60)
         }
@@ -38,14 +43,25 @@ final class ReceiverModel: ObservableObject {
 
     func updateWindowGeometry(scene: UIWindowScene?, windowBounds: CGRect) {
         guard let resolvedScene = scene ?? Self.activeWindowScene() else { return }
-        applyScreenGeometry(scene: resolvedScene, windowBounds: windowBounds)
+        PhoneSceneSizing.applyMinimumSizeRestrictions(to: resolvedScene)
+        applyScreenGeometry(
+            scene: resolvedScene,
+            windowBounds: windowBounds,
+            allowScreenFallbackWhenWindowInvalid: false
+        )
     }
 
-    private func applyScreenGeometry(scene: UIWindowScene, windowBounds: CGRect) {
+    private func applyScreenGeometry(
+        scene: UIWindowScene,
+        windowBounds: CGRect,
+        allowScreenFallbackWhenWindowInvalid: Bool
+    ) {
         let screen = scene.screen
         let native = screen.nativeBounds.size
-        let nativeLong = max(2, Int(max(native.width, native.height).rounded()) & ~1)
-        let nativeShort = max(2, Int(min(native.width, native.height).rounded()) & ~1)
+        let rawLong = Int(max(native.width, native.height).rounded())
+        let rawShort = Int(min(native.width, native.height).rounded())
+        let nativeLong = ReceiverWindowGeometryPolicy.clampEvenPixels(rawLong)
+        let nativeShort = ReceiverWindowGeometryPolicy.clampEvenPixels(rawShort)
         let nativeScale = screen.nativeScale > 0 ? Double(screen.nativeScale) : 2.0
         let screenScale = screen.scale > 0 ? Double(screen.scale) : nativeScale
         let maxFps = screen.maximumFramesPerSecond
@@ -58,41 +74,26 @@ final class ReceiverModel: ObservableObject {
         )
 
         let screenSize = screen.bounds.size
-        let hasValidWindow = windowBounds.width.isFinite && windowBounds.height.isFinite
-            && windowBounds.width >= 64 && windowBounds.height >= 64
-        let refSize = hasValidWindow ? windowBounds.size : screenSize
-        guard refSize.width.isFinite, refSize.height.isFinite,
-              refSize.width >= 2, refSize.height >= 2 else { return }
-
         let isPhone = UIDevice.current.userInterfaceIdiom == .phone
-        let matchesFullScreen = !hasValidWindow
-            || (abs(windowBounds.width - screenSize.width) <= 2
-                && abs(windowBounds.height - screenSize.height) <= 2)
-            || (abs(windowBounds.width - screenSize.height) <= 2
-                && abs(windowBounds.height - screenSize.width) <= 2)
-
-        let pixelsWide: Int
-        let pixelsHigh: Int
-        let effectiveScale: Double
-        if isPhone || matchesFullScreen {
-            let portrait = refSize.height > refSize.width
-            pixelsWide = portrait ? nativeShort : nativeLong
-            pixelsHigh = portrait ? nativeLong : nativeShort
-            effectiveScale = min(4.0, max(0.5, nativeScale))
-        } else {
-            effectiveScale = min(4.0, max(0.5, screenScale))
-            pixelsWide = max(2, min(16384, Int((refSize.width * effectiveScale).rounded()) & ~1))
-            pixelsHigh = max(2, min(16384, Int((refSize.height * effectiveScale).rounded()) & ~1))
-        }
-        let pointsWide = max(2, min(16384, Int(refSize.width.rounded())))
-        let pointsHigh = max(2, min(16384, Int(refSize.height.rounded())))
+        guard let resolved = ReceiverWindowGeometryPolicy.resolve(
+            windowWidthPoints: Double(windowBounds.width),
+            windowHeightPoints: Double(windowBounds.height),
+            screenWidthPoints: Double(screenSize.width),
+            screenHeightPoints: Double(screenSize.height),
+            nativeLongPixels: nativeLong,
+            nativeShortPixels: nativeShort,
+            nativeScale: nativeScale,
+            screenScale: screenScale,
+            isPhone: isPhone,
+            allowScreenFallbackWhenWindowInvalid: allowScreenFallbackWhenWindowInvalid
+        ) else { return }
 
         receiver.setWindowGeometry(
-            pixelsWide: pixelsWide,
-            pixelsHigh: pixelsHigh,
-            scale: effectiveScale,
-            pointsWide: pointsWide,
-            pointsHigh: pointsHigh,
+            pixelsWide: resolved.pixelsWide,
+            pixelsHigh: resolved.pixelsHigh,
+            scale: resolved.scale,
+            pointsWide: resolved.pointsWide,
+            pointsHigh: resolved.pointsHigh,
             screenNativeLong: nativeLong,
             screenNativeShort: nativeShort,
             screenNativeScale: nativeScale

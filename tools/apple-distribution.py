@@ -157,7 +157,10 @@ def profile_from_path(path, runner):
 
 
 def preflight(options, runner):
-    for command in ("xcodebuild", "xcodegen", "security", "codesign", "xcrun", "ditto", "git"):
+    required_commands = ("xcodebuild", "xcodegen", "security", "codesign", "xcrun", "ditto", "git") + (
+        ("hdiutil",) if options.platform == "mac" else ()
+    )
+    for command in required_commands:
         require(shutil.which(command), f"Missing {command}; install/select the Apple build tools first.")
     identities = runner.run(["security", "find-identity", "-v", "-p", "codesigning"]).decode()
     identity = select_identity(identities, options.identity, options.team, options.platform)
@@ -228,6 +231,8 @@ def build_distribution(options, runner, output):
     runner.run(["xcodebuild", "-quiet", "-exportArchive", "-archivePath", work / "DisplayWeave.xcarchive",
                 "-exportOptionsPlist", export_plist, "-exportPath", export], timeout=1800)
     notary = None
+    dmg_notary = None
+    dmg_artifact = None
     if options.platform == "mac":
         app = one(export.glob("*.app"), "exported Mac app")
         verify_app(app, options, runner, work)
@@ -248,6 +253,24 @@ def build_distribution(options, runner, output):
         require(bool(re.fullmatch(r"[A-Za-z0-9+/]{86}==", signature)), "Sparkle did not return an Ed25519 signature.")
         runner.run([sign, "--account", "ed25519", "--verify", artifact, signature])
         (output / "sparkle-signature.txt").write_text(signature + "\n")
+
+        dmg_stage = work / "dmg-stage"
+        dmg_stage.mkdir()
+        runner.run(["ditto", app, dmg_stage / app.name], timeout=300)
+        (dmg_stage / "Applications").symlink_to("/Applications")
+        staged_dmg = work / "DisplayWeave-macOS.dmg"
+        runner.run(["hdiutil", "create", "-volname", "DisplayWeave", "-srcfolder", dmg_stage,
+                    "-ov", "-format", "UDZO", staged_dmg], timeout=600)
+        runner.run(["codesign", "--force", "--sign", options.identity, "--timestamp", staged_dmg], timeout=300)
+        dmg_notary = json.loads(runner.run(["xcrun", "notarytool", "submit", staged_dmg,
+            "--keychain-profile", options.notary_profile, "--output-format", "json", "--wait", "--timeout", "30m"], timeout=1860))
+        (output / "notary-dmg.json").write_text(json.dumps(dmg_notary, indent=2) + "\n")
+        accept_notary(dmg_notary)
+        runner.run(["xcrun", "stapler", "staple", staged_dmg], timeout=300)
+        runner.run(["xcrun", "stapler", "validate", staged_dmg], timeout=300)
+        runner.run(["codesign", "--verify", "--verbose=2", staged_dmg])
+        dmg_artifact = output / "DisplayWeave-macOS.dmg"
+        shutil.copyfile(staged_dmg, dmg_artifact)
     else:
         ipa = one(export.glob("*.ipa"), "exported IPA")
         extracted = work / "ipa"
@@ -257,15 +280,28 @@ def build_distribution(options, runner, output):
         artifact = output / "DisplayWeave-iOS.ipa"
         shutil.copyfile(ipa, artifact)
     require(not runner.run(["git", "status", "--porcelain"]).strip(), "Tracked/unignored source changed during build. Preserve candidate and rebuild from a clean commit.")
-    digest = sha256(artifact)
+    artifacts = [artifact] + ([dmg_artifact] if dmg_artifact is not None else [])
+    digests = {item.name: sha256(item) for item in artifacts}
+    digest = digests[artifact.name]
     receipt = {"schemaVersion": 1, "commit": source, "platform": options.platform,
                "version": options.version, "build": options.build_number, "artifact": artifact.name,
                "sha256": digest, "bytes": artifact.stat().st_size, "team": options.team,
                "signingCertificateSHA1": options.identity, "profileUUID": options.profile_uuid,
                "notarySubmission": notary.get("id") if notary else None,
+               "artifacts": [{"name": item.name, "sha256": digests[item.name], "bytes": item.stat().st_size}
+                             for item in artifacts],
                "xcode": runner.run(["xcodebuild", "-version"]).decode().strip(),
                "builtAt": dt.datetime.now(dt.timezone.utc).isoformat(), "publication": "not uploaded"}
-    (output / "SHA256SUMS.txt").write_text(f"{digest}  {artifact.name}\n")
+    if dmg_artifact is not None:
+        receipt.update({
+            "dmgArtifact": dmg_artifact.name,
+            "dmgSha256": digests[dmg_artifact.name],
+            "dmgBytes": dmg_artifact.stat().st_size,
+            "dmgNotarySubmission": dmg_notary.get("id") if dmg_notary else None,
+        })
+    (output / "SHA256SUMS.txt").write_text(
+        "".join(f"{digests[item.name]}  {item.name}\n" for item in artifacts)
+    )
     (output / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     (output / "INCOMPLETE").unlink()
     return artifact

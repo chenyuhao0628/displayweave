@@ -205,6 +205,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private var decoderFpsAdjustmentInFlight = false
     private var decoderFpsAdjustmentID: UUID?
     private var decoderFpsAdjustmentTask: Task<Void, Never>?
+    private var decoderFpsAdjustmentTimeoutWork: DispatchWorkItem?
     private var codecFallbackResizeID: UUID?
     private var codecFallbackResizeTask: Task<Void, Never>?
     private var actualVirtualDisplayRefreshRate = 60
@@ -726,10 +727,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         encoderLoadAdjustmentTask = nil
         encoderLoadAdjustmentID = nil
         encoderLoad = nil
-        decoderFpsAdjustmentTask?.cancel()
-        decoderFpsAdjustmentTask = nil
-        decoderFpsAdjustmentID = nil
-        decoderFpsAdjustmentInFlight = false
+        clearDecoderFpsAdjustmentState()
         codecFallbackResizeTask?.cancel()
         codecFallbackResizeTask = nil
         codecFallbackResizeID = nil
@@ -902,10 +900,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             reconfigurationID = nil
             reconfiguration?.cancel()
             let decoderFpsTask = decoderFpsAdjustmentTask
-            decoderFpsAdjustmentTask = nil
-            decoderFpsAdjustmentID = nil
-            decoderFpsAdjustmentInFlight = false
-            decoderFpsTask?.cancel()
+            clearDecoderFpsAdjustmentState()
             let codecFallbackTask = codecFallbackResizeTask
             codecFallbackResizeTask = nil
             codecFallbackResizeID = nil
@@ -2139,6 +2134,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     }
 
     private func failPipeline(_ error: Error) {
+        clearDecoderFpsAdjustmentState()
         guard !stopped, !pipelineFailureReported else { return }
         pipelineFailureReported = true
         connectionReady = false
@@ -2268,6 +2264,17 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         scheduleProtocolTimeout(identity: identity, phase: protocolHandshake.phase)
     }
 
+    private static let decoderFpsAdjustmentTimeoutSeconds: TimeInterval = 5.0
+
+    private func clearDecoderFpsAdjustmentState() {
+        decoderFpsAdjustmentTimeoutWork?.cancel()
+        decoderFpsAdjustmentTimeoutWork = nil
+        decoderFpsAdjustmentTask?.cancel()
+        decoderFpsAdjustmentTask = nil
+        decoderFpsAdjustmentID = nil
+        decoderFpsAdjustmentInFlight = false
+    }
+
     private func applySelectedDecoderFpsCap(_ reportedFps: Int) {
         guard encoderLoadAdjustmentID == nil,
               !decoderFpsAdjustmentInFlight,
@@ -2279,44 +2286,42 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             width: activeStreamWidth,
             height: activeStreamHeight,
             fps: decoderCap)
+        clearDecoderFpsAdjustmentState()
         let id = UUID()
         decoderFpsAdjustmentID = id
         decoderFpsAdjustmentInFlight = true
-        queue.asyncAfter(deadline: .now() + 5) { [weak self, weak activeStream] in
-            guard let self, let activeStream, !self.stopped, !self.pipelineFailureReported,
-                  self.stream === activeStream, self.decoderFpsAdjustmentID == id else { return }
-            self.decoderFpsAdjustmentTask?.cancel()
-            self.decoderFpsAdjustmentTask = nil
-            self.decoderFpsAdjustmentID = nil
-            self.decoderFpsAdjustmentInFlight = false
+        let timeoutWork = DispatchWorkItem { [weak self, weak activeStream] in
+            guard let self, self.decoderFpsAdjustmentID == id else { return }
+            self.clearDecoderFpsAdjustmentState()
+            guard let activeStream, !self.stopped, !self.pipelineFailureReported,
+                  self.stream === activeStream else { return }
             self.failPipeline(DisplayUnitCoordinator.failure("自动调整解码帧率上限超时，请重新连接；也可在串流设置中手动降低帧率。"))
         }
+        decoderFpsAdjustmentTimeoutWork = timeoutWork
+        queue.asyncAfter(
+            deadline: .now() + Self.decoderFpsAdjustmentTimeoutSeconds,
+            execute: timeoutWork)
         Log.info("selected decoder requires fps downgrade current=\(requestedCaptureFps) selectedDecoderMaxFps=\(decoderCap)")
         decoderFpsAdjustmentTask = Task { [weak self, weak activeStream] in
             guard let self else { return }
             guard let activeStream else {
                 self.queue.async { [weak self] in
                     guard let self, self.decoderFpsAdjustmentID == id else { return }
-                    self.decoderFpsAdjustmentID = nil
-                    self.decoderFpsAdjustmentTask = nil
-                    self.decoderFpsAdjustmentInFlight = false
+                    self.clearDecoderFpsAdjustmentState()
                 }
                 return
             }
             do {
                 try Task.checkCancellation()
-                try await activeStream.updateConfiguration(updatedConfiguration)
+                try await Self.awaitStreamConfigurationUpdate(activeStream, configuration: updatedConfiguration)
                 try Task.checkCancellation()
                 self.queue.async { [weak self, weak activeStream] in
-                    guard let self, let activeStream,
+                    guard let self else { return }
+                    guard self.decoderFpsAdjustmentID == id else { return }
+                    self.clearDecoderFpsAdjustmentState()
+                    guard let activeStream,
                           !self.stopped, !self.pipelineFailureReported,
-                          self.stream === activeStream,
-                          self.decoderFpsAdjustmentID == id else { return }
-                    defer {
-                        self.decoderFpsAdjustmentID = nil
-                        self.decoderFpsAdjustmentTask = nil
-                        self.decoderFpsAdjustmentInFlight = false
-                    }
+                          self.stream === activeStream else { return }
                     self.requestedCaptureFps = decoderCap
                     self.retireEncoder()
                     do {
@@ -2334,17 +2339,73 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 }
             } catch {
                 self.queue.async { [weak self, weak activeStream] in
-                    guard let self, let activeStream,
+                    guard let self else { return }
+                    guard self.decoderFpsAdjustmentID == id else { return }
+                    self.clearDecoderFpsAdjustmentState()
+                    guard !(error is CancellationError),
+                          let activeStream,
                           !self.stopped, !self.pipelineFailureReported,
-                          self.stream === activeStream,
-                          self.decoderFpsAdjustmentID == id else { return }
-                    self.decoderFpsAdjustmentID = nil
-                    self.decoderFpsAdjustmentTask = nil
-                    self.decoderFpsAdjustmentInFlight = false
+                          self.stream === activeStream else { return }
                     Log.info("decoder fps downgrade failed: \(error)")
                     self.failPipeline(DisplayUnitCoordinator.failure("调整采集帧率以匹配接收端解码器失败，请重新连接；也可在串流设置中手动降低帧率。"))
                 }
             }
+        }
+    }
+
+    private static func awaitStreamConfigurationUpdate(
+        _ activeStream: SCStream,
+        configuration: SCStreamConfiguration
+    ) async throws {
+        final class ContinuationGate: @unchecked Sendable {
+            private let lock = NSLock()
+            private var continuation: CheckedContinuation<Void, Error>?
+            private var pendingResult: Result<Void, Error>?
+
+            func arm(_ continuation: CheckedContinuation<Void, Error>) {
+                var immediate: Result<Void, Error>?
+                lock.lock()
+                if let result = pendingResult {
+                    immediate = result
+                    pendingResult = nil
+                } else {
+                    self.continuation = continuation
+                }
+                lock.unlock()
+                if let immediate {
+                    continuation.resume(with: immediate)
+                }
+            }
+
+            func finish(_ result: Result<Void, Error>) {
+                var target: CheckedContinuation<Void, Error>?
+                lock.lock()
+                if let cont = continuation {
+                    target = cont
+                    continuation = nil
+                } else if pendingResult == nil {
+                    pendingResult = result
+                }
+                lock.unlock()
+                target?.resume(with: result)
+            }
+        }
+
+        let gate = ContinuationGate()
+        Task {
+            do {
+                try await activeStream.updateConfiguration(configuration)
+                gate.finish(.success(()))
+            } catch {
+                gate.finish(.failure(error))
+            }
+        }
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                gate.arm(continuation)
+            }
+        } onCancel: {
+            gate.finish(.failure(CancellationError()))
         }
     }
 

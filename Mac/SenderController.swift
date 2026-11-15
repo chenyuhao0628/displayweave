@@ -52,6 +52,10 @@ final class SenderController: ObservableObject {
     private var securityObserver: NSObjectProtocol?
     private var browserRetryAttempt = 0
     private var browserRetryTask: Task<Void, Never>?
+    private var browserReady = false
+    private var emptyWiFiDiscoverySince: Date?
+    private var emptyDiscoveryGraceTask: Task<Void, Never>?
+    private var cachedVPNOwnsRoute: (value: Bool, sampledAt: Date)?
     @Published var discovered: [NWBrowser.Result] = []
     @Published var usbDevices: [UsbmuxDevice] = []
     @Published var androidDevices: [AndroidAdbDevice] = []
@@ -78,6 +82,8 @@ final class SenderController: ObservableObject {
                     androidRecoveryGeneration[serial, default: 0] += 1
                 }
                 androidRecoveryAttempt.removeAll()
+                emptyWiFiDiscoverySince = nil
+                refreshWiFiAdvisory()
             }
         }
     }
@@ -228,6 +234,10 @@ final class SenderController: ObservableObject {
         browser?.cancel(); browser = nil
         discoveryStatus = nil
         localNetworkDenied = false
+        browserReady = false
+        emptyWiFiDiscoverySince = nil
+        emptyDiscoveryGraceTask?.cancel(); emptyDiscoveryGraceTask = nil
+        cachedVPNOwnsRoute = nil
         wifiAdvisoryStatus = nil
         wiredPathMonitor?.cancel(); wiredPathMonitor = nil
         _ = directCablePolicy.arrivals(present: [], active: [], enabled: false)
@@ -282,14 +292,80 @@ final class SenderController: ObservableObject {
         restartBrowserOnly()
     }
 
+    private var hasWiredDevicesOrActiveSessions: Bool {
+        !sessions.filter({ !$0.failed }).isEmpty
+            || !usbDevices.isEmpty
+            || !androidUsbDevices.isEmpty
+            || discovered.contains(where: { DirectCable.interface(for: $0) != nil })
+    }
+
+    private func syncEmptyWiFiDiscoveryTimer(now: Date = Date()) {
+        if roleEnabled,
+           settings.transportMode != .usb,
+           browserReady,
+           !localNetworkDenied,
+           discoveryStatus == nil,
+           discovered.isEmpty,
+           !hasWiredDevicesOrActiveSessions {
+            if emptyWiFiDiscoverySince == nil {
+                emptyWiFiDiscoverySince = now
+                emptyDiscoveryGraceTask?.cancel()
+                let generation = roleGeneration
+                let graceMs = Int((WiFiEmptyDiscoveryIsolationPolicy.gracePeriodSeconds * 1000).rounded())
+                emptyDiscoveryGraceTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .milliseconds(graceMs))
+                    guard let self, !Task.isCancelled, self.roleEnabled,
+                          self.roleGeneration == generation else { return }
+                    self.refreshWiFiAdvisory()
+                }
+            }
+        } else {
+            emptyWiFiDiscoverySince = nil
+            emptyDiscoveryGraceTask?.cancel()
+            emptyDiscoveryGraceTask = nil
+            cachedVPNOwnsRoute = nil
+        }
+    }
+
+    private func sampledVPNTunnelOwnsRouting(now: Date) -> Bool {
+        if let cached = cachedVPNOwnsRoute, now.timeIntervalSince(cached.sampledAt) < 5.0 {
+            return cached.value
+        }
+        let value = WiFiEmptyDiscoveryIsolationPolicy.currentVPNTunnelOwnsRouting()
+        cachedVPNOwnsRoute = (value, now)
+        return value
+    }
+
     private func refreshWiFiAdvisory() {
+        let now = Date()
+        syncEmptyWiFiDiscoveryTimer(now: now)
         let wifiStreamingActive = sessions.contains { session in
             guard !session.failed, case .wifi(let result) = session.target else { return false }
             return DirectCable.interface(for: result) == nil
         }
-        let nextAdvisory = WiFiAWDLAdvisoryPolicy.advisory(
+        let nextAdvisory: String?
+        if let awdlAdvisory = WiFiAWDLAdvisoryPolicy.advisory(
             wifiStreamingActive: wifiStreamingActive,
-            discoverableMode: WiFiAWDLAdvisoryPolicy.currentDiscoverableMode())
+            discoverableMode: WiFiAWDLAdvisoryPolicy.currentDiscoverableMode()
+        ) {
+            nextAdvisory = awdlAdvisory
+        } else {
+            let emptyDuration = emptyWiFiDiscoverySince.map { max(0, now.timeIntervalSince($0)) } ?? 0
+            let vpnOwnsRoute = emptyDuration >= WiFiEmptyDiscoveryIsolationPolicy.gracePeriodSeconds
+                ? sampledVPNTunnelOwnsRouting(now: now)
+                : false
+            nextAdvisory = WiFiEmptyDiscoveryIsolationPolicy.advisory(
+                roleEnabled: roleEnabled,
+                permitsWiFi: settings.transportMode != .usb,
+                browserReady: browserReady,
+                localNetworkDenied: localNetworkDenied,
+                hasDiscoveryError: discoveryStatus != nil,
+                discoveredCount: discovered.count,
+                hasWiredDevicesOrActiveSessions: hasWiredDevicesOrActiveSessions,
+                vpnTunnelOwnsRouting: vpnOwnsRoute,
+                emptyDurationSeconds: emptyDuration
+            )
+        }
         if wifiAdvisoryStatus != nextAdvisory {
             wifiAdvisoryStatus = nextAdvisory
         }
@@ -363,6 +439,9 @@ final class SenderController: ObservableObject {
         browser?.stateUpdateHandler = nil
         browser?.browseResultsChangedHandler = nil
         browser?.cancel()
+        browserReady = false
+        emptyWiFiDiscoverySince = nil
+        refreshWiFiAdvisory()
         // TXT records carry the receiver's install id (new receivers).
         let browser = NWBrowser(for: .bonjourWithTXTRecord(type: "_opensidecar._tcp", domain: nil), using: .tcp)
         let generation = roleGeneration
@@ -373,18 +452,26 @@ final class SenderController: ObservableObject {
                 switch state {
                 case .ready:
                     self.browserRetryAttempt = 0
+                    self.browserReady = true
+                    self.refreshWiFiAdvisory()
                 case .waiting(let error):
+                    self.browserReady = false
+                    self.emptyWiFiDiscoverySince = nil
                     if LocalNetworkDiscoveryPolicy.isPolicyDenied(error) {
                         self.localNetworkDenied = true
                         self.discoveryStatus = LocalNetworkDiscoveryPolicy.policyDeniedMessage
                     } else {
                         self.discoveryStatus = LocalNetworkDiscoveryPolicy.recoveryStatus(for: error)
                     }
+                    self.refreshWiFiAdvisory()
                     Log.info("bonjour browser waiting: \(error)")
                 case .failed(let error):
                     let denied = LocalNetworkDiscoveryPolicy.isPolicyDenied(error)
+                    self.browserReady = false
+                    self.emptyWiFiDiscoverySince = nil
                     self.localNetworkDenied = denied
                     self.discoveryStatus = LocalNetworkDiscoveryPolicy.recoveryStatus(for: error)
+                    self.refreshWiFiAdvisory()
                     let delay = LocalNetworkDiscoveryPolicy.retryDelaySeconds(attempt: self.browserRetryAttempt)
                     self.browserRetryAttempt = min(self.browserRetryAttempt + 1, 8)
                     Log.info("bonjour browser failed: \(error) — retrying in \(delay)s")
@@ -415,6 +502,7 @@ final class SenderController: ObservableObject {
                     self.localNetworkDenied = false
                     self.discoveryStatus = nil
                 }
+                self.refreshWiFiAdvisory()
                 self.autoConnect()
             }
         }

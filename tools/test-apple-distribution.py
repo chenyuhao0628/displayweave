@@ -121,7 +121,7 @@ class DistributionTests(unittest.TestCase):
             module.validate_info({"CFBundleIdentifier": module.IOS_ID,
                 "CFBundleShortVersionString": "0.3.0", "CFBundleVersion": "15"}, "ios", "0.3.0", "16")
 
-    def workflow(self, notary_status="Accepted", fail_staple=False):
+    def workflow(self, notary_status="Accepted", dmg_notary_status=None, fail_staple=False, fail_dmg_staple=False):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         root = pathlib.Path(folder.name)
@@ -130,6 +130,7 @@ class DistributionTests(unittest.TestCase):
             version="0.3.0", build_number="16", profile_uuid=None, method="release-testing",
             sparkle_bin=root / "bin", notary_profile="fixture")
         calls = []
+        notary_calls = [0]
         class Runner:
             logs = None
             def run(self, args, **kwargs):
@@ -137,11 +138,30 @@ class DistributionTests(unittest.TestCase):
                 if args[:3] == ["git", "rev-parse", "HEAD"]: return b"synthetic-commit"
                 if "-exportArchive" in args:
                     export = pathlib.Path(args[args.index("-exportPath") + 1]); (export / "DisplayWeave.app").mkdir(parents=True)
-                if args[0] == "ditto": pathlib.Path(args[-1]).write_bytes(b"synthetic archive")
+                if args[0] == "ditto":
+                    dest = pathlib.Path(args[-1])
+                    if dest.suffix == ".app":
+                        dest.mkdir(parents=True, exist_ok=True)
+                    else:
+                        dest.write_bytes(b"synthetic archive")
+                if args[:2] == ["hdiutil", "create"]:
+                    srcfolder = pathlib.Path(args[args.index("-srcfolder") + 1])
+                    assert (srcfolder / "DisplayWeave.app").is_dir(), "DMG stage missing DisplayWeave.app"
+                    assert (srcfolder / "Applications").is_symlink(), "DMG stage missing /Applications symlink"
+                    pathlib.Path(args[-1]).write_bytes(b"synthetic dmg image")
                 if args[:3] == ["xcrun", "notarytool", "submit"]:
-                    return ('{"status":"' + notary_status + '","id":"synthetic-id"}').encode()
-                if fail_staple and args[:3] == ["xcrun", "stapler", "staple"]:
-                    raise module.DistributionError("fixture stapler failed")
+                    notary_calls[0] += 1
+                    effective_status = (
+                        dmg_notary_status
+                        if (notary_calls[0] >= 2 and dmg_notary_status is not None)
+                        else notary_status
+                    )
+                    sub_id = "synthetic-dmg-id" if notary_calls[0] >= 2 else "synthetic-id"
+                    return ('{"status":"' + effective_status + '","id":"' + sub_id + '"}').encode()
+                if args[:3] == ["xcrun", "stapler", "staple"]:
+                    target_is_dmg = args[-1].endswith(".dmg")
+                    if (fail_staple and not target_is_dmg) or (fail_dmg_staple and target_is_dmg):
+                        raise module.DistributionError("fixture stapler failed")
                 if args[0].endswith("sign_update") and "-p" in args: return b"A" * 86 + b"=="
                 return b""
         return options, Runner(), output, calls
@@ -154,7 +174,17 @@ class DistributionTests(unittest.TestCase):
             self.assertTrue((output / "INCOMPLETE").exists())
             self.assertFalse((output / "receipt.json").exists())
             self.assertFalse((output / "DisplayWeave-macOS.zip").exists())
+            self.assertFalse((output / "DisplayWeave-macOS.dmg").exists())
             self.assertFalse(any(c[0].endswith("sign_update") for c in calls))
+
+    def test_failed_dmg_notary_or_stapler_preserves_incomplete_candidate(self):
+        for kwargs in [{"dmg_notary_status": "Rejected"}, {"fail_dmg_staple": True}]:
+            options, runner, output, _ = self.workflow(**kwargs)
+            with patch.object(module, "verify_app"), self.assertRaises(module.DistributionError):
+                module.build_distribution(options, runner, output)
+            self.assertTrue((output / "INCOMPLETE").exists())
+            self.assertFalse((output / "receipt.json").exists())
+            self.assertFalse((output / "DisplayWeave-macOS.dmg").exists())
 
     def test_stapler_failure_preserves_incomplete_candidate(self):
         options, runner, output, calls = self.workflow(fail_staple=True)
@@ -164,21 +194,40 @@ class DistributionTests(unittest.TestCase):
         self.assertFalse((output / "receipt.json").exists())
         self.assertFalse(any(c[0].endswith("sign_update") for c in calls))
 
-    def test_completed_receipt_only_after_staple_gatekeeper_and_signature(self):
+    def test_completed_receipt_only_after_staple_gatekeeper_signature_and_dmg(self):
         options, runner, output, calls = self.workflow()
         with patch.object(module, "verify_app"):
             artifact = module.build_distribution(options, runner, output)
         import json
+        dmg = output / "DisplayWeave-macOS.dmg"
+        self.assertTrue(dmg.is_file())
+        zip_sha = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        dmg_sha = hashlib.sha256(dmg.read_bytes()).hexdigest()
         receipt = json.loads((output / "receipt.json").read_text())
-        self.assertEqual(receipt["sha256"], hashlib.sha256(artifact.read_bytes()).hexdigest())
+        self.assertEqual(receipt["sha256"], zip_sha)
+        self.assertEqual(receipt["dmgArtifact"], "DisplayWeave-macOS.dmg")
+        self.assertEqual(receipt["dmgSha256"], dmg_sha)
+        self.assertEqual(receipt["dmgNotarySubmission"], "synthetic-dmg-id")
+        self.assertEqual([item["name"] for item in receipt["artifacts"]],
+                         ["DisplayWeave-macOS.zip", "DisplayWeave-macOS.dmg"])
+        sums = (output / "SHA256SUMS.txt").read_text()
+        self.assertEqual(sums, f"{zip_sha}  DisplayWeave-macOS.zip\n{dmg_sha}  DisplayWeave-macOS.dmg\n")
         self.assertEqual(receipt["publication"], "not uploaded")
         self.assertFalse((output / "INCOMPLETE").exists())
         names = [" ".join(call) for call in calls]
-        staple = next(i for i, c in enumerate(names) if "stapler validate" in c)
+        staple = next(i for i, c in enumerate(names) if "stapler validate" in c and c.endswith(".app"))
         gatekeeper = next(i for i, c in enumerate(names) if "spctl --assess" in c)
         signature = next(i for i, c in enumerate(names) if "sign_update --account ed25519 --verify" in c)
+        dmg_create = next(i for i, c in enumerate(names) if c.startswith("hdiutil create"))
+        dmg_sign = next(i for i, c in enumerate(names) if c.startswith("codesign --force") and c.endswith(".dmg"))
+        dmg_notary = next(i for i, c in enumerate(names) if "notarytool submit" in c and ".dmg" in c)
+        dmg_staple = next(i for i, c in enumerate(names) if "stapler validate" in c and c.endswith(".dmg"))
         self.assertLess(staple, gatekeeper)
         self.assertLess(gatekeeper, signature)
+        self.assertLess(signature, dmg_create)
+        self.assertLess(dmg_create, dmg_sign)
+        self.assertLess(dmg_sign, dmg_notary)
+        self.assertLess(dmg_notary, dmg_staple)
 
 
 if __name__ == "__main__":

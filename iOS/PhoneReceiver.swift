@@ -63,12 +63,12 @@ struct PerfStats: Equatable {
 final class PhoneReceiver: ObservableObject {
     static let desktopInputEnabledKey = "iosDesktopInputEnabled"
 
-    @Published var status = "正在启动…"
-    @Published var fps = 0
-    @Published var connected = false
+    @Published private(set) var status = "正在启动…"
+    @Published private(set) var fps = 0
+    @Published private(set) var connected = false
     @Published private(set) var encrypted = false
-    @Published var videoSize = CGSize.zero   // for touch coordinate mapping
-    @Published var perf = PerfStats()
+    @Published private(set) var videoSize = CGSize.zero   // for touch coordinate mapping
+    @Published private(set) var perf = PerfStats()
     @Published private(set) var nativeHighRefreshTrialSupported = false
     @Published private(set) var pencilAvailable = false
     @Published private(set) var pencilExtendedAvailable = false
@@ -119,7 +119,6 @@ final class PhoneReceiver: ObservableObject {
     private var videoBackpressure = ReceiverVideoBackpressurePolicy()
     private var displayLayerNotReadySince: TimeInterval?
     private var firstVideoDeadline = ReceiverFirstVideoDeadline()
-    private var displayMaxFps = 60
     @Published private(set) var requestedFps = 60
     @Published private(set) var codecLabel = "H.264"
 
@@ -245,24 +244,67 @@ final class PhoneReceiver: ObservableObject {
     /// message so it can size the virtual display. Orientation-dependent:
     /// rotating the phone or resizing iPad Split View / Stage Manager windows
     /// re-announces debounced geometry so the Mac updates smoothly.
-    private var nativeLong = 0
-    private var nativeShort = 0
+    /// Protected by `panelStateLock` so `@MainActor` readers (e.g.
+    /// `supportsNativeHighRefreshTrial`) and `queue` writers never data-race.
+    private let panelStateLock = NSLock()
+    private var _nativeLong = 0
+    private var _nativeShort = 0
+    private var _displayMaxFps = 60
+    private var _devicePixelsWide = 0
+    private var _devicePixelsHigh = 0
+    private var _deviceScale: Double = 2
+    private var _serviceName = "DisplayWeave"
+
+    private var nativeLong: Int {
+        get { panelStateLock.lock(); defer { panelStateLock.unlock() }; return _nativeLong }
+        set { panelStateLock.lock(); _nativeLong = newValue; panelStateLock.unlock() }
+    }
+    private var nativeShort: Int {
+        get { panelStateLock.lock(); defer { panelStateLock.unlock() }; return _nativeShort }
+        set { panelStateLock.lock(); _nativeShort = newValue; panelStateLock.unlock() }
+    }
+    private var displayMaxFps: Int {
+        get { panelStateLock.lock(); defer { panelStateLock.unlock() }; return _displayMaxFps }
+        set { panelStateLock.lock(); _displayMaxFps = newValue; panelStateLock.unlock() }
+    }
     // Changing the trial setting cannot change an already-advertised connection.
     private var nativeHighRefreshTrialForConnection = false
-    private(set) var devicePixelsWide = 0
-    private(set) var devicePixelsHigh = 0
-    var deviceScale: Double = 2
+    private(set) var devicePixelsWide: Int {
+        get { panelStateLock.lock(); defer { panelStateLock.unlock() }; return _devicePixelsWide }
+        set { panelStateLock.lock(); _devicePixelsWide = newValue; panelStateLock.unlock() }
+    }
+    private(set) var devicePixelsHigh: Int {
+        get { panelStateLock.lock(); defer { panelStateLock.unlock() }; return _devicePixelsHigh }
+        set { panelStateLock.lock(); _devicePixelsHigh = newValue; panelStateLock.unlock() }
+    }
+    var deviceScale: Double {
+        get { panelStateLock.lock(); defer { panelStateLock.unlock() }; return _deviceScale }
+        set { panelStateLock.lock(); _deviceScale = newValue; panelStateLock.unlock() }
+    }
     private var windowPointsWide: Int?
     private var windowPointsHigh: Int?
     private var panelMillimetersWide: Int?
     private var panelMillimetersHigh: Int?
+    private struct AnnouncedHelloGeometry: Equatable {
+        let pixelsWide: Int
+        let pixelsHigh: Int
+        let scaleMilli: Int
+        let pointsWide: Int
+        let pointsHigh: Int
+        let millimetersWide: Int?
+        let millimetersHigh: Int?
+    }
+    private var lastAnnouncedHelloGeometry: AnnouncedHelloGeometry?
     private var helloDebounceWorkItem: DispatchWorkItem?
     // Name advertised over Bonjour for the Mac's WiFi picker. iOS 16+ returns
     // a generic "iPhone" from UIDevice.current.name (the user-assigned name
     // needs an entitlement Apple gates behind approval and personal teams
     // can't get), so this is user-editable in Settings. The USB picker gets
     // the real name host-side via lockdownd regardless.
-    var serviceName = "DisplayWeave"
+    var serviceName: String {
+        get { panelStateLock.lock(); defer { panelStateLock.unlock() }; return _serviceName }
+        set { panelStateLock.lock(); _serviceName = newValue; panelStateLock.unlock() }
+    }
 
     // Stable per-install identity, advertised in the Bonjour TXT record and
     // sent in every hello. The Mac uses it to recognize "same device, other
@@ -294,9 +336,12 @@ final class PhoneReceiver: ObservableObject {
     }
 
     func setNativePanel(long: Int, short: Int, scale: Double, maxFps: Int = 60) {
+        let clampedLong = ReceiverWindowGeometryPolicy.clampEvenPixels(max(long, short))
+        let clampedShort = ReceiverWindowGeometryPolicy.clampEvenPixels(min(long, short))
+        let safeScale = scale.isFinite && scale > 0 ? min(4.0, max(0.5, scale)) : 2.0
         let resolvedMaxFps = AppleVideoPolicy.frameRate(maximum: maxFps)
         let supportsTrial = AppleVideoPolicy.nativeHighRefreshEnvelope(
-            width: long, height: short, maxFps: resolvedMaxFps) != nil
+            width: clampedLong, height: clampedShort, maxFps: resolvedMaxFps) != nil
         if Thread.isMainThread {
             if nativeHighRefreshTrialSupported != supportsTrial {
                 nativeHighRefreshTrialSupported = supportsTrial
@@ -312,14 +357,14 @@ final class PhoneReceiver: ObservableObject {
         queue.async { [weak self] in
             guard let self else { return }
             self.displayMaxFps = resolvedMaxFps
-            self.nativeLong = long
-            self.nativeShort = short
+            self.nativeLong = clampedLong
+            self.nativeShort = clampedShort
             if self.windowPointsWide == nil {
-                self.deviceScale = scale
+                self.deviceScale = safeScale
             }
             if self.devicePixelsWide == 0 {   // default landscape until the view reports
-                self.devicePixelsWide = long
-                self.devicePixelsHigh = short
+                self.devicePixelsWide = clampedLong
+                self.devicePixelsHigh = clampedShort
             }
         }
     }
@@ -327,9 +372,12 @@ final class PhoneReceiver: ObservableObject {
     func setOrientation(portrait: Bool) {
         queue.async { [weak self] in
             guard let self else { return }
-            let w = portrait ? self.nativeShort : self.nativeLong
-            let h = portrait ? self.nativeLong : self.nativeShort
-            guard w > 0, w != self.devicePixelsWide else { return }
+            let rawW = portrait ? self.nativeShort : self.nativeLong
+            let rawH = portrait ? self.nativeLong : self.nativeShort
+            guard rawW > 0, rawH > 0 else { return }
+            let w = ReceiverWindowGeometryPolicy.clampEvenPixels(rawW)
+            let h = ReceiverWindowGeometryPolicy.clampEvenPixels(rawH)
+            guard w != self.devicePixelsWide || h != self.devicePixelsHigh else { return }
             self.devicePixelsWide = w
             self.devicePixelsHigh = h
             self.windowPointsWide = nil
@@ -351,8 +399,8 @@ final class PhoneReceiver: ObservableObject {
         screenNativeShort: Int,
         screenNativeScale: Double
     ) {
-        let clampedWide = max(2, min(16384, pixelsWide & ~1))
-        let clampedHigh = max(2, min(16384, pixelsHigh & ~1))
+        let clampedWide = ReceiverWindowGeometryPolicy.clampEvenPixels(pixelsWide)
+        let clampedHigh = ReceiverWindowGeometryPolicy.clampEvenPixels(pixelsHigh)
         let clampedScale = scale.isFinite && scale > 0 ? min(4.0, max(0.5, scale)) : 2.0
         let clampedPtsWide = max(2, min(16384, pointsWide))
         let clampedPtsHigh = max(2, min(16384, pointsHigh))
@@ -394,6 +442,27 @@ final class PhoneReceiver: ObservableObject {
         }
     }
 
+    private func currentHelloGeometrySnapshot() -> AnnouncedHelloGeometry {
+        let pxWide = ReceiverWindowGeometryPolicy.clampEvenPixels(
+            devicePixelsWide > 0 ? devicePixelsWide : 1920
+        )
+        let pxHigh = ReceiverWindowGeometryPolicy.clampEvenPixels(
+            devicePixelsHigh > 0 ? devicePixelsHigh : 1080
+        )
+        let safeScale = deviceScale.isFinite && deviceScale > 0 ? min(4.0, max(0.5, deviceScale)) : 2.0
+        let ptWide = windowPointsWide ?? max(2, min(16384, Int((Double(pxWide) / safeScale).rounded())))
+        let ptHigh = windowPointsHigh ?? max(2, min(16384, Int((Double(pxHigh) / safeScale).rounded())))
+        return AnnouncedHelloGeometry(
+            pixelsWide: pxWide,
+            pixelsHigh: pxHigh,
+            scaleMilli: Int((safeScale * 1000).rounded()),
+            pointsWide: ptWide,
+            pointsHigh: ptHigh,
+            millimetersWide: panelMillimetersWide,
+            millimetersHigh: panelMillimetersHigh
+        )
+    }
+
     private func scheduleDebouncedHello() {
         helloDebounceWorkItem?.cancel()
         helloDebounceWorkItem = nil
@@ -402,11 +471,15 @@ final class PhoneReceiver: ObservableObject {
             guard let self else { return }
             self.helloDebounceWorkItem = nil
             guard self.running, let conn = self.connection else { return }
+            guard self.currentHelloGeometrySnapshot() != self.lastAnnouncedHelloGeometry else { return }
             Log.info("window geometry settled -> \(self.devicePixelsWide)x\(self.devicePixelsHigh)")
             self.sendHello(on: conn)
         }
         helloDebounceWorkItem = work
-        queue.asyncAfter(deadline: .now() + 0.15, execute: work)
+        queue.asyncAfter(
+            deadline: .now() + ReceiverWindowGeometryPolicy.debounceIntervalSeconds,
+            execute: work
+        )
     }
 
     private static func estimateMillimeters(
@@ -847,6 +920,7 @@ final class PhoneReceiver: ObservableObject {
     private func resetStreamState(acceptingInput: Bool = false) {
         helloDebounceWorkItem?.cancel()
         helloDebounceWorkItem = nil
+        lastAnnouncedHelloGeometry = nil
         udpMediaSession?.stop()
         udpMediaSession = nil
         lastUdpMediaEpoch = 0
@@ -930,9 +1004,11 @@ final class PhoneReceiver: ObservableObject {
 
     private func sendHello(on conn: NWConnection) {
         let codecs = supportsHEVC ? ["h264", "hevc"] : ["h264"]
-        let pxWide = max(2, min(16384, devicePixelsWide > 0 ? (devicePixelsWide & ~1) : 1920))
-        let pxHigh = max(2, min(16384, devicePixelsHigh > 0 ? (devicePixelsHigh & ~1) : 1080))
+        let snapshot = currentHelloGeometrySnapshot()
+        let pxWide = snapshot.pixelsWide
+        let pxHigh = snapshot.pixelsHigh
         let safeScale = deviceScale.isFinite && deviceScale > 0 ? min(4.0, max(0.5, deviceScale)) : 2.0
+        lastAnnouncedHelloGeometry = snapshot
         let limits = pxHigh > pxWide ? (width: 2304, height: 4096) : (width: 4096, height: 2304)
         let nativeEnvelope: AppleNativeVideoEnvelope? = nativeHighRefreshTrialForConnection
             ? AppleVideoPolicy.nativeHighRefreshEnvelope(width: pxWide, height: pxHigh, maxFps: displayMaxFps)
@@ -1271,6 +1347,9 @@ final class PhoneReceiver: ObservableObject {
             let matchesConfigured = (configuredVideo == nil && withinUnconfiguredLimits)
                 || (Int(dims.width) == configuredVideo?.width
                   && Int(dims.height) == configuredVideo?.height)
+                || (withinUnconfiguredLimits
+                  && Int(dims.width) == configuredVideo?.height
+                  && Int(dims.height) == configuredVideo?.width)
             if !matchesConfigured {
                 if isUDP, withinUnconfiguredLimits {
                     bitstream = ReceiverVideoBitstream(codec: videoCodec)
