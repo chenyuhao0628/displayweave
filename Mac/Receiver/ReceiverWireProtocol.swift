@@ -64,8 +64,22 @@ struct PanelAnnouncement: Codable, Equatable {
         scale = try values.decode(Double.self, forKey: .scale)
         pointsWide = try values.decodeIfPresent(Int.self, forKey: .pointsWide)
         pointsHigh = try values.decodeIfPresent(Int.self, forKey: .pointsHigh)
-        millimetersWide = try? values.decode(Int.self, forKey: .millimetersWide)
-        millimetersHigh = try? values.decode(Int.self, forKey: .millimetersHigh)
+        millimetersWide = Self.decodeMillimeters(values, forKey: .millimetersWide)
+        millimetersHigh = Self.decodeMillimeters(values, forKey: .millimetersHigh)
+    }
+
+    private static func decodeMillimeters(_ values: KeyedDecodingContainer<CodingKeys>,
+                                          forKey key: CodingKeys) -> Int? {
+        if let exact = try? values.decode(Int.self, forKey: key) {
+            return exact
+        }
+        if let fractional = try? values.decode(Double.self, forKey: key),
+           fractional.isFinite,
+           fractional >= Double(Int.min),
+           fractional <= Double(Int.max) {
+            return Int(fractional.rounded())
+        }
+        return nil
     }
 
     var json: [String: Any] {

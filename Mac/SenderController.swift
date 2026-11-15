@@ -46,7 +46,12 @@ final class SenderController: ObservableObject {
 
     @Published var sessions: [DeviceSession] = []
     @Published private(set) var securityStatus: String?
+    @Published private(set) var discoveryStatus: String?
+    @Published private(set) var localNetworkDenied = false
+    @Published private(set) var wifiAdvisoryStatus: String?
     private var securityObserver: NSObjectProtocol?
+    private var browserRetryAttempt = 0
+    private var browserRetryTask: Task<Void, Never>?
     @Published var discovered: [NWBrowser.Result] = []
     @Published var usbDevices: [UsbmuxDevice] = []
     @Published var androidDevices: [AndroidAdbDevice] = []
@@ -216,7 +221,14 @@ final class SenderController: ObservableObject {
         macLANPolicy.clearCandidates()
         androidPollTask?.cancel(); androidPollTask = nil
         autoConnectTask?.cancel(); autoConnectTask = nil
+        browserRetryTask?.cancel(); browserRetryTask = nil
+        browserRetryAttempt = 0
+        browser?.stateUpdateHandler = nil
+        browser?.browseResultsChangedHandler = nil
         browser?.cancel(); browser = nil
+        discoveryStatus = nil
+        localNetworkDenied = false
+        wifiAdvisoryStatus = nil
         wiredPathMonitor?.cancel(); wiredPathMonitor = nil
         _ = directCablePolicy.arrivals(present: [], active: [], enabled: false)
         usbWatcher?.stop(); usbWatcher = nil
@@ -254,9 +266,33 @@ final class SenderController: ObservableObject {
                 guard let self, !Task.isCancelled, self.roleEnabled,
                       self.roleGeneration == generation else { return }
                 self.evaluateMacLANHandover()
+                self.refreshWiFiAdvisory()
             }
         }
         return nil
+    }
+
+    func retryDiscovery() {
+        guard roleEnabled else { return }
+        browserRetryTask?.cancel()
+        browserRetryTask = nil
+        browserRetryAttempt = 0
+        discoveryStatus = nil
+        localNetworkDenied = false
+        restartBrowserOnly()
+    }
+
+    private func refreshWiFiAdvisory() {
+        let wifiStreamingActive = sessions.contains { session in
+            guard !session.failed, case .wifi(let result) = session.target else { return false }
+            return DirectCable.interface(for: result) == nil
+        }
+        let nextAdvisory = WiFiAWDLAdvisoryPolicy.advisory(
+            wifiStreamingActive: wifiStreamingActive,
+            discoverableMode: WiFiAWDLAdvisoryPolicy.currentDiscoverableMode())
+        if wifiAdvisoryStatus != nextAdvisory {
+            wifiAdvisoryStatus = nextAdvisory
+        }
     }
 
     private func pollAndroidAdb() async {
@@ -308,19 +344,9 @@ final class SenderController: ObservableObject {
     }
 
     private func startBrowsing() {
-        // TXT records carry the receiver's install id (new receivers).
-        let browser = NWBrowser(for: .bonjourWithTXTRecord(type: "_opensidecar._tcp", domain: nil), using: .tcp)
+        restartBrowserOnly()
         let generation = roleGeneration
-        browser.browseResultsChangedHandler = { [weak self] results, _ in
-            DispatchQueue.main.async {
-                guard let self, self.roleEnabled, self.roleGeneration == generation else { return }
-                self.discovered = Array(results.filter { self.txtID(of: $0) != StreamReceiver.installID }
-                    .sorted { (self.serviceName(of: $0) ?? "") < (self.serviceName(of: $1) ?? "") }.prefix(256))
-                self.autoConnect()
-            }
-        }
-        browser.start(queue: .main)
-        self.browser = browser
+        wiredPathMonitor?.cancel()
         let monitor = NWPathMonitor(requiredInterfaceType: .wiredEthernet)
         monitor.pathUpdateHandler = { [weak self] _ in
             DispatchQueue.main.async {
@@ -331,6 +357,69 @@ final class SenderController: ObservableObject {
         }
         monitor.start(queue: DispatchQueue(label: "displayweave.wired-path"))
         wiredPathMonitor = monitor
+    }
+
+    private func restartBrowserOnly() {
+        browser?.stateUpdateHandler = nil
+        browser?.browseResultsChangedHandler = nil
+        browser?.cancel()
+        // TXT records carry the receiver's install id (new receivers).
+        let browser = NWBrowser(for: .bonjourWithTXTRecord(type: "_opensidecar._tcp", domain: nil), using: .tcp)
+        let generation = roleGeneration
+        browser.stateUpdateHandler = { [weak self, weak browser] state in
+            DispatchQueue.main.async {
+                guard let self, let browser, self.browser === browser,
+                      self.roleEnabled, self.roleGeneration == generation else { return }
+                switch state {
+                case .ready:
+                    self.browserRetryAttempt = 0
+                case .waiting(let error):
+                    if LocalNetworkDiscoveryPolicy.isPolicyDenied(error) {
+                        self.localNetworkDenied = true
+                        self.discoveryStatus = LocalNetworkDiscoveryPolicy.policyDeniedMessage
+                    } else {
+                        self.discoveryStatus = LocalNetworkDiscoveryPolicy.recoveryStatus(for: error)
+                    }
+                    Log.info("bonjour browser waiting: \(error)")
+                case .failed(let error):
+                    let denied = LocalNetworkDiscoveryPolicy.isPolicyDenied(error)
+                    self.localNetworkDenied = denied
+                    self.discoveryStatus = LocalNetworkDiscoveryPolicy.recoveryStatus(for: error)
+                    let delay = LocalNetworkDiscoveryPolicy.retryDelaySeconds(attempt: self.browserRetryAttempt)
+                    self.browserRetryAttempt = min(self.browserRetryAttempt + 1, 8)
+                    Log.info("bonjour browser failed: \(error) — retrying in \(delay)s")
+                    browser.stateUpdateHandler = nil
+                    browser.browseResultsChangedHandler = nil
+                    browser.cancel()
+                    if self.browser === browser { self.browser = nil }
+                    self.browserRetryTask?.cancel()
+                    self.browserRetryTask = Task { @MainActor [weak self] in
+                        try? await Task.sleep(for: .milliseconds(Int((delay * 1000).rounded())))
+                        guard let self, !Task.isCancelled, self.roleEnabled,
+                              self.roleGeneration == generation else { return }
+                        self.restartBrowserOnly()
+                    }
+                default:
+                    break
+                }
+            }
+        }
+        browser.browseResultsChangedHandler = { [weak self, weak browser] results, _ in
+            DispatchQueue.main.async {
+                guard let self, let browser, self.browser === browser,
+                      self.roleEnabled, self.roleGeneration == generation else { return }
+                let filtered = Array(results.filter { self.txtID(of: $0) != StreamReceiver.installID }
+                    .sorted { (self.serviceName(of: $0) ?? "") < (self.serviceName(of: $1) ?? "") }.prefix(256))
+                self.discovered = filtered
+                if !results.isEmpty {
+                    self.localNetworkDenied = false
+                    self.discoveryStatus = nil
+                }
+                self.autoConnect()
+            }
+        }
+        browser.start(queue: .main)
+        self.browser = browser
     }
 
     // MARK: - Physical-device identity
@@ -691,6 +780,7 @@ final class SenderController: ObservableObject {
                 self.androidRecoveryGeneration[mapping.serial, default: 0] += 1
             }
             self.dedupeSessions()
+            self.refreshWiFiAdvisory()
         }
         sender.onStats = { [weak self, weak session] frames, mbps in
             guard let self, let session, self.roleEnabled, !session.failed,
@@ -942,6 +1032,7 @@ final class SenderController: ObservableObject {
     private func end(_ session: DeviceSession) -> Task<Void, Never> {
         let captureCleanup = session.lifetime.stop()
         sessions.removeAll { $0 === session }
+        refreshWiFiAdvisory()
         let token = UUID()
         let task = Task { [weak self] in
             await captureCleanup.value

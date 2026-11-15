@@ -308,6 +308,21 @@ struct AdaptiveBitrateControllerSelfTest {
         _ = localDisabled.evaluateLocal(fullQueue, mode: .manual)
         expect(localDisabled.evaluateLocal(secondQueue, mode: .manual) == nil,
                "local fast path is disabled outside Auto")
+
+        let fastDrop = AdaptiveBitrateController(
+            initialBitrate: 80_000_000, bounds: 20_000_000...100_000_000)
+        expect(fastDrop.evaluate(metrics(0.0, pending: 2), mode: .auto)?.newBitrate == 64_000_000,
+               "initial moderate congestion decreases at t=0")
+        expect(fastDrop.evaluate(metrics(0.3, pending: 2), mode: .auto) == nil,
+               "moderate congestion still honors 1.0s hold")
+        expect(fastDrop.evaluate(metrics(0.3, pending: 4), mode: .auto)?.newBitrate == 51_200_000,
+               "severe congestion spike cuts again after 250ms fast-drop hold")
+        expect(fastDrop.evaluate(metrics(0.45, pending: 5), mode: .auto) == nil,
+               "250ms fast-drop hold still bounds sub-quarter-second double cuts")
+        fastDrop.syncCurrentBitrate(33_000_000)
+        expect(fastDrop.currentBitrate == 33_000_000,
+               "UDP-to-TCP fallback sync aligns currentBitrate cleanly")
+
         print("AdaptiveBitrateControllerSelfTest PASS")
     }
 }

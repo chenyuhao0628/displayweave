@@ -128,6 +128,7 @@ public final class AndroidSecurityStore {
                         new ByteArrayInputStream(Base64.getDecoder().decode(encoded)));
                 certificate.verify(store.getCertificate(ALIAS).getPublicKey());
             } catch (IllegalArgumentException error) { throw new GeneralSecurityException("corrupt transport certificate", error); }
+            SecureTls.checkCertificateValidity(certificate, true);
             if (!java.util.Arrays.equals(certificate.getPublicKey().getEncoded(), store.getCertificate(ALIAS).getPublicKey().getEncoded())) {
                 throw new GeneralSecurityException("transport certificate/key mismatch");
             }

@@ -129,6 +129,6 @@ enum MainWindow {
             window = w
         }
         window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
     }
 }

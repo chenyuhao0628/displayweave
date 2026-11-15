@@ -69,6 +69,25 @@ jobs:
           ref: ${{ inputs.release_tag != '' && inputs.release_tag || needs.release_please.outputs.tag_name }}
           fetch-depth: 0
 
+      - name: Require release signing secrets
+        run: |
+          set -euo pipefail
+          missing=()
+          for secret_var in \
+            SPARKLE_PRIVATE_KEY \
+            DISPLAYWEAVE_ANDROID_KEYSTORE_BASE64 \
+            DISPLAYWEAVE_ANDROID_STORE_PASSWORD \
+            DISPLAYWEAVE_ANDROID_KEY_ALIAS \
+            DISPLAYWEAVE_ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!secret_var:-}" ]]; then
+              missing+=("$secret_var")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "Missing required release signing secret(s): ${missing[*]}" >&2
+            exit 1
+          fi
+
       - name: Install XcodeGen
         run: command -v xcodegen >/dev/null || brew install xcodegen
 
@@ -134,8 +153,9 @@ jobs:
           DISPLAYWEAVE_ANDROID_FEED_OUTPUT: ${{ github.workspace }}/build/update-release/android-update.json
         run: |
           set -euo pipefail
-          echo "DISPLAYWEAVE_PUBLISHED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
-          export DISPLAYWEAVE_PUBLISHED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          published_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          echo "DISPLAYWEAVE_PUBLISHED_AT=$published_at" >> "$GITHUB_ENV"
+          export DISPLAYWEAVE_PUBLISHED_AT="$published_at"
           ./tools/generate-android-update-manifest.sh
 
           GEN_APPCAST="$(find build/package/mac/SourcePackages \
@@ -147,7 +167,7 @@ jobs:
           printf '%s' "$SPARKLE_PRIVATE_KEY" | "$GEN_APPCAST" \
             --ed-key-file - \
             --download-url-prefix \
-              "https://github.com/chenyuhao0628/displayweave/releases/download/${DISPLAYWEAVE_RELEASE_TAG}/" \
+              "https://github.com/${{ github.repository }}/releases/download/${DISPLAYWEAVE_RELEASE_TAG}/" \
             --link "https://github.com/${GITHUB_REPOSITORY}" \
             --versions "$DISPLAYWEAVE_BUILD_NUMBER" \
             -o "$DISPLAYWEAVE_OUTPUT_DIR/appcast.xml" \
@@ -202,7 +222,9 @@ jobs:
       - name: Clean signing material
         if: always()
         run: |
-          rm -f "$DISPLAYWEAVE_ANDROID_KEYSTORE"
+          if [[ -n "${DISPLAYWEAVE_ANDROID_KEYSTORE:-}" ]]; then
+            rm -f "${DISPLAYWEAVE_ANDROID_KEYSTORE:-}"
+          fi
 
   deploy_update_feeds:
     name: deploy-update-feeds
@@ -219,7 +241,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     concurrency:
       group: pages
-      cancel-in-progress: true
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
         with:

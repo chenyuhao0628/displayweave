@@ -4,6 +4,25 @@ import Security
 enum SecurePairingProtocol {
     static let maximumInvitationBytes = 2048
     static let maximumAuthBytes = 4096
+
+    /// Truncates `value` on valid `Character` / UTF-8 scalar boundaries so its UTF-8
+    /// byte length is guaranteed `<= maxBytes`.
+    static func truncateUTF8(_ value: String, maxBytes: Int = maximumInvitationBytes) -> String {
+        guard maxBytes > 0 else { return "" }
+        if value.utf8.count <= maxBytes { return value }
+        var end = value.startIndex
+        var byteCount = 0
+        while end < value.endIndex {
+            let next = value.index(after: end)
+            let charBytes = value[end..<next].utf8.count
+            if byteCount + charBytes > maxBytes {
+                break
+            }
+            byteCount += charBytes
+            end = next
+        }
+        return String(value[..<end])
+    }
     static func validID(_ value: String) -> Bool {
         !value.isEmpty && value.utf8.count <= 256 && !value.unicodeScalars.contains { $0.value < 32 || $0.value == 127 }
     }

@@ -203,6 +203,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private var encoderLoadAdjustmentTask: Task<Void, Never>?
     private var requestedCaptureFps = 60
     private var decoderFpsAdjustmentInFlight = false
+    private var decoderFpsAdjustmentID: UUID?
+    private var decoderFpsAdjustmentTask: Task<Void, Never>?
+    private var codecFallbackResizeID: UUID?
+    private var codecFallbackResizeTask: Task<Void, Never>?
     private var actualVirtualDisplayRefreshRate = 60
     private var lastCaptureFpsWarningAt = Date.distantPast
     private var streamCodec: StreamCodec = .h264
@@ -236,6 +240,14 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private var lastAdaptiveDecision: AdaptiveBitrateDecision?
     private var lastMacDropsSnapshot = 0
     private var udpMediaSession: UDPMediaSenderSession?
+    private var activeUDPMediaSessionEpoch: Int64 = 0
+    private let audioQueue = DispatchQueue(label: "sender.audio", qos: .userInteractive)
+    private let audioLock = NSLock()
+    private var audioPacketizer = AudioCapturePacketizer()
+    private var audioSequence: UInt32 = 0
+    private var audioCaptureSink: ((UInt32, Data) -> Void)?
+    private var udpCursorSender: ((CursorPosition, UInt64) -> Bool)?
+    private weak var audioAttachedStream: SCStream?
 
     private let benchmarkClock = ContinuousClock()
     private var benchmarkRecorder: BenchmarkRecorder?
@@ -291,7 +303,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
 
     func start() async throws {
         guard !stopped else { throw CancellationError() }
-        queue.async { self.connect() }   // dial state lives on `queue`
+        queue.async { [weak self] in self?.connect() }   // dial state lives on `queue`
         if !monitorsStarted {
             monitorsStarted = true
             schedulePing()
@@ -410,15 +422,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         let desktop = match?.geometry ?? mobileDesktop
         let pointsWide = desktop.pointsWide
         let pointsHigh = desktop.pointsHigh
-        // Rough physical size so macOS picks a sane default UI scale.
-        let mm: CGSize
-        if selection == .automatic, info.isMacReceiver, let physical = MacReceiverPolicy.physicalSize(panel: info.panel) {
-            mm = CGSize(width: physical.width, height: physical.height)
-        } else if info.isMacReceiver {
-            mm = CGSize(width: Double(pointsWide) * 25.4 / 110, height: Double(pointsHigh) * 25.4 / 110)
-        } else {
-            mm = info.pixelsWide >= info.pixelsHigh ? CGSize(width: 147, height: 68) : CGSize(width: 68, height: 147)
-        }
+        // Physical size floor >= 200 cm² (208x96 mm default mobile) so macOS 26.1+
+        // never rejects sub-160 cm² virtual displays while honoring sane panel mm.
+        let mm = VirtualDisplayPhysicalSizePolicy.millimeters(
+            for: info, selection: selection, pointsWide: pointsWide, pointsHigh: pointsHigh)
         let matchNote: String?
         if selection == .automatic, info.isMacReceiver {
             matchNote = Self.automaticMatchNote(match, reference: reference)
@@ -577,7 +584,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         do {
             return try await displayCoordinator.exclusively { await self.reconfigureExclusive(info) }
         } catch {
-            if !(error is CancellationError), !stopped { queue.async { self.failPipeline(error) } }
+            if !(error is CancellationError), !stopped { queue.async { [weak self] in self?.failPipeline(error) } }
             return nil
         }
     }
@@ -619,7 +626,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 guard !(error is CancellationError), !stopped else { return nil }
                 Log.info("reconfigure failed: \(error)")
                 if error is EncoderSessionFactory.Failure {
-                    queue.async { self.failPipeline(error) }
+                    queue.async { [weak self] in self?.failPipeline(error) }
                 } else {
                     await status("显示配置失败：\(error.localizedDescription)")
                 }
@@ -719,6 +726,17 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         encoderLoadAdjustmentTask = nil
         encoderLoadAdjustmentID = nil
         encoderLoad = nil
+        decoderFpsAdjustmentTask?.cancel()
+        decoderFpsAdjustmentTask = nil
+        decoderFpsAdjustmentID = nil
+        decoderFpsAdjustmentInFlight = false
+        codecFallbackResizeTask?.cancel()
+        codecFallbackResizeTask = nil
+        codecFallbackResizeID = nil
+        audioLock.withLock {
+            audioAttachedStream = nil
+            audioPacketizer.reset()
+        }
         stopCursorEcho()
         captureDisplayID = 0
         captureFrames.retire()
@@ -765,19 +783,23 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             actualVirtualDisplayRefreshRate = RefreshRatePolicy.sanitize(
                 virtualDisplayRefreshRate)
             lastCaptureFpsWarningAt = Date.distantPast
-            let config = makeCaptureConfiguration(
-                width: pixelsWide, height: pixelsHigh, fps: captureFps)
             try setupEncoder(
                 width: pixelsWide, height: pixelsHigh,
                 fps: captureFps, preferredCodec: codec)
-            activeStreamWidth = pixelsWide
-            activeStreamHeight = pixelsHigh
-            sendStreamConfig(width: pixelsWide, height: pixelsHigh)
+            let finalWidth = activeStreamWidth > 0 ? activeStreamWidth : pixelsWide
+            let finalHeight = activeStreamHeight > 0 ? activeStreamHeight : pixelsHigh
+            activeStreamWidth = finalWidth
+            activeStreamHeight = finalHeight
+            let config = makeCaptureConfiguration(
+                width: finalWidth, height: finalHeight, fps: captureFps)
+            sendStreamConfig(width: finalWidth, height: finalHeight)
             return (config, streamCodec, streamBitrate, actualVirtualDisplayRefreshRate)
         }
         guard let prepared else { throw CancellationError() }
         let config = prepared.0
         let captureFps = Int(config.minimumFrameInterval.timescale)
+        let finalWidth = config.width
+        let finalHeight = config.height
 
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
         let attached = queue.sync { () -> Bool in
@@ -786,11 +808,21 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             captureDisplayID = display.displayID
             _ = captureFrames.begin()
             captureSourceCheck = CaptureSourceCheck()
+            if config.capturesAudio {
+                audioLock.withLock {
+                    audioAttachedStream = stream
+                    audioPacketizer.reset()
+                }
+                refreshUDPFastPlaneSinksOnQueue()
+            }
             return true
         }
         guard attached else { throw CancellationError() }
         do {
             try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+            if config.capturesAudio {
+                try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
+            }
             try await stream.startCapture()
             try Task.checkCancellation()
         } catch {
@@ -808,8 +840,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             try? await stream.stopCapture()
             throw CancellationError()
         }
-        Log.info("capture started: \(pixelsWide)x\(pixelsHigh) display \(display.displayID) mode \(mode.rawValue) requestedCaptureFps=\(captureFps) actualVirtualDisplayRefreshRate=\(prepared.3) codec=\(prepared.1.rawValue) bitrate=\(prepared.2) minimumFrameInterval=1/\(RefreshRatePolicy.captureIntervalTimescale(fps: captureFps)) localCursor=\(localCursor)")
-        await status("\(mode == .extend ? "正在扩展到" : "正在镜像到") \(kind)（\(pixelsWide)×\(pixelsHigh)）")
+        Log.info("capture started: \(finalWidth)x\(finalHeight) display \(display.displayID) mode \(mode.rawValue) requestedCaptureFps=\(captureFps) actualVirtualDisplayRefreshRate=\(prepared.3) codec=\(prepared.1.rawValue) bitrate=\(prepared.2) minimumFrameInterval=1/\(RefreshRatePolicy.captureIntervalTimescale(fps: captureFps)) localCursor=\(localCursor)")
+        await status("\(mode == .extend ? "正在扩展到" : "正在镜像到") \(kind)（\(finalWidth)×\(finalHeight)）")
     }
 
     private func makeCaptureConfiguration(
@@ -825,6 +857,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         config.pixelFormat = UserDefaults.standard.string(forKey: "pixfmt") == "bgra"
             ? kCVPixelFormatType_32BGRA
             : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        if lastHello?.supportsDisplayP3 == true {
+            config.colorSpaceName = CGColorSpace.displayP3
+        }
+        let captureAudio = settings.audioEnabled && lastHello?.supportsUDPAudioV1 == true
+        config.capturesAudio = captureAudio
+        if captureAudio {
+            config.sampleRate = AudioCapturePacketizer.targetSampleRate
+            config.channelCount = AudioCapturePacketizer.targetChannels
+            config.excludesCurrentProcessAudio = true
+        }
         // Keep enough SCK headroom for keyframe replay and asynchronous encode
         // without accumulating multi-frame capture queue latency.
         config.queueDepth = CaptureStaticFramePolicy.defaultQueueDepth
@@ -846,11 +888,32 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         displayCoordinator.unregister(self)
         cursorEcho.stop()
         TestPattern.hide(ownerID: testPatternOwnerID)
-        let detached: (stream: SCStream?, display: VirtualDisplay?, reconfiguration: Task<Void, Never>?, captureStop: Task<Void, Never>?) = queue.sync {
+        let detached: (
+            stream: SCStream?,
+            display: VirtualDisplay?,
+            reconfiguration: Task<Void, Never>?,
+            captureStop: Task<Void, Never>?,
+            decoderFpsTask: Task<Void, Never>?,
+            codecFallbackTask: Task<Void, Never>?,
+            encoderLoadTask: Task<Void, Never>?
+        ) = queue.sync {
             let reconfiguration = reconfigurationTask
             reconfigurationTask = nil
             reconfigurationID = nil
             reconfiguration?.cancel()
+            let decoderFpsTask = decoderFpsAdjustmentTask
+            decoderFpsAdjustmentTask = nil
+            decoderFpsAdjustmentID = nil
+            decoderFpsAdjustmentInFlight = false
+            decoderFpsTask?.cancel()
+            let codecFallbackTask = codecFallbackResizeTask
+            codecFallbackResizeTask = nil
+            codecFallbackResizeID = nil
+            codecFallbackTask?.cancel()
+            let encoderLoadTask = encoderLoadAdjustmentTask
+            encoderLoadAdjustmentTask = nil
+            encoderLoadAdjustmentID = nil
+            encoderLoadTask?.cancel()
             captureRecoveryWork?.cancel(); captureRecoveryWork = nil
             encodeFailureLogWork?.cancel(); encodeFailureLogWork = nil
             let captureStop = captureStopTask
@@ -871,10 +934,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             // Unblock a start() that is still waiting for the hello.
             helloContinuation?.resume(throwing: CancellationError())
             helloContinuation = nil
-            return (activeStream, activeDisplay, reconfiguration, captureStop)
+            return (activeStream, activeDisplay, reconfiguration, captureStop, decoderFpsTask, codecFallbackTask, encoderLoadTask)
         }
         return Task { @MainActor in
             await detached.reconfiguration?.value
+            await detached.decoderFpsTask?.value
+            await detached.codecFallbackTask?.value
+            await detached.encoderLoadTask?.value
             await detached.captureStop?.value
             if let stream = detached.stream { try? await stream.stopCapture() }
             // Keep the display alive until capture stops, then release it here.
@@ -908,8 +974,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             queue.asyncAfter(
                 deadline: .now() + 30 + TimeInterval(duration.rawValue), execute: finish)
         }
-        Task { @MainActor in
-            onBenchmarkStatus?("Warm-up 30s · \(scene.label) · run \(runId)")
+        Task { @MainActor [weak self] in
+            self?.onBenchmarkStatus?("Warm-up 30s · \(scene.label) · run \(runId)")
         }
     }
 
@@ -945,13 +1011,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             if CaptureRecoveryPolicy.honorsSystemStop(userStopped: userStopped,
                                                       consoleInteractive: self.consoleIsInteractive) {
                 self.connectionReady = false
-                Task { @MainActor in
-                    guard !self.stopped else { return }
+                Task { @MainActor [weak self] in
+                    guard let self, !self.stopped else { return }
                     self.onCaptureStoppedByUser?()
                 }
                 return
             }
-            Task { await self.status("采集已中断，正在恢复…") }
+            Task { [weak self] in await self?.status("采集已中断，正在恢复…") }
             self.captureRecovery.finished(succeeded: false, consoleAvailable: self.consoleCanCapture)
             self.retireCaptureForRecovery()
         }
@@ -1002,7 +1068,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 if !self.waitingForConsole {
                     self.waitingForConsole = true
                     Log.info("CAPTURE-RECOVERY waiting for unlocked, awake console; retry budget unchanged")
-                    Task { await self.status("等待发送端唤醒并解锁后恢复画面") }
+                    Task { [weak self] in await self?.status("等待发送端唤醒并解锁后恢复画面") }
                 }
                 self.scheduleCaptureRecovery()
             case .exhausted:
@@ -1053,7 +1119,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 return await self.reconfigureExclusive(info, recoveringCapture: true)
             }
         } catch {
-            if !(error is CancellationError), !stopped { queue.async { self.failPipeline(error) } }
+            if !(error is CancellationError), !stopped { queue.async { [weak self] in self?.failPipeline(error) } }
             return nil
         }
     }
@@ -1070,8 +1136,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             if let hello {
                 applied = recoverCapture ? await self.recoverCapture(hello) : await self.reconfigure(hello)
             } else { applied = nil }
-            self.queue.async {
-                guard self.reconfigurationID == id else { return }
+            self.queue.async { [weak self] in
+                guard let self, self.reconfigurationID == id else { return }
                 self.reconfigurationTask = nil
                 self.reconfigurationID = nil
                 guard !self.stopped, !self.pipelineFailureReported, !self.releasedForRenumbering else { return }
@@ -1112,6 +1178,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private func adoptConnection(_ conn: NWConnection) -> UInt64 {
         udpMediaSession?.stop()
         udpMediaSession = nil
+        activeUDPMediaSessionEpoch = 0
+        audioLock.withLock {
+            audioCaptureSink = nil
+            udpCursorSender = nil
+            audioSequence = 0
+        }
         cancelDropReplay()
         desktopInput.reset()
         pencilActions.reset(); pencilExtendedNegotiated = false
@@ -1137,6 +1209,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private func invalidateConnection() {
         udpMediaSession?.stop()
         udpMediaSession = nil
+        activeUDPMediaSessionEpoch = 0
+        audioLock.withLock {
+            audioCaptureSink = nil
+            udpCursorSender = nil
+            audioSequence = 0
+        }
         keyframeRequests.retireInFlightRequest()
         stopCursorEcho()
         desktopInput.reset()
@@ -1152,6 +1230,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         pending?.cancel()
         let relay = usbTLSRelay; usbTLSRelay = nil
         relay?.onClosed = nil; relay?.stop()
+        previous?.viabilityUpdateHandler = nil
         previous?.stateUpdateHandler = nil
         previous?.cancel()
     }
@@ -1175,7 +1254,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             guard let self, self.isCurrentConnection(conn, generation: generation), !self.connectionReady else { return }
             self.failSecurity("未收到匹配的接收端确认，请更新对端应用并重新连接")
         }
-        Task { await self.status("正在验证 \(self.endpointName) 的接收能力…") }
+        let endpointLabel = endpointName
+        Task { [weak self] in await self?.status("正在验证 \(endpointLabel) 的接收能力…") }
     }
 
     private func helloReady() {
@@ -1215,10 +1295,26 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         invalidateConnection()
         helloContinuation?.resume(throwing: CancellationError())
         helloContinuation = nil
-        Task { @MainActor in self.onSecurityError?(message) }
+        Task { @MainActor [weak self] in self?.onSecurityError?(message) }
+    }
+
+    private func attachViabilityHandler(_ conn: NWConnection, generation: UInt64) {
+        var observedViable = false
+        conn.viabilityUpdateHandler = { [weak self, weak conn] isViable in
+            guard let self, let conn,
+                  self.isCurrentConnection(conn, generation: generation) else { return }
+            if isViable {
+                observedViable = true
+            } else if observedViable || self.connectionReady {
+                Log.info("connection lost network viability — scheduling immediate reconnect")
+                self.connectionReady = false
+                self.scheduleReconnect()
+            }
+        }
     }
 
     private func watchAuthenticatedConnection(_ conn: NWConnection, generation: UInt64) {
+        attachViabilityHandler(conn, generation: generation)
         conn.stateUpdateHandler = { [weak self] state in
             guard let self, self.isCurrentConnection(conn, generation: generation) else { return }
             switch state {
@@ -1246,6 +1342,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         let params = NWParameters(tls: tls, tcp: options)
         params.serviceClass = .interactiveVideo
         params.requiredInterface = interface
+        if LANProxyBypassPolicy.shouldBypassProxies(for: endpoint) {
+            params.preferNoProxies = true
+        }
         let conn = NWConnection(to: DirectCable.endpoint(endpoint, on: interface), using: params)
         let generation = adoptConnection(conn)
         if let clientPlan {
@@ -1261,7 +1360,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                         // A lost LAN/USB route may fail during the new TLS
                         // handshake. Keep the existing bounded recovery and
                         // handover policy, always with this same frozen pin.
-                        Task { await self.status(error.localizedDescription + "；正在有限重试已配对连接") }
+                        let msg = error.localizedDescription + "；正在有限重试已配对连接"
+                        Task { [weak self] in await self?.status(msg) }
                         self.scheduleReconnect()
                     } else { self.failSecurity(error.localizedDescription) }
                 }
@@ -1270,6 +1370,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             admission.startClient(clientPlan)
             return
         }
+        attachViabilityHandler(conn, generation: generation)
         conn.stateUpdateHandler = { [weak self] state in
             guard let self,
                   self.isCurrentConnection(conn, generation: generation) else {
@@ -1288,7 +1389,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 // waiting as failure and poll by reconnecting.
                 Log.info("connection waiting: \(error) — will retry")
                 self.connectionReady = false
-                Task { await self.status("正在等待 \(self.endpointName) 上的接收端…") }
+                let endpointLabel = self.endpointName
+                Task { [weak self] in await self?.status("正在等待 \(endpointLabel) 上的接收端…") }
                 self.scheduleReconnect()
             case .cancelled:
                 self.connectionReady = false
@@ -1307,9 +1409,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         Task { [weak self] in
             guard let self else { return }
             do {
-                let conn = try await Usbmux.dial(udid: udid, port: port, queue: queue)
-                queue.async {
-                    guard generation == self.dialGeneration, !self.stopped else {
+                let conn = try await Usbmux.dial(udid: udid, port: port, queue: self.queue)
+                self.queue.async { [weak self] in
+                    guard let self, generation == self.dialGeneration, !self.stopped else {
                         conn.cancel()
                         return
                     }
@@ -1364,9 +1466,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                     Log.info("usb dial failed: \(error)")
                     hint = "USB 连接失败：\(error.localizedDescription)"
                 }
-                queue.async {
-                    guard generation == self.dialGeneration, !self.stopped else { return }
-                    Task { await self.status(hint) }
+                self.queue.async { [weak self] in
+                    guard let self, generation == self.dialGeneration, !self.stopped else { return }
+                    Task { [weak self] in await self?.status(hint) }
                     self.scheduleReconnect()
                 }
             }
@@ -1392,7 +1494,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 let remaining = DisconnectGracePolicy.remainingSeconds(
                     startedAt: since, now: now,
                     graceSeconds: grace)
-                Task { await status("连接已断开，最多重试 \(remaining) 秒…") }
+                Task { [weak self] in await self?.status("连接已断开，最多重试 \(remaining) 秒…") }
             }
         }
         if DisconnectGracePolicy.hasExpired(
@@ -1403,7 +1505,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             if !disconnectCallbackPending {
                 disconnectCallbackPending = true
                 Log.info("device gone for >\(Int(grace))s — ending session")
-                Task { @MainActor in self.onDisconnected?(.connectionLost) }
+                Task { @MainActor [weak self] in self?.onDisconnected?(.connectionLost) }
             }
             return
         }
@@ -1450,7 +1552,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             self.localSentFrames = 0
             self.localCongestionWindowStart = timestamp
 
-            if self.connectionReady, let controller = self.adaptiveBitrateController,
+            if self.connectionReady,
+               self.udpMediaSession?.isReady != true,
+               let controller = self.adaptiveBitrateController,
                let decision = controller.evaluateLocal(
                 LocalCongestionMetrics(
                     timestamp: timestamp,
@@ -1513,6 +1617,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                     Log.info("PIPELINE-STATS captureFps=\(capFps) encodedFps=\(Double(self.pipelineEncodedFrames) / seconds) sentFps=\(Double(self.pipelineSentFrames) / seconds) preEncodeAndOutputDrops=\(self.dropsThisWindow) pendingEncodes=\(self.pendingEncodes) encodeBudget=\(SendQueuePolicy.encodeBudget(fps: self.requestedCaptureFps)) pendingSends=\(self.pendingSends) sendCompletionMs=\(self.lastSendCompletionDelayMs) actualMbps=\(Double(self.pipelineSentBytes) * 8 / seconds / 1_000_000) encodeSubmitMaxMs=\(self.maxEncodeSubmissionMs) encodeSubmitAverageMs=\(self.encodeSubmissionMsTotal / Double(max(1, self.encodeSubmissionCount))) encoderPressureDrops=\(self.encoderDropsThisWindow)")
                 }
                 self.evaluateEncoderLoad(captures: capturedFrames, seconds: elapsed)
+                self.syncUDPEncoderLoadCeiling()
                 self.encodeSubmissionMsTotal = 0
                 self.encodeSubmissionCount = 0
                 self.encoderDropsThisWindow = 0
@@ -1559,8 +1664,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 try Task.checkCancellation()
                 try await activeStream.updateConfiguration(config)
                 try Task.checkCancellation()
-                self.queue.async {
-                    guard !self.stopped, !self.pipelineFailureReported,
+                self.queue.async { [weak self, weak activeStream] in
+                    guard let self, let activeStream, !self.stopped, !self.pipelineFailureReported,
                           self.stream === activeStream, self.encoderLoadAdjustmentID == id else { return }
                     defer { self.encoderLoadAdjustmentID = nil; self.encoderLoadAdjustmentTask = nil }
                     self.retireEncoder()
@@ -1577,8 +1682,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                     } catch { self.failPipeline(error) }
                 }
             } catch {
-                self.queue.async {
-                    guard !self.stopped, self.stream === activeStream,
+                self.queue.async { [weak self, weak activeStream] in
+                    guard let self, let activeStream, !self.stopped, self.stream === activeStream,
                           self.encoderLoadAdjustmentID == id else { return }
                     self.encoderLoadAdjustmentID = nil; self.encoderLoadAdjustmentTask = nil
                     // SCK may have applied part of a failed configuration. Stop
@@ -1612,7 +1717,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             if !AXIsProcessTrusted() { self.inputInjector?.cancelPress() }
             if self.connectionReady, Date().timeIntervalSince(self.lastReceived) > 5 {
                 Log.info("watchdog: nothing from the phone for >5s — reconnecting")
-                Task { await self.status("连接无响应，正在重新连接…") }
+                Task { [weak self] in await self?.status("连接无响应，正在重新连接…") }
                 // Anchor the 10-second grace to the last proof that the peer
                 // was alive. Starting it here would add the watchdog's five
                 // seconds to the advertised disconnect timeout.
@@ -1649,9 +1754,17 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         cursorImageLock.withLock {
             cursorImageContext = (displayID, wireConnectionGeneration, encoderGeneration, 0, nil, .zero, .zero)
         }
-        cursorEcho.start(sample: { CursorPosition.sample(displayID: displayID) },
-                         write: CursorEcho.writer(on: connection),
-                         log: settings.enableDebugStats ? { Log.info($0) } : nil)
+        cursorEcho.start(
+            sample: { CursorPosition.sample(displayID: displayID) },
+            write: CursorEcho.writer(on: connection),
+            udpSend: { [weak self] position, sequence in
+                guard let self,
+                      let sender = self.audioLock.withLock({ self.udpCursorSender }) else {
+                    return false
+                }
+                return sender(position, sequence)
+            },
+            log: settings.enableDebugStats ? { Log.info($0) } : nil)
         scheduleCursorImagePoll()
     }
 
@@ -1729,7 +1842,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         }
         guard current else { return }
         if let token = cursorImages.offer((msg, context.wire, context.encoder)) {
-            queue.async { self.sendCursorImage(token) }
+            queue.async { [weak self] in self?.sendCursorImage(token) }
         }
     }
 
@@ -1891,7 +2004,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 let previous = lastHello
                 lastHello = info
                 if !connectionReady { helloReady() }
-                desktopInput.hello(encrypted: encrypted, capabilities: info.isMacReceiver ? info.inputCaps : nil)
+                desktopInput.hello(encrypted: encrypted, capabilities: info.inputCaps)
                 let supportsPencil = !info.isMacReceiver && PencilProtocol.supports(info.inputCaps)
                 if pencilNegotiated && !supportsPencil { inputInjector?.cancelPress() }
                 pencilNegotiated = supportsPencil
@@ -1900,17 +2013,20 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 pencilExtendedNegotiated = extended
                 pencilActions.begin(encrypted: encrypted, supported: pencilExtendedNegotiated)
                 if info.supportsProtocolV2 {
-                    Task { await self.status("正在协商视频配置…") }
+                    Task { [weak self] in await self?.status("正在协商视频配置…") }
                     if previous?.supportsProtocolV2 != true,
                        encoder != nil, activeStreamWidth > 0, activeStreamHeight > 0 {
                         sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
                         requestKeyframe(.streamReconfigure)
                     }
                 } else {
-                    Task { await self.status("已连接到 \(self.endpointName)") }
+                    let endpointLabel = endpointName
+                    Task { [weak self] in await self?.status("已连接到 \(endpointLabel)") }
                 }
-                startUDPMediaPlaneIfSupported(for: info)
-                Task { @MainActor in self.onHello?(info) }
+                if encoder != nil, activeStreamWidth > 0, activeStreamHeight > 0, protocolIdentity.configVersion > 0 {
+                    ensureUDPMediaPlaneAfterStreamConfig()
+                }
+                Task { @MainActor [weak self] in self?.onHello?(info) }
                 if let continuation = helloContinuation {
                     helloContinuation = nil
                     continuation.resume(returning: info)
@@ -1938,7 +2054,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             let reason = obj["reason"] as? String ?? ""
             Log.info("receiver connection state=\(state) reason=\(reason)")
         case "desktopInput":
-            guard lastHello?.isMacReceiver == true else { return }
+            guard lastHello?.inputCaps?.contains(DesktopInputProtocol.capability) == true else { return }
             desktopInput.handle(payload)
         case "pencilAction":
             guard pencilExtendedNegotiated else { return }
@@ -1993,6 +2109,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                     )
                 case .forceKeyframe:
                     requestKeyframe(.receiverKeyframeRequest)
+                    replayStaticKeyframeImmediatelyIfNeeded()
                 }
             }
         case "codecFailure":
@@ -2002,15 +2119,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             if failedCodec == StreamCodec.hevc.rawValue, streamCodec == .hevc {
                 macCodecFallback.recordFailure(.hevc)
                 decoderRecoveryEvent = "codec-fallback"
-                retireEncoder()
-                do {
-                    try setupEncoder(width: max(activeStreamWidth, 2),
-                                     height: max(activeStreamHeight, 2),
-                                     fps: requestedCaptureFps,
-                                     preferredCodec: .h264)
-                    sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
-                    requestKeyframe(.codecFallback)
-                } catch { failPipeline(error) }
+                fallbackActivePipelineToH264(reason: .codecFallback)
             }
         default:
             switch unknownControlLog.record(type) {
@@ -2026,7 +2135,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         invalidateConnection()
         helloContinuation?.resume(throwing: CancellationError())
         helloContinuation = nil
-        Task { @MainActor in self.onDisconnected?(.receiverExit) }
+        Task { @MainActor [weak self] in self?.onDisconnected?(.receiverExit) }
     }
 
     private func failPipeline(_ error: Error) {
@@ -2041,10 +2150,85 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         Log.info("sender pipeline failed: \(error.localizedDescription)")
         // Do not await cleanup on the video queue or from the reconfiguration
         // task: stop() must be able to join that task before releasing its display.
-        Task { @MainActor in
-            guard !self.stopped else { return }
+        Task { @MainActor [weak self] in
+            guard let self, !self.stopped else { return }
             self.onPipelineFailure?(error)
         }
+    }
+
+    private func fallbackActivePipelineToH264(reason: FrameDropReason, scheduleReplay: Bool = false) {
+        let clamped = MacReceiverPolicy.clampedH264Dimensions(
+            width: max(activeStreamWidth, 2),
+            height: max(activeStreamHeight, 2))
+        let targetWidth = clamped.width
+        let targetHeight = clamped.height
+        let dimensionsChanged = targetWidth != activeStreamWidth || targetHeight != activeStreamHeight
+
+        if dimensionsChanged, let activeStream = stream {
+            codecFallbackResizeTask?.cancel()
+            let id = UUID()
+            codecFallbackResizeID = id
+            cancelDropReplay()
+            _ = captureFrames.begin()
+            retireEncoder()
+            let updatedConfig = makeCaptureConfiguration(
+                width: targetWidth, height: targetHeight, fps: requestedCaptureFps)
+            queue.asyncAfter(deadline: .now() + 5) { [weak self, weak activeStream] in
+                guard let self, let activeStream, !self.stopped, !self.pipelineFailureReported,
+                      self.stream === activeStream, self.codecFallbackResizeID == id else { return }
+                self.codecFallbackResizeTask?.cancel()
+                self.codecFallbackResizeTask = nil
+                self.codecFallbackResizeID = nil
+                self.failPipeline(DisplayUnitCoordinator.failure("HEVC 回退至 H.264 调整分辨率超时，请重新连接。"))
+            }
+            codecFallbackResizeTask = Task { [weak self, weak activeStream] in
+                guard let self, let activeStream else { return }
+                do {
+                    try Task.checkCancellation()
+                    try await activeStream.updateConfiguration(updatedConfig)
+                    try Task.checkCancellation()
+                    self.queue.async { [weak self, weak activeStream] in
+                        guard let self, let activeStream, !self.stopped, !self.pipelineFailureReported,
+                              self.stream === activeStream, self.codecFallbackResizeID == id else { return }
+                        defer { self.codecFallbackResizeID = nil; self.codecFallbackResizeTask = nil }
+                        self.activeStreamWidth = targetWidth
+                        self.activeStreamHeight = targetHeight
+                        do {
+                            try self.setupEncoder(
+                                width: targetWidth,
+                                height: targetHeight,
+                                fps: self.requestedCaptureFps,
+                                preferredCodec: .h264)
+                            self.sendStreamConfig(width: targetWidth, height: targetHeight)
+                            self.requestKeyframe(reason)
+                            if scheduleReplay { self.scheduleDropReplay() }
+                        } catch { self.failPipeline(error) }
+                    }
+                } catch {
+                    self.queue.async { [weak self, weak activeStream] in
+                        guard let self, let activeStream, !self.stopped, !self.pipelineFailureReported,
+                              self.stream === activeStream, self.codecFallbackResizeID == id else { return }
+                        self.codecFallbackResizeID = nil
+                        self.codecFallbackResizeTask = nil
+                        self.failPipeline(DisplayUnitCoordinator.failure("HEVC 回退至 H.264 更新采集配置失败，请重新连接。"))
+                    }
+                }
+            }
+            return
+        }
+
+        retireEncoder()
+        activeStreamWidth = targetWidth
+        activeStreamHeight = targetHeight
+        do {
+            try setupEncoder(width: targetWidth,
+                             height: targetHeight,
+                             fps: requestedCaptureFps,
+                             preferredCodec: .h264)
+            sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
+            requestKeyframe(reason)
+            if scheduleReplay { scheduleDropReplay() }
+        } catch { failPipeline(error) }
     }
 
     private func handleReceiverProtocolProgress(type: String, object: [String: Any]) {
@@ -2072,12 +2256,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         }
         switch protocolHandshake.phase {
         case .awaitingDecoderReady:
-            Task { await self.status("正在配置解码器…") }
+            Task { [weak self] in await self?.status("正在配置解码器…") }
         case .awaitingFirstFrame:
-            Task { await self.status("等待首帧…") }
+            Task { [weak self] in await self?.status("等待首帧…") }
         case .streaming:
             protocolFailureBudget.markStreaming()
-            Task { await self.status("已连接 / Streaming") }
+            Task { [weak self] in await self?.status("已连接 / Streaming") }
         default:
             break
         }
@@ -2085,35 +2269,56 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     }
 
     private func applySelectedDecoderFpsCap(_ reportedFps: Int) {
-        guard let decoderCap = RefreshRatePolicy.decoderDowngrade(
+        guard encoderLoadAdjustmentID == nil,
+              !decoderFpsAdjustmentInFlight,
+              let decoderCap = RefreshRatePolicy.decoderDowngrade(
                 currentFps: requestedCaptureFps,
                 reportedMaxFps: reportedFps),
-              !decoderFpsAdjustmentInFlight,
               let activeStream = stream else { return }
         let updatedConfiguration = makeCaptureConfiguration(
             width: activeStreamWidth,
             height: activeStreamHeight,
             fps: decoderCap)
+        let id = UUID()
+        decoderFpsAdjustmentID = id
         decoderFpsAdjustmentInFlight = true
+        queue.asyncAfter(deadline: .now() + 5) { [weak self, weak activeStream] in
+            guard let self, let activeStream, !self.stopped, !self.pipelineFailureReported,
+                  self.stream === activeStream, self.decoderFpsAdjustmentID == id else { return }
+            self.decoderFpsAdjustmentTask?.cancel()
+            self.decoderFpsAdjustmentTask = nil
+            self.decoderFpsAdjustmentID = nil
+            self.decoderFpsAdjustmentInFlight = false
+            self.failPipeline(DisplayUnitCoordinator.failure("自动调整解码帧率上限超时，请重新连接；也可在串流设置中手动降低帧率。"))
+        }
         Log.info("selected decoder requires fps downgrade current=\(requestedCaptureFps) selectedDecoderMaxFps=\(decoderCap)")
-        Task { [weak self, weak activeStream] in
+        decoderFpsAdjustmentTask = Task { [weak self, weak activeStream] in
             guard let self else { return }
             guard let activeStream else {
-                self.queue.async {
+                self.queue.async { [weak self] in
+                    guard let self, self.decoderFpsAdjustmentID == id else { return }
+                    self.decoderFpsAdjustmentID = nil
+                    self.decoderFpsAdjustmentTask = nil
                     self.decoderFpsAdjustmentInFlight = false
                 }
                 return
             }
             do {
+                try Task.checkCancellation()
                 try await activeStream.updateConfiguration(updatedConfiguration)
-                self.queue.async {
-                    guard self.stream === activeStream else {
+                try Task.checkCancellation()
+                self.queue.async { [weak self, weak activeStream] in
+                    guard let self, let activeStream,
+                          !self.stopped, !self.pipelineFailureReported,
+                          self.stream === activeStream,
+                          self.decoderFpsAdjustmentID == id else { return }
+                    defer {
+                        self.decoderFpsAdjustmentID = nil
+                        self.decoderFpsAdjustmentTask = nil
                         self.decoderFpsAdjustmentInFlight = false
-                        return
                     }
                     self.requestedCaptureFps = decoderCap
                     self.retireEncoder()
-                    defer { self.decoderFpsAdjustmentInFlight = false }
                     do {
                         try self.setupEncoder(
                             width: max(self.activeStreamWidth, 2),
@@ -2128,9 +2333,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                     } catch { self.failPipeline(error) }
                 }
             } catch {
-                self.queue.async {
+                self.queue.async { [weak self, weak activeStream] in
+                    guard let self, let activeStream,
+                          !self.stopped, !self.pipelineFailureReported,
+                          self.stream === activeStream,
+                          self.decoderFpsAdjustmentID == id else { return }
+                    self.decoderFpsAdjustmentID = nil
+                    self.decoderFpsAdjustmentTask = nil
                     self.decoderFpsAdjustmentInFlight = false
                     Log.info("decoder fps downgrade failed: \(error)")
+                    self.failPipeline(DisplayUnitCoordinator.failure("调整采集帧率以匹配接收端解码器失败，请重新连接；也可在串流设置中手动降低帧率。"))
                 }
             }
         }
@@ -2156,7 +2368,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             switch self.protocolHandshake.timeoutAction() {
             case .retry:
                 Log.info("receiver protocol timeout phase=\(phase); retrying stream config")
-                Task { await self.status("接收端响应超时，正在有限重试…") }
+                Task { [weak self] in await self?.status("接收端响应超时，正在有限重试…") }
                 self.requestKeyframe(.decoderReset)
                 self.sendStreamConfig(
                     width: self.activeStreamWidth,
@@ -2166,10 +2378,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 Log.info("receiver protocol timeout phase=\(phase); retry budget exhausted")
                 switch self.protocolFailureBudget.failureAction() {
                 case .reconnect:
-                    Task { await self.status("接收端协商失败，正在进行最后一次重连…") }
+                    Task { [weak self] in await self?.status("接收端协商失败，正在进行最后一次重连…") }
                     self.scheduleReconnect()
                 case .endSession:
-                    Task { await self.status("接收端协商失败，已停止重试") }
+                    Task { [weak self] in await self?.status("接收端协商失败，已停止重试") }
                     self.finishSessionAfterReceiverExit()
                 }
             case .none:
@@ -2184,7 +2396,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
 
     private func waitForHello() async throws -> PhoneInfo {
         return try await withCheckedThrowingContinuation { continuation in
-            queue.async {
+            queue.async { [weak self] in
+                guard let self else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
                 if self.stopped || self.pipelineFailureReported {
                     continuation.resume(throwing: CancellationError())
                 } else if let hello = self.lastHello {
@@ -2242,11 +2458,14 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             || UserDefaults.standard.bool(forKey: "lowlatency")
         adaptiveBitrateController = nil
         let selected = try EncoderSessionFactory.make(preferredCodec: preferredCodec, lowLatency: lowLatency, create: { attempt in
+            let attemptSize = attempt.codec == .h264
+                ? MacReceiverPolicy.clampedH264Dimensions(width: width, height: height)
+                : (width: width, height: height)
             let automatic = StreamEncodingPolicy.bitrate(
-                width: width, height: height, fps: finalFps, codec: attempt.codec,
+                width: attemptSize.width, height: attemptSize.height, fps: finalFps, codec: attempt.codec,
                 quality: quality, transport: bitrateTransport)
             return try encoderWork.perform {
-                try createEncoder(width: width, height: height, fps: finalFps,
+                try createEncoder(width: attemptSize.width, height: attemptSize.height, fps: finalFps,
                     codec: attempt.codec, lowLatency: attempt.lowLatency,
                     bitrate: selectedBitrate(automatic: automatic, codec: attempt.codec))
             }
@@ -2259,8 +2478,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         }
         encoder = selected.session
         streamCodec = selected.attempt.codec
+        let encodedSize = streamCodec == .h264
+            ? MacReceiverPolicy.clampedH264Dimensions(width: width, height: height)
+            : (width: width, height: height)
+        activeStreamWidth = encodedSize.width
+        activeStreamHeight = encodedSize.height
         let selectedAutomatic = StreamEncodingPolicy.bitrate(
-            width: width, height: height, fps: finalFps, codec: streamCodec,
+            width: encodedSize.width, height: encodedSize.height, fps: finalFps, codec: streamCodec,
             quality: quality, transport: bitrateTransport)
         streamBitrate = selectedBitrate(automatic: selectedAutomatic, codec: streamCodec)
         adaptiveBitrateController = settings.bitrateMode == .auto
@@ -2271,8 +2495,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 localRecovery: lastHello?.isMacReceiver == true)
             : nil
         lastAdaptiveDecision = nil
-        Task { @MainActor in onTargetBitrate?(Double(streamBitrate) / 1_000_000) }
-        Log.info("encoder ready: \(width)x\(height) \(streamCodec.label) fps=\(finalFps) bitrate=\(streamBitrate / 1_000_000)Mbps keyframeInterval=\(KeyframePolicy.frameInterval(fps: finalFps, transport: bitrateTransport)) quality=\(quality.rawValue) lowLatencyRequested=\(lowLatency) lowLatencyRC=\(selected.attempt.lowLatency)")
+        let targetMbps = Double(streamBitrate) / 1_000_000
+        Task { @MainActor [weak self] in self?.onTargetBitrate?(targetMbps) }
+        Log.info("encoder ready: \(encodedSize.width)x\(encodedSize.height) \(streamCodec.label) fps=\(finalFps) bitrate=\(streamBitrate / 1_000_000)Mbps keyframeInterval=\(KeyframePolicy.frameInterval(fps: finalFps, transport: bitrateTransport)) quality=\(quality.rawValue) lowLatencyRequested=\(lowLatency) lowLatencyRC=\(selected.attempt.lowLatency)")
         if stream != nil { startCursorEcho() }
     }
 
@@ -2330,13 +2555,21 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         let frameDelayLimit = SendQueuePolicy.frameDelayLimit(fps: fps)
         let frameDelayStatus = VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: frameDelayLimit as CFNumber)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_AverageBitRate, value: bitrate as CFNumber)
-        let bytesPerSecond = max(bitrate / 8, 1)
+        let vbvLimits = StreamEncodingPolicy.dataRateLimits(bitrate: bitrate, fps: fps)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_DataRateLimits,
-                             value: [bytesPerSecond, 1] as CFArray)
+                             value: vbvLimits as CFArray)
         VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: fps as CFNumber)
-        let speedOverQuality = StreamEncodingPolicy.prioritizeEncodingSpeedOverQuality(
-            quality: settings.quality) ? kCFBooleanTrue : kCFBooleanFalse
+        let speedOverQuality = StreamEncodingPolicy.prioritizesEncodingSpeed(
+            quality: settings.quality, fps: fps) ? kCFBooleanTrue : kCFBooleanFalse
         let speedStatus = VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality, value: speedOverQuality)
+        if lastHello?.supportsDisplayP3 == true {
+            VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_ColorPrimaries,
+                                 value: kCMFormatDescriptionColorPrimaries_P3_D65)
+            VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_TransferFunction,
+                                 value: kCMFormatDescriptionTransferFunction_sRGB)
+            VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_YCbCrMatrix,
+                                 value: kCMFormatDescriptionYCbCrMatrix_ITU_R_709_2)
+        }
         let prepareStatus = VTCompressionSessionPrepareToEncodeFrames(encoder)
         guard prepareStatus == noErr else {
             throw NSError(domain: "MacSender.Encoder", code: Int(prepareStatus), userInfo: [
@@ -2362,6 +2595,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     func stream(_ stream: SCStream,
                 didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
                 of type: SCStreamOutputType) {
+        if type == .audio {
+            handleCapturedAudioSampleBuffer(sampleBuffer, from: stream)
+            return
+        }
         guard !stopped, !pipelineFailureReported, self.stream === stream, type == .screen,
               CMSampleBufferIsValid(sampleBuffer),
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
@@ -2463,7 +2700,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 infoFlagsOut: nil
             ) { [weak self] status, _, buffer in
                 guard let self else { return }
-                self.queue.async {
+                self.queue.async { [weak self] in
+                    guard let self else { return }
                     self.handleEncodedFrame(
                         status: status, buffer: buffer,
                         forcedKeyframeRequest: forcedKeyframeRequest,
@@ -2476,8 +2714,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 }
             }
             let submissionMs = (ProcessInfo.processInfo.systemUptime - submissionStart) * 1_000
-            self.queue.async {
-                guard !self.stopped, encodedForWireGeneration == self.wireConnectionGeneration,
+            self.queue.async { [weak self] in
+                guard let self, !self.stopped, encodedForWireGeneration == self.wireConnectionGeneration,
                       encodedForEncoderGeneration == self.encoderGeneration else { return }
                 self.maxEncodeSubmissionMs = max(self.maxEncodeSubmissionMs, submissionMs)
                 self.encodeSubmissionMsTotal += submissionMs
@@ -2617,22 +2855,50 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             bytes: data.count,
             isKeyframe: isKeyframe,
             latencyMs: Date().timeIntervalSince(encodeStart) * 1000)
-        let hadInitialFrame = staticFrameGate.hasEncodedFrameInCurrentConfig
         staticFrameGate.markFrameEncoded()
         if case .tcp = transport,
-           hadInitialFrame,
            let udp = udpMediaSession,
            udp.isReady,
-           lastHello?.supportsProtocolV2 != true || protocolHandshake.phase == .streaming,
            udp.sendFrame(
                annexB: data,
                isKeyframe: isKeyframe,
                captureTimestampMs: capturedAtMs,
-               configVersion: protocolFrameIdentity?.configVersion ?? protocolIdentity.configVersion
+               configVersion: protocolFrameIdentity?.configVersion ?? max(protocolIdentity.configVersion, 1)
            ) {
             return
         }
         sendFramed(framed)
+    }
+
+    private func handleCapturedAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, from stream: SCStream) {
+        guard !stopped else { return }
+        let chunksAndSink: ([(UInt32, Data)], ((UInt32, Data) -> Void)?) = audioLock.withLock {
+            guard audioAttachedStream === stream, let sink = audioCaptureSink else {
+                return ([], nil)
+            }
+            let chunks = audioPacketizer.ingest(sampleBuffer)
+            let numbered = chunks.map { chunk -> (UInt32, Data) in
+                audioSequence &+= 1
+                return (audioSequence, chunk)
+            }
+            return (numbered, sink)
+        }
+        guard let sink = chunksAndSink.1 else { return }
+        for (seq, chunk) in chunksAndSink.0 {
+            sink(seq, chunk)
+        }
+    }
+
+    private func replayStaticKeyframeImmediatelyIfNeeded() {
+        guard connectionReady, needsKeyframe, stream != nil, encoder != nil,
+              encoderLoadAdjustmentID == nil, !decoderFpsAdjustmentInFlight,
+              codecFallbackResizeID == nil,
+              let pixelBuffer = lastPixelBuffer,
+              CVPixelBufferGetWidth(pixelBuffer) == activeStreamWidth,
+              CVPixelBufferGetHeight(pixelBuffer) == activeStreamHeight else { return }
+        if Date().timeIntervalSince(lastCaptureAt) > 0.020 || pendingEncodes == 0 {
+            encode(pixelBuffer, pts: CMClockGetTime(CMClockGetHostTimeClock()))
+        }
     }
 
     private func handleEncodeFailure(status: OSStatus) {
@@ -2652,15 +2918,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             let fallback = streamCodec == .hevc
             if fallback { macCodecFallback.recordFailure(.hevc) }
             Log.info("rebuilding encoder after failure attempt=\(encoderFailureRecovery.rebuilds) fallback=\(fallback)")
-            retireEncoder()
-            do {
-                try setupEncoder(width: max(activeStreamWidth, 2),
-                                 height: max(activeStreamHeight, 2),
-                                 fps: requestedCaptureFps, preferredCodec: .h264)
-                sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
-                requestKeyframe(fallback ? .codecFallback : .decoderReset)
-                scheduleDropReplay()
-            } catch { failPipeline(error) }
+            fallbackActivePipelineToH264(reason: fallback ? .codecFallback : .decoderReset, scheduleReplay: true)
         }
     }
 
@@ -2823,18 +3081,20 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         case .usb, .androidAdb:
             transportName = "usb"
         }
+        let currentIdentity = protocolIdentity.beginConfiguration()
         let identity: StreamProtocolFrameIdentity?
+        let udpConfigVersion: Int64?
         if lastHello?.supportsProtocolV2 == true {
-            identity = protocolIdentity.beginConfiguration()
-            if let identity {
-                if protocolRetry {
-                    protocolHandshake.retrying(identity)
-                } else {
-                    protocolHandshake.begin(identity)
-                }
+            identity = currentIdentity
+            udpConfigVersion = nil
+            if protocolRetry {
+                protocolHandshake.retrying(currentIdentity)
+            } else {
+                protocolHandshake.begin(currentIdentity)
             }
         } else {
             identity = nil
+            udpConfigVersion = lastHello?.supportsUDPMediaV1 == true ? currentIdentity.configVersion : nil
         }
         let message = StreamConfigMessage(
             codec: streamCodec,
@@ -2844,9 +3104,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             bitrate: streamBitrate,
             transport: transportName,
             identity: identity,
+            udpConfigVersion: udpConfigVersion,
             maxFrameBytes: lastHello?.negotiatedMaxFrameBytes,
             exactFrameRate: lastHello?.usesAppleVideoCapabilities == true)
         sendJSONFrame(message.json)
+        ensureUDPMediaPlaneAfterStreamConfig()
         let description = "编码 \(width)×\(height) · \(streamCodec.label) · 目标 \(requestedCaptureFps) fps"
         var limits: [String] = []
         if settings.bitrateMode == .manual, settings.bitratePreset.bitsPerSecond != streamBitrate {
@@ -2863,11 +3125,34 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             }
         }
         let explanation = limits.isEmpty ? nil : limits.joined(separator: "。")
-        Task { @MainActor in onStreamDescription?(description, explanation) }
+        Task { @MainActor [weak self] in self?.onStreamDescription?(description, explanation) }
         if let identity {
             scheduleProtocolTimeout(identity: identity, phase: .awaitingStreamConfigAck)
         }
-        Log.info("stream config sent: codec=\(streamCodec.rawValue) fps=\(requestedCaptureFps) width=\(width) height=\(height) bitrate=\(streamBitrate) profile=\(message.profile) transport=\(transportName) sessionEpoch=\(identity?.sessionEpoch ?? 0) configVersion=\(identity?.configVersion ?? 0)")
+        Log.info("stream config sent: codec=\(streamCodec.rawValue) fps=\(requestedCaptureFps) width=\(width) height=\(height) bitrate=\(streamBitrate) profile=\(message.profile) transport=\(transportName) sessionEpoch=\(currentIdentity.sessionEpoch) configVersion=\(currentIdentity.configVersion)")
+    }
+
+    private func recordSentMedia(bytes: Int, frames: Int) {
+        if frames > 0 {
+            localSentFrames += frames
+            pipelineSentFrames += frames
+            framesSent += frames
+        }
+        if bytes > 0 {
+            pipelineSentBytes += bytes
+            bytesSent += bytes
+        }
+        let elapsed = Date().timeIntervalSince(statsWindowStart)
+        if elapsed >= 1.0 {
+            let mbps = Double(bytesSent) * 8 / elapsed / 1_000_000
+            lastActualBitrateMbps = mbps
+            let windowFrames = framesSent
+            lastSentFps = Int((Double(framesSent) / elapsed).rounded())
+            framesSent = 0
+            bytesSent = 0
+            statsWindowStart = Date()
+            Task { @MainActor [weak self] in self?.onStats?(windowFrames, mbps) }
+        }
     }
 
     private func sendFramed(_ payload: Data) {
@@ -2882,7 +3167,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 guard let self, self.connectionReady else { return }
                 self.dropsThisWindow += 1
                 self.dropsTotal += 1
-                Task { await self.status("视频帧超过协商上限，正在重新连接…") }
+                Task { [weak self] in await self?.status("视频帧超过协商上限，正在重新连接…") }
                 self.scheduleReconnect()
             }
             return
@@ -2910,23 +3195,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 self.requestKeyframe(.transportWriteFailure)
                 return
             }
-            self.localSentFrames += 1
-            self.pipelineSentFrames += 1
-            self.pipelineSentBytes += frame.count
-            self.framesSent += 1
-            self.bytesSent += frame.count
-            // Report stats roughly once a second.
-            let elapsed = Date().timeIntervalSince(self.statsWindowStart)
-            if elapsed >= 1.0 {
-                let mbps = Double(self.bytesSent) * 8 / elapsed / 1_000_000
-                self.lastActualBitrateMbps = mbps
-                let frames = self.framesSent
-                self.lastSentFps = Int((Double(self.framesSent) / elapsed).rounded())
-                self.framesSent = 0
-                self.bytesSent = 0
-                self.statsWindowStart = Date()
-                Task { @MainActor in self.onStats?(frames, mbps) }
-            }
+            self.recordSentMedia(bytes: frame.count, frames: 1)
         })
     }
 
@@ -2972,7 +3241,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     }
 
     private func updateAdaptiveBitrate(receiver: ReceiverStats) {
-        guard let controller = adaptiveBitrateController else { return }
+        guard udpMediaSession?.isReady != true,
+              let controller = adaptiveBitrateController else { return }
         let decision = controller.evaluate(
             AdaptiveBitrateMetrics(
                 timestamp: ProcessInfo.processInfo.systemUptime,
@@ -2990,29 +3260,138 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         applyAdaptiveDecision(decision)
     }
 
-    private func applyAdaptiveDecision(_ decision: AdaptiveBitrateDecision) {
+    private func applyAdaptiveDecision(_ decision: AdaptiveBitrateDecision, updateUDPPacer: Bool = true) {
         guard let encoder else { return }
         streamBitrate = decision.newBitrate
-        udpMediaSession?.updateTargetBitrate(streamBitrate)
+        if updateUDPPacer {
+            udpMediaSession?.updateTargetBitrate(streamBitrate)
+        }
+        let vbvLimits = StreamEncodingPolicy.dataRateLimits(
+            bitrate: streamBitrate, fps: requestedCaptureFps)
+        let targetBitrate = streamBitrate
         encoderWork.perform {
             VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_AverageBitRate,
-                                 value: streamBitrate as CFNumber)
+                                 value: targetBitrate as CFNumber)
             VTSessionSetProperty(encoder, key: kVTCompressionPropertyKey_DataRateLimits,
-                                 value: [max(streamBitrate / 8, 1), 1] as CFArray)
+                                 value: vbvLimits as CFArray)
         }
         lastAdaptiveDecision = decision
-        Task { @MainActor in onTargetBitrate?(Double(streamBitrate) / 1_000_000) }
+        let targetMbps = Double(streamBitrate) / 1_000_000
+        Task { @MainActor [weak self] in self?.onTargetBitrate?(targetMbps) }
         if decision.requiresStreamConfig {
             sendStreamConfig(width: activeStreamWidth, height: activeStreamHeight)
         }
         Log.info("adaptive bitrate previousBitrate=\(decision.previousBitrate) newBitrate=\(decision.newBitrate) reason=\(decision.reason) trigger=\(decision.trigger) decisionEpoch=\(decision.decisionEpoch) networkState=\(decision.networkState.rawValue)")
     }
 
+    private func syncUDPEncoderLoadCeiling() {
+        guard let session = udpMediaSession else { return }
+        guard let controller = encoderLoad, controller.current != controller.original else {
+            session.updateEncoderLoadCeiling(nil)
+            return
+        }
+        let ceiling = StreamEncodingPolicy.bitrate(
+            width: controller.current.width,
+            height: controller.current.height,
+            fps: controller.current.fps,
+            codec: streamCodec,
+            quality: settings.quality,
+            transport: bitrateTransport
+        )
+        session.updateEncoderLoadCeiling(ceiling)
+    }
+
+    private func refreshUDPFastPlaneSinksOnQueue() {
+        guard let info = lastHello, let session = udpMediaSession else {
+            audioLock.withLock {
+                audioCaptureSink = nil
+                udpCursorSender = nil
+            }
+            return
+        }
+        let allowCursor = info.supportsUDPCursorV1
+        let allowAudio = settings.audioEnabled && info.supportsUDPAudioV1
+        audioLock.withLock {
+            if allowCursor {
+                udpCursorSender = { [weak session] position, sequence in
+                    guard let session, session.isReady else { return false }
+                    let payload = UDPMediaCursorPayload(
+                        sequence: sequence,
+                        normalizedX: position.x,
+                        normalizedY: position.y,
+                        visible: position.visible
+                    )
+                    return session.sendCursor(payload)
+                }
+            } else {
+                udpCursorSender = nil
+            }
+            if allowAudio {
+                audioCaptureSink = { [weak session] seq, pcmChunk in
+                    guard let session, session.isReady else { return }
+                    let payload = UDPMediaAudioPayload(
+                        audioSeq: seq,
+                        captureTimestampMs: Int64(Date().timeIntervalSince1970 * 1_000),
+                        sampleRate: UInt16(AudioCapturePacketizer.targetSampleRate),
+                        channels: UInt8(AudioCapturePacketizer.targetChannels),
+                        formatFlags: UDPMediaAudioPayload.formatPCM16LE,
+                        pcmBytes: pcmChunk
+                    )
+                    _ = session.sendAudio(payload)
+                }
+            } else {
+                audioCaptureSink = nil
+            }
+        }
+    }
+
+    private func ensureUDPMediaPlaneAfterStreamConfig() {
+        guard connectionReady, let info = lastHello else { return }
+        guard case .tcp(_, let interface) = transport,
+              UDPMediaActivationPolicy.shouldActivateUDPMedia(
+                peerSupportsUDP: info.supportsUDPMediaV1,
+                pinnedInterfaceName: interface?.name
+              ) else {
+            if udpMediaSession != nil {
+                udpMediaSession?.stop()
+                udpMediaSession = nil
+                activeUDPMediaSessionEpoch = 0
+                audioLock.withLock {
+                    audioCaptureSink = nil
+                    udpCursorSender = nil
+                    audioSequence = 0
+                }
+            }
+            return
+        }
+        if protocolIdentity.sessionEpoch == 0 {
+            protocolIdentity.beginConnection()
+        }
+        if udpMediaSession != nil, activeUDPMediaSessionEpoch == protocolIdentity.sessionEpoch {
+            if settings.bitrateMode == .manual {
+                udpMediaSession?.syncManualTargetBitrate(streamBitrate)
+            }
+            syncUDPEncoderLoadCeiling()
+            refreshUDPFastPlaneSinksOnQueue()
+            return
+        }
+        startUDPMediaPlaneIfSupported(for: info)
+    }
+
     private func startUDPMediaPlaneIfSupported(for info: PhoneInfo) {
         udpMediaSession?.stop()
         udpMediaSession = nil
-        guard case .tcp(let endpoint, _) = transport,
-              info.supportsUDPMediaV1 else { return }
+        activeUDPMediaSessionEpoch = 0
+        audioLock.withLock {
+            audioCaptureSink = nil
+            udpCursorSender = nil
+            audioSequence = 0
+        }
+        guard case .tcp(let endpoint, let interface) = transport,
+              UDPMediaActivationPolicy.shouldActivateUDPMedia(
+                peerSupportsUDP: info.supportsUDPMediaV1,
+                pinnedInterfaceName: interface?.name
+              ) else { return }
         if protocolIdentity.sessionEpoch == 0 {
             protocolIdentity.beginConnection()
         }
@@ -3028,23 +3407,36 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             initialBitrate: initialBps,
             bitrateBounds: bounds,
             peerHost: peerHost,
-            peerPort: info.advertisedUDPPort
+            peerPort: info.advertisedUDPPort,
+            boundInterfaceName: interface?.name
         ) else { return }
 
+        let localPort = session.localPort
         session.onReady = { [weak self] gen, sessionEpoch in
             guard let self else { return }
-            self.queue.async {
-                guard !self.stopped,
+            self.queue.async { [weak self] in
+                guard let self, !self.stopped,
                       self.wireConnectionGeneration == gen,
                       self.protocolIdentity.sessionEpoch == sessionEpoch else { return }
-                Log.info("UDP-MEDIA-READY sessionEpoch=\(sessionEpoch) localPort=\(session.localPort)")
+                Log.info("UDP-MEDIA-READY sessionEpoch=\(sessionEpoch) localPort=\(localPort)")
                 self.requestKeyframe(.streamReconfigure)
+                self.replayStaticKeyframeImmediatelyIfNeeded()
+            }
+        }
+        session.onKeyframeRequested = { [weak self] gen, sessionEpoch in
+            guard let self else { return }
+            self.queue.async { [weak self] in
+                guard let self, !self.stopped,
+                      self.wireConnectionGeneration == gen,
+                      self.protocolIdentity.sessionEpoch == sessionEpoch else { return }
+                self.requestKeyframe(.receiverKeyframeRequest)
+                self.replayStaticKeyframeImmediatelyIfNeeded()
             }
         }
         session.onBandwidthDecision = { [weak self] gen, sessionEpoch, udpDecision, effectiveEncoderBps in
             guard let self else { return }
-            self.queue.async {
-                guard !self.stopped,
+            self.queue.async { [weak self] in
+                guard let self, !self.stopped,
                       self.wireConnectionGeneration == gen,
                       self.protocolIdentity.sessionEpoch == sessionEpoch,
                       self.settings.bitrateMode == .auto else { return }
@@ -3056,35 +3448,40 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                     networkState: udpDecision.isCongested ? .congested : .recovering,
                     decisionEpoch: udpDecision.decisionEpoch
                 )
-                self.applyAdaptiveDecision(decision)
+                self.applyAdaptiveDecision(decision, updateUDPPacer: false)
             }
         }
         session.onFallbackToTCP = { [weak self] gen, sessionEpoch, reason in
             guard let self else { return }
-            self.queue.async {
-                guard !self.stopped,
+            self.queue.async { [weak self] in
+                guard let self, !self.stopped,
                       self.wireConnectionGeneration == gen,
                       self.protocolIdentity.sessionEpoch == sessionEpoch else { return }
                 Log.info("UDP-MEDIA-FALLBACK sessionEpoch=\(sessionEpoch) reason=\(reason); resuming TCP media framing")
                 self.udpMediaSession?.stop()
                 self.udpMediaSession = nil
+                self.activeUDPMediaSessionEpoch = 0
+                self.audioLock.withLock {
+                    self.audioCaptureSink = nil
+                    self.udpCursorSender = nil
+                    self.audioSequence = 0
+                }
+                self.adaptiveBitrateController?.syncCurrentBitrate(self.streamBitrate)
                 self.requestKeyframe(.streamReconfigure)
+                self.replayStaticKeyframeImmediatelyIfNeeded()
             }
         }
         session.onBytesSent = { [weak self] bytes, completedFrame in
             guard let self else { return }
-            self.queue.async {
-                guard !self.stopped, self.wireConnectionGeneration == wireGen else { return }
-                self.bytesSent += bytes
-                self.pipelineSentBytes += bytes
-                if completedFrame {
-                    self.framesSent += 1
-                    self.localSentFrames += 1
-                    self.pipelineSentFrames += 1
-                }
+            self.queue.async { [weak self] in
+                guard let self, !self.stopped, self.wireConnectionGeneration == wireGen else { return }
+                self.recordSentMedia(bytes: bytes, frames: completedFrame ? 1 : 0)
             }
         }
         udpMediaSession = session
+        activeUDPMediaSessionEpoch = epoch
+        syncUDPEncoderLoadCeiling()
+        refreshUDPFastPlaneSinksOnQueue()
         sendJSONFrame(session.makeConfigMessage().jsonString)
     }
 
@@ -3150,8 +3547,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             try recorder.append(sample)
             lastAdaptiveDecision = nil
             decoderRecoveryEvent = nil
-            Task { @MainActor in
-                onBenchmarkStatus?("\(phase.rawValue) · \(scene.label) · \(runId)")
+            let statusMsg = "\(phase.rawValue) · \(scene.label) · \(runId)"
+            Task { @MainActor [weak self] in
+                self?.onBenchmarkStatus?(statusMsg)
             }
         } catch {
             finishBenchmarkOnQueue(message: "Benchmark failed: \(error)")
@@ -3174,13 +3572,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             let result = try recorder.stop()
             if let message {
                 let finalMessage = "\(message) · \(result.csvURL.deletingLastPathComponent().path)"
-                Task { @MainActor in onBenchmarkStatus?(finalMessage) }
+                Task { @MainActor [weak self] in self?.onBenchmarkStatus?(finalMessage) }
             }
         } catch {
             let directory = outputDirectory?.path ?? "output path unavailable"
             let failure = "Benchmark flush failed: \(error) · \(directory)"
             Log.info(failure)
-            Task { @MainActor in onBenchmarkStatus?(failure) }
+            Task { @MainActor [weak self] in self?.onBenchmarkStatus?(failure) }
         }
     }
 

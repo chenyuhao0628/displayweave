@@ -49,8 +49,14 @@ public final class ProtocolSelfTest {
         testTouchGestureCoordinatorCancelsPendingTapForScroll();
         testControlMessageWriterDoesNotWriteOnCallerThread();
         testUdpMediaHeaderAndKeyDerivation();
+        testUdpSharedGoldenVectors();
         testUdpMediaFecReassemblyAndJitterBuffer();
+        testUdpMediaMultiBlockParityBeforeDataAndRollover();
+        testUdpMediaJitterGapDropsPFramesAndArrivalEstimator();
         testUdpMediaReceiverSessionLoopback();
+        testUdpCursorAndAudioCodecsAndSessionLoopback();
+        testAndroidStylusInputTranslation();
+        testAndroidDesktopInputTranslation();
         System.out.println("ProtocolSelfTest PASS");
     }
 
@@ -138,9 +144,31 @@ public final class ProtocolSelfTest {
                 "wifi", "Android", "install-1");
         assertContains(wifiJson, "\"protocolVersion\":2");
         assertContains(wifiJson, "\"maxFrameBytes\":8388608");
+        assertContains(wifiJson, "\"panel\":{\"pixelsWide\":2560,\"pixelsHigh\":1600,\"scale\":2.000}");
+        assertContains(wifiJson, "\"inputCaps\":[\"pencil-v1\"]");
         assertContains(wifiJson, "\"capabilities\":[\"streamConfigAck\",\"decoderReady\","
                 + "\"firstFrameRendered\",\"sessionEpoch\",\"configVersion\","
-                + "\"frameSequence\",\"maxFrameBytes\",\"binaryFrameHeaderV2\",\"udpMediaV1\"]");
+                + "\"frameSequence\",\"maxFrameBytes\",\"binaryFrameHeaderV2\","
+                + "\"udpMediaV1\",\"udpCursorV1\",\"udpAudioV1\"]");
+
+        int[] mm = LengthPrefixedProtocol.computePhysicalMillimeters(2560, 1600, 254.0, 254.0);
+        assertTrue(mm != null);
+        assertEquals(256, mm[0]);
+        assertEquals(160, mm[1]);
+        assertEquals(null, LengthPrefixedProtocol.computePhysicalMillimeters(2560, 1600, 49.9, 254.0));
+        assertEquals(null, LengthPrefixedProtocol.computePhysicalMillimeters(2560, 1600, 254.0, 1000.1));
+        assertEquals(null, LengthPrefixedProtocol.computePhysicalMillimeters(2560, 1600, Double.NaN, 254.0));
+        assertEquals(null, LengthPrefixedProtocol.computePhysicalMillimeters(2560, 1600, Double.POSITIVE_INFINITY, 254.0));
+
+        String encryptedWifiJson = LengthPrefixedProtocol.helloJson(
+                2560, 1600, 2.0, 120, 120,
+                new String[] {"hevc", "h264"}, "hevc", "Android Tablet", 35,
+                "wifi", "Android", "install-1", mm[0], mm[1], true);
+        assertContains(encryptedWifiJson,
+                "\"panel\":{\"pixelsWide\":2560,\"pixelsHigh\":1600,\"scale\":2.000,"
+                        + "\"millimetersWide\":256,\"millimetersHigh\":160}");
+        assertContains(encryptedWifiJson,
+                "\"inputCaps\":[\"pencil-v1\",\"pencil-v2\",\"mac-input-v1\"]");
 
         String usbJson = LengthPrefixedProtocol.helloJson(
                 2560, 1600, 2.0, 120, 120,
@@ -150,6 +178,8 @@ public final class ProtocolSelfTest {
                 + "\"firstFrameRendered\",\"sessionEpoch\",\"configVersion\","
                 + "\"frameSequence\",\"maxFrameBytes\",\"binaryFrameHeaderV2\"]");
         assertFalse(usbJson.contains("\"udpMediaV1\""));
+        assertFalse(usbJson.contains("\"udpCursorV1\""));
+        assertFalse(usbJson.contains("\"udpAudioV1\""));
     }
 
     private static void testBinaryFrameHeaderV2RoundTrip() throws Exception {
@@ -741,6 +771,111 @@ public final class ProtocolSelfTest {
                 pkt65536, pkt65536.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER).extendedSequence);
     }
 
+    private static void testUdpSharedGoldenVectors() throws Exception {
+        byte[] rootSecret = fromHex("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
+        UdpMediaProtocol.KeyMaterial km = UdpMediaProtocol.KeyMaterial.derive(rootSecret, 1L);
+        assertTrue(java.util.Arrays.equals(
+                fromHex("4f8faae469fe3bcb0d6dbbd28f85d016"), km.senderToReceiverKey));
+        assertTrue(java.util.Arrays.equals(
+                fromHex("18a311a1c1be2e1e8a3e4ecf"), km.senderToReceiverSalt));
+        assertTrue(java.util.Arrays.equals(
+                fromHex("92c66fff72ff4efe5dd1f1785f9cd2cb"), km.receiverToSenderKey));
+        assertTrue(java.util.Arrays.equals(
+                fromHex("b599336c4b890afc9f36192a"), km.receiverToSenderSalt));
+        assertTrue(java.util.Arrays.equals(
+                fromHex("18a311a1c1be2e1e8a3e4ece"),
+                km.nonce(UdpMediaProtocol.DIR_SENDER_TO_RECEIVER, 1L)));
+        assertTrue(java.util.Arrays.equals(
+                fromHex("b599336ccb890afc9f36192b"),
+                km.nonce(UdpMediaProtocol.DIR_RECEIVER_TO_SENDER, 1L)));
+
+        byte[] hdrVideo = fromHex("4301002a0001e2400000000700000001");
+        byte[] hdrCursor = fromHex("6801002b0001e26c0000000000000001");
+        byte[] hdrAudio = fromHex("7001002c0001e2d00000000000000001");
+        assertTrue(java.util.Arrays.equals(
+                hdrVideo, UdpMediaProtocol.Header.decode(hdrVideo, hdrVideo.length).encode()));
+        assertTrue(java.util.Arrays.equals(
+                hdrCursor, UdpMediaProtocol.Header.decode(hdrCursor, hdrCursor.length).encode()));
+        assertTrue(java.util.Arrays.equals(
+                hdrAudio, UdpMediaProtocol.Header.decode(hdrAudio, hdrAudio.length).encode()));
+
+        // Reject cursor/audio headers with non-(0,1) fragment bounds matching Swift UDPMediaHeader.decode.
+        byte[] badCursorHdr = hdrCursor.clone();
+        badCursorHdr[15] = 2; // fragCount = 2
+        boolean rejectedBadCursorHdr = false;
+        try {
+            UdpMediaProtocol.Header.decode(badCursorHdr, badCursorHdr.length);
+        } catch (IllegalArgumentException expected) {
+            rejectedBadCursorHdr = true;
+        }
+        assertTrue(rejectedBadCursorHdr);
+
+        byte[] cursorWire = fromHex("00000000000000093e8000003f40000001");
+        UdpMediaProtocol.CursorPayload cursor = UdpMediaProtocol.CursorPayload.decode(cursorWire);
+        assertEquals(9L, cursor.sequence);
+        assertEquals(0.25f, cursor.normalizedX);
+        assertEquals(0.75f, cursor.normalizedY);
+        assertTrue(cursor.visible);
+        assertTrue(java.util.Arrays.equals(cursorWire, cursor.encode()));
+
+        // Reject visible byte != 0 && != 1 matching Swift UDPMediaCursorPayload.decode.
+        byte[] badVisCursor = cursorWire.clone();
+        badVisCursor[16] = 2;
+        boolean rejectedBadVis = false;
+        try {
+            UdpMediaProtocol.CursorPayload.decode(badVisCursor);
+        } catch (IllegalArgumentException expected) {
+            rejectedBadVis = true;
+        }
+        assertTrue(rejectedBadVis);
+
+        byte[] audioWire = fromHex("000000050000018bcfe568fabb8002001000f0ff2001e0fe");
+        UdpMediaProtocol.AudioPayload audio = UdpMediaProtocol.AudioPayload.decode(audioWire);
+        assertEquals(5L, audio.audioSeq);
+        assertEquals(1_700_000_000_250L, audio.captureTimestampMs);
+        assertEquals(48_000, audio.sampleRate);
+        assertEquals(2, audio.channels);
+        assertEquals(0, audio.formatFlags);
+        assertTrue(java.util.Arrays.equals(fromHex("1000f0ff2001e0fe"), audio.pcmBytes));
+        assertTrue(java.util.Arrays.equals(audioWire, audio.encode()));
+
+        // Verify byte-for-byte AES-128-GCM ciphertext + tag identity with Swift CryptoKit!
+        byte[] expectedSealedCursor = fromHex(
+                "680100010001e26c000000000000000141b50a68db722cff9e1ddba583233c67b6e9959aa2dab518cc03f85fab198993f5");
+        byte[] expectedSealedAudio = fromHex(
+                "700100020001e2d0000000000000000147b523d307604918f82c3b7917edaf6aa4eb57df9b68b61d82b8d23ed8c2decb0a8fe2b7fef470b3");
+        UdpMediaProtocol.CryptoSession sender = new UdpMediaProtocol.CryptoSession(km);
+        UdpMediaProtocol.CryptoSession receiver = new UdpMediaProtocol.CryptoSession(km);
+        assertTrue(java.util.Arrays.equals(
+                expectedSealedCursor,
+                sender.seal(
+                        UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                        UdpMediaProtocol.PACKET_CURSOR,
+                        0, 123_500L, 0L, 0, 1, cursorWire)));
+        assertTrue(java.util.Arrays.equals(
+                expectedSealedAudio,
+                sender.seal(
+                        UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                        UdpMediaProtocol.PACKET_AUDIO,
+                        0, 123_600L, 0L, 0, 1, audioWire)));
+        assertTrue(java.util.Arrays.equals(
+                cursorWire,
+                receiver.open(expectedSealedCursor, expectedSealedCursor.length,
+                        UdpMediaProtocol.DIR_SENDER_TO_RECEIVER).payload));
+        assertTrue(java.util.Arrays.equals(
+                audioWire,
+                receiver.open(expectedSealedAudio, expectedSealedAudio.length,
+                        UdpMediaProtocol.DIR_SENDER_TO_RECEIVER).payload));
+    }
+
+    private static byte[] fromHex(String hex) {
+        byte[] out = new byte[hex.length() / 2];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+        }
+        return out;
+    }
+
     private static void testUdpMediaFecReassemblyAndJitterBuffer() throws Exception {
         byte[] secret = UdpMediaProtocol.KeyMaterial.generateRootSecret();
         UdpMediaProtocol.KeyMaterial km = UdpMediaProtocol.KeyMaterial.derive(secret, 9L);
@@ -879,6 +1014,525 @@ public final class ProtocolSelfTest {
                 assertTrue(java.util.Arrays.equals(annexB, delivered.annexB));
             }
         }
+    }
+
+    private static void testUdpMediaMultiBlockParityBeforeDataAndRollover() throws Exception {
+        byte[] secret = UdpMediaProtocol.KeyMaterial.generateRootSecret();
+        UdpMediaProtocol.KeyMaterial km = UdpMediaProtocol.KeyMaterial.derive(secret, 15L);
+        UdpMediaProtocol.CryptoSession sender = new UdpMediaProtocol.CryptoSession(km);
+        UdpMediaProtocol.CryptoSession receiver = new UdpMediaProtocol.CryptoSession(km);
+        UdpMediaProtocol.Reassembler reassembler = new UdpMediaProtocol.Reassembler();
+
+        // Build a 70-shard frame (block 0: 64 shards, block 1: 6 shards).
+        byte[] annexB = new byte[55_500];
+        annexB[0] = 0;
+        annexB[1] = 0;
+        annexB[2] = 0;
+        annexB[3] = 1;
+        annexB[4] = 0x65;
+        for (int i = 5; i < annexB.length; i++) {
+            annexB[i] = (byte) ((i * 37 + 11) & 0xFF);
+        }
+        List<byte[]> shards = UdpMediaProtocol.makeDataFragments(annexB, 3_333L, 7L, 800);
+        assertEquals(70, shards.size());
+
+        // Block 0 XOR parity across shards 0..63 (blockDataCount = 64 != totalCount = 70).
+        int stride0 = shards.get(0).length;
+        byte[] parity0 = new byte[stride0];
+        for (int col = 0; col < 64; col++) {
+            UdpMediaProtocol.GF256.addScaled(parity0, shards.get(col), 1);
+        }
+        UdpMediaProtocol.ParityDescriptor desc0 =
+                new UdpMediaProtocol.ParityDescriptor(0, 64, 0, 1, shards.get(63).length);
+
+        // Block 1 XOR parity across shards 64..69 (blockDataCount = 6).
+        int stride1 = shards.get(64).length;
+        byte[] parity1 = new byte[stride1];
+        for (int col = 0; col < 6; col++) {
+            UdpMediaProtocol.GF256.addScaled(parity1, shards.get(64 + col), 1);
+        }
+        UdpMediaProtocol.ParityDescriptor desc1 =
+                new UdpMediaProtocol.ParityDescriptor(1, 6, 0, 1, shards.get(69).length);
+
+        long t0 = 5_000_000_000L;
+        // U6 critical check: deliver BOTH parity packets BEFORE any PACKET_VIDEO_DATA arrives!
+        byte[] dgP0 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_PARITY,
+                UdpMediaProtocol.FLAG_KEYFRAME,
+                100_000L, 10L, desc0.encodedFragIndex(), desc0.encodedFragCount(), parity0);
+        byte[] dgP1 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_PARITY,
+                UdpMediaProtocol.FLAG_KEYFRAME,
+                100_000L, 10L, desc1.encodedFragIndex(), desc1.encodedFragCount(), parity1);
+        assertEquals(null, reassembler.ingest(
+                receiver.open(dgP0, dgP0.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER), t0));
+        assertEquals(null, reassembler.ingest(
+                receiver.open(dgP1, dgP1.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER), t0 + 1_000L));
+
+        // Drop shard 5 (in block 0) and shard 67 (in block 1); deliver the remaining 68 data shards.
+        UdpMediaProtocol.FrameEnvelope completed = null;
+        for (int i = 0; i < shards.size(); i++) {
+            if (i == 5 || i == 67) {
+                continue;
+            }
+            int flags = UdpMediaProtocol.FLAG_KEYFRAME
+                    | (i == shards.size() - 1 ? UdpMediaProtocol.FLAG_END_OF_FRAME : 0);
+            byte[] dg = sender.seal(
+                    UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                    UdpMediaProtocol.PACKET_VIDEO_DATA,
+                    flags,
+                    100_000L, 10L, i, shards.size(), shards.get(i));
+            UdpMediaProtocol.FrameEnvelope env = reassembler.ingest(
+                    receiver.open(dg, dg.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER),
+                    t0 + 2_000L + i * 100L);
+            if (env != null) {
+                // Must NOT complete early at shard 63 due to blockDataCount=64 poisoning!
+                assertEquals(shards.size() - 1, i);
+                completed = env;
+            }
+        }
+        assertTrue(completed != null);
+        assertTrue(completed.recoveredByFec);
+        assertEquals(3_333L, completed.captureTimestampMs);
+        assertEquals(7L, completed.configVersion);
+        assertTrue(java.util.Arrays.equals(annexB, completed.annexB));
+
+        // Conflicting totalCount must evict the poisoned frameId entry and flag keyframe request.
+        byte[] conflict0 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_DATA,
+                0, 110_000L, 11L, 0, 4, shards.get(0));
+        byte[] conflict1 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_DATA,
+                0, 110_000L, 11L, 1, 5, shards.get(1));
+        assertEquals(null, reassembler.ingest(
+                receiver.open(conflict0, conflict0.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER),
+                t0 + 50_000L));
+        assertEquals(null, reassembler.ingest(
+                receiver.open(conflict1, conflict1.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER),
+                t0 + 51_000L));
+        assertTrue(reassembler.consumeKeyframeRequestFlag());
+
+        // After eviction, clean shards for the same frameId=11 (2-shard frame) can reassemble cleanly!
+        byte[] cleanFrame = new byte[700];
+        cleanFrame[0] = 0;
+        cleanFrame[1] = 0;
+        cleanFrame[2] = 0;
+        cleanFrame[3] = 1;
+        cleanFrame[4] = 0x65;
+        for (int i = 5; i < cleanFrame.length; i++) {
+            cleanFrame[i] = (byte) (i & 0xFF);
+        }
+        List<byte[]> cleanShards = UdpMediaProtocol.makeDataFragments(cleanFrame, 4_000L, 7L, 400);
+        assertEquals(2, cleanShards.size());
+        byte[] c0 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_DATA,
+                UdpMediaProtocol.FLAG_KEYFRAME,
+                112_000L, 11L, 0, 2, cleanShards.get(0));
+        byte[] c1 = sender.seal(
+                UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                UdpMediaProtocol.PACKET_VIDEO_DATA,
+                UdpMediaProtocol.FLAG_KEYFRAME | UdpMediaProtocol.FLAG_END_OF_FRAME,
+                112_000L, 11L, 1, 2, cleanShards.get(1));
+        assertEquals(null, reassembler.ingest(
+                receiver.open(c0, c0.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER), t0 + 60_000L));
+        UdpMediaProtocol.FrameEnvelope recoveredClean = reassembler.ingest(
+                receiver.open(c1, c1.length, UdpMediaProtocol.DIR_SENDER_TO_RECEIVER), t0 + 61_000L);
+        assertTrue(recoveredClean != null);
+        assertTrue(java.util.Arrays.equals(cleanFrame, recoveredClean.annexB));
+
+        // 32-bit wrap-safe frameId ordering across 0xFFFFFFFE -> 0xFFFFFFFF -> 0 -> 1.
+        assertTrue(UdpMediaProtocol.compareFrameId(0L, 0xFFFF_FFFFL) > 0);
+        assertTrue(UdpMediaProtocol.compareFrameId(1L, 0xFFFF_FFFEL) > 0);
+        assertTrue(UdpMediaProtocol.compareFrameId(0xFFFF_FFFEL, 0L) < 0);
+
+        UdpMediaProtocol.JitterBuffer rolloverJitter = new UdpMediaProtocol.JitterBuffer();
+        long[] rolloverIds = new long[] {0xFFFF_FFFEL, 0xFFFF_FFFFL, 0L, 1L};
+        for (int idx = 0; idx < rolloverIds.length; idx++) {
+            UdpMediaProtocol.FrameEnvelope env = new UdpMediaProtocol.FrameEnvelope(
+                    rolloverIds[idx],
+                    idx == 0,
+                    1_000L + idx,
+                    10_000L + idx,
+                    1L,
+                    cleanFrame,
+                    t0 + idx * 1_000_000L,
+                    false);
+            UdpMediaProtocol.JitterBuffer.PollResult res =
+                    rolloverJitter.insert(env, t0 + idx * 1_000_000L);
+            assertEquals(1, res.deliverable.size());
+            assertEquals(rolloverIds[idx], res.deliverable.get(0).frameId);
+            assertFalse(res.needsKeyframe);
+        }
+    }
+
+    private static void testUdpMediaJitterGapDropsPFramesAndArrivalEstimator() {
+        UdpMediaProtocol.JitterBuffer jb = new UdpMediaProtocol.JitterBuffer();
+        byte[] dummy = new byte[] {0, 0, 0, 1, 0x41, 1};
+        long t0 = 10_000_000_000L;
+
+        // 1. Frame 1 (IDR) decodes immediately.
+        UdpMediaProtocol.JitterBuffer.PollResult r1 = jb.insert(
+                new UdpMediaProtocol.FrameEnvelope(1L, true, 100L, 1000L, 1L, dummy, t0, false),
+                t0);
+        assertEquals(1, r1.deliverable.size());
+        assertEquals(1L, r1.deliverable.get(0).frameId);
+        assertFalse(r1.needsKeyframe);
+
+        // 2. Frame 2 is lost; Frame 3 (P-frame) arrives at t0 + 5ms -> held waiting for Frame 2.
+        long t3 = t0 + 5_000_000L;
+        UdpMediaProtocol.JitterBuffer.PollResult r3 = jb.insert(
+                new UdpMediaProtocol.FrameEnvelope(3L, false, 116L, 2000L, 1L, dummy, t3, false),
+                t3);
+        assertEquals(0, r3.deliverable.size());
+        assertFalse(r3.needsKeyframe);
+
+        // 3. Hold deadline (35ms) expires at t3 + 36ms: MUST NOT deliver unreferenced P-frame 3!
+        UdpMediaProtocol.JitterBuffer.PollResult expired =
+                jb.pollDeliverable(t3 + UdpMediaProtocol.JitterBuffer.FRAME_HOLD_DEADLINE_NS + 1_000_000L);
+        assertEquals(0, expired.deliverable.size());
+        assertTrue(expired.needsKeyframe);
+
+        // 4. Subsequent P-frame 4 while chain is broken is immediately rejected & requests keyframe.
+        long t4 = t3 + 40_000_000L;
+        UdpMediaProtocol.JitterBuffer.PollResult r4 = jb.insert(
+                new UdpMediaProtocol.FrameEnvelope(4L, false, 133L, 3000L, 1L, dummy, t4, false),
+                t4);
+        assertEquals(0, r4.deliverable.size());
+        assertTrue(r4.needsKeyframe);
+
+        // 5. Keyframe 5 arrives -> heals broken reference chain and delivers across the gap!
+        long t5 = t3 + 50_000_000L;
+        UdpMediaProtocol.JitterBuffer.PollResult r5 = jb.insert(
+                new UdpMediaProtocol.FrameEnvelope(5L, true, 150L, 4000L, 1L, dummy, t5, false),
+                t5);
+        assertEquals(1, r5.deliverable.size());
+        assertEquals(5L, r5.deliverable.get(0).frameId);
+        assertFalse(r5.needsKeyframe);
+
+        // 6. Contiguous P-frame 6 now delivers normally.
+        long t6 = t5 + 8_000_000L;
+        UdpMediaProtocol.JitterBuffer.PollResult r6 = jb.insert(
+                new UdpMediaProtocol.FrameEnvelope(6L, false, 166L, 5000L, 1L, dummy, t6, false),
+                t6);
+        assertEquals(1, r6.deliverable.size());
+        assertEquals(6L, r6.deliverable.get(0).frameId);
+        assertFalse(r6.needsKeyframe);
+
+        // 7. ArrivalEstimator: ignore out-of-order burst packets & reset hasCurrentBurst on pollFeedbackIfDue.
+        UdpMediaProtocol.ArrivalEstimator est = new UdpMediaProtocol.ArrivalEstimator();
+        // Burst 1: send=10_000us, arrival=10_000_000ns (10_000us)
+        est.recordPacket(1L, 10_000L, 10_000_000L);
+        // Burst 2: send=20_000us (+10ms), arrival=22_000_000ns (22_000us, +12ms -> +2000us queueing)
+        est.recordPacket(3L, 20_000L, 22_000_000L);
+        // Out-of-order packet 2 from Burst 1 (send=10_500us < 20_000us) arrives late at 23ms:
+        // Must still count toward receivedInWindow (so lostCount == 0), without corrupting currentBurst!
+        est.recordPacket(2L, 10_500L, 23_000_000L);
+
+        UdpMediaProtocol.FeedbackPayload fb1 = est.pollFeedbackIfDue(45_000_000L, 2, 120);
+        assertTrue(fb1 != null);
+        assertEquals(3L, fb1.highestSeq);
+        assertEquals(3L, fb1.receivedCount);
+        assertEquals(0L, fb1.lostCount);
+        // rawGrad = (22_000 - 10_000) - (20_000 - 10_000) = +2000us; EWMA = round(0.30 * 2000) = 600us.
+        assertEquals(600, fb1.arrivalGradientUs);
+
+        // Next burst after pollFeedbackIfDue: because hasCurrentBurst was reset to false,
+        // packet 4 starts a clean burst at send=30_000us, arrival=32_000_000ns (32_000us, 0us extra gradient)
+        // instead of computing dSend=0, dArr=0!
+        est.recordPacket(4L, 30_000L, 32_000_000L);
+        UdpMediaProtocol.FeedbackPayload fb2 = est.pollFeedbackIfDue(80_000_000L, 1, 120);
+        assertTrue(fb2 != null);
+        // dSend = 30_000 - 20_000 = 10_000us, dArr = 32_000 - 22_000 = 10_000us -> rawGrad = 0 -> EWMA = round(0.7 * 600) = 420.
+        assertEquals(420, fb2.arrivalGradientUs);
+    }
+
+    private static void testUdpCursorAndAudioCodecsAndSessionLoopback() throws Exception {
+        UdpMediaProtocol.CursorPayload cursor =
+                new UdpMediaProtocol.CursorPayload(99L, 0.25f, 0.75f, true);
+        byte[] encodedCursor = cursor.encode();
+        assertEquals(UdpMediaProtocol.CursorPayload.BYTE_LENGTH, encodedCursor.length);
+        UdpMediaProtocol.CursorPayload decodedCursor = UdpMediaProtocol.CursorPayload.decode(encodedCursor);
+        assertEquals(99L, decodedCursor.sequence);
+        assertEquals(0.25f, decodedCursor.normalizedX);
+        assertEquals(0.75f, decodedCursor.normalizedY);
+        assertTrue(decodedCursor.visible);
+
+        boolean rejectedBadCursor = false;
+        try {
+            new UdpMediaProtocol.CursorPayload(1L, 1.5f, 0.5f, true);
+        } catch (IllegalArgumentException expected) {
+            rejectedBadCursor = true;
+        }
+        assertTrue(rejectedBadCursor);
+
+        byte[] pcm = new byte[960]; // 5ms stereo 48kHz S16LE
+        for (int i = 0; i < pcm.length; i++) {
+            pcm[i] = (byte) (i & 0xFF);
+        }
+        UdpMediaProtocol.AudioPayload audio = new UdpMediaProtocol.AudioPayload(
+                42L, 123_456L, 48_000, 2, UdpMediaProtocol.AudioPayload.FORMAT_S16LE_PCM, pcm);
+        byte[] encodedAudio = audio.encode();
+        assertEquals(UdpMediaProtocol.AudioPayload.HEADER_BYTES + pcm.length, encodedAudio.length);
+        UdpMediaProtocol.AudioPayload decodedAudio = UdpMediaProtocol.AudioPayload.decode(encodedAudio);
+        assertEquals(42L, decodedAudio.audioSeq);
+        assertEquals(123_456L, decodedAudio.captureTimestampMs);
+        assertEquals(48_000, decodedAudio.sampleRate);
+        assertEquals(2, decodedAudio.channels);
+        assertEquals(0, decodedAudio.formatFlags);
+        assertTrue(java.util.Arrays.equals(pcm, decodedAudio.pcmBytes));
+
+        // Reject oversize (>1152), unaligned stereo (odd byte count), and non-zero formatFlags.
+        for (int badCase = 0; badCase < 3; badCase++) {
+            boolean rejected = false;
+            try {
+                if (badCase == 0) {
+                    new UdpMediaProtocol.AudioPayload(1L, 1L, 48_000, 2, 0, new byte[1156]);
+                } else if (badCase == 1) {
+                    new UdpMediaProtocol.AudioPayload(1L, 1L, 48_000, 2, 0, new byte[6]);
+                } else {
+                    new UdpMediaProtocol.AudioPayload(1L, 1L, 48_000, 2, 1, new byte[8]);
+                }
+            } catch (IllegalArgumentException expected) {
+                rejected = true;
+            }
+            assertTrue(rejected);
+        }
+
+        // Loopback through UdpMediaReceiverSession for PACKET_CURSOR (5) and PACKET_AUDIO (6).
+        byte[] secret = UdpMediaProtocol.KeyMaterial.generateRootSecret();
+        long epoch = 21L;
+        try (java.net.DatagramSocket senderSock =
+                new java.net.DatagramSocket(new java.net.InetSocketAddress("127.0.0.1", 0))) {
+            String b64Secret = java.util.Base64.getEncoder().encodeToString(secret);
+            String cfgJson = "{\"type\":\"udpMediaConfig\",\"version\":1,\"sessionEpoch\":"
+                    + epoch + ",\"udpPort\":" + senderSock.getLocalPort()
+                    + ",\"rootSecret\":\"" + b64Secret + "\",\"maxPayloadBytes\":1200}";
+            UdpMediaProtocol.ConfigMessage cfg = UdpMediaProtocol.ConfigMessage.parseJson(cfgJson);
+            java.util.concurrent.CountDownLatch cursorLatch = new java.util.concurrent.CountDownLatch(1);
+            java.util.concurrent.CountDownLatch audioLatch = new java.util.concurrent.CountDownLatch(1);
+            java.util.concurrent.atomic.AtomicReference<UdpMediaProtocol.CursorPayload> gotCursor =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+            java.util.concurrent.atomic.AtomicReference<UdpMediaProtocol.AudioPayload> gotAudio =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+
+            try (UdpMediaReceiverSession session = UdpMediaReceiverSession.start(
+                    2L,
+                    cfg,
+                    "127.0.0.1",
+                    new UdpMediaReceiverSession.Listener() {
+                        @Override
+                        public void onFrameReady(
+                                long gen, long sesEpoch, UdpMediaProtocol.FrameEnvelope frame) {
+                        }
+
+                        @Override
+                        public void onKeyframeNeeded(long gen, long sesEpoch, String reason) {
+                        }
+
+                        @Override
+                        public void onCursor(
+                                long gen, long sesEpoch, UdpMediaProtocol.CursorPayload c) {
+                            gotCursor.set(c);
+                            cursorLatch.countDown();
+                        }
+
+                        @Override
+                        public void onAudio(
+                                long gen, long sesEpoch, UdpMediaProtocol.AudioPayload a) {
+                            gotAudio.set(a);
+                            audioLatch.countDown();
+                        }
+                    })) {
+                UdpMediaProtocol.CryptoSession senderCrypto =
+                        new UdpMediaProtocol.CryptoSession(UdpMediaProtocol.KeyMaterial.derive(secret, epoch));
+                byte[] dgCursor = senderCrypto.seal(
+                        UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                        UdpMediaProtocol.PACKET_CURSOR,
+                        0, 60_000L, 0L, 0, 1, encodedCursor);
+                byte[] dgAudio = senderCrypto.seal(
+                        UdpMediaProtocol.DIR_SENDER_TO_RECEIVER,
+                        UdpMediaProtocol.PACKET_AUDIO,
+                        0, 61_000L, 42L, 0, 1, encodedAudio);
+                java.net.InetSocketAddress dest =
+                        new java.net.InetSocketAddress("127.0.0.1", session.localPort());
+                senderSock.send(new java.net.DatagramPacket(dgCursor, dgCursor.length, dest));
+                senderSock.send(new java.net.DatagramPacket(dgAudio, dgAudio.length, dest));
+
+                assertTrue(cursorLatch.await(2, java.util.concurrent.TimeUnit.SECONDS));
+                assertTrue(audioLatch.await(2, java.util.concurrent.TimeUnit.SECONDS));
+                assertEquals(99L, gotCursor.get().sequence);
+                assertEquals(42L, gotAudio.get().audioSeq);
+                assertTrue(java.util.Arrays.equals(pcm, gotAudio.get().pcmBytes));
+            }
+        }
+    }
+
+    private static void testAndroidStylusInputTranslation() {
+        AndroidStylusInput stylus = new AndroidStylusInput();
+
+        // 1. Unnegotiated fallback: hover ignored, contact emits touch fallback.
+        assertEquals(0, stylus.onMotionEvent(
+                AndroidStylusInput.ACTION_HOVER_MOVE,
+                AndroidStylusInput.TOOL_TYPE_STYLUS,
+                500, 250, 1000, 1000, 0.0, 0.2, 0.0, 0.0, 0).size());
+        List<String> fallbackDown = stylus.onMotionEvent(
+                AndroidStylusInput.ACTION_DOWN,
+                AndroidStylusInput.TOOL_TYPE_STYLUS,
+                500, 250, 1000, 1000, 0.6, 0.2, 0.0, 0.0, 0);
+        assertEquals(1, fallbackDown.size());
+        assertEquals("{\"type\":\"touch\",\"phase\":\"began\",\"x\":0.5,\"y\":0.25}", fallbackDown.get(0));
+
+        // Mid-stroke negotiation to pencil-v2 must NOT switch an in-flight touch stroke!
+        stylus.configureFromInputConfig(true,
+                "{\"type\":\"inputConfig\",\"inputCaps\":[\"pencil-v1\",\"pencil-v2\"],"
+                        + "\"pencilActionStatus\":\"ready\","
+                        + "\"pencilActionSession\":\"11111111-2222-4333-8444-555555555555\"}");
+        List<String> fallbackUp = stylus.onMotionEvent(
+                AndroidStylusInput.ACTION_UP,
+                AndroidStylusInput.TOOL_TYPE_STYLUS,
+                500, 250, 1000, 1000, 0.0, 0.2, 0.0, 0.0, 0);
+        assertEquals(1, fallbackUp.size());
+        assertEquals("{\"type\":\"touch\",\"phase\":\"ended\",\"x\":0.5,\"y\":0.25}", fallbackUp.get(0));
+
+        // 2. Next hover & stroke use negotiated pencil-v2 over TLS; desktop-only inputConfig does not clobber!
+        stylus.configureFromInputConfig(true,
+                "{\"type\":\"inputConfig\",\"inputCaps\":[\"mac-input-v1\"],"
+                        + "\"inputSession\":\"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\","
+                        + "\"inputStatus\":\"ready\"}");
+        assertTrue(stylus.isNegotiatedV2());
+        assertTrue(stylus.isShortcutsAvailable());
+
+        List<String> hoverIn = stylus.onMotionEvent(
+                AndroidStylusInput.ACTION_HOVER_MOVE,
+                AndroidStylusInput.TOOL_TYPE_STYLUS,
+                250, 750, 1000, 1000, 0.8, Math.PI / 4.0, Math.PI / 2.0, 0.5, 0);
+        assertEquals(1, hoverIn.size());
+        assertContains(hoverIn.get(0), "\"type\":\"pencil2\"");
+        assertContains(hoverIn.get(0), "\"phase\":\"hover\"");
+        assertContains(hoverIn.get(0), "\"pressure\":0");
+        assertContains(hoverIn.get(0), "\"azimuth\":0");
+        assertContains(hoverIn.get(0), "\"tool\":\"pen\"");
+
+        List<String> hoverExit = stylus.onMotionEvent(
+                AndroidStylusInput.ACTION_HOVER_EXIT,
+                AndroidStylusInput.TOOL_TYPE_STYLUS,
+                250, 750, 1000, 1000, 0.0, 0.0, 0.0, 0.0, 0);
+        assertEquals(1, hoverExit.size());
+        assertEquals("{\"type\":\"proximity\",\"entering\":false,\"x\":0.25,\"y\":0.75}", hoverExit.get(0));
+
+        // Eraser via secondary barrel button or TOOL_TYPE_ERASER.
+        List<String> eraserDown = stylus.onMotionEvent(
+                AndroidStylusInput.ACTION_DOWN,
+                AndroidStylusInput.TOOL_TYPE_STYLUS,
+                100, 200, 1000, 1000, 0.75, 0.0, 0.0, 0.0,
+                AndroidStylusInput.BUTTON_STYLUS_SECONDARY);
+        assertEquals(1, eraserDown.size());
+        assertContains(eraserDown.get(0), "\"tool\":\"eraser\"");
+        assertContains(eraserDown.get(0), "\"pressure\":0.75");
+
+        List<String> cancelled = stylus.cancelActiveInput();
+        assertEquals(1, cancelled.size());
+        assertContains(cancelled.get(0), "\"phase\":\"cancel\"");
+        assertContains(cancelled.get(0), "\"pressure\":0");
+
+        // pencilAction monotonic sequence over TLS, rejected when unencrypted.
+        assertEquals(
+                "{\"type\":\"pencilAction\",\"inputSession\":\"11111111-2222-4333-8444-555555555555\",\"sequence\":1,\"action\":\"undo\"}",
+                stylus.nextPencilActionJson(AndroidStylusInput.RemoteAction.UNDO));
+        assertEquals(
+                "{\"type\":\"pencilAction\",\"inputSession\":\"11111111-2222-4333-8444-555555555555\",\"sequence\":2,\"action\":\"redo\"}",
+                stylus.nextPencilActionJson(AndroidStylusInput.RemoteAction.REDO));
+
+        stylus.configureFromInputConfig(false,
+                "{\"type\":\"inputConfig\",\"inputCaps\":[\"pencil-v1\",\"pencil-v2\"]}");
+        assertTrue(stylus.isNegotiatedV1());
+        assertFalse(stylus.isNegotiatedV2());
+        assertEquals(null, stylus.nextPencilActionJson(AndroidStylusInput.RemoteAction.UNDO));
+    }
+
+    private static void testAndroidDesktopInputTranslation() {
+        AndroidDesktopInput desktop = new AndroidDesktopInput();
+        String grantJson = "{\"type\":\"inputConfig\",\"inputCaps\":[\"mac-input-v1\"],"
+                + "\"inputSession\":\"11111111-2222-4333-8444-555555555555\","
+                + "\"inputStatus\":\"ready\"}";
+
+        // Must require TLS encryption.
+        desktop.configureFromInputConfig(false, grantJson);
+        assertFalse(desktop.isGranted());
+
+        desktop.configureFromInputConfig(true, grantJson);
+        assertTrue(desktop.isGranted());
+
+        // Pencil-only inputConfig must NOT revoke active desktop session!
+        desktop.configureFromInputConfig(true,
+                "{\"type\":\"inputConfig\",\"inputCaps\":[\"pencil-v1\",\"pencil-v2\"],"
+                        + "\"pencilActionStatus\":\"ready\","
+                        + "\"pencilActionSession\":\"22222222-3333-4444-8555-666666666666\"}");
+        assertTrue(desktop.isGranted());
+
+        // Mouse primary double-click + scroll clamping.
+        List<String> click1Down = desktop.onPointerEvent(
+                AndroidDesktopInput.ACTION_BUTTON_PRESS,
+                500, 500, 1000, 1000, AndroidDesktopInput.BUTTON_PRIMARY, 0, 0, 0, 1_000L);
+        assertEquals(1, click1Down.size());
+        assertContains(click1Down.get(0), "\"kind\":\"buttonDown\"");
+        assertContains(click1Down.get(0), "\"button\":0,\"clicks\":1");
+        desktop.onPointerEvent(
+                AndroidDesktopInput.ACTION_BUTTON_RELEASE,
+                500, 500, 1000, 1000, 0, 0, 0, 0, 1_050L);
+
+        List<String> click2Down = desktop.onPointerEvent(
+                AndroidDesktopInput.ACTION_BUTTON_PRESS,
+                502, 501, 1000, 1000, AndroidDesktopInput.BUTTON_PRIMARY, 0, 0, 0, 1_200L);
+        assertContains(click2Down.get(0), "\"button\":0,\"clicks\":2");
+        desktop.onPointerEvent(
+                AndroidDesktopInput.ACTION_BUTTON_RELEASE,
+                502, 501, 1000, 1000, 0, 0, 0, 0, 1_240L);
+
+        // Modifier keys emit "kind":"modifiers", NEVER forbidden keyDown/keyUp 54..63!
+        String shiftDown = desktop.onKeyEvent(
+                true, AndroidDesktopInput.KEYCODE_SHIFT_LEFT, AndroidDesktopInput.META_SHIFT_ON, 0);
+        assertTrue(shiftDown != null);
+        assertContains(shiftDown, "\"kind\":\"modifiers\",\"modifiers\":1");
+        assertFalse(shiftDown.contains("\"keyCode\""));
+        // Redundant modifier repeat with unchanged bitmask is suppressed.
+        assertEquals(null, desktop.onKeyEvent(
+                true, AndroidDesktopInput.KEYCODE_SHIFT_LEFT, AndroidDesktopInput.META_SHIFT_ON, 1));
+
+        List<String> scroll = desktop.onPointerEvent(
+                AndroidDesktopInput.ACTION_SCROLL,
+                500, 500, 1000, 1000, 0, -200.0, 1.5, AndroidDesktopInput.META_SHIFT_ON, 1_300L);
+        assertEquals(1, scroll.size());
+        assertContains(scroll.get(0), "\"kind\":\"scroll\"");
+        assertContains(scroll.get(0), "\"dx\":4096,\"dy\":60,\"modifiers\":1");
+
+        // Key mapping checks: A (29 -> 0), NUMPAD_8 (152 -> 91, NOT 90/F20!), F20 (333 -> 90).
+        assertEquals(Integer.valueOf(0), AndroidDesktopInput.mapAndroidKeyCodeToMac(29));
+        assertEquals(Integer.valueOf(91), AndroidDesktopInput.mapAndroidKeyCodeToMac(152));
+        assertEquals(Integer.valueOf(90), AndroidDesktopInput.mapAndroidKeyCodeToMac(333));
+
+        // System-reserved keys (e.g. VOLUME_UP=24, BACK=4) return null so Android OS handles them.
+        assertEquals(null, desktop.onKeyEvent(true, 24, 0, 0));
+        assertEquals(null, desktop.onKeyEvent(true, 4, 0, 0));
+
+        // Enforce 16 concurrent held keys cap, then releaseAll() clears held state cleanly.
+        for (int i = 0; i < 16; i++) {
+            String kd = desktop.onKeyEvent(true, 29 + i, AndroidDesktopInput.META_SHIFT_ON, 0);
+            assertTrue(kd != null);
+            assertContains(kd, "\"kind\":\"keyDown\"");
+        }
+        // 17th distinct key while 16 are held must be dropped.
+        assertEquals(null, desktop.onKeyEvent(true, 29 + 16, AndroidDesktopInput.META_SHIFT_ON, 0));
+
+        String rel = desktop.releaseAll();
+        assertTrue(rel != null);
+        assertContains(rel, "\"kind\":\"releaseAll\",\"modifiers\":0");
+        assertEquals(null, desktop.releaseAll());
     }
 
     private static final class BitWriter {

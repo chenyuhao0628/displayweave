@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 #if os(macOS)
 import AppKit
@@ -41,7 +42,10 @@ struct TransportSecuritySettings: View {
                         .lineLimit(2...4)
                         .onChange(of: importText) { _, value in
                             if value.utf8.count > SecurePairingProtocol.maximumInvitationBytes {
-                                importText = String(value.prefix(SecurePairingProtocol.maximumInvitationBytes))
+                                importText = SecurePairingProtocol.truncateUTF8(
+                                    value,
+                                    maxBytes: SecurePairingProtocol.maximumInvitationBytes
+                                )
                             }
                         }
                     Button("导入邀请") { model.importInvitation(importText); importText = "" }

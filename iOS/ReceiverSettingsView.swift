@@ -55,7 +55,21 @@ struct SettingsView: View {
 
                 PencilSettingsSection(receiver: receiver)
 
-                if receiver.supportsNativeHighRefreshTrial {
+                Section {
+                    Toggle("外接键盘与触控板回传", isOn: Binding(
+                        get: { receiver.desktopInputUserEnabledSetting },
+                        set: { receiver.setDesktopInputEnabled($0) }
+                    ))
+                    if receiver.connected {
+                        LabeledContent("状态", value: receiver.desktopInputStatus)
+                    }
+                } header: {
+                    Text("键盘与指针")
+                } footer: {
+                    Text("加密配对且 Mac 端授予辅助功能与键鼠回传权限后，外接硬件键盘、妙控键盘触控板与鼠标的悬停、右键、滚轮和组合键会直接回传到 Mac。按 ⌃⌥Esc 可释放当前按键状态。")
+                }
+
+                if receiver.nativeHighRefreshTrialSupported {
                     Section {
                         Toggle("原生分辨率高刷（实验性）", isOn: $nativeHighRefreshTrial)
                     } header: {

@@ -19,10 +19,35 @@ struct SenderWorkspaceView: View {
                         ForEach(StreamTransportMode.allCases, id: \.self) { Text($0.label).tag($0) }
                     }
                     .onChange(of: controller.settings.transportMode) { _, _ in controller.restartAll() }
+                    Toggle("同步系统音频（局域网 UDP）", isOn: Binding(
+                        get: { controller.settings.audioEnabled },
+                        set: { value in
+                            guard controller.settings.audioEnabled != value else { return }
+                            controller.settings.audioEnabled = value
+                            controller.restartAll()
+                        }
+                    ))
+                    Text("默认关闭。开启后在支持 udpAudioV1 的局域网连接上传输 48 kHz 立体声系统音频（自动排除 DisplayWeave 自身声音）。")
+                        .font(.caption).foregroundStyle(.secondary)
                     Divider()
                     ConnectionModeControl()
                 }
                 WorkspaceSection(title: "设备", symbol: "display.2", detail: "\(controller.deviceEntries.count) 台设备") {
+                    if let discoveryStatus = controller.discoveryStatus {
+                        Label(discoveryStatus, systemImage: controller.localNetworkDenied ? "wifi.exclamationmark" : "exclamationmark.triangle")
+                            .font(.callout).fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 8) {
+                            if controller.localNetworkDenied {
+                                Button("打开本地网络设置…") { PermissionMonitor.openPrivacyPane("Privacy_LocalNetwork") }
+                            }
+                            Button("重试发现") { controller.retryDiscovery() }
+                        }
+                    }
+                    if let wifiAdvisory = controller.wifiAdvisoryStatus {
+                        Label(wifiAdvisory, systemImage: "info.circle")
+                            .font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     if let status = controller.securityStatus {
                         Label(status, systemImage: "lock.trianglebadge.exclamationmark")
                             .font(.callout).fixedSize(horizontal: false, vertical: true)

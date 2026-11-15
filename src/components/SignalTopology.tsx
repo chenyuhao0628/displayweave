@@ -8,7 +8,7 @@ export default function SignalTopology({
   return (
     <figure className="topology" aria-label={copy.active}>
       <figcaption>
-        <span className="live-dot" />
+        <span className="live-dot" aria-hidden="true" />
         {copy.active}
       </figcaption>
       <svg className="topology-lines" viewBox="0 0 680 410" aria-hidden="true">

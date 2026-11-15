@@ -30,6 +30,7 @@ export type SiteCopy = {
     download: string
   }
   hero: {
+    tag: string
     titleLines: string[]
     accent: string
     body: string
@@ -158,6 +159,7 @@ export const copy: Record<Locale, SiteCopy> = {
       download: "Download",
     },
     hero: {
+      tag: "LOCAL DISPLAY FABRIC",
       titleLines: ["Weave every", "spare screen", "into your"],
       accent: "Mac workspace.",
       body: "DisplayWeave turns iPhone, iPad, and Android devices into local extended displays—with Apple USB/WiFi, Android ADB USB, verified Mac/Android update channels, touch input, HEVC, and experimental high refresh.",
@@ -375,6 +377,7 @@ export const copy: Record<Locale, SiteCopy> = {
       download: "下载",
     },
     hero: {
+      tag: "本地显示网络",
       titleLines: ["把每一块闲置屏幕，", "编入你的"],
       accent: "Mac 工作空间。",
       body: "DisplayWeave 将 iPhone、iPad 和 Android 设备变成本地扩展显示器，支持 Apple USB/WiFi、Android ADB USB、已验证的 Mac/Android 更新渠道、触摸、HEVC 与实验性高刷新。",

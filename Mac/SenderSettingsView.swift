@@ -125,6 +125,13 @@ struct SenderSettingsView: View {
         }
     }
 
+    VStack(alignment: .leading, spacing: 4) {
+        Toggle("同步系统音频（局域网 UDP）", isOn: setting(\.audioEnabled))
+        Text("默认关闭。开启后在支持 udpAudioV1 的局域网连接上传输 48 kHz 立体声系统音频（自动排除 DisplayWeave 自身声音）。")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
     }
     @ViewBuilder private var connectionControls: some View {
     VStack(alignment: .leading, spacing: 4) {
@@ -190,8 +197,8 @@ struct SenderSettingsView: View {
     }
     @ViewBuilder private var permissionControls: some View {
     Section("权限") {
-        Toggle("允许接收端 Mac 的键鼠回传", isOn: $allowMacDesktopInput)
-        Text("默认关闭。仅允许已配对的加密 Mac 连接；还需授予辅助功能权限，并在接收端开启回传。关闭后释放远端按键。")
+        Toggle("允许已配对接收端的键鼠回传", isOn: $allowMacDesktopInput)
+        Text("默认关闭。仅允许已配对的加密连接（Mac／iPad／Android 接收端）；还需授予辅助功能权限，并在接收端开启回传。关闭后释放远端按键。")
             .font(.caption).foregroundStyle(.secondary)
         permissionRow(
             "屏幕录制",
@@ -203,17 +210,17 @@ struct SenderSettingsView: View {
         permissionRow(
             "辅助功能",
             granted: permissions.accessibility,
-            help: "用于接收设备上的触摸、滚动和已授权的 Mac 键鼠输入。",
+            help: "用于接收设备上的触摸、滚动和已授权接收端的键鼠输入。",
             anchor: "Privacy_Accessibility",
             request: { permissions.requestAccessibility() }
         )
-        // macOS offers no API to query Local Network access, so
-        // infer from discovery results and let the user check.
+        // macOS offers no preflight API to query Local Network access, so
+        // combine NWBrowser PolicyDenied diagnostics with discovery results.
         permissionRow(
             "本地网络",
-            granted: !controller.discovered.isEmpty,
-            uncertain: controller.discovered.isEmpty,
-            help: "局域网模式（Wi-Fi/以太网）需要此权限。如果设备列表为空，请在两端的“隐私与安全性”→“本地网络”中允许 DisplayWeave，并保持设备端 app 打开。",
+            granted: !controller.localNetworkDenied && !controller.discovered.isEmpty,
+            uncertain: !controller.localNetworkDenied && controller.discovered.isEmpty,
+            help: controller.discoveryStatus ?? "局域网模式（Wi-Fi/以太网）需要此权限。如果设备列表为空，请在两端的“隐私与安全性”→“本地网络”中允许 DisplayWeave，并保持设备端 app 打开。",
             anchor: "Privacy_LocalNetwork"
         )
     }

@@ -48,11 +48,32 @@ struct VideoLayerView: UIViewRepresentable {
         let hover = UIHoverGestureRecognizer(target: view, action: #selector(VideoView.didPencilHover(_:)))
         hover.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
         view.addGestureRecognizer(hover)
+        let pointerHover = UIHoverGestureRecognizer(target: view, action: #selector(VideoView.didPointerHover(_:)))
+        pointerHover.allowedTouchTypes = [
+            NSNumber(value: UITouch.TouchType.indirectPointer.rawValue),
+            NSNumber(value: UITouch.TouchType.indirect.rawValue),
+        ]
+        view.addGestureRecognizer(pointerHover)
+        let scrollPan = UIPanGestureRecognizer(target: view, action: #selector(VideoView.didPointerScroll(_:)))
+        scrollPan.allowedTouchTypes = []
+        scrollPan.allowedScrollTypesMask = .all
+        view.addGestureRecognizer(scrollPan)
+        let secondaryTap = UITapGestureRecognizer(target: view, action: #selector(VideoView.didSecondaryClick(_:)))
+        secondaryTap.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirectPointer.rawValue)]
+        secondaryTap.buttonMaskRequired = .secondary
+        secondaryTap.cancelsTouchesInView = false
+        secondaryTap.delaysTouchesBegan = false
+        secondaryTap.delaysTouchesEnded = false
+        view.addGestureRecognizer(secondaryTap)
+        let pointerInteraction = UIPointerInteraction(delegate: view)
+        view.addInteraction(pointerInteraction)
         let pencil = UIPencilInteraction()
         pencil.delegate = view
         view.addInteraction(pencil)
+        view.installLifecycleObservers()
         receiver.onInputReset = { [weak view] in view?.resetInput() }
         receiver.onPencilToolChange = { [weak view] in view?.cancelPress() }
+        receiver.onDesktopInputRevoked = { [weak view] in view?.clearLocalDesktopInputTracking() }
 
         // Local cursor echo: position updates ride the ~2ms control path
         // instead of the ~30ms video path, so the pointer feels native.
@@ -76,12 +97,45 @@ struct VideoLayerView: UIViewRepresentable {
         uiView.retirePresentation()
     }
 
-    final class VideoView: UIView, UIPencilInteractionDelegate {
+    final class VideoView: UIView, UIPencilInteractionDelegate, UIPointerInteractionDelegate {
         let presentationID = UUID()
         weak var receiver: PhoneReceiver?
         weak var sampleBufferLayer: AVSampleBufferDisplayLayer?
+        private var lifecycleObservers: [NSObjectProtocol] = []
+
+        override var canBecomeFirstResponder: Bool { true }
+
+        func installLifecycleObservers() {
+            removeLifecycleObservers()
+            let nc = NotificationCenter.default
+            lifecycleObservers.append(
+                nc.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                    self?.releaseDesktopInputIfNeeded()
+                }
+            )
+            lifecycleObservers.append(
+                nc.addObserver(forName: UIWindow.didResignKeyNotification, object: nil, queue: .main) { [weak self] note in
+                    guard let self, note.object as? UIWindow === self.window else { return }
+                    self.releaseDesktopInputIfNeeded()
+                }
+            )
+        }
+
+        private func removeLifecycleObservers() {
+            for token in lifecycleObservers {
+                NotificationCenter.default.removeObserver(token)
+            }
+            lifecycleObservers.removeAll()
+        }
+
+        override func resignFirstResponder() -> Bool {
+            releaseDesktopInputIfNeeded()
+            return super.resignFirstResponder()
+        }
 
         func retirePresentation() {
+            removeLifecycleObservers()
+            releaseDesktopInputIfNeeded()
             cancelPress()
             stopDisplayLink()
             metalRenderer?.onPresented = nil
@@ -250,6 +304,7 @@ struct VideoLayerView: UIViewRepresentable {
 
         func cancelPress() {
             cancelFingerPress()
+            releaseDesktopInputIfNeeded()
             if let generation = pencilGeneration, let last = lastPencil {
                 receiver?.sendPencil(last.cancelled, generation: generation)
             }
@@ -271,12 +326,20 @@ struct VideoLayerView: UIViewRepresentable {
             touchGeneration = nil; pencilTouch = nil; pencilGeneration = nil
             lastPencil = nil; hoverGeneration = nil; pencilHoverActive = false
             panGeneration = nil; twoFingerActive = false
+            clearLocalDesktopInputTracking()
         }
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
             updateDisplayLink()
-            if window == nil { cancelPress() }
+            if let window {
+                if window.rootViewController?.presentedViewController == nil {
+                    _ = becomeFirstResponder()
+                }
+            } else {
+                releaseDesktopInputIfNeeded()
+                cancelPress()
+            }
         }
 
         private func sendPencil(_ phase: String, touch: UITouch, event: UIEvent?) {
@@ -427,6 +490,10 @@ struct VideoLayerView: UIViewRepresentable {
                 sendPencil(phase, touch: pencil, event: event)
                 return
             }
+            if let pointer = touches.first(where: { $0.type == .indirectPointer || $0.type == .indirect }) {
+                handleIndirectPointerTouch(phase, touch: pointer, event: event)
+                return
+            }
             guard pencilTouch == nil, !pencilHoverActive else { return }
             if phase == "cancelled" { cancelFingerPress(); return }
             let fingers = event?.allTouches?.filter { $0.type == .direct && $0.phase != .ended && $0.phase != .cancelled }.count ?? 1
@@ -437,6 +504,10 @@ struct VideoLayerView: UIViewRepresentable {
             guard let touch = touches.first(where: { $0.type == .direct }),
                   let norm = normalized(touch.location(in: self)) else { return }
             if phase == "began", !isInsideVideoRect(touch.location(in: self)) { return }
+            if phase == "began", !isFirstResponder,
+               window?.rootViewController?.presentedViewController == nil {
+                _ = becomeFirstResponder()
+            }
             lastNorm = norm
             let position = CGPoint(x: norm.x, y: norm.y)
             switch phase {
@@ -486,5 +557,567 @@ struct VideoLayerView: UIViewRepresentable {
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) { send("moved", touches, event) }
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { send("ended", touches, event) }
         override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { send("cancelled", touches, event) }
+
+        // MARK: - iPadOS / iOS Hardware Keyboard & Trackpad / Mouse Pointer (mac-input-v1)
+
+        private var desktopInputGeneration: UInt64?
+        private var lastPointerNorm: (x: Double, y: Double) = (0.5, 0.5)
+        private var pressedMouseButtons: Set<Int> = []
+        private var pointerFallbackGeneration: UInt64?
+        private var lastSecondaryTouchUptime: TimeInterval = 0
+        private var scrollGeneration: UInt64?
+        private var lastScrollTranslation: CGPoint = .zero
+        private var heldKeyCodes: Set<UInt16> = []
+        private var heldModifierUsages: Set<Int> = []
+        private var sentModifiers: Int = 0
+
+        private func ensureDesktopInputGeneration(_ receiver: PhoneReceiver) -> UInt64 {
+            let current = receiver.inputGeneration
+            if desktopInputGeneration != current {
+                clearLocalDesktopInputTracking()
+                desktopInputGeneration = current
+            }
+            return current
+        }
+
+        func clearLocalDesktopInputTracking() {
+            desktopInputGeneration = nil
+            pressedMouseButtons.removeAll()
+            pointerFallbackGeneration = nil
+            scrollGeneration = nil
+            lastScrollTranslation = .zero
+            heldKeyCodes.removeAll()
+            heldModifierUsages.removeAll()
+            sentModifiers = 0
+        }
+
+        func releaseDesktopInputIfNeeded() {
+            let hadHeldState = !pressedMouseButtons.isEmpty
+                || !heldKeyCodes.isEmpty
+                || !heldModifierUsages.isEmpty
+                || sentModifiers != 0
+            let gen = desktopInputGeneration ?? receiver?.inputGeneration
+            clearLocalDesktopInputTracking()
+            if hadHeldState, let gen, let receiver, receiver.desktopInputAvailable {
+                receiver.releaseDesktopInput(generation: gen)
+            }
+        }
+
+        func pointerInteraction(
+            _ interaction: UIPointerInteraction,
+            regionFor request: UIPointerRegionRequest,
+            defaultRegion: UIPointerRegion
+        ) -> UIPointerRegion? {
+            guard receiver?.connected == true,
+                  let rect = videoRect(),
+                  rect.contains(request.location) else { return nil }
+            return UIPointerRegion(rect: rect, identifier: "displayweave.video" as NSString)
+        }
+
+        func pointerInteraction(
+            _ interaction: UIPointerInteraction,
+            styleFor region: UIPointerRegion
+        ) -> UIPointerStyle? {
+            if cursorVisible && cursorLayer.contents != nil {
+                return UIPointerStyle.hidden()
+            }
+            return nil
+        }
+
+        @objc func didPointerHover(_ recognizer: UIHoverGestureRecognizer) {
+            guard pencilTouch == nil, !pencilHoverActive,
+                  let receiver, receiver.connected, receiver.videoSize != .zero else { return }
+            switch recognizer.state {
+            case .began, .changed:
+                let point = recognizer.location(in: self)
+                guard isInsideVideoRect(point), let norm = normalized(point) else { return }
+                lastNorm = norm
+                lastPointerNorm = norm
+                if receiver.desktopInputAvailable {
+                    let gen = ensureDesktopInputGeneration(receiver)
+                    syncModifiers(from: recognizer.modifierFlags, generation: gen)
+                    receiver.sendDesktopInput(
+                        OutgoingDesktopInput(kind: .move, modifiers: sentModifiers, x: norm.x, y: norm.y),
+                        generation: gen
+                    )
+                } else {
+                    receiver.sendTouch(phase: "moved", x: norm.x, y: norm.y, generation: receiver.inputGeneration)
+                }
+            default:
+                break
+            }
+        }
+
+        @objc func didPointerScroll(_ recognizer: UIPanGestureRecognizer) {
+            guard pencilTouch == nil, !pencilHoverActive,
+                  let receiver, receiver.connected,
+                  receiver.videoSize != .zero else { return }
+            switch recognizer.state {
+            case .began:
+                let loc = recognizer.location(in: self)
+                guard isInsideVideoRect(loc), let norm = normalized(loc) else {
+                    scrollGeneration = nil
+                    return
+                }
+                scrollGeneration = receiver.inputGeneration
+                lastScrollTranslation = .zero
+                lastPointerNorm = norm
+            case .changed:
+                guard let gen = scrollGeneration else { return }
+                let video = receiver.videoSize
+                let scale = min(bounds.width / video.width, bounds.height / video.height)
+                guard scale > 0 else { return }
+                let t = recognizer.translation(in: self)
+                let dx = min(4096.0, max(-4096.0, Double((t.x - lastScrollTranslation.x) / scale)))
+                let dy = min(4096.0, max(-4096.0, Double((t.y - lastScrollTranslation.y) / scale)))
+                lastScrollTranslation = t
+                guard abs(dx) > 0.001 || abs(dy) > 0.001 else { return }
+                let loc = recognizer.location(in: self)
+                if isInsideVideoRect(loc), let norm = normalized(loc) {
+                    lastPointerNorm = norm
+                }
+                if receiver.desktopInputAvailable {
+                    let activeGen = ensureDesktopInputGeneration(receiver)
+                    syncModifiers(from: recognizer.modifierFlags, generation: activeGen)
+                    receiver.sendDesktopInput(
+                        OutgoingDesktopInput(
+                            kind: .scroll,
+                            modifiers: sentModifiers,
+                            x: lastPointerNorm.x,
+                            y: lastPointerNorm.y,
+                            dx: dx,
+                            dy: dy
+                        ),
+                        generation: activeGen
+                    )
+                } else {
+                    receiver.sendScroll(dx: dx, dy: dy, generation: gen)
+                }
+            default:
+                scrollGeneration = nil
+            }
+        }
+
+        @objc func didSecondaryClick(_ recognizer: UITapGestureRecognizer) {
+            guard recognizer.state == .ended,
+                  let receiver, receiver.connected, receiver.desktopInputAvailable else { return }
+            guard ProcessInfo.processInfo.systemUptime - lastSecondaryTouchUptime > 0.12 else { return }
+            let point = recognizer.location(in: self)
+            guard isInsideVideoRect(point), let norm = normalized(point) else { return }
+            if !isFirstResponder, window?.rootViewController?.presentedViewController == nil {
+                _ = becomeFirstResponder()
+            }
+            let gen = ensureDesktopInputGeneration(receiver)
+            syncModifiers(from: recognizer.modifierFlags, generation: gen)
+            lastPointerNorm = norm
+            receiver.sendDesktopInput(
+                OutgoingDesktopInput(kind: .buttonDown, modifiers: sentModifiers, x: norm.x, y: norm.y, button: 1, clicks: 1),
+                generation: gen
+            )
+            receiver.sendDesktopInput(
+                OutgoingDesktopInput(kind: .buttonUp, modifiers: sentModifiers, x: norm.x, y: norm.y, button: 1, clicks: 1),
+                generation: gen
+            )
+        }
+
+        private static func buttonsFromMask(_ mask: UIEvent.ButtonMask) -> Set<Int> {
+            var set = Set<Int>()
+            if mask.contains(.primary) { set.insert(0) }
+            if mask.contains(.secondary) { set.insert(1) }
+            if (mask.rawValue & (1 << 2)) != 0 { set.insert(2) }
+            return set
+        }
+
+        private func handleIndirectPointerTouch(_ phase: String, touch: UITouch, event: UIEvent?) {
+            guard pencilTouch == nil, !pencilHoverActive,
+                  let receiver, receiver.connected, receiver.videoSize != .zero else { return }
+            let loc = touch.location(in: self)
+            guard let norm = normalized(loc) else { return }
+
+            if receiver.desktopInputAvailable {
+                let gen = ensureDesktopInputGeneration(receiver)
+                syncModifiers(from: event?.modifierFlags ?? [], generation: gen)
+                let clicks = min(3, max(1, touch.tapCount))
+
+                switch phase {
+                case "began":
+                    guard isInsideVideoRect(loc) else { return }
+                    if !isFirstResponder, window?.rootViewController?.presentedViewController == nil {
+                        _ = becomeFirstResponder()
+                    }
+                    lastPointerNorm = norm
+                    lastNorm = norm
+                    var buttons = Self.buttonsFromMask(event?.buttonMask ?? [])
+                    if buttons.isEmpty { buttons.insert(0) }
+                    if buttons.contains(1) {
+                        lastSecondaryTouchUptime = ProcessInfo.processInfo.systemUptime
+                    }
+                    for btn in buttons.sorted() where !pressedMouseButtons.contains(btn) {
+                        pressedMouseButtons.insert(btn)
+                        receiver.sendDesktopInput(
+                            OutgoingDesktopInput(
+                                kind: .buttonDown,
+                                modifiers: sentModifiers,
+                                x: norm.x,
+                                y: norm.y,
+                                button: btn,
+                                clicks: clicks
+                            ),
+                            generation: gen
+                        )
+                    }
+                case "moved":
+                    guard !pressedMouseButtons.isEmpty || isInsideVideoRect(loc) else { return }
+                    let samples = Array((event?.coalescedTouches(for: touch) ?? [touch]).suffix(8))
+                    for sample in samples {
+                        guard let sampleNorm = normalized(sample.location(in: self)) else { continue }
+                        lastPointerNorm = sampleNorm
+                        lastNorm = sampleNorm
+                        receiver.sendDesktopInput(
+                            OutgoingDesktopInput(
+                                kind: .move,
+                                modifiers: sentModifiers,
+                                x: sampleNorm.x,
+                                y: sampleNorm.y
+                            ),
+                            generation: gen
+                        )
+                    }
+                case "ended":
+                    lastPointerNorm = norm
+                    lastNorm = norm
+                    let otherActive = (event?.allTouches ?? []).contains {
+                        ($0.type == .indirectPointer || $0.type == .indirect)
+                            && $0 !== touch
+                            && $0.phase != .ended
+                            && $0.phase != .cancelled
+                    }
+                    let remaining = otherActive ? Self.buttonsFromMask(event?.buttonMask ?? []) : []
+                    let released = pressedMouseButtons.subtracting(remaining).sorted()
+                    for btn in released {
+                        pressedMouseButtons.remove(btn)
+                        receiver.sendDesktopInput(
+                            OutgoingDesktopInput(
+                                kind: .buttonUp,
+                                modifiers: sentModifiers,
+                                x: norm.x,
+                                y: norm.y,
+                                button: btn,
+                                clicks: clicks
+                            ),
+                            generation: gen
+                        )
+                    }
+                default:
+                    let released = pressedMouseButtons.sorted()
+                    pressedMouseButtons.removeAll()
+                    for btn in released {
+                        receiver.sendDesktopInput(
+                            OutgoingDesktopInput(
+                                kind: .buttonUp,
+                                modifiers: sentModifiers,
+                                x: norm.x,
+                                y: norm.y,
+                                button: btn,
+                                clicks: 1
+                            ),
+                            generation: gen
+                        )
+                    }
+                }
+            } else {
+                // Legacy unencrypted fallback: primary pointer button maps to direct touch.
+                switch phase {
+                case "began":
+                    guard isInsideVideoRect(loc) else { return }
+                    let buttons = Self.buttonsFromMask(event?.buttonMask ?? [])
+                    guard buttons.isEmpty || buttons.contains(0) else { return }
+                    pointerFallbackGeneration = receiver.inputGeneration
+                    lastNorm = norm
+                    receiver.sendTouch(phase: "began", x: norm.x, y: norm.y, generation: pointerFallbackGeneration)
+                case "moved":
+                    guard let gen = pointerFallbackGeneration else { return }
+                    lastNorm = norm
+                    receiver.sendTouch(phase: "moved", x: norm.x, y: norm.y, generation: gen)
+                case "ended":
+                    guard let gen = pointerFallbackGeneration else { return }
+                    pointerFallbackGeneration = nil
+                    lastNorm = norm
+                    receiver.sendTouch(phase: "ended", x: norm.x, y: norm.y, generation: gen)
+                default:
+                    pointerFallbackGeneration = nil
+                }
+            }
+        }
+
+        private func syncModifiers(from flags: UIKeyModifierFlags, generation: UInt64) {
+            var mask = Self.macModifierMask(from: flags)
+            for usage in heldModifierUsages {
+                mask |= Self.modifierBit(forHIDUsage: usage)
+            }
+            mask &= 0x1F
+            guard mask != sentModifiers else { return }
+            sentModifiers = mask
+            receiver?.sendDesktopInput(
+                OutgoingDesktopInput(kind: .modifiers, modifiers: mask),
+                generation: generation
+            )
+        }
+
+        private static func macModifierMask(from flags: UIKeyModifierFlags) -> Int {
+            var bits = 0
+            if flags.contains(.shift) { bits |= (1 << 0) }
+            if flags.contains(.control) { bits |= (1 << 1) }
+            if flags.contains(.alternate) { bits |= (1 << 2) }
+            if flags.contains(.command) { bits |= (1 << 3) }
+            if flags.contains(.alphaShift) { bits |= (1 << 4) }
+            return bits
+        }
+
+        private static func modifierBit(forHIDUsage usage: Int) -> Int {
+            switch usage {
+            case 0xE1, 0xE5: return 1 << 0 // Left / Right Shift
+            case 0xE0, 0xE4: return 1 << 1 // Left / Right Control
+            case 0xE2, 0xE6: return 1 << 2 // Left / Right Option (Alt)
+            case 0xE3, 0xE7: return 1 << 3 // Left / Right Command (GUI)
+            default: return 0
+            }
+        }
+
+        private static func isModifierHIDUsage(_ usage: Int) -> Bool {
+            usage == 0x39 || (0xE0...0xE7).contains(usage)
+        }
+
+        override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+            guard window?.rootViewController?.presentedViewController == nil,
+                  UIApplication.shared.applicationState == .active,
+                  let receiver, receiver.connected, receiver.desktopInputAvailable else {
+                super.pressesBegan(presses, with: event)
+                return
+            }
+            let gen = ensureDesktopInputGeneration(receiver)
+            let flags = event?.modifierFlags ?? []
+            var unhandled = Set<UIPress>()
+
+            for press in presses {
+                guard let key = press.key else {
+                    unhandled.insert(press)
+                    continue
+                }
+                let usage = Int(key.keyCode.rawValue)
+                // Local escape hatch matching Mac receiver: Control + Option + Escape releases capture.
+                if usage == 0x29, flags.contains(.control), flags.contains(.alternate) {
+                    releaseDesktopInputIfNeeded()
+                    _ = resignFirstResponder()
+                    return
+                }
+                if Self.isModifierHIDUsage(usage) {
+                    if usage != 0x39 {
+                        heldModifierUsages.insert(usage)
+                    }
+                    syncModifiers(from: flags.union(key.modifierFlags), generation: gen)
+                    continue
+                }
+                syncModifiers(from: flags, generation: gen)
+                guard let macCode = Self.hidUsageToMacKeyCode(usage) else {
+                    unhandled.insert(press)
+                    continue
+                }
+                let isRepeat = heldKeyCodes.contains(macCode)
+                if !isRepeat {
+                    // DesktopInputInjector caps simultaneous held keys at 16.
+                    guard heldKeyCodes.count < 15 else { continue }
+                    heldKeyCodes.insert(macCode)
+                }
+                receiver.sendDesktopInput(
+                    OutgoingDesktopInput(
+                        kind: .keyDown,
+                        modifiers: sentModifiers,
+                        keyCode: macCode,
+                        repeating: isRepeat
+                    ),
+                    generation: gen
+                )
+            }
+            if !unhandled.isEmpty {
+                super.pressesBegan(unhandled, with: event)
+            }
+        }
+
+        override func pressesChanged(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+            guard let receiver, receiver.connected, receiver.desktopInputAvailable else {
+                super.pressesChanged(presses, with: event)
+                return
+            }
+            let gen = ensureDesktopInputGeneration(receiver)
+            syncModifiers(from: event?.modifierFlags ?? [], generation: gen)
+        }
+
+        override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+            guard let receiver, receiver.connected, receiver.desktopInputAvailable else {
+                super.pressesEnded(presses, with: event)
+                return
+            }
+            let gen = ensureDesktopInputGeneration(receiver)
+            let flags = event?.modifierFlags ?? []
+            var unhandled = Set<UIPress>()
+
+            for press in presses {
+                guard let key = press.key else {
+                    unhandled.insert(press)
+                    continue
+                }
+                let usage = Int(key.keyCode.rawValue)
+                if Self.isModifierHIDUsage(usage) {
+                    heldModifierUsages.remove(usage)
+                    syncModifiers(from: flags, generation: gen)
+                    continue
+                }
+                syncModifiers(from: flags, generation: gen)
+                guard let macCode = Self.hidUsageToMacKeyCode(usage) else {
+                    unhandled.insert(press)
+                    continue
+                }
+                if heldKeyCodes.remove(macCode) != nil {
+                    receiver.sendDesktopInput(
+                        OutgoingDesktopInput(
+                            kind: .keyUp,
+                            modifiers: sentModifiers,
+                            keyCode: macCode,
+                            repeating: false
+                        ),
+                        generation: gen
+                    )
+                }
+            }
+            if !unhandled.isEmpty {
+                super.pressesEnded(unhandled, with: event)
+            }
+        }
+
+        override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+            releaseDesktopInputIfNeeded()
+            super.pressesCancelled(presses, with: event)
+        }
+
+        /// Maps USB HID Usage Page 0x07 key codes (`UIKeyboardHIDUsage.rawValue`)
+        /// to macOS virtual key codes (`CGKeyCode` / Carbon `kVK_*`, `0...126`).
+        private static func hidUsageToMacKeyCode(_ usage: Int) -> UInt16? {
+            switch usage {
+            // Letters A-Z
+            case 0x04: return 0    // A
+            case 0x05: return 11   // B
+            case 0x06: return 8    // C
+            case 0x07: return 2    // D
+            case 0x08: return 14   // E
+            case 0x09: return 3    // F
+            case 0x0A: return 5    // G
+            case 0x0B: return 4    // H
+            case 0x0C: return 34   // I
+            case 0x0D: return 38   // J
+            case 0x0E: return 40   // K
+            case 0x0F: return 37   // L
+            case 0x10: return 46   // M
+            case 0x11: return 45   // N
+            case 0x12: return 31   // O
+            case 0x13: return 35   // P
+            case 0x14: return 12   // Q
+            case 0x15: return 15   // R
+            case 0x16: return 1    // S
+            case 0x17: return 17   // T
+            case 0x18: return 32   // U
+            case 0x19: return 9    // V
+            case 0x1A: return 13   // W
+            case 0x1B: return 7    // X
+            case 0x1C: return 16   // Y
+            case 0x1D: return 6    // Z
+            // Number row 1-0
+            case 0x1E: return 18   // 1
+            case 0x1F: return 19   // 2
+            case 0x20: return 20   // 3
+            case 0x21: return 21   // 4
+            case 0x22: return 23   // 5
+            case 0x23: return 22   // 6
+            case 0x24: return 26   // 7
+            case 0x25: return 28   // 8
+            case 0x26: return 25   // 9
+            case 0x27: return 29   // 0
+            // Controls & punctuation
+            case 0x28: return 36   // Return
+            case 0x29: return 53   // Escape
+            case 0x2A: return 51   // Delete (Backspace)
+            case 0x2B: return 48   // Tab
+            case 0x2C: return 49   // Space
+            case 0x2D: return 27   // -
+            case 0x2E: return 24   // =
+            case 0x2F: return 33   // [
+            case 0x30: return 30   // ]
+            case 0x31, 0x32: return 42 // \
+            case 0x33: return 41   // ;
+            case 0x34: return 39   // '
+            case 0x35: return 50   // `
+            case 0x36: return 43   // ,
+            case 0x37: return 47   // .
+            case 0x38: return 44   // /
+            case 0x64: return 10   // ISO Section / Non-US \
+            // Function keys F1-F20
+            case 0x3A: return 122  // F1
+            case 0x3B: return 120  // F2
+            case 0x3C: return 99   // F3
+            case 0x3D: return 118  // F4
+            case 0x3E: return 96   // F5
+            case 0x3F: return 97   // F6
+            case 0x40: return 98   // F7
+            case 0x41: return 100  // F8
+            case 0x42: return 101  // F9
+            case 0x43: return 109  // F10
+            case 0x44: return 103  // F11
+            case 0x45: return 111  // F12
+            case 0x68: return 105  // F13
+            case 0x69: return 107  // F14
+            case 0x6A: return 113  // F15
+            case 0x6B: return 106  // F16
+            case 0x6C: return 64   // F17
+            case 0x6D: return 79   // F18
+            case 0x6E: return 80   // F19
+            case 0x6F: return 90   // F20
+            // Navigation & Arrows
+            case 0x49: return 114  // Insert / Help
+            case 0x4A: return 115  // Home
+            case 0x4B: return 116  // PageUp
+            case 0x4C: return 117  // ForwardDelete
+            case 0x4D: return 119  // End
+            case 0x4E: return 121  // PageDown
+            case 0x4F: return 124  // RightArrow
+            case 0x50: return 123  // LeftArrow
+            case 0x51: return 125  // DownArrow
+            case 0x52: return 126  // UpArrow
+            // Keypad
+            case 0x53: return 71   // Keypad Clear / NumLock
+            case 0x54: return 75   // Keypad /
+            case 0x55: return 67   // Keypad *
+            case 0x56: return 78   // Keypad -
+            case 0x57: return 69   // Keypad +
+            case 0x58: return 76   // Keypad Enter
+            case 0x59: return 83   // Keypad 1
+            case 0x5A: return 84   // Keypad 2
+            case 0x5B: return 85   // Keypad 3
+            case 0x5C: return 86   // Keypad 4
+            case 0x5D: return 87   // Keypad 5
+            case 0x5E: return 88   // Keypad 6
+            case 0x5F: return 89   // Keypad 7
+            case 0x60: return 91   // Keypad 8
+            case 0x61: return 92   // Keypad 9
+            case 0x62: return 82   // Keypad 0
+            case 0x63: return 65   // Keypad .
+            case 0x67: return 81   // Keypad =
+            // JIS keys
+            case 0x87: return 94   // JIS Underscore
+            case 0x89: return 93   // JIS Yen
+            case 0x90: return 104  // JIS Kana
+            case 0x91: return 102  // JIS Eisu
+            default: return nil
+            }
+        }
     }
 }

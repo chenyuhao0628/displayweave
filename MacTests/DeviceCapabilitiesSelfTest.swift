@@ -111,6 +111,24 @@ struct DeviceCapabilitiesSelfTest {
             precondition(!invalid.hasValidGeometry, "invalid geometry reached capture sizing")
         }
         precondition(oldHello.hasValidGeometry && modernHello.hasValidGeometry)
+
+        let upgradedHello = try JSONDecoder().decode(PhoneInfo.self, from: Data("""
+        {"type":"hello","pixelsWide":2732,"pixelsHigh":2048,"scale":2.0,"device":"iPad",
+         "panel":{"millimetersWide":280.6,"millimetersHigh":214.9},
+         "capabilities":["udpMediaV1","udpCursorV1","udpAudioV1","hevc5kV1","displayP3"],
+         "inputCaps":["pencil-v2","mac-input-v1"]}
+        """.utf8))
+        assertEqual(281, upgradedHello.panel?.millimetersWide,
+                    "partial panel physical width decodes fractional mm safely")
+        assertEqual(215, upgradedHello.panel?.millimetersHigh,
+                    "partial panel physical height decodes fractional mm safely")
+        assertEqual(true, upgradedHello.supportsUDPMediaV1, "udpMediaV1 detected")
+        assertEqual(true, upgradedHello.supportsUDPCursorV1, "udpCursorV1 detected")
+        assertEqual(true, upgradedHello.supportsUDPAudioV1, "udpAudioV1 detected")
+        assertEqual(true, upgradedHello.supportsHEVC5KV1, "hevc5kV1 detected")
+        assertEqual(true, upgradedHello.supportsDisplayP3, "displayP3 detected")
+        precondition(upgradedHello.hasValidGeometry)
+
         print("DeviceCapabilitiesSelfTest PASS")
     }
 }

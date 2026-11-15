@@ -40,12 +40,35 @@ public final class SecureTls {
         } catch (GeneralSecurityException error) { throw new CertificateException("certificate fingerprint failed", error); }
     }
 
+    public static final String LOCAL_CERT_EXPIRED_MESSAGE =
+            "本机传输安全证书已满 1 年有效期并过期，请在“设置 → 安全与配对”中显式重置本机传输身份并重新配对";
+    public static final String PEER_CERT_EXPIRED_MESSAGE =
+            "对端传输安全证书已满 1 年有效期并过期，请在双方“安全与配对”设置中重置传输身份并重新配对";
+
+    public static void checkCertificateValidity(X509Certificate cert, boolean localIdentity)
+            throws CertificateException {
+        if (cert == null) {
+            throw new CertificateException("missing transport certificate");
+        }
+        try {
+            cert.checkValidity();
+        } catch (java.security.cert.CertificateExpiredException expired) {
+            throw new java.security.cert.CertificateExpiredException(
+                    localIdentity ? LOCAL_CERT_EXPIRED_MESSAGE : PEER_CERT_EXPIRED_MESSAGE);
+        } catch (java.security.cert.CertificateNotYetValidException notYetValid) {
+            throw new java.security.cert.CertificateNotYetValidException(
+                    localIdentity
+                            ? "本机传输安全证书尚未生效，请检查系统时间或在“设置 → 安全与配对”中重置身份并重新配对"
+                            : "对端传输安全证书尚未生效，请校准两台设备的系统时间后重试，或在“安全与配对”设置中重置身份并重新配对");
+        }
+    }
+
     public static void validate(X509Certificate[] chain, boolean server,
                                 Predicate<String> acceptedFingerprint) throws CertificateException {
         if (chain == null || chain.length != 1) throw new CertificateException("expected one pinned transport certificate");
         X509Certificate cert = chain[0];
         if (!acceptedFingerprint.test(fingerprint(cert))) throw new CertificateException("unknown or revoked transport identity");
-        cert.checkValidity();
+        checkCertificateValidity(cert, false);
         if (!"EC".equals(cert.getPublicKey().getAlgorithm()) || cert.hasUnsupportedCriticalExtension()
                 || !cert.getSubjectX500Principal().equals(cert.getIssuerX500Principal())) {
             throw new CertificateException("unsupported transport certificate");
@@ -63,6 +86,7 @@ public final class SecureTls {
     /** New context for each connection: no cross-connection session cache/resumption. */
     public static SSLContext context(PrivateKey privateKey, X509Certificate certificate,
                                      Predicate<String> acceptedFingerprint) throws GeneralSecurityException {
+        checkCertificateValidity(certificate, true);
         SSLContext context = SSLContext.getInstance("TLS");
         context.init(new KeyManager[]{new IdentityKeyManager(privateKey, certificate)},
                 new TrustManager[]{new X509TrustManager() {

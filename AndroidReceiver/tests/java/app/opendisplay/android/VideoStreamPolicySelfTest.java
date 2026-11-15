@@ -25,6 +25,9 @@ public final class VideoStreamPolicySelfTest {
         testCodecMapping();
         testProtocolV2FrameIdentity();
         testProtocolV2SessionFiltering();
+        testProtocolV2UdpEpochOrdering();
+        testExpiredTransportCertificateRejectedWithRecoveryMessage();
+        testUdpAudioRingBufferBoundsAndDeduplication();
         testRefreshModeSelection();
         testFrameClassifier();
         testVideoFramePacketUsesZeroCopyBinaryPayloadView();
@@ -303,6 +306,119 @@ public final class VideoStreamPolicySelfTest {
         assertTrue(session.matchesIdentity(0, 0));
         assertTrue(session.acceptFrame(4, VideoFrameTelemetry.fromWirePayload(
                 new byte[] {0, 0, 0, 1, 0x65}, 5)));
+    }
+
+    private static void testProtocolV2UdpEpochOrdering() {
+        // Order A (U1 critical bug fix): udpMediaConfig (sessionEpoch=1) arrives BEFORE initial streamConfig!
+        ReceiverProtocolSession beforeCfg = new ReceiverProtocolSession();
+        beforeCfg.onConnected(10);
+        assertEquals(0L, beforeCfg.sessionEpoch());
+        assertTrue(beforeCfg.acceptUdpMediaEpoch(10, 1));
+        assertEquals(1L, beforeCfg.sessionEpoch());
+        assertFalse(beforeCfg.matchesIdentity(1, 1));
+        // Downgrade to V1 after pre-binding V2 UDP epoch must be rejected.
+        assertFalse(beforeCfg.acceptStreamConfig(10, 1, 0, 0));
+        // Initial streamConfig with matching sessionEpoch=1 must succeed without rejecting!
+        assertTrue(beforeCfg.acceptStreamConfig(10, 2, 1, 1));
+        assertTrue(beforeCfg.isNegotiatedV2());
+        assertTrue(beforeCfg.matchesIdentity(1, 1));
+        assertTrue(beforeCfg.acceptFrame(10, telemetry(1, 1, 1)));
+
+        // Order B: initial streamConfig (sessionEpoch=1) arrives BEFORE udpMediaConfig (sessionEpoch=1).
+        ReceiverProtocolSession afterCfg = new ReceiverProtocolSession();
+        afterCfg.onConnected(11);
+        assertTrue(afterCfg.acceptStreamConfig(11, 2, 1, 1));
+        assertTrue(afterCfg.acceptUdpMediaEpoch(11, 1));
+        assertTrue(afterCfg.matchesIdentity(1, 1));
+        // Stale udpMediaConfig (< current epoch) must be rejected.
+        assertTrue(afterCfg.acceptStreamConfig(11, 2, 2, 1));
+        assertFalse(afterCfg.acceptUdpMediaEpoch(11, 1));
+        assertTrue(afterCfg.acceptUdpMediaEpoch(11, 2));
+        // Newer udpMediaConfig (> current epoch) advances epoch cleanly and awaits matching streamConfig.
+        assertTrue(afterCfg.acceptUdpMediaEpoch(11, 3));
+        assertEquals(3L, afterCfg.sessionEpoch());
+        assertFalse(afterCfg.acceptStreamConfig(11, 2, 2, 2));
+        assertTrue(afterCfg.acceptStreamConfig(11, 2, 3, 1));
+        assertTrue(afterCfg.matchesIdentity(3, 1));
+
+        // Legacy V1 session must reject udpMediaConfig.
+        ReceiverProtocolSession legacy = new ReceiverProtocolSession();
+        legacy.onConnected(12);
+        assertTrue(legacy.acceptStreamConfig(12, 1, 0, 0));
+        assertFalse(legacy.acceptUdpMediaEpoch(12, 1));
+    }
+
+    private static void testExpiredTransportCertificateRejectedWithRecoveryMessage() throws Exception {
+        java.security.KeyPairGenerator kpg = java.security.KeyPairGenerator.getInstance("EC");
+        kpg.initialize(new java.security.spec.ECGenParameterSpec("secp256r1"));
+        java.security.KeyPair pair = kpg.generateKeyPair();
+        long now = System.currentTimeMillis();
+        java.security.cert.X509Certificate expired = TransportCertificate.create(
+                pair.getPrivate(),
+                pair.getPublic(),
+                new java.util.Date(now - 400L * 86_400_000L),
+                new java.util.Date(now - 86_400_000L));
+
+        boolean localRejected = false;
+        try {
+            SecureTls.checkCertificateValidity(expired, true);
+        } catch (java.security.cert.CertificateExpiredException error) {
+            localRejected = true;
+            assertTrue(error.getMessage().contains("重置本机传输身份并重新配对"));
+        }
+        assertTrue(localRejected);
+
+        boolean peerRejected = false;
+        try {
+            SecureTls.validate(new java.security.cert.X509Certificate[] {expired}, false, pin -> true);
+        } catch (java.security.cert.CertificateExpiredException error) {
+            peerRejected = true;
+            assertTrue(error.getMessage().contains("重置传输身份并重新配对"));
+        }
+        assertTrue(peerRejected);
+    }
+
+    private static void testUdpAudioRingBufferBoundsAndDeduplication() {
+        // 48kHz stereo S16LE (4 bytes/frame) * 60ms = 2880 frames = 11520 bytes max capacity.
+        UdpAudioPlayer.PcmRingBuffer ring = new UdpAudioPlayer.PcmRingBuffer(48_000, 2);
+        assertEquals(11_520, ring.capacityBytes());
+
+        byte[] chunk960 = new byte[960]; // 5ms stereo
+        for (int i = 0; i < chunk960.length; i++) {
+            chunk960[i] = (byte) ((i * 7) & 0xFF);
+        }
+        // Offer 15 packets (75ms = 14,400 bytes) -> bounded at 60ms (11,520 bytes) with 2,880 bytes dropped.
+        for (int seq = 1; seq <= 15; seq++) {
+            assertTrue(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
+                    seq, 1_000L + seq, 48_000, 2, 0, chunk960)));
+        }
+        assertEquals(11_520, ring.availableBytes());
+        assertEquals(2_880L, ring.droppedOverflowBytes());
+        assertEquals(0, ring.availableBytes() % 4);
+
+        // Duplicate or out-of-order audioSeq must be ignored.
+        assertFalse(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
+                15L, 1_020L, 48_000, 2, 0, chunk960)));
+        assertFalse(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
+                14L, 1_020L, 48_000, 2, 0, chunk960)));
+
+        byte[] drained = new byte[12_000];
+        assertEquals(11_520, ring.drain(drained, drained.length));
+        assertEquals(0, ring.availableBytes());
+
+        // 32-bit wrap-safe audioSeq rollover across 0xFFFFFFFF -> 0.
+        ring.clear();
+        assertTrue(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
+                0xFFFF_FFFFL, 2_000L, 48_000, 2, 0, chunk960)));
+        assertTrue(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
+                0L, 2_005L, 48_000, 2, 0, chunk960)));
+        assertEquals(1_920, ring.availableBytes());
+
+        // Format change (48kHz mono = 5,760 bytes cap) reconfigures cleanly.
+        assertTrue(ring.offerPacket(new app.opendisplay.android.protocol.UdpMediaProtocol.AudioPayload(
+                1L, 3_000L, 48_000, 1, 0, new byte[480])));
+        assertEquals(5_760, ring.capacityBytes());
+        assertEquals(480, ring.availableBytes());
     }
 
     private static VideoFrameTelemetry telemetry(long epoch, long version, long sequence) {

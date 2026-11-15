@@ -37,6 +37,7 @@ final class CursorEcho: @unchecked Sendable {
     private let relay = LatestValueRelay<CursorPosition>()
     private var timer: DispatchSourceTimer?
     private var write: Write?
+    private var udpSend: ((CursorPosition, UInt64) -> Bool)?
     private var lastPosition: CursorPosition?
     private var sequence: UInt64 = 0
     private var statsStart: TimeInterval = 0
@@ -45,10 +46,12 @@ final class CursorEcho: @unchecked Sendable {
     private var maxCompletionMs: Double = 0
 
     func start(sample: @escaping () -> CursorPosition?, write: @escaping Write,
+               udpSend: ((CursorPosition, UInt64) -> Bool)? = nil,
                log: ((String) -> Void)? = nil) {
         queue.sync {
             resetOnQueue()
             self.write = write
+            self.udpSend = udpSend
             statsStart = ProcessInfo.processInfo.systemUptime
             lastPoll = statsStart
             let timer = DispatchSource.makeTimerSource(queue: queue)
@@ -85,6 +88,7 @@ final class CursorEcho: @unchecked Sendable {
         timer?.cancel(); timer = nil
         relay.reset()
         write = nil
+        udpSend = nil
         lastPosition = nil
         maxCompletionMs = 0
         maxPollGapMs = 0
@@ -93,17 +97,23 @@ final class CursorEcho: @unchecked Sendable {
     private func submit(_ token: LatestValueRelay<CursorPosition>.Token) {
         guard let position = relay.take(token), let write else { return }
         sequence &+= 1
+        let started = ProcessInfo.processInfo.systemUptime
+        if let udpSend, udpSend(position, sequence) {
+            maxCompletionMs = max(maxCompletionMs,
+                (ProcessInfo.processInfo.systemUptime - started) * 1_000)
+            if let next = relay.complete(token) { submit(next) }
+            return
+        }
         // Preserve precision instead of the old 0.0004 deadband (~1.6 pixels at 4K).
         let object: [String: Any] = ["type": "cursor", "x": position.x,
             "y": position.y, "v": position.visible ? 1 : 0, "s": sequence]
         guard let data = try? JSONSerialization.data(withJSONObject: object) else {
             resetOnQueue(); return
         }
-        let started = ProcessInfo.processInfo.systemUptime
         write(ReceiverFrameDecoder.frame(data)) { [weak self] success in
             guard let self else { return }
-            self.queue.async {
-                guard self.relay.isCurrent(token) else { return }
+            self.queue.async { [weak self] in
+                guard let self, self.relay.isCurrent(token) else { return }
                 self.maxCompletionMs = max(self.maxCompletionMs,
                     (ProcessInfo.processInfo.systemUptime - started) * 1_000)
                 guard success else { self.resetOnQueue(); return }

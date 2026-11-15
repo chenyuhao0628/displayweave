@@ -47,6 +47,12 @@ import Foundation
                      "keyframes are never dropped on age alone during recovery")
         precondition(ReceiverFrameAgePolicy.isExpired(receivedAtUptime: 10.0, nowUptime: 10.010, isKeyframe: false, synchronizedAgeMs: 125.0),
                      "synchronized frame age >= 120ms expires P-frame")
+        precondition(!ReceiverFrameAgePolicy.isExpired(receivedAtUptime: 10.0, nowUptime: 10.010, isKeyframe: true, synchronizedAgeMs: 500.0),
+                     "keyframes remain admissible even when synchronized age exceeds 120ms")
+        precondition(ReceiverFrameAgePolicy.isExpired(receivedAtUptime: 0.0, nowUptime: 0.065, isKeyframe: false),
+                     "exact 65ms local queue age boundary expires P-frame")
+        precondition(!ReceiverFrameAgePolicy.isExpired(receivedAtUptime: .nan, nowUptime: 10.5, isKeyframe: false, synchronizedAgeMs: .nan),
+                     "non-finite timestamps do not falsely expire frames")
 
         print("Shared Apple video flow: transient pressure, bounded flush, first-frame, idle and monitor-schedule semantics PASS")
     }

@@ -38,35 +38,35 @@ struct ReceiverScreen: View {
     }
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack {
-                if isStreaming {
-                    Color.black.ignoresSafeArea()
-                    VideoLayerView(displayLayer: model.receiver.displayLayer,
-                                   receiver: model.receiver,
-                                   useMetal: metalRenderer)
-                        .id(metalRenderer)   // rebuild the layer tree on toggle
-                        .ignoresSafeArea()
-                    if showAnalytics {
-                        VStack {
-                            Spacer()
-                            PerfOverlay(stats: model.receiver.perf,
-                                        videoSize: model.receiver.videoSize)
-                                .padding(.bottom, 10)
-                        }
-                        .allowsHitTesting(false)   // never block touch input
+        ZStack {
+            WindowGeometryObserver { scene, windowBounds in
+                model.updateWindowGeometry(scene: scene, windowBounds: windowBounds)
+            }
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+
+            if isStreaming {
+                Color.black.ignoresSafeArea()
+                VideoLayerView(displayLayer: model.receiver.displayLayer,
+                               receiver: model.receiver,
+                               useMetal: metalRenderer)
+                    .id(metalRenderer)   // rebuild the layer tree on toggle
+                    .ignoresSafeArea()
+                if showAnalytics {
+                    VStack {
+                        Spacer()
+                        PerfOverlay(stats: model.receiver.perf,
+                                    videoSize: model.receiver.videoSize)
+                            .padding(.bottom, 10)
                     }
-                } else {
-                    IdleView(receiver: model.receiver, showSettings: $showSettings)
+                    .allowsHitTesting(false)   // never block touch input
                 }
+            } else {
+                IdleView(receiver: model.receiver, showSettings: $showSettings)
             }
-            .onAppear { model.receiver.setOrientation(portrait: geo.size.height > geo.size.width) }
-            .onChange(of: geo.size) { _, size in
-                model.receiver.setOrientation(portrait: size.height > size.width)
-            }
-            .sheet(isPresented: $showOnboarding) {
-                OnboardingView { onboardingDismissed = true }
-            }
+        }
+        .sheet(isPresented: $showOnboarding) {
+            OnboardingView { onboardingDismissed = true }
         }
         .ignoresSafeArea(edges: isStreaming ? .all : [])
         .overlay(alignment: .topTrailing) {
@@ -117,6 +117,76 @@ struct ReceiverScreen: View {
             if !hasConnectedBefore && !onboardingDismissed {
                 showOnboarding = true
             }
+        }
+    }
+}
+
+/// Observes the hosting UIWindowScene and live window bounds without affecting
+/// layout or hit-testing, driving iPad Split View / Stage Manager / rotation
+/// geometry updates while keeping iPhone full-screen sizing unaffected by
+/// safe-area toggles.
+private struct WindowGeometryObserver: UIViewRepresentable {
+    let onUpdate: (UIWindowScene?, CGRect) -> Void
+
+    func makeUIView(context: Context) -> ObserverView {
+        let view = ObserverView()
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = false
+        view.onUpdate = onUpdate
+        return view
+    }
+
+    func updateUIView(_ uiView: ObserverView, context: Context) {
+        uiView.onUpdate = onUpdate
+        uiView.reportIfNeeded()
+    }
+
+    final class ObserverView: UIView {
+        var onUpdate: ((UIWindowScene?, CGRect) -> Void)?
+        private var lastReportedBounds: CGRect = .null
+        private var lastScreenScale: CGFloat = 0
+        private var screenModeObserver: NSObjectProtocol?
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            screenModeObserver = NotificationCenter.default.addObserver(
+                forName: UIScreen.modeDidChangeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.lastReportedBounds = .null
+                self?.reportIfNeeded()
+            }
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        deinit {
+            if let screenModeObserver {
+                NotificationCenter.default.removeObserver(screenModeObserver)
+            }
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            lastReportedBounds = .null
+            reportIfNeeded()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            reportIfNeeded()
+        }
+
+        func reportIfNeeded() {
+            guard let window else { return }
+            let scene = window.windowScene
+            let candidate = window.bounds.width > 0 && window.bounds.height > 0 ? window.bounds : bounds
+            let scale = scene?.screen.scale ?? 0
+            guard candidate != lastReportedBounds || scale != lastScreenScale else { return }
+            lastReportedBounds = candidate
+            lastScreenScale = scale
+            onUpdate?(scene, candidate)
         }
     }
 }

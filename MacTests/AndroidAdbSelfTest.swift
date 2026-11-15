@@ -145,8 +145,9 @@ struct AndroidAdbSelfTest {
                "missing ADB should be actionable and disable connection")
         let emptyPresentation = AndroidAdbPresentation.make(
             executableFound: true, devices: [])
-        expect(emptyPresentation.message == "未检测到 Android 设备",
-               "empty ADB list should show the required message")
+        expect(emptyPresentation.message.contains("未检测到 Android 设备")
+               && emptyPresentation.message.contains("USB 调试"),
+               "empty ADB list should show the required message and recovery action")
         let unauthorizedPresentation = AndroidAdbPresentation.make(
             executableFound: true,
             devices: [AndroidAdbDevice(serial: "U", state: .unauthorized, model: nil,

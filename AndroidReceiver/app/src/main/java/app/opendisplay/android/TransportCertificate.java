@@ -20,6 +20,13 @@ import java.util.TimeZone;
 public final class TransportCertificate {
     private TransportCertificate() { }
     public static X509Certificate create(PrivateKey privateKey, PublicKey publicKey) throws GeneralSecurityException {
+        long now = System.currentTimeMillis();
+        return create(privateKey, publicKey, new Date(now - 86400000L), new Date(now + 365L * 86400000L));
+    }
+
+    static X509Certificate create(
+            PrivateKey privateKey, PublicKey publicKey, Date notBefore, Date notAfter)
+            throws GeneralSecurityException {
         if (!(publicKey instanceof ECPublicKey) || ((ECPublicKey) publicKey).getParams().getCurve().getField().getFieldSize() != 256) {
             throw new GeneralSecurityException("transport identity requires P-256");
         }
@@ -32,9 +39,8 @@ public final class TransportCertificate {
         byte[] usage = sequence(oid(0x55, 0x1d, 0x0f), value(1, bytes(0xff)), value(4, value(3, bytes(7, 0x80))));
         byte[] extended = sequence(oid(0x55, 0x1d, 0x25), value(4, sequence(
                 oid(0x2b, 6, 1, 5, 5, 7, 3, 1), oid(0x2b, 6, 1, 5, 5, 7, 3, 2))));
-        long now = System.currentTimeMillis();
         byte[] tbs = sequence(value(0xa0, value(2, bytes(2))), value(2, serial), algorithm, name,
-                sequence(time(new Date(now - 86400000L)), time(new Date(now + 365L * 86400000L))), name, spki,
+                sequence(time(notBefore), time(notAfter)), name, spki,
                 value(0xa3, sequence(basic, usage, extended)));
         Signature signer = Signature.getInstance("SHA256withECDSA");
         signer.initSign(privateKey); signer.update(tbs);

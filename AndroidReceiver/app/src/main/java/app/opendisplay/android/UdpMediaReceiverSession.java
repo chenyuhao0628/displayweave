@@ -23,6 +23,10 @@ public final class UdpMediaReceiverSession implements AutoCloseable {
     public interface Listener {
         void onFrameReady(long generation, long sessionEpoch, UdpMediaProtocol.FrameEnvelope frame);
         void onKeyframeNeeded(long generation, long sessionEpoch, String reason);
+        default void onCursor(
+                long generation, long sessionEpoch, UdpMediaProtocol.CursorPayload cursor) {}
+        default void onAudio(
+                long generation, long sessionEpoch, UdpMediaProtocol.AudioPayload audio) {}
     }
 
     private static final int SOCKET_TIMEOUT_MS = 5;
@@ -183,6 +187,32 @@ public final class UdpMediaReceiverSession implements AutoCloseable {
                 authenticated.extendedSequence,
                 authenticated.header.sendTimeUs,
                 nowNs);
+
+        if (authenticated.header.packetType == UdpMediaProtocol.PACKET_CURSOR) {
+            try {
+                UdpMediaProtocol.CursorPayload cursor =
+                        UdpMediaProtocol.CursorPayload.decode(authenticated.payload);
+                if (running) {
+                    listener.onCursor(generation, sessionEpoch, cursor);
+                }
+            } catch (IllegalArgumentException ignored) {
+            }
+            emitFeedbackIfDue(nowNs);
+            return;
+        }
+
+        if (authenticated.header.packetType == UdpMediaProtocol.PACKET_AUDIO) {
+            try {
+                UdpMediaProtocol.AudioPayload audio =
+                        UdpMediaProtocol.AudioPayload.decode(authenticated.payload);
+                if (running) {
+                    listener.onAudio(generation, sessionEpoch, audio);
+                }
+            } catch (IllegalArgumentException ignored) {
+            }
+            emitFeedbackIfDue(nowNs);
+            return;
+        }
 
         UdpMediaProtocol.FrameEnvelope assembled = reassembler.ingest(authenticated, nowNs);
         if (assembled != null) {

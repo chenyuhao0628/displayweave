@@ -15,6 +15,7 @@
 import Foundation
 import Metal
 import QuartzCore
+import CoreGraphics
 import CoreVideo
 
 final class MetalVideoRenderer {
@@ -28,6 +29,7 @@ final class MetalVideoRenderer {
     private let lock = NSLock()
     private var pendingFrame: (buffer: CVPixelBuffer, captureMs: Double?, generation: UInt64, resetGeneration: UInt64)?
     private var currentDrawableSize: CGSize = .zero
+    private var currentDisplayP3 = false
     private var resetGeneration: UInt64 = 0
     private var latestGeneration: UInt64 = 0
     private var needsTextureCacheFlush = false
@@ -91,6 +93,7 @@ final class MetalVideoRenderer {
 
         metalLayer.device = device
         metalLayer.pixelFormat = .bgra8Unorm
+        metalLayer.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
         metalLayer.framebufferOnly = true
         metalLayer.isOpaque = true
         // Best measured config (photon p50 ~58ms): 3 drawables, plain
@@ -132,6 +135,7 @@ final class MetalVideoRenderer {
         resetGeneration &+= 1
         pendingFrame = nil
         currentDrawableSize = .zero
+        currentDisplayP3 = false
         needsTextureCacheFlush = false
         lock.unlock()
         renderQueue.async { [weak self] in
@@ -151,6 +155,7 @@ final class MetalVideoRenderer {
             if latestGeneration > 0 {
                 resetGeneration &+= 1
                 currentDrawableSize = .zero
+                currentDisplayP3 = false
                 needsTextureCacheFlush = true
             }
             latestGeneration = generation
@@ -188,16 +193,24 @@ final class MetalVideoRenderer {
         draw(frame.buffer, captureMs: frame.captureMs, generation: frame.generation, resetGeneration: frame.resetGeneration)
     }
 
+    private static func isDisplayP3Buffer(_ pixelBuffer: CVPixelBuffer) -> Bool {
+        guard let primaries = CVBufferCopyAttachment(pixelBuffer, kCVImageBufferColorPrimariesKey, nil) else {
+            return false
+        }
+        return CFEqual(primaries, kCVImageBufferColorPrimaries_P3_D65)
+    }
+
     private func draw(_ pixelBuffer: CVPixelBuffer, captureMs: Double?, generation: UInt64, resetGeneration: UInt64) {
         let w = CVPixelBufferGetWidth(pixelBuffer)
         let h = CVPixelBufferGetHeight(pixelBuffer)
         let targetSize = CGSize(width: w, height: h)
+        let targetDisplayP3 = Self.isDisplayP3Buffer(pixelBuffer)
         lock.lock()
         guard self.resetGeneration == resetGeneration, self.latestGeneration == generation else {
             lock.unlock()
             return
         }
-        let needsDrawableResize = currentDrawableSize != targetSize
+        let needsDrawableResize = currentDrawableSize != targetSize || currentDisplayP3 != targetDisplayP3
         if needsDrawableResize, pendingFrame == nil {
             pendingFrame = (pixelBuffer, captureMs, generation, resetGeneration)
         }
@@ -211,11 +224,16 @@ final class MetalVideoRenderer {
                     return
                 }
                 self.currentDrawableSize = targetSize
+                self.currentDisplayP3 = targetDisplayP3
                 self.lock.unlock()
                 CATransaction.begin()
                 CATransaction.setDisableActions(true)
                 if self.metalLayer.drawableSize != targetSize {
                     self.metalLayer.drawableSize = targetSize
+                }
+                let csName = targetDisplayP3 ? CGColorSpace.displayP3 : CGColorSpace.sRGB
+                if let cs = CGColorSpace(name: csName) {
+                    self.metalLayer.colorspace = cs
                 }
                 CATransaction.commit()
                 self.renderQueue.async { [weak self] in

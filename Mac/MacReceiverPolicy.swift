@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 /// Queue-owned by the sender. The Mac receiver rejects HEVC for the remainder
 /// of a connection once it has requested fallback, including after a resize.
@@ -24,7 +25,110 @@ struct MacStreamPlan: Equatable {
     let codec: StreamCodec
 }
 
+enum VirtualDisplayPhysicalSizePolicy {
+    static let defaultMobileLandscapeMillimeters = CGSize(width: 208, height: 96)
+    static let defaultMobilePortraitMillimeters = CGSize(width: 96, height: 208)
+    static let minimumAreaSquareMillimeters: Double = 20_000
+    static let maximumDimensionMillimeters: Double = 2_000
+
+    static func clampedMillimeters(width: Double, height: Double) -> CGSize? {
+        guard width.isFinite, height.isFinite, width > 0, height > 0 else { return nil }
+        var w = width
+        var h = height
+        let maxEdge = max(w, h)
+        if maxEdge > maximumDimensionMillimeters {
+            let down = maximumDimensionMillimeters / maxEdge
+            w *= down
+            h *= down
+        }
+        let area = w * h
+        if area < minimumAreaSquareMillimeters {
+            let up = (minimumAreaSquareMillimeters / area).squareRoot()
+            w *= up
+            h *= up
+        }
+        if w > maximumDimensionMillimeters {
+            w = maximumDimensionMillimeters
+            h = max(h, minimumAreaSquareMillimeters / w)
+        }
+        if h > maximumDimensionMillimeters {
+            h = maximumDimensionMillimeters
+            w = max(w, minimumAreaSquareMillimeters / h)
+        }
+        if w * h < minimumAreaSquareMillimeters {
+            let fix = (minimumAreaSquareMillimeters / (w * h)).squareRoot().nextUp
+            w = min(maximumDimensionMillimeters, w * fix)
+            h = min(maximumDimensionMillimeters, h * fix)
+            if w * h < minimumAreaSquareMillimeters {
+                if w <= h {
+                    w = min(maximumDimensionMillimeters, (minimumAreaSquareMillimeters / h).nextUp)
+                } else {
+                    h = min(maximumDimensionMillimeters, (minimumAreaSquareMillimeters / w).nextUp)
+                }
+            }
+        }
+        return CGSize(width: w, height: h)
+    }
+
+    static func millimeters(
+        for info: PhoneInfo,
+        selection: DesktopResolution = .automatic,
+        pointsWide: Int,
+        pointsHigh: Int
+    ) -> CGSize {
+        let landscape = pointsWide == pointsHigh ? (info.pixelsWide >= info.pixelsHigh) : (pointsWide >= pointsHigh)
+        if info.isMacReceiver {
+            if selection == .automatic,
+               let validated = MacReceiverPolicy.physicalSize(panel: info.panel),
+               let clamped = clampedMillimeters(width: validated.width, height: validated.height) {
+                return orient(clamped, landscape: landscape)
+            }
+            let fallbackW = Double(max(2, pointsWide)) * 25.4 / 110.0
+            let fallbackH = Double(max(2, pointsHigh)) * 25.4 / 110.0
+            return clampedMillimeters(width: fallbackW, height: fallbackH)
+                ?? (landscape ? defaultMobileLandscapeMillimeters : defaultMobilePortraitMillimeters)
+        }
+
+        if let panel = info.panel,
+           let rawW = panel.millimetersWide,
+           let rawH = panel.millimetersHigh,
+           rawW > 0, rawH > 0,
+           let clamped = clampedMillimeters(width: Double(rawW), height: Double(rawH)) {
+            return orient(clamped, landscape: landscape)
+        }
+
+        return landscape ? defaultMobileLandscapeMillimeters : defaultMobilePortraitMillimeters
+    }
+
+    private static func orient(_ size: CGSize, landscape: Bool) -> CGSize {
+        let longEdge = max(size.width, size.height)
+        let shortEdge = min(size.width, size.height)
+        return landscape
+            ? CGSize(width: longEdge, height: shortEdge)
+            : CGSize(width: shortEdge, height: longEdge)
+    }
+}
+
 enum MacReceiverPolicy {
+    static let maxH264LongEdge = 4096
+    static let maxH264ShortEdge = 2304
+    static let maxHEVC5KLongEdge = 5120
+    static let maxHEVC5KShortEdge = 2880
+    static let maxHEVC5KFrameRate = 60
+    static let maxHEVC5KPixelsPerSecond = 5120 * 2880 * 60
+
+    static func clampedH264Dimensions(width: Int, height: Int) -> (width: Int, height: Int) {
+        let safeW = max(2, min(16384, width))
+        let safeH = max(2, min(16384, height))
+        let portrait = safeH > safeW
+        let maxW = portrait ? maxH264ShortEdge : maxH264LongEdge
+        let maxH = portrait ? maxH264LongEdge : maxH264ShortEdge
+        let ratio = min(1.0, Double(maxW) / Double(safeW), Double(maxH) / Double(safeH))
+        return (
+            max(2, Int(Double(safeW) * ratio) & ~1),
+            max(2, Int(Double(safeH) * ratio) & ~1)
+        )
+    }
     static func physicalSize(panel: PanelAnnouncement?) -> DesktopPhysicalSize? {
         guard let panel, let width = panel.millimetersWide, let height = panel.millimetersHigh,
               (2...16384).contains(panel.pixelsWide), (2...16384).contains(panel.pixelsHigh),
@@ -65,22 +169,40 @@ enum MacReceiverPolicy {
         let nativeW = dimension(sourceWidth ?? (pointsWide * scale))
         let nativeH = dimension(sourceHeight ?? (pointsHigh * scale))
         let portrait = nativeH > nativeW
-        let fallbackW = portrait ? 2304 : 4096
-        let fallbackH = portrait ? 4096 : 2304
+        let h264FallbackW = portrait ? maxH264ShortEdge : maxH264LongEdge
+        let h264FallbackH = portrait ? maxH264LongEdge : maxH264ShortEdge
         let h264Caps = (info.videoCaps ?? []).prefix(16).filter { $0.codec.lowercased() == "h264" }
         let fallback = h264Caps.isEmpty ? [VideoCapability(codec: "h264")] : h264Caps
         let hevcCaps = (info.videoCaps ?? []).prefix(16).filter { $0.codec.lowercased() == "hevc" }
         let hevc = hardwareHEVCEncode && settings.codecMode != .h264
             && info.negotiatedSupportedCodecs.contains("hevc") && !hevcCaps.isEmpty
+        let allowsHEVC5K = hevc && info.supportsHEVC5KV1
+        let fallbackW = allowsHEVC5K ? (portrait ? maxHEVC5KShortEdge : maxHEVC5KLongEdge) : h264FallbackW
+        let fallbackH = allowsHEVC5K ? (portrait ? maxHEVC5KLongEdge : maxHEVC5KShortEdge) : h264FallbackH
         func intersect(_ a: Int?, _ b: Int?) -> Int? {
             if let a, let b { return min(a, b) }; return a ?? b
         }
-        let offers = hevc ? hevcCaps.flatMap { cap in fallback.map { safe in
+        func is5KCap(_ cap: VideoCapability) -> Bool {
+            guard let w = cap.maxWidth, let h = cap.maxHeight else { return false }
+            let exceeds4K = max(w, h) > maxH264LongEdge || min(w, h) > maxH264ShortEdge
+            let fits5K = max(w, h) <= maxHEVC5KLongEdge && min(w, h) <= maxHEVC5KShortEdge
+            return exceeds4K && fits5K
+        }
+        let intersectedHEVC = hevcCaps.flatMap { cap in fallback.map { safe in
             VideoCapability(codec: "hevc", maxWidth: intersect(cap.maxWidth, safe.maxWidth),
                 maxHeight: intersect(cap.maxHeight, safe.maxHeight),
                 maxFrameRate: intersect(cap.maxFrameRate, safe.maxFrameRate),
                 maxPixelsPerSecond: intersect(cap.maxPixelsPerSecond, safe.maxPixelsPerSecond))
-        } } : fallback
+        } }
+        let native5KHEVC: [VideoCapability] = allowsHEVC5K ? hevcCaps.filter(is5KCap).map { cap in
+            VideoCapability(
+                codec: "hevc",
+                maxWidth: cap.maxWidth,
+                maxHeight: cap.maxHeight,
+                maxFrameRate: intersect(cap.maxFrameRate, maxHEVC5KFrameRate),
+                maxPixelsPerSecond: intersect(cap.maxPixelsPerSecond, maxHEVC5KPixelsPerSecond))
+        } : []
+        let offers = hevc ? (intersectedHEVC + native5KHEVC) : fallback
         // Alternative envelopes are evaluated independently, never combined into
         // an operating point that no advertised capability can actually decode.
         let plans = offers.map { cap -> MacStreamPlan in

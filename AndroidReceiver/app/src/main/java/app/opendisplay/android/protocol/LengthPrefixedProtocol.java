@@ -44,8 +44,20 @@ public final class LengthPrefixedProtocol {
             "frameSequence",
             "maxFrameBytes",
             "binaryFrameHeaderV2",
-            "udpMediaV1"
+            "udpMediaV1",
+            "udpCursorV1",
+            "udpAudioV1"
     };
+    public static final String[] INPUT_CAPS_LEGACY = new String[] {
+            AndroidStylusInput.CAPABILITY_V1
+    };
+    public static final String[] INPUT_CAPS_ENCRYPTED = new String[] {
+            AndroidStylusInput.CAPABILITY_V1,
+            AndroidStylusInput.CAPABILITY_V2,
+            AndroidDesktopInput.CAPABILITY
+    };
+    public static final double MIN_VALID_DPI = 50.0;
+    public static final double MAX_VALID_DPI = 1000.0;
 
     public enum FrameLengthFailure {
         INVALID_LENGTH,
@@ -214,6 +226,27 @@ public final class LengthPrefixedProtocol {
         return json.getBytes(StandardCharsets.UTF_8);
     }
 
+    /**
+     * Computes validated physical panel dimensions {@code [millimetersWide, millimetersHigh]}
+     * from raw pixel dimensions and {@code xdpi/ydpi}, rejecting bogus/non-finite DPI outside
+     * {@code [50, 1000]} or implausible physical sizes outside {@code [10, 2000]} mm.
+     */
+    public static int[] computePhysicalMillimeters(
+            int rawPixelsWide, int rawPixelsHigh, double xdpi, double ydpi) {
+        if (rawPixelsWide < 2 || rawPixelsHigh < 2
+                || !Double.isFinite(xdpi) || !Double.isFinite(ydpi)
+                || xdpi < MIN_VALID_DPI || xdpi > MAX_VALID_DPI
+                || ydpi < MIN_VALID_DPI || ydpi > MAX_VALID_DPI) {
+            return null;
+        }
+        long mmWide = Math.round((rawPixelsWide / xdpi) * 25.4);
+        long mmHigh = Math.round((rawPixelsHigh / ydpi) * 25.4);
+        if (mmWide < 10L || mmWide > 2000L || mmHigh < 10L || mmHigh > 2000L) {
+            return null;
+        }
+        return new int[] {(int) mmWide, (int) mmHigh};
+    }
+
     public static String helloJson(int pixelsWide, int pixelsHigh, double scale,
                                    String device, String installId) {
         return helloJson(pixelsWide, pixelsHigh, scale, 60, 60,
@@ -225,14 +258,37 @@ public final class LengthPrefixedProtocol {
                                    String[] supportedCodecs, String preferredCodec,
                                    String deviceModel, int androidSdk, String transport,
                                    String device, String installId) {
+        return helloJson(pixelsWide, pixelsHigh, scale, refreshRate, maxFps,
+                supportedCodecs, preferredCodec, deviceModel, androidSdk, transport,
+                device, installId, null, null, false);
+    }
+
+    public static String helloJson(int pixelsWide, int pixelsHigh, double scale,
+                                   int refreshRate, int maxFps,
+                                   String[] supportedCodecs, String preferredCodec,
+                                   String deviceModel, int androidSdk, String transport,
+                                   String device, String installId,
+                                   Integer millimetersWide, Integer millimetersHigh,
+                                   boolean tlsEncrypted) {
+        int safeWidth = Math.max(2, pixelsWide);
+        int safeHeight = Math.max(2, pixelsHigh);
+        double safeScale = Double.isFinite(scale) && scale > 0.0
+                ? Math.min(4.0, scale)
+                : 1.0;
+        String panel = panelJson(
+                safeWidth, safeHeight, safeScale, millimetersWide, millimetersHigh);
+        String[] inputCaps = tlsEncrypted ? INPUT_CAPS_ENCRYPTED : INPUT_CAPS_LEGACY;
         return String.format(Locale.US,
                 "{\"type\":\"hello\",\"pixelsWide\":%d,\"pixelsHigh\":%d,\"scale\":%.3f,"
+                        + "\"panel\":%s,\"inputCaps\":%s,"
                         + "\"refreshRate\":%d,\"maxFps\":%d,\"supportedCodecs\":%s,"
                         + "\"preferredCodec\":\"%s\",\"deviceModel\":\"%s\",\"androidSdk\":%d,"
                         + "\"transport\":\"%s\",\"device\":\"%s\",\"id\":\"%s\","
                         + "\"protocolVersion\":%d,\"maxFrameBytes\":%d,"
                         + "\"capabilities\":%s}",
-                pixelsWide, pixelsHigh, scale,
+                safeWidth, safeHeight, safeScale,
+                panel,
+                stringArrayJson(inputCaps),
                 sanitizeFps(refreshRate), sanitizeFps(maxFps),
                 stringArrayJson(supportedCodecs),
                 escape(preferredCodec),
@@ -246,6 +302,26 @@ public final class LengthPrefixedProtocol {
                 stringArrayJson("wifi".equalsIgnoreCase(transport)
                         ? NEGOTIATED_WIFI_CAPABILITIES
                         : NEGOTIATED_CAPABILITIES));
+    }
+
+    private static String panelJson(
+            int pixelsWide,
+            int pixelsHigh,
+            double scale,
+            Integer millimetersWide,
+            Integer millimetersHigh) {
+        StringBuilder sb = new StringBuilder(96);
+        sb.append("{\"pixelsWide\":").append(pixelsWide)
+                .append(",\"pixelsHigh\":").append(pixelsHigh)
+                .append(String.format(Locale.US, ",\"scale\":%.3f", scale));
+        if (millimetersWide != null && millimetersHigh != null
+                && millimetersWide >= 10 && millimetersWide <= 2000
+                && millimetersHigh >= 10 && millimetersHigh <= 2000) {
+            sb.append(",\"millimetersWide\":").append(millimetersWide)
+                    .append(",\"millimetersHigh\":").append(millimetersHigh);
+        }
+        sb.append('}');
+        return sb.toString();
     }
 
     public static String touchJson(String phase, double x, double y, Double macClockMs) {

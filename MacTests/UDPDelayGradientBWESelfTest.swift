@@ -93,6 +93,18 @@ struct UDPDelayGradientBWESelfTest {
         let effective = bwe.effectiveEncoderBitrate(loadCeilingBps: 25_000_000)
         expect(effective <= 25_000_000, "effective encoder bitrate respects loadCeilingBps and deducts FEC overhead")
 
+        // 6. Manual target bitrate synchronization keeps pre-FEC currentBitrate distinct from post-FEC effectiveEncoderBitrate
+        bwe.syncTargetBitrate(60_000_000)
+        expect(bwe.currentBitrate == 60_000_000, "syncTargetBitrate sets pre-FEC wire budget inside bounds")
+        let uncappedPostFEC = bwe.effectiveEncoderBitrate(loadCeilingBps: nil)
+        expect(uncappedPostFEC < bwe.currentBitrate,
+               "post-FEC effectiveEncoderBitrate deducts FEC overhead while currentBitrate stays at 60 Mbps wire budget")
+        let cappedPostFEC = bwe.effectiveEncoderBitrate(loadCeilingBps: 30_000_000)
+        expect(cappedPostFEC <= 30_000_000 && bwe.currentBitrate == 60_000_000,
+               "loadCeilingBps caps encoder bitrate without mutating bwe.currentBitrate")
+        bwe.syncTargetBitrate(500_000_000)
+        expect(bwe.currentBitrate == 100_000_000, "syncTargetBitrate clamps to upper bound")
+
         print("UDPDelayGradientBWESelfTest PASS")
     }
 }

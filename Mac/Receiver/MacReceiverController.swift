@@ -26,6 +26,7 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
         let debugStats = UserDefaults.standard.object(forKey: "debugStats") == nil
             || UserDefaults.standard.bool(forKey: "debugStats")
         receiver = StreamReceiver(diagnostic: debugStats ? { Log.info($0) } : nil,
+                                  audioPlayer: MacAudioPlayer(),
                                   securityProvider: securityProvider)
         self.port = port
         self.advertiseService = advertiseService
@@ -155,7 +156,7 @@ final class MacReceiverController: NSObject, ObservableObject, NSWindowDelegate 
         }
         window?.makeKeyAndOrderFront(nil)
         window?.makeFirstResponder(videoView)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         applyFullscreen()
     }
 

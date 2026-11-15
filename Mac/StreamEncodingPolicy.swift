@@ -108,8 +108,28 @@ enum StreamEncodingPolicy {
         RefreshRatePolicy.sanitize(fps)
     }
 
-    static func prioritizeEncodingSpeedOverQuality(quality: StreamQuality) -> Bool {
-        quality != .high
+    static let vbvWindowSeconds: Double = 0.05
+    static let vbvPeakMultiplier: Double = 1.5
+    static let minimumVBVWindowBytes: Int = 16_384
+
+    static func prioritizesEncodingSpeed(quality: StreamQuality, fps: Int) -> Bool {
+        quality == .smooth || fps >= 90
+    }
+
+    static func prioritizeEncodingSpeedOverQuality(quality: StreamQuality, fps: Int = 60) -> Bool {
+        prioritizesEncodingSpeed(quality: quality, fps: fps)
+    }
+
+    /// Tight 50 ms VBV burst ceiling (`1.5x` target bitrate over `0.05s`, floor `16_384` bytes)
+    /// so IDR and scene-change bursts cannot overflow the 120-packet UDP pacer or Wi-Fi TX queues,
+    /// while preserving full `1.0x` `AverageBitRate` headroom up to 120 Hz.
+    static func dataRateLimits(bitrate: Int, fps: Int = 60) -> [NSNumber] {
+        _ = fps
+        let safeBitrate = max(bitrate, 0)
+        let averageWindowBytes = Double(safeBitrate) / 8.0 * vbvWindowSeconds
+        let burstBytes = Int((averageWindowBytes * vbvPeakMultiplier).rounded(.up))
+        let bytesLimit = max(burstBytes, minimumVBVWindowBytes)
+        return [NSNumber(value: bytesLimit), NSNumber(value: vbvWindowSeconds)]
     }
 }
 
@@ -162,6 +182,7 @@ struct StreamConfigMessage {
     var bitrate: Int
     var transport: String
     var identity: StreamProtocolFrameIdentity? = nil
+    var udpConfigVersion: Int64? = nil
     var maxFrameBytes: Int? = nil
     var exactFrameRate = false
 
@@ -180,7 +201,12 @@ struct StreamConfigMessage {
             + "\"bitrate\":\(max(bitrate, 0)),"
             + "\"profile\":\"\(profile)\","
             + "\"transport\":\"\(escaped(transport))\""
-        guard let identity else { return legacy + "}" }
+        guard let identity else {
+            if let udpConfigVersion, udpConfigVersion > 0 {
+                return legacy + ",\"configVersion\":\(udpConfigVersion)}"
+            }
+            return legacy + "}"
+        }
         var negotiated = legacy
             + ",\"protocolVersion\":2"
             + ",\"sessionEpoch\":\(identity.sessionEpoch)"

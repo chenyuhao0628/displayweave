@@ -7,6 +7,8 @@ enum UDPMediaPacketType: UInt8, Sendable, Equatable {
     case nack = 2
     case feedback = 3
     case probe = 4
+    case cursor = 5
+    case audio = 6
 }
 
 struct UDPMediaFlags: OptionSet, Sendable, Equatable {
@@ -67,6 +69,16 @@ struct UDPMediaHeader: Equatable, Sendable {
         UInt8(truncatingIfNeeded: UInt64(bitPattern: sessionEpoch))
     }
 
+    @inline(__always)
+    static func frameIdDelta(_ lhs: UInt32, _ rhs: UInt32) -> Int32 {
+        Int32(bitPattern: lhs &- rhs)
+    }
+
+    @inline(__always)
+    static func isFrameIdNewer(_ candidate: UInt32, than baseline: UInt32) -> Bool {
+        Int32(bitPattern: candidate &- baseline) > 0
+    }
+
     func encode() -> Data {
         var data = Data(capacity: Self.byteLength)
         let byte0 = ((version & 0x03) << 6)
@@ -108,6 +120,10 @@ struct UDPMediaHeader: Equatable, Sendable {
             guard fragCount >= 1,
                   fragCount <= maxFragmentsPerFrame,
                   fragIndex < fragCount else {
+                throw UDPMediaError.invalidFragmentBounds
+            }
+        } else if packetType == .cursor || packetType == .audio {
+            guard fragIndex == 0, fragCount == 1 else {
                 throw UDPMediaError.invalidFragmentBounds
             }
         }
@@ -519,6 +535,165 @@ struct UDPMediaFeedbackPayload: Equatable, Sendable {
             decodeQueueMs: UDPMediaHeader.readUInt16(data, offset: 20),
             renderFps: UDPMediaHeader.readUInt16(data, offset: 22),
             echoSendTimeUs: UDPMediaHeader.readUInt32(data, offset: 24)
+        )
+    }
+}
+
+/// Compact 17-byte sender-to-receiver cursor state payload (`packetType = .cursor`).
+/// Wire layout (big-endian):
+/// `[0..7]` `sequence: UInt64`, `[8..11]` `normalizedX: Float32` IEEE-754 (`0...1` finite),
+/// `[12..15]` `normalizedY: Float32` IEEE-754 (`0...1` finite), `[16]` `visible: UInt8` (`1` or `0`).
+struct UDPMediaCursorPayload: Equatable, Sendable {
+    static let byteLength = 17
+
+    var sequence: UInt64
+    var normalizedX: Float32
+    var normalizedY: Float32
+    var visible: Bool
+
+    var visibleByte: UInt8 { visible ? 1 : 0 }
+
+    var isValid: Bool {
+        normalizedX.isFinite
+            && normalizedY.isFinite
+            && normalizedX >= 0
+            && normalizedX <= 1
+            && normalizedY >= 0
+            && normalizedY <= 1
+    }
+
+    init(sequence: UInt64, normalizedX: Float32, normalizedY: Float32, visible: Bool) {
+        self.sequence = sequence
+        self.normalizedX = normalizedX == 0 ? 0 : normalizedX
+        self.normalizedY = normalizedY == 0 ? 0 : normalizedY
+        self.visible = visible
+    }
+
+    init(sequence: UInt64, normalizedX: Double, normalizedY: Double, visible: Bool) {
+        let fx = Float32(normalizedX)
+        let fy = Float32(normalizedY)
+        self.init(sequence: sequence, normalizedX: fx, normalizedY: fy, visible: visible)
+    }
+
+    func encode() -> Data {
+        let clampedX: Float32 = normalizedX.isFinite ? min(max(normalizedX, 0), 1) : 0
+        let clampedY: Float32 = normalizedY.isFinite ? min(max(normalizedY, 0), 1) : 0
+        let canonicalX: Float32 = clampedX == 0 ? 0 : clampedX
+        let canonicalY: Float32 = clampedY == 0 ? 0 : clampedY
+        var data = Data(capacity: Self.byteLength)
+        UDPMediaHeader.appendUInt64(&data, sequence)
+        UDPMediaHeader.appendUInt32(&data, canonicalX.bitPattern)
+        UDPMediaHeader.appendUInt32(&data, canonicalY.bitPattern)
+        data.append(visible ? 1 : 0)
+        return data
+    }
+
+    static func decode(from data: Data) throws -> UDPMediaCursorPayload {
+        guard data.count == byteLength else {
+            throw UDPMediaError.malformedControlPayload
+        }
+        let seq = UDPMediaHeader.readUInt64(data, offset: 0)
+        let rawX = Float32(bitPattern: UDPMediaHeader.readUInt32(data, offset: 8))
+        let rawY = Float32(bitPattern: UDPMediaHeader.readUInt32(data, offset: 12))
+        let visByte = data[data.startIndex + 16]
+        guard rawX.isFinite,
+              rawY.isFinite,
+              rawX >= 0,
+              rawX <= 1,
+              rawY >= 0,
+              rawY <= 1,
+              (visByte == 0 || visByte == 1) else {
+            throw UDPMediaError.malformedControlPayload
+        }
+        return UDPMediaCursorPayload(
+            sequence: seq,
+            normalizedX: rawX == 0 ? 0 : rawX,
+            normalizedY: rawY == 0 ? 0 : rawY,
+            visible: visByte == 1
+        )
+    }
+}
+
+/// Compact sender-to-receiver PCM audio packet payload (`packetType = .audio`).
+/// Wire layout (big-endian header + S16LE PCM body `<= 1152` bytes):
+/// `[0..3]` `audioSeq: UInt32`, `[4..11]` `captureTimestampMs: Int64`,
+/// `[12..13]` `sampleRate: UInt16`, `[14]` `channels: UInt8` (`1` or `2`),
+/// `[15]` `formatFlags: UInt8` (`0` = S16LE PCM), `[16...]` raw S16LE PCM bytes.
+struct UDPMediaAudioPayload: Equatable, Sendable {
+    static let headerByteLength = 16
+    static let maxPCMBytes = 1152
+    static let formatPCM16LE: UInt8 = 0
+
+    var audioSeq: UInt32
+    var captureTimestampMs: Int64
+    var sampleRate: UInt16
+    var channels: UInt8
+    var formatFlags: UInt8
+    var pcmBytes: Data
+
+    init(
+        audioSeq: UInt32,
+        captureTimestampMs: Int64,
+        sampleRate: UInt16 = 48_000,
+        channels: UInt8 = 2,
+        formatFlags: UInt8 = Self.formatPCM16LE,
+        pcmBytes: Data
+    ) {
+        self.audioSeq = audioSeq
+        self.captureTimestampMs = captureTimestampMs
+        self.sampleRate = sampleRate
+        self.channels = channels
+        self.formatFlags = formatFlags
+        self.pcmBytes = pcmBytes
+    }
+
+    var isValid: Bool {
+        sampleRate > 0
+            && (channels == 1 || channels == 2)
+            && formatFlags == Self.formatPCM16LE
+            && !pcmBytes.isEmpty
+            && pcmBytes.count <= Self.maxPCMBytes
+            && pcmBytes.count % (Int(channels) * 2) == 0
+    }
+
+    func encode() -> Data {
+        var data = Data(capacity: Self.headerByteLength + pcmBytes.count)
+        UDPMediaHeader.appendUInt32(&data, audioSeq)
+        UDPMediaHeader.appendUInt64(&data, UInt64(bitPattern: captureTimestampMs))
+        UDPMediaHeader.appendUInt16(&data, sampleRate)
+        data.append(channels)
+        data.append(formatFlags)
+        data.append(pcmBytes)
+        return data
+    }
+
+    static func decode(from data: Data) throws -> UDPMediaAudioPayload {
+        guard data.count > headerByteLength else {
+            throw UDPMediaError.malformedControlPayload
+        }
+        let pcmCount = data.count - headerByteLength
+        guard pcmCount <= maxPCMBytes else {
+            throw UDPMediaError.malformedControlPayload
+        }
+        let seq = UDPMediaHeader.readUInt32(data, offset: 0)
+        let captureMs = Int64(bitPattern: UDPMediaHeader.readUInt64(data, offset: 4))
+        let rate = UDPMediaHeader.readUInt16(data, offset: 12)
+        let ch = data[data.startIndex + 14]
+        let fmt = data[data.startIndex + 15]
+        guard rate > 0,
+              (ch == 1 || ch == 2),
+              fmt == formatPCM16LE,
+              pcmCount % (Int(ch) * 2) == 0 else {
+            throw UDPMediaError.malformedControlPayload
+        }
+        let pcm = data.subdata(in: (data.startIndex + headerByteLength)..<data.endIndex)
+        return UDPMediaAudioPayload(
+            audioSeq: seq,
+            captureTimestampMs: captureMs,
+            sampleRate: rate,
+            channels: ch,
+            formatFlags: fmt,
+            pcmBytes: pcm
         )
     }
 }

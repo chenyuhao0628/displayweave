@@ -7,7 +7,7 @@ import Combine
 let deviceKind = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
 
 /// Landing page — hosts the Mac app download and explains the two-app setup.
-let macAppURL = URL(string: "https://github.com/chenyuhao0628/displayweave")!
+let macAppURL = URL(string: "https://chenyuhao0628.github.io/displayweave/")!
 
 @main
 struct OpenSidecarPhoneApp: App {

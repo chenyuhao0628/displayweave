@@ -119,7 +119,9 @@ final class AppleSecureAdmission {
                 }
                 ready(fingerprint)
             case .failed(let error), .waiting(let error):
-                self.fail("TLS 连接失败（\(error)），请检查网络、系统时间和配对身份")
+                let detail = AppleTLS.consumeRecentPeerFailureMessage()
+                    ?? AppleTLS.handshakeFailureMessage(for: error)
+                self.fail(detail)
             case .cancelled: self.fail("安全连接已结束，请重新连接")
             default: break
             }

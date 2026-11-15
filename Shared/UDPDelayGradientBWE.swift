@@ -313,6 +313,13 @@ struct UDPDelayGradientBWE: Sendable {
         )
     }
 
+    /// Synchronizes target bitrate when the sender is placed into manual bitrate mode.
+    mutating func syncTargetBitrate(_ bitrateBps: Int) {
+        let clamped = Self.clamp(bitrateBps, to: bounds)
+        currentBitrate = clamped
+        lastEmittedBitrate = clamped
+    }
+
     private func computeTrendlineSlope() -> Double {
         guard samples.count >= Self.minSamplesForTrendline,
               let firstTime = samples.first?.timestamp else {

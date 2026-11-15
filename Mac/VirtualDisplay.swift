@@ -140,8 +140,13 @@ final class VirtualDisplay {
             return true
         }
         var config: CGDisplayConfigRef?
-        CGBeginDisplayConfiguration(&config)
-        CGConfigureDisplayWithDisplayMode(config, display.displayID, hidpi, nil)
+        guard CGBeginDisplayConfiguration(&config) == .success else {
+            return false
+        }
+        guard CGConfigureDisplayWithDisplayMode(config, display.displayID, hidpi, nil) == .success else {
+            CGCancelDisplayConfiguration(config)
+            return false
+        }
         let err = CGCompleteDisplayConfiguration(config, .permanently)
         Log.info("display mode (re)selected: \(hidpi.width)x\(hidpi.height)@\(backingScale)x (result \(err.rawValue))")
         return err == .success
