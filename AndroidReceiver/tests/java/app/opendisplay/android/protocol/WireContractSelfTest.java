@@ -17,7 +17,7 @@ final class WireContractSelfTest {
         }
         if (fixture == null) throw new AssertionError("shared wire fixtures missing");
         try (var input = Files.newInputStream(fixture)) { vectors.load(input); }
-        for (String name : new String[]{"ping", "legacy", "h264", "hevc", "desktop", "pencil", "action"}) {
+        for (String name : new String[]{"ping", "legacy", "h264", "hevc", "desktop", "pencil", "action", "tcpAudio"}) {
             byte[] payload = hex(vectors, name + "Payload"), framed = hex(vectors, name + "Frame");
             equal(LengthPrefixedProtocol.encode(payload), framed);
             // A transport may return one payload byte on every read.
@@ -109,6 +109,28 @@ final class WireContractSelfTest {
             byte[] rawAudio = hex(vectors, "udpAudioPayload");
             UdpMediaProtocol.AudioPayload audio = UdpMediaProtocol.AudioPayload.decode(rawAudio);
             equal(audio.encode(), rawAudio);
+        }
+        if (vectors.getProperty("udpAudioOpusPayload") != null && vectors.getProperty("tcpAudioPayload") != null) {
+            byte[] rawOpus = hex(vectors, "udpAudioOpusPayload");
+            UdpMediaProtocol.AudioPayload opusAudio = UdpMediaProtocol.AudioPayload.decode(rawOpus);
+            equal(opusAudio.encode(), rawOpus);
+            if (opusAudio.formatFlags != UdpMediaProtocol.AudioPayload.FORMAT_OPUS || opusAudio.audioSeq != 6L) {
+                throw new AssertionError("wrong Opus audio golden metadata");
+            }
+            String tcpJson = UdpMediaProtocol.TcpAudioFrame.encodeJson(opusAudio);
+            equal(LengthPrefixedProtocol.jsonBytes(tcpJson), hex(vectors, "tcpAudioPayload"));
+            UdpMediaProtocol.AudioPayload decodedTcp = UdpMediaProtocol.TcpAudioFrame.decodeJson(tcpJson);
+            equal(decodedTcp.encode(), rawOpus);
+        }
+        if (vectors.getProperty("opusHead48kStereo") != null) {
+            java.nio.ByteBuffer head = java.nio.ByteBuffer.allocate(19).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            head.put("OpusHead".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            head.put((byte) 1).put((byte) 2).putShort((short) 0).putInt(48_000).putShort((short) 0).put((byte) 0);
+            equal(head.array(), hex(vectors, "opusHead48kStereo"));
+            equal(java.nio.ByteBuffer.allocate(8).order(java.nio.ByteOrder.LITTLE_ENDIAN).putLong(0L).array(),
+                    hex(vectors, "opusCsd1PreSkip"));
+            equal(java.nio.ByteBuffer.allocate(8).order(java.nio.ByteOrder.LITTLE_ENDIAN).putLong(80_000_000L).array(),
+                    hex(vectors, "opusCsd2SeekPreRoll"));
         }
         if (vectors.getProperty("udpRootSecret") != null && vectors.getProperty("udpS2RKeyEpoch1") != null) {
             UdpMediaProtocol.KeyMaterial km = UdpMediaProtocol.KeyMaterial.derive(

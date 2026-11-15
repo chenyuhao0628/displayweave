@@ -274,6 +274,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             updateKeepAliveService(connected);
             setStatus(connected ? "Mac 已连接，等待画面…" : "等待 Mac 连接…");
             if (!connected) {
+                applyWindowColorMode(false);
                 setStreaming(false);
                 cursorOverlay.resetCursor();
             }
@@ -375,6 +376,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         runOnUiThread(() -> {
             if (server != source) return;
             lastStreamConfig = config;
+            applyWindowColorMode(config.isDisplayP3() && isDisplayWideColorGamut());
             updateVideoViewport();
             surfaceFrameRateLifecycle.onStreamConfig(config.fps);
             refreshStreamingStatus();
@@ -1682,7 +1684,41 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 Build.VERSION.SDK_INT,
                 "wifi",
                 physicalMm != null ? physicalMm[0] : null,
-                physicalMm != null ? physicalMm[1] : null);
+                physicalMm != null ? physicalMm[1] : null,
+                CodecCapabilities.supportsAudioOpusDecoder(),
+                isDisplayWideColorGamut());
+    }
+
+    private boolean isDisplayWideColorGamut() {
+        if (Build.VERSION.SDK_INT < 26) {
+            return false;
+        }
+        try {
+            Display display = currentDisplay();
+            return display != null && display.isWideColorGamut();
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private void applyWindowColorMode(boolean wideColorGamut) {
+        if (Build.VERSION.SDK_INT < 26) {
+            return;
+        }
+        try {
+            Window window = getWindow();
+            if (window == null) {
+                return;
+            }
+            int targetMode = wideColorGamut
+                    ? android.content.pm.ActivityInfo.COLOR_MODE_WIDE_COLOR_GAMUT
+                    : android.content.pm.ActivityInfo.COLOR_MODE_DEFAULT;
+            if (window.getColorMode() != targetMode) {
+                window.setColorMode(targetMode);
+            }
+        } catch (RuntimeException error) {
+            android.util.Log.w("DisplayWeave", "unable to update window color mode", error);
+        }
     }
 
     private float currentRefreshRate() {

@@ -24,7 +24,7 @@ import Foundation
             let value = Array(fixtures[key]!.utf8)
             return Data(stride(from: 0, to: value.count, by: 2).map { UInt8(String(decoding: value[$0..<$0+2], as: UTF8.self), radix: 16)! })
         }
-        for name in ["ping", "legacy", "h264", "hevc", "desktop", "pencil", "action"] {
+        for name in ["ping", "legacy", "h264", "hevc", "desktop", "pencil", "action", "tcpAudio"] {
             let payload = hex(name + "Payload"), framed = hex(name + "Frame")
             precondition(ReceiverFrameDecoder.frame(payload) == framed)
             // Every boundary is exercised: TCP splits headers and bodies arbitrarily.
@@ -63,6 +63,11 @@ import Foundation
         precondition(PencilSample(message: pencil)?.roll == 1.5)
         precondition(PencilActionMessage(hex("actionPayload"))?.action == .undo)
         precondition(PencilActionMessage(hex("badActionPayload")) == nil)
-        print("Shared wire fixtures: Swift framing/fragmentation, DWV2, legacy bytes and Apple input contracts PASS")
+        let opusGolden = try UDPMediaAudioPayload.decode(from: hex("udpAudioOpusPayload"))
+        precondition(opusGolden.formatFlags == UDPMediaAudioPayload.formatOpus && opusGolden.audioSeq == 6)
+        precondition(TCPAudioFrameMessage.encodeJSONData(opusGolden) == hex("tcpAudioPayload"))
+        let decodedTcpAudio = try TCPAudioFrameMessage.decode(jsonData: hex("tcpAudioPayload"))
+        precondition(decodedTcpAudio == opusGolden)
+        print("Shared wire fixtures: Swift framing/fragmentation, DWV2, legacy bytes, tcpAudioV1/Opus and Apple input contracts PASS")
     }
 }

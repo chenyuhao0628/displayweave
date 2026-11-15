@@ -252,7 +252,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private let audioLock = NSLock()
     private var audioPacketizer = AudioCapturePacketizer()
     private var audioSequence: UInt32 = 0
-    private var audioCaptureSink: ((UInt32, Data) -> Void)?
+    private var audioCaptureSink: ((UDPMediaAudioPayload) -> Void)?
+    private var pendingTCPAudioSends = 0
     private var udpCursorSender: ((CursorPosition, UInt64) -> Bool)?
     private weak var audioAttachedStream: SCStream?
 
@@ -276,6 +277,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private var lastCaptureAt = Date.distantPast
     private var dropReplayWork: DispatchWorkItem?
     private var dropReplayID: UUID?
+    private var settledCrispRefreshWork: DispatchWorkItem?
+    private var settledCrispRefreshID: UUID?
     private var captureRecoveryWork: DispatchWorkItem?
     private var captureRecoveryID: UUID?
     private var captureStopTask: Task<Void, Never>?
@@ -751,6 +754,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         lastCaptureAt = .distantPast
         dropReplayWork?.cancel(); dropReplayWork = nil
         dropReplayID = nil
+        cancelSettledCrispRefresh()
         captureRecoveryWork?.cancel(); captureRecoveryWork = nil; captureRecoveryID = nil
         pendingEncodeWork.discard(generation: encoderGeneration)
         keyframeRequests.retireInFlightRequest()
@@ -816,9 +820,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             _ = captureFrames.begin()
             captureSourceCheck = CaptureSourceCheck()
             if config.capturesAudio {
+                let useOpus = lastHello?.supportsAudioOpusV1 == true
                 audioLock.withLock {
                     audioAttachedStream = stream
                     audioPacketizer.reset()
+                    audioPacketizer.setOpusEnabled(useOpus)
                 }
                 refreshUDPFastPlaneSinksOnQueue()
             }
@@ -867,7 +873,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         if lastHello?.supportsDisplayP3 == true {
             config.colorSpaceName = CGColorSpace.displayP3
         }
-        let captureAudio = settings.audioEnabled && lastHello?.supportsUDPAudioV1 == true
+        let captureAudio = settings.audioEnabled && lastHello?.supportsAnyAudioV1 == true
         config.capturesAudio = captureAudio
         if captureAudio {
             config.sampleRate = AudioCapturePacketizer.targetSampleRate
@@ -934,6 +940,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             dialGeneration &+= 1
             connectionReady = false
             pendingSends = 0
+            pendingTCPAudioSends = 0
             pendingSendStartedAt.removeAll()
             let activeDisplay = virtualDisplay
             virtualDisplay = nil
@@ -1194,12 +1201,14 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             audioSequence = 0
         }
         cancelDropReplay()
+        cancelSettledCrispRefresh()
         desktopInput.reset()
         pencilActions.reset(); pencilExtendedNegotiated = false
         pencilNegotiated = false
         macCodecFallback.beginConnection()
         inputInjector?.cancelPress()
         pendingSends = 0
+        pendingTCPAudioSends = 0
         pendingSendStartedAt.removeAll()
         connectionGeneration &+= 1
         connection = conn
@@ -1224,6 +1233,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             udpCursorSender = nil
             audioSequence = 0
         }
+        cancelSettledCrispRefresh()
         keyframeRequests.retireInFlightRequest()
         stopCursorEcho()
         desktopInput.reset()
@@ -1231,6 +1241,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         pencilNegotiated = false
         inputInjector?.cancelPress()
         pendingSends = 0
+        pendingTCPAudioSends = 0
         pendingSendStartedAt.removeAll()
         connectionGeneration &+= 1
         let previous = connection
@@ -1625,6 +1636,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         dialGeneration += 1   // a USB dial still in flight must not adopt
         invalidateConnection()
         pendingSends = 0
+        pendingTCPAudioSends = 0
         pendingSendStartedAt.removeAll()
         reconnectGeneration &+= 1
         let generation = reconnectGeneration
@@ -2111,7 +2123,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 }
                 let previous = lastHello
                 lastHello = info
+                audioLock.withLock {
+                    audioPacketizer.setOpusEnabled(info.supportsAudioOpusV1)
+                }
                 if !connectionReady { helloReady() }
+                refreshUDPFastPlaneSinksOnQueue()
                 desktopInput.hello(encrypted: encrypted, capabilities: info.inputCaps)
                 let supportsPencil = !info.isMacReceiver && PencilProtocol.supports(info.inputCaps)
                 if pencilNegotiated && !supportsPencil { inputInjector?.cancelPress() }
@@ -2546,6 +2562,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         pipelineSentBytes = 0
         capFrames = 0
         staticFrameGate.resetForNewConfiguration()
+        cancelSettledCrispRefresh()
         maxEncodeSubmissionMs = 0
         encodeSubmissionMsTotal = 0
         encodeSubmissionCount = 0
@@ -2739,11 +2756,17 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         let hasDirtyRects = CaptureStaticFramePolicy.hasNonEmptyDirtyRects(info?[.dirtyRects])
         let requiresKeyframe = keyframeRequests.hasPendingRequest
             || keyframeRequests.inFlightRequest != nil
-        guard staticFrameGate.shouldEncodeFrame(
+        let staticDecision = staticFrameGate.evaluate(
             hasDirtyRects: hasDirtyRects,
             requiresKeyframe: requiresKeyframe,
             nowUptime: ProcessInfo.processInfo.systemUptime
-        ) else { return }
+        )
+        guard staticDecision.shouldEncode else { return }
+        if hasDirtyRects {
+            scheduleSettledCrispRefresh()
+        } else if staticDecision.isSettledCrispRefresh {
+            cancelSettledCrispRefresh()
+        }
         capFrames += 1
         let queueDecision = SendQueuePolicy.decision(
             pendingSends: pendingSends, pendingEncodes: pendingEncodes,
@@ -2765,11 +2788,17 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         encode(
             pixelBuffer,
             pts: CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
-            capturedAtMs: capturedAtMs
+            capturedAtMs: capturedAtMs,
+            settledCrispRefresh: staticDecision.isSettledCrispRefresh
         )
     }
 
-    private func encode(_ pixelBuffer: CVPixelBuffer, pts: CMTime, capturedAtMs explicitCapturedAtMs: Int64? = nil) {
+    private func encode(
+        _ pixelBuffer: CVPixelBuffer,
+        pts: CMTime,
+        capturedAtMs explicitCapturedAtMs: Int64? = nil,
+        settledCrispRefresh: Bool = false
+    ) {
         guard !stopped, !pipelineFailureReported, connectionReady, stream != nil, let encoder else { return }
         guard pipelineHasCapacity else { scheduleDropReplay(); return }
         let capturedAtMs = explicitCapturedAtMs ?? Int64(Date().timeIntervalSince1970 * 1000)
@@ -2793,32 +2822,49 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         }
         let submission = EncoderFrameSubmission(encoder: encoder, pixels: pixelBuffer, properties: frameProperties)
         let encodeStart = Date()
+        let restoreSpeedOverQuality = StreamEncodingPolicy.prioritizesEncodingSpeed(
+            quality: settings.quality,
+            fps: requestedCaptureFps
+        )
+        let restoreBitrate = streamBitrate
+        let restoreVBVLimits = StreamEncodingPolicy.dataRateLimits(
+            bitrate: streamBitrate,
+            fps: requestedCaptureFps
+        )
         let duration = CMTime(
             value: 1,
             timescale: CMTimeScale(lastHello?.isMacReceiver == true ? requestedCaptureFps : StreamEncodingPolicy.frameDurationTimescale(fps: requestedCaptureFps)))
         let accepted = encoderWork.submit(limit: SendQueuePolicy.encodeBudget(fps: requestedCaptureFps)) { [weak self] in
             guard let self else { return }
             let submissionStart = ProcessInfo.processInfo.systemUptime
-            let status = VTCompressionSessionEncodeFrame(
-                submission.encoder,
-                imageBuffer: submission.pixels,
-                presentationTimeStamp: pts,
-                duration: duration,
-                frameProperties: submission.properties,
-                infoFlagsOut: nil
-            ) { [weak self] status, _, buffer in
-                guard let self else { return }
-                self.queue.async { [weak self] in
+            let status = SettledCrispRefreshEncoderPolicy.withCrispRefreshHints(
+                encoder: submission.encoder,
+                enabled: settledCrispRefresh,
+                restoreSpeedOverQuality: restoreSpeedOverQuality,
+                restoreBitrate: restoreBitrate,
+                restoreVBVLimits: restoreVBVLimits
+            ) {
+                VTCompressionSessionEncodeFrame(
+                    submission.encoder,
+                    imageBuffer: submission.pixels,
+                    presentationTimeStamp: pts,
+                    duration: duration,
+                    frameProperties: submission.properties,
+                    infoFlagsOut: nil
+                ) { [weak self] status, _, buffer in
                     guard let self else { return }
-                    self.handleEncodedFrame(
-                        status: status, buffer: buffer,
-                        forcedKeyframeRequest: forcedKeyframeRequest,
-                        capturedAtMs: capturedAtMs,
-                        encodedForWireGeneration: encodedForWireGeneration,
-                        encodedForEncoderGeneration: encodedForEncoderGeneration,
-                        encodeWorkID: encodeWorkID,
-                        protocolFrameIdentity: protocolFrameIdentity,
-                        encodeStart: encodeStart)
+                    self.queue.async { [weak self] in
+                        guard let self else { return }
+                        self.handleEncodedFrame(
+                            status: status, buffer: buffer,
+                            forcedKeyframeRequest: forcedKeyframeRequest,
+                            capturedAtMs: capturedAtMs,
+                            encodedForWireGeneration: encodedForWireGeneration,
+                            encodedForEncoderGeneration: encodedForEncoderGeneration,
+                            encodeWorkID: encodeWorkID,
+                            protocolFrameIdentity: protocolFrameIdentity,
+                            encodeStart: encodeStart)
+                    }
                 }
             }
             let submissionMs = (ProcessInfo.processInfo.systemUptime - submissionStart) * 1_000
@@ -2857,6 +2903,54 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private func cancelDropReplay() {
         captureFrames.submitted()
         dropReplayWork?.cancel(); dropReplayWork = nil; dropReplayID = nil
+    }
+
+    private func cancelSettledCrispRefresh() {
+        settledCrispRefreshWork?.cancel()
+        settledCrispRefreshWork = nil
+        settledCrispRefreshID = nil
+    }
+
+    private func scheduleSettledCrispRefresh() {
+        guard !stopped, !pipelineFailureReported, connectionReady, stream != nil,
+              encoderLoadAdjustmentID == nil else { return }
+        settledCrispRefreshWork?.cancel()
+        let id = UUID()
+        let generation = captureFrames.generation
+        let wireGen = wireConnectionGeneration
+        let encoderGen = encoderGeneration
+        settledCrispRefreshID = id
+        let work = DispatchWorkItem { [weak self] in
+            guard let self,
+                  !self.stopped,
+                  !self.pipelineFailureReported,
+                  self.connectionReady,
+                  self.stream != nil,
+                  self.encoder != nil,
+                  self.encoderLoadAdjustmentID == nil,
+                  !self.decoderFpsAdjustmentInFlight,
+                  self.codecFallbackResizeID == nil,
+                  self.settledCrispRefreshID == id,
+                  self.captureFrames.generation == generation,
+                  self.wireConnectionGeneration == wireGen,
+                  self.encoderGeneration == encoderGen else { return }
+            self.settledCrispRefreshWork = nil
+            self.settledCrispRefreshID = nil
+            guard self.pipelineHasCapacity,
+                  let pixelBuffer = self.lastPixelBuffer,
+                  CVPixelBufferGetWidth(pixelBuffer) == self.activeStreamWidth,
+                  CVPixelBufferGetHeight(pixelBuffer) == self.activeStreamHeight,
+                  self.staticFrameGate.pollTimerCrispRefresh(nowUptime: ProcessInfo.processInfo.systemUptime) else {
+                return
+            }
+            self.encode(
+                pixelBuffer,
+                pts: CMClockGetTime(CMClockGetHostTimeClock()),
+                settledCrispRefresh: true
+            )
+        }
+        settledCrispRefreshWork = work
+        queue.asyncAfter(deadline: .now() + CaptureStaticFrameGate.defaultCrispRefreshDelay, execute: work)
     }
 
     private func scheduleDropReplay() {
@@ -2980,20 +3074,34 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
 
     private func handleCapturedAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, from stream: SCStream) {
         guard !stopped else { return }
-        let chunksAndSink: ([(UInt32, Data)], ((UInt32, Data) -> Void)?) = audioLock.withLock {
+        let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        let ptsSeconds = pts.isValid && pts.isNumeric ? CMTimeGetSeconds(pts) : .nan
+        let capturedAtMs = CaptureTimestampPolicy.wallClockCaptureMs(
+            nowWallMs: Date().timeIntervalSince1970 * 1_000,
+            displayTimeHostSeconds: ptsSeconds.isFinite && ptsSeconds > 0 ? ptsSeconds : nil,
+            nowHostSeconds: CMTimeGetSeconds(CMClockGetTime(CMClockGetHostTimeClock()))
+        )
+        let payloadsAndSink: ([UDPMediaAudioPayload], ((UDPMediaAudioPayload) -> Void)?) = audioLock.withLock {
             guard audioAttachedStream === stream, let sink = audioCaptureSink else {
                 return ([], nil)
             }
-            let chunks = audioPacketizer.ingest(sampleBuffer)
-            let numbered = chunks.map { chunk -> (UInt32, Data) in
+            let chunks = audioPacketizer.ingestEncoded(sampleBuffer)
+            let payloads = chunks.map { chunk -> UDPMediaAudioPayload in
                 audioSequence &+= 1
-                return (audioSequence, chunk)
+                return UDPMediaAudioPayload(
+                    audioSeq: audioSequence,
+                    captureTimestampMs: capturedAtMs,
+                    sampleRate: UInt16(AudioCapturePacketizer.targetSampleRate),
+                    channels: UInt8(AudioCapturePacketizer.targetChannels),
+                    formatFlags: chunk.formatFlags,
+                    pcmBytes: chunk.data
+                )
             }
-            return (numbered, sink)
+            return (payloads, sink)
         }
-        guard let sink = chunksAndSink.1 else { return }
-        for (seq, chunk) in chunksAndSink.0 {
-            sink(seq, chunk)
+        guard let sink = payloadsAndSink.1 else { return }
+        for payload in payloadsAndSink.0 {
+            sink(payload)
         }
     }
 
@@ -3182,6 +3290,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
 
     private func sendStreamConfig(width: Int, height: Int, protocolRetry: Bool = false) {
         staticFrameGate.resetForNewConfiguration()
+        cancelSettledCrispRefresh()
         let transportName: String
         switch transport {
         case .tcp:
@@ -3204,6 +3313,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             identity = nil
             udpConfigVersion = lastHello?.supportsUDPMediaV1 == true ? currentIdentity.configVersion : nil
         }
+        let negotiatedColorSpace: String?
+        if let lastHello {
+            negotiatedColorSpace = lastHello.supportsDisplayP3 ? "displayP3" : "srgb"
+        } else {
+            negotiatedColorSpace = nil
+        }
         let message = StreamConfigMessage(
             codec: streamCodec,
             fps: requestedCaptureFps,
@@ -3214,9 +3329,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             identity: identity,
             udpConfigVersion: udpConfigVersion,
             maxFrameBytes: lastHello?.negotiatedMaxFrameBytes,
-            exactFrameRate: lastHello?.usesAppleVideoCapabilities == true)
+            exactFrameRate: lastHello?.usesAppleVideoCapabilities == true,
+            colorSpace: negotiatedColorSpace)
         sendJSONFrame(message.json)
         ensureUDPMediaPlaneAfterStreamConfig()
+        refreshUDPFastPlaneSinksOnQueue()
         let description = "编码 \(width)×\(height) · \(streamCodec.label) · 目标 \(requestedCaptureFps) fps"
         var limits: [String] = []
         if settings.bitrateMode == .manual, settings.bitratePreset.bitsPerSecond != streamBitrate {
@@ -3410,18 +3527,53 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         session.updateEncoderLoadCeiling(ceiling)
     }
 
+    private func enqueueTCPAudioControlFrame(_ jsonData: Data, wireGeneration: UInt64) {
+        queue.async { [weak self] in
+            guard let self,
+                  !self.stopped,
+                  self.wireConnectionGeneration == wireGeneration,
+                  let connection = self.connection,
+                  TCPAudioBackpressurePolicy.shouldSend(
+                    connectionReady: self.connectionReady,
+                    pendingVideoSends: self.pendingSends,
+                    pendingAudioSends: self.pendingTCPAudioSends,
+                    jsonByteCount: jsonData.count
+                  ) else {
+                return
+            }
+            var header = UInt32(jsonData.count).bigEndian
+            var frame = Data(bytes: &header, count: 4)
+            frame.append(jsonData)
+            let generation = self.connectionGeneration
+            self.pendingTCPAudioSends += 1
+            connection.send(content: frame, completion: .contentProcessed { [weak self, weak connection] _ in
+                guard let self, let connection else { return }
+                self.queue.async { [weak self, weak connection] in
+                    guard let self, let connection,
+                          self.isCurrentConnection(connection, generation: generation) else { return }
+                    self.pendingTCPAudioSends = max(0, self.pendingTCPAudioSends - 1)
+                }
+            })
+        }
+    }
+
     private func refreshUDPFastPlaneSinksOnQueue() {
-        guard let info = lastHello, let session = udpMediaSession else {
+        guard connectionReady, let info = lastHello else {
             audioLock.withLock {
                 audioCaptureSink = nil
                 udpCursorSender = nil
             }
             return
         }
-        let allowCursor = info.supportsUDPCursorV1
-        let allowAudio = settings.audioEnabled && info.supportsUDPAudioV1
+        let session = udpMediaSession
+        let allowCursor = session != nil && info.supportsUDPCursorV1
+        let allowUDPAudio = settings.audioEnabled && session != nil && info.supportsUDPAudioV1
+        let allowTCPAudio = settings.audioEnabled && info.supportsTCPAudioV1
+        let wireGen = wireConnectionGeneration
+        let useOpus = info.supportsAudioOpusV1
         audioLock.withLock {
-            if allowCursor {
+            audioPacketizer.setOpusEnabled(useOpus)
+            if allowCursor, let session {
                 udpCursorSender = { [weak session] position, sequence in
                     guard let session, session.isReady else { return false }
                     let payload = UDPMediaCursorPayload(
@@ -3435,18 +3587,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
             } else {
                 udpCursorSender = nil
             }
-            if allowAudio {
-                audioCaptureSink = { [weak session] seq, pcmChunk in
-                    guard let session, session.isReady else { return }
-                    let payload = UDPMediaAudioPayload(
-                        audioSeq: seq,
-                        captureTimestampMs: Int64(Date().timeIntervalSince1970 * 1_000),
-                        sampleRate: UInt16(AudioCapturePacketizer.targetSampleRate),
-                        channels: UInt8(AudioCapturePacketizer.targetChannels),
-                        formatFlags: UDPMediaAudioPayload.formatPCM16LE,
-                        pcmBytes: pcmChunk
-                    )
-                    _ = session.sendAudio(payload)
+            if allowUDPAudio || allowTCPAudio {
+                audioCaptureSink = { [weak self, weak session] payload in
+                    if allowUDPAudio, let session, session.isReady, session.sendAudio(payload) {
+                        return
+                    }
+                    guard allowTCPAudio,
+                          let jsonData = TCPAudioFrameMessage.encodeJSONData(payload) else {
+                        return
+                    }
+                    self?.enqueueTCPAudioControlFrame(jsonData, wireGeneration: wireGen)
                 }
             } else {
                 audioCaptureSink = nil
@@ -3465,12 +3615,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 udpMediaSession?.stop()
                 udpMediaSession = nil
                 activeUDPMediaSessionEpoch = 0
-                audioLock.withLock {
-                    audioCaptureSink = nil
-                    udpCursorSender = nil
-                    audioSequence = 0
-                }
             }
+            refreshUDPFastPlaneSinksOnQueue()
             return
         }
         if protocolIdentity.sessionEpoch == 0 {
@@ -3491,11 +3637,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         udpMediaSession?.stop()
         udpMediaSession = nil
         activeUDPMediaSessionEpoch = 0
-        audioLock.withLock {
-            audioCaptureSink = nil
-            udpCursorSender = nil
-            audioSequence = 0
-        }
+        refreshUDPFastPlaneSinksOnQueue()
         guard case .tcp(let endpoint, let interface) = transport,
               UDPMediaActivationPolicy.shouldActivateUDPMedia(
                 peerSupportsUDP: info.supportsUDPMediaV1,
@@ -3528,6 +3670,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                       self.wireConnectionGeneration == gen,
                       self.protocolIdentity.sessionEpoch == sessionEpoch else { return }
                 Log.info("UDP-MEDIA-READY sessionEpoch=\(sessionEpoch) localPort=\(localPort)")
+                self.refreshUDPFastPlaneSinksOnQueue()
                 self.requestKeyframe(.streamReconfigure)
                 self.replayStaticKeyframeImmediatelyIfNeeded()
             }
@@ -3570,11 +3713,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 self.udpMediaSession?.stop()
                 self.udpMediaSession = nil
                 self.activeUDPMediaSessionEpoch = 0
-                self.audioLock.withLock {
-                    self.audioCaptureSink = nil
-                    self.udpCursorSender = nil
-                    self.audioSequence = 0
-                }
+                self.refreshUDPFastPlaneSinksOnQueue()
                 self.adaptiveBitrateController?.syncCurrentBitrate(self.streamBitrate)
                 self.requestKeyframe(.streamReconfigure)
                 self.replayStaticKeyframeImmediatelyIfNeeded()

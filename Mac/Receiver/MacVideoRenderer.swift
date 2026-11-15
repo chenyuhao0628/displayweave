@@ -26,7 +26,35 @@ struct MacSampleBufferVideoRenderer: MacVideoRendering {
 protocol MacAudioPlaying: AnyObject {
     var isMuted: Bool { get set }
     func enqueueS16LE(_ pcmData: Data)
+    func enqueueEncodedAudio(
+        formatFlags: UInt8,
+        payload: Data,
+        sampleRate: Int,
+        channels: Int,
+        captureTimestampMs: Int64,
+        arrivalMonoMs: Double
+    )
+    func updateVideoPipelineDelay(udpJitterActive: Bool, explicitDelayMs: Double?)
+    func recordVideoRender(captureTimestampMs: Int64, renderMonoMs: Double)
     func stop()
+}
+
+extension MacAudioPlaying {
+    func enqueueEncodedAudio(
+        formatFlags: UInt8,
+        payload: Data,
+        sampleRate: Int,
+        channels: Int,
+        captureTimestampMs: Int64,
+        arrivalMonoMs: Double
+    ) {
+        if formatFlags == 0 {
+            enqueueS16LE(payload)
+        }
+    }
+
+    func updateVideoPipelineDelay(udpJitterActive: Bool, explicitDelayMs: Double?) {}
+    func recordVideoRender(captureTimestampMs: Int64, renderMonoMs: Double) {}
 }
 
 final class NullMacAudioPlayer: MacAudioPlaying {

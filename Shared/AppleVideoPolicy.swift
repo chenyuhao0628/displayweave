@@ -6,6 +6,8 @@ enum AppleVideoPolicy {
     static let udpMediaCapability = "udpMediaV1"
     static let udpCursorCapability = "udpCursorV1"
     static let udpAudioCapability = "udpAudioV1"
+    static let tcpAudioCapability = "tcpAudioV1"
+    static let audioOpusCapability = "audioOpusV1"
     static let hevc5kCapability = "hevc5kV1"
     static let displayP3Capability = "displayP3"
     static let nativeHighRefreshTrialKey = "nativeHighRefreshTrial"

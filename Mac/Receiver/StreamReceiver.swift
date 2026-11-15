@@ -461,6 +461,8 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             AppleVideoPolicy.udpMediaCapability,
             AppleVideoPolicy.udpCursorCapability,
             AppleVideoPolicy.udpAudioCapability,
+            AppleVideoPolicy.tcpAudioCapability,
+            AppleVideoPolicy.audioOpusCapability,
             AppleVideoPolicy.displayP3Capability
         ]
         if supportsHEVC {
@@ -672,6 +674,12 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                 handleCursorImage(obj)
             case "udpMediaConfig":
                 configureUDPMedia(obj, on: conn)
+            case TCPAudioFrameMessage.messageType:
+                guard data.count <= TCPAudioFrameMessage.maxControlBytes,
+                      let audio = try? TCPAudioFrameMessage.decode(jsonObject: obj, rawByteCount: data.count) else {
+                    return
+                }
+                handleIncomingAudio(audio, isUDP: false)
             default: break
             }
             return
@@ -709,11 +717,8 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         ) else { return }
         udpMediaSession?.stop()
         udpMediaSession = nil
-        if lastUdpMediaEpoch > 0 {
-            audioPlayer.stop()
-        }
-        lastAudioSequence = nil
         lastUdpMediaEpoch = config.sessionEpoch
+        audioPlayer.updateVideoPipelineDelay(udpJitterActive: true, explicitDelayMs: nil)
         session.onFrameReady = { [weak self, weak conn] gen, frame in
             guard let self else { return }
             let receivedAtUptime = self.monotonicTime()
@@ -738,7 +743,13 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                     }
                     return
                 }
-                self.handleAnnexB(frame.annexB, on: conn, receivedAtUptime: receivedAtUptime, isUDP: true)
+                self.handleAnnexB(
+                    frame.annexB,
+                    on: conn,
+                    receivedAtUptime: receivedAtUptime,
+                    isUDP: true,
+                    captureTimestampMs: frame.captureTimestampMs
+                )
                 self.udpMediaSession?.updateReceiverTelemetry(
                     rttMs: self.lastRttMs,
                     decodeQueueMs: self.videoRenderer.isReadyForMoreMediaData ? 0 : 12,
@@ -782,18 +793,8 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                       self.running,
                       let conn,
                       self.connection === conn,
-                      self.cursorDelivery.generation == gen,
-                      audio.isValid,
-                      audio.sampleRate == 48_000,
-                      audio.channels == 2,
-                      audio.formatFlags == UDPMediaAudioPayload.formatPCM16LE else { return }
-                if let prev = self.lastAudioSequence,
-                   !UDPMediaHeader.isFrameIdNewer(audio.audioSeq, than: prev) {
-                    return
-                }
-                self.lastAudioSequence = audio.audioSeq
-                self.lastReceived = Date()
-                self.audioPlayer.enqueueS16LE(audio.pcmBytes)
+                      self.cursorDelivery.generation == gen else { return }
+                self.handleIncomingAudio(audio, isUDP: true)
             }
         }
         udpMediaSession = session
@@ -840,10 +841,36 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         backpressureToleratedFrames = 0
     }
 
+    private func handleIncomingAudio(_ audio: UDPMediaAudioPayload, isUDP: Bool) {
+        guard audio.isValid,
+              audio.sampleRate == 48_000,
+              (1...2).contains(audio.channels),
+              (audio.formatFlags == UDPMediaAudioPayload.formatPCM16LE
+               || audio.formatFlags == UDPMediaAudioPayload.formatOpus) else { return }
+        if let prev = lastAudioSequence,
+           !UDPMediaHeader.isFrameIdNewer(audio.audioSeq, than: prev) {
+            return
+        }
+        if !isUDP, udpMediaSession == nil {
+            audioPlayer.updateVideoPipelineDelay(udpJitterActive: false, explicitDelayMs: nil)
+        }
+        lastAudioSequence = audio.audioSeq
+        lastReceived = Date()
+        audioPlayer.enqueueEncodedAudio(
+            formatFlags: audio.formatFlags,
+            payload: audio.pcmBytes,
+            sampleRate: Int(audio.sampleRate),
+            channels: Int(audio.channels),
+            captureTimestampMs: audio.captureTimestampMs,
+            arrivalMonoMs: monotonicTime() * 1_000.0
+        )
+    }
+
     private func handleAnnexB(_ data: Data,
                               on conn: NWConnection,
                               receivedAtUptime: TimeInterval? = nil,
-                              isUDP: Bool = false) {
+                              isUDP: Bool = false,
+                              captureTimestampMs: Int64? = nil) {
         guard fallbackDeadline == nil else { return }
         let packet: ReceiverVideoBitstream.Packet
         do { packet = try bitstream.parse(data) }
@@ -908,6 +935,22 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         waitingForKeyframe = false
         hasVideoFrame = true
         firstVideoDeadline = nil
+        audioPlayer.updateVideoPipelineDelay(udpJitterActive: isUDP, explicitDelayMs: nil)
+        let capMs: Int64 = captureTimestampMs ?? {
+            guard let metaData = packet.metadata,
+                  metaData.count <= 1_024,
+                  let metaObj = try? JSONSerialization.jsonObject(with: metaData) as? [String: Any],
+                  let capNum = metaObj["cap"] as? NSNumber else {
+                return 0
+            }
+            return capNum.int64Value
+        }()
+        if capMs > 0 {
+            audioPlayer.recordVideoRender(
+                captureTimestampMs: capMs,
+                renderMonoMs: monotonicTime() * 1_000.0
+            )
+        }
     }
 
     private func failVideo(on conn: NWConnection) {

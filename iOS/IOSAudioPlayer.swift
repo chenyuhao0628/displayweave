@@ -1,22 +1,24 @@
 import Foundation
 import AVFoundation
 
-/// Low-latency 48 kHz stereo PCM audio player backed by `AVAudioEngine`,
-/// `AVAudioPlayerNode`, and a preallocated ring buffer strictly bounded to
-/// 60 ms (`2,880` frames @ 48 kHz) with trim-oldest overflow recovery.
+/// Low-latency 48 kHz stereo audio player backed by `AVAudioEngine`,
+/// `AVAudioPlayerNode`, native `AudioToolbox` Opus decoding, and a preallocated
+/// ring buffer strictly bounded to 120 ms (`5,760` frames @ 48 kHz) with
+/// dynamic A/V lip-sync watermark steering (`15ms...90ms`) and drift trimming.
 @objc(DisplayWeaveIOSAudioPlayer)
 final class IOSAudioPlayer: NSObject, IOSAudioPlayback {
     static let targetSampleRate: Double = 48_000
     static let targetChannels: AVAudioChannelCount = 2
-    /// Hard 60 ms ceiling across scheduled player-node buffers + unread ring frames.
-    static let maxTotalLatencyFrames: Int = 2_880 // 60 ms @ 48 kHz
-    static let ringCapacity: Int = 2_880
+    /// Hard 120 ms ceiling across scheduled player-node buffers + unread ring frames.
+    static let maxTotalLatencyFrames: Int = AudioLipSyncPolicy.defaultMaxCapacityFrames // 5,760 frames (120 ms @ 48 kHz)
+    static let ringCapacity: Int = AudioLipSyncPolicy.defaultMaxCapacityFrames
     private static let chunkFrames: Int = 480     // 10 ms per scheduled buffer
     private static let maxInFlightBuffers: Int = 3 // <= 30 ms on AVAudioPlayerNode
     private static let bufferPoolCount: Int = 4
 
     private let lock = NSLock()
     private let format: AVAudioFormat
+    private let enableHardwareEngine: Bool
     private var engine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
     private var bufferPool: [AVAudioPCMBuffer] = []
@@ -34,6 +36,13 @@ final class IOSAudioPlayer: NSObject, IOSAudioPlayback {
     private var stopGeneration: UInt64 = 0
     private var engineRunning: Bool = false
     private var startingEngine: Bool = false
+    private var primed: Bool = false
+    private var lipSync = AudioLipSyncPolicy()
+    private var lipSyncActive: Bool = false
+    private(set) var driftTrimmedFrames: Int = 0
+    #if canImport(AudioToolbox)
+    private let opusDecoder = AppleOpusAudioDecoder()
+    #endif
 
     private final class EngineStateToken {
         var invalidated: Bool = false
@@ -42,7 +51,12 @@ final class IOSAudioPlayer: NSObject, IOSAudioPlayback {
     private var scratchLeft = [Float](repeating: 0, count: IOSAudioPlayer.ringCapacity)
     private var scratchRight = [Float](repeating: 0, count: IOSAudioPlayer.ringCapacity)
 
-    override required init() {
+    override required convenience init() {
+        self.init(enableHardwareEngine: true)
+    }
+
+    init(enableHardwareEngine: Bool) {
+        self.enableHardwareEngine = enableHardwareEngine
         self.format = AVAudioFormat(
             standardFormatWithSampleRate: Self.targetSampleRate,
             channels: Self.targetChannels
@@ -60,6 +74,24 @@ final class IOSAudioPlayer: NSObject, IOSAudioPlayback {
         stop()
     }
 
+    var targetBufferedFrames: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return lipSync.targetBufferedFrames
+    }
+
+    var totalBufferedFrames: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return inFlightFrames + availableFrames
+    }
+
+    var isPrimed: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return primed
+    }
+
     private func allocateBufferPool() {
         bufferPool.removeAll(keepingCapacity: true)
         bufferInUse = [Bool](repeating: false, count: Self.bufferPoolCount)
@@ -73,16 +105,89 @@ final class IOSAudioPlayer: NSObject, IOSAudioPlayback {
         }
     }
 
+    @objc func updateVideoPipelineDelay(udpJitterActive: Bool, explicitDelayMs: Double) {
+        lock.lock()
+        lipSyncActive = true
+        lipSync.updateTransportMode(
+            udpJitterActive: udpJitterActive,
+            explicitVideoDelayMs: explicitDelayMs >= 0 ? explicitDelayMs : nil
+        )
+        trimToLipSyncWatermarkLocked()
+        lock.unlock()
+    }
+
+    @objc func recordVideoRender(captureTimestampMs: Int64, renderMonoMs: Double) {
+        lock.lock()
+        lipSyncActive = true
+        lipSync.recordVideoRender(captureTimestampMs: captureTimestampMs, renderMonoMs: renderMonoMs)
+        trimToLipSyncWatermarkLocked()
+        lock.unlock()
+    }
+
+    @objc func enqueueEncodedAudio(
+        _ payloadData: Data,
+        formatFlags: Int,
+        sampleRate: Int,
+        channels: Int,
+        captureTimestampMs: Int64,
+        arrivalMonoMs: Double
+    ) {
+        guard !payloadData.isEmpty,
+              (1...2).contains(channels) else { return }
+
+        let pcmData: Data
+        let decodedSampleRate: Int
+        if UInt8(truncatingIfNeeded: formatFlags) == UDPMediaAudioPayload.formatPCM16LE {
+            guard (8_000...96_000).contains(sampleRate),
+                  payloadData.count <= 65_536,
+                  payloadData.count % (channels * 2) == 0 else { return }
+            pcmData = payloadData
+            decodedSampleRate = sampleRate
+        } else if UInt8(truncatingIfNeeded: formatFlags) == UDPMediaAudioPayload.formatOpus {
+            guard sampleRate == 48_000,
+                  payloadData.count <= UDPMediaAudioPayload.maxOpusBytes else { return }
+            #if canImport(AudioToolbox)
+            lock.lock()
+            let decoded = opusDecoder.decodeToInterleavedS16LE(
+                opusPacket: payloadData,
+                sampleRate: sampleRate,
+                channels: channels
+            )
+            lock.unlock()
+            guard let decoded, !decoded.isEmpty else { return }
+            pcmData = decoded
+            decodedSampleRate = 48_000
+            #else
+            return
+            #endif
+        } else {
+            return
+        }
+
+        lock.lock()
+        lipSyncActive = true
+        _ = lipSync.observeAudioArrival(captureTimestampMs: captureTimestampMs, arrivalMonoMs: arrivalMonoMs)
+        enqueueDecodedPCMLocked(pcmData, sampleRate: decodedSampleRate, channels: channels)
+    }
+
     func enqueuePCM(_ pcmData: Data, sampleRate: Int, channels: Int) {
         guard !pcmData.isEmpty,
               pcmData.count <= 65_536,
               (1...2).contains(channels),
               (8_000...96_000).contains(sampleRate) else { return }
+        lock.lock()
+        enqueueDecodedPCMLocked(pcmData, sampleRate: sampleRate, channels: channels)
+    }
+
+    /// Consumes `lock` (unlocks before returning or starting engine).
+    private func enqueueDecodedPCMLocked(_ pcmData: Data, sampleRate: Int, channels: Int) {
         let bytesPerFrame = channels * 2
         let rawFrameCount = pcmData.count / bytesPerFrame
-        guard rawFrameCount > 0 else { return }
+        guard rawFrameCount > 0 else {
+            lock.unlock()
+            return
+        }
 
-        lock.lock()
         let decodedFrames = decodeIntoScratchLocked(
             pcmData: pcmData,
             rawFrameCount: rawFrameCount,
@@ -94,8 +199,8 @@ final class IOSAudioPlayer: NSObject, IOSAudioPlayback {
             return
         }
 
-        // Enforce 60 ms ceiling across in-flight AVAudioPlayerNode frames + ring buffer:
-        // trim oldest unread samples first so live audio never drifts behind video.
+        // Enforce 120 ms ceiling across in-flight AVAudioPlayerNode frames + ring buffer:
+        // trim oldest unread samples first so live audio never drifts unboundedly.
         let maxRingAllowed = max(0, min(Self.ringCapacity, Self.maxTotalLatencyFrames - inFlightFrames))
         if maxRingAllowed == 0 {
             readIndex = 0
@@ -108,8 +213,7 @@ final class IOSAudioPlayer: NSObject, IOSAudioPlayback {
         let startOffset: Int
         let framesToWrite: Int
         if decodedFrames >= maxRingAllowed {
-            // Incoming burst exceeds remaining budget: drop all older ring samples
-            // and keep only the newest `maxRingAllowed` frames.
+            driftTrimmedFrames += availableFrames + (decodedFrames - maxRingAllowed)
             readIndex = 0
             writeIndex = 0
             availableFrames = 0
@@ -120,6 +224,7 @@ final class IOSAudioPlayer: NSObject, IOSAudioPlayback {
                 let trimCount = (availableFrames + decodedFrames) - maxRingAllowed
                 readIndex = (readIndex + trimCount) % Self.ringCapacity
                 availableFrames -= trimCount
+                driftTrimmedFrames += trimCount
             }
             startOffset = 0
             framesToWrite = decodedFrames
@@ -132,6 +237,20 @@ final class IOSAudioPlayer: NSObject, IOSAudioPlayback {
             writeIndex = (writeIndex + 1) % Self.ringCapacity
         }
         availableFrames += framesToWrite
+
+        if lipSyncActive {
+            trimToLipSyncWatermarkLocked()
+            if !primed, (inFlightFrames + availableFrames) >= lipSync.targetBufferedFrames {
+                primed = true
+            }
+        } else {
+            primed = true
+        }
+
+        guard enableHardwareEngine else {
+            lock.unlock()
+            return
+        }
 
         if engineRunning, let eng = engine, let node = playerNode {
             let schedules = popSchedulesLocked()
@@ -159,6 +278,74 @@ final class IOSAudioPlayer: NSObject, IOSAudioPlayback {
         startOrReplaceEngineAndDrain()
     }
 
+    private func trimToLipSyncWatermarkLocked() {
+        guard lipSyncActive else { return }
+        let totalBuffered = inFlightFrames + availableFrames
+        guard totalBuffered > lipSync.driftTrimThresholdFrames, availableFrames > 0 else { return }
+        let desiredRing = max(0, lipSync.targetBufferedFrames - inFlightFrames)
+        guard availableFrames > desiredRing else { return }
+        let trimCount = availableFrames - desiredRing
+        readIndex = (readIndex + trimCount) % Self.ringCapacity
+        availableFrames -= trimCount
+        driftTrimmedFrames += trimCount
+    }
+
+    /// Deterministic consumer used by headless unit tests when `enableHardwareEngine == false`.
+    func drainForTesting(frameCount: Int) -> (framesPopped: Int, firstLeftSample: Float) {
+        guard frameCount > 0 else { return (0, 0) }
+        lock.lock()
+        defer { lock.unlock() }
+        if lipSyncActive && !primed {
+            if availableFrames >= lipSync.targetBufferedFrames {
+                primed = true
+            } else {
+                return (0, 0)
+            }
+        }
+        let count = min(frameCount, availableFrames)
+        guard count > 0 else {
+            primed = false
+            return (0, 0)
+        }
+        let first = leftRing[readIndex]
+        readIndex = (readIndex + count) % Self.ringCapacity
+        availableFrames -= count
+        if availableFrames == 0 {
+            primed = false
+        }
+        return (count, first)
+    }
+
+    func drainStereoForTesting(frameCount: Int) -> (left: [Float], right: [Float]) {
+        guard frameCount > 0 else { return ([], []) }
+        lock.lock()
+        defer { lock.unlock() }
+        if lipSyncActive && !primed {
+            if availableFrames >= lipSync.targetBufferedFrames {
+                primed = true
+            } else {
+                return ([], [])
+            }
+        }
+        let count = min(frameCount, availableFrames)
+        guard count > 0 else {
+            primed = false
+            return ([], [])
+        }
+        var leftOut = [Float](repeating: 0, count: count)
+        var rightOut = [Float](repeating: 0, count: count)
+        for i in 0..<count {
+            leftOut[i] = leftRing[readIndex]
+            rightOut[i] = rightRing[readIndex]
+            readIndex = (readIndex + 1) % Self.ringCapacity
+        }
+        availableFrames -= count
+        if availableFrames == 0 {
+            primed = false
+        }
+        return (leftOut, rightOut)
+    }
+
     func stop() {
         lock.lock()
         stopGeneration &+= 1
@@ -169,6 +356,13 @@ final class IOSAudioPlayer: NSObject, IOSAudioPlayback {
         availableFrames = 0
         inFlightBuffers = 0
         inFlightFrames = 0
+        primed = false
+        lipSync.reset()
+        lipSyncActive = false
+        driftTrimmedFrames = 0
+        #if canImport(AudioToolbox)
+        opusDecoder.reset()
+        #endif
         for idx in bufferInUse.indices {
             bufferInUse[idx] = false
         }
@@ -187,7 +381,9 @@ final class IOSAudioPlayer: NSObject, IOSAudioPlayback {
         node?.stop()
         eng?.stop()
         #if os(iOS)
-        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        if enableHardwareEngine {
+            try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        }
         #endif
     }
 
@@ -402,6 +598,12 @@ final class IOSAudioPlayer: NSObject, IOSAudioPlayback {
 
     private func popSchedulesLocked() -> [PendingSchedule] {
         guard engineRunning, let node = playerNode else { return [] }
+        if lipSyncActive && !primed {
+            guard (inFlightFrames + availableFrames) >= lipSync.targetBufferedFrames else {
+                return []
+            }
+            primed = true
+        }
         var result: [PendingSchedule] = []
         let epoch = playbackEpoch
 
@@ -456,6 +658,9 @@ final class IOSAudioPlayer: NSObject, IOSAudioPlayback {
         }
         inFlightBuffers = max(0, inFlightBuffers - 1)
         inFlightFrames = max(0, inFlightFrames - frames)
+        if inFlightBuffers == 0 && availableFrames == 0 {
+            primed = false
+        }
         let nextSchedules = popSchedulesLocked()
         lock.unlock()
 

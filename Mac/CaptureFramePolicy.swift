@@ -1,6 +1,7 @@
 import CoreGraphics
 import CoreMedia
 import Foundation
+import VideoToolbox
 
 enum CaptureStaticFramePolicy {
     /// Tightened ScreenCaptureKit queue depth (from 8 to 4) to reduce worst-case
@@ -42,21 +43,35 @@ enum CaptureStaticFramePolicy {
 ///    (protecting `ReceiverFirstVideoDeadline` and Android V2 `awaitingFirstFrame`),
 /// 2. Pending or in-flight keyframe recovery requests,
 /// 3. Post-motion quality settling frames (`settlingTailFrames`),
-/// 4. Periodic static keepalive refresh (`maxStaticRefreshInterval`).
+/// 4. One settled high-clarity text refresh (`~180ms` after active motion stops),
+/// 5. Periodic static keepalive refresh (`maxStaticRefreshInterval`).
 struct CaptureStaticFrameGate: Sendable {
+    static let defaultCrispRefreshDelay: TimeInterval = 0.18
+
+    struct AdmissionDecision: Equatable, Sendable {
+        let shouldEncode: Bool
+        let isSettledCrispRefresh: Bool
+    }
+
     let settlingTailFrames: Int
+    let crispRefreshDelay: TimeInterval
     let maxStaticRefreshInterval: TimeInterval
 
     private(set) var hasEncodedFrameInCurrentConfig = false
     private(set) var remainingSettlingFrames = 0
     private(set) var lastAdmittedUptime: TimeInterval?
+    private(set) var lastMotionUptime: TimeInterval?
+    private(set) var pendingCrispRefresh = false
+    private(set) var crispRefreshCount = 0
     private(set) var skippedStaticFrames = 0
 
     init(
         settlingTailFrames: Int = 1,
+        crispRefreshDelay: TimeInterval = CaptureStaticFrameGate.defaultCrispRefreshDelay,
         maxStaticRefreshInterval: TimeInterval = 0.5
     ) {
         self.settlingTailFrames = max(0, settlingTailFrames)
+        self.crispRefreshDelay = max(0.05, crispRefreshDelay)
         self.maxStaticRefreshInterval = max(0.05, maxStaticRefreshInterval)
     }
 
@@ -64,10 +79,71 @@ struct CaptureStaticFrameGate: Sendable {
         hasEncodedFrameInCurrentConfig = false
         remainingSettlingFrames = settlingTailFrames
         lastAdmittedUptime = nil
+        lastMotionUptime = nil
+        pendingCrispRefresh = false
     }
 
     mutating func markFrameEncoded() {
         hasEncodedFrameInCurrentConfig = true
+    }
+
+    mutating func evaluate(
+        hasDirtyRects: Bool,
+        requiresKeyframe: Bool,
+        nowUptime: TimeInterval
+    ) -> AdmissionDecision {
+        guard nowUptime.isFinite else {
+            return AdmissionDecision(shouldEncode: true, isSettledCrispRefresh: false)
+        }
+        if !hasEncodedFrameInCurrentConfig || requiresKeyframe || hasDirtyRects {
+            remainingSettlingFrames = settlingTailFrames
+            lastAdmittedUptime = nowUptime
+            if hasDirtyRects {
+                lastMotionUptime = nowUptime
+                pendingCrispRefresh = true
+            }
+            return AdmissionDecision(shouldEncode: true, isSettledCrispRefresh: false)
+        }
+        if remainingSettlingFrames > 0 {
+            remainingSettlingFrames -= 1
+            lastAdmittedUptime = nowUptime
+            return AdmissionDecision(shouldEncode: true, isSettledCrispRefresh: false)
+        }
+        if pendingCrispRefresh,
+           let motionAt = lastMotionUptime,
+           nowUptime >= motionAt,
+           nowUptime - motionAt >= crispRefreshDelay {
+            pendingCrispRefresh = false
+            crispRefreshCount += 1
+            lastAdmittedUptime = nowUptime
+            return AdmissionDecision(shouldEncode: true, isSettledCrispRefresh: true)
+        }
+        if let last = lastAdmittedUptime,
+           nowUptime >= last,
+           nowUptime - last < maxStaticRefreshInterval {
+            skippedStaticFrames += 1
+            return AdmissionDecision(shouldEncode: false, isSettledCrispRefresh: false)
+        }
+        lastAdmittedUptime = nowUptime
+        return AdmissionDecision(shouldEncode: true, isSettledCrispRefresh: false)
+    }
+
+    /// Invoked by the sender's `180ms` post-motion timer when ScreenCaptureKit stops
+    /// emitting callbacks on a static desktop. Admits at most one crisp refresh per
+    /// motion burst and becomes a no-op if an SCK static callback already satisfied it.
+    mutating func pollTimerCrispRefresh(nowUptime: TimeInterval) -> Bool {
+        guard nowUptime.isFinite,
+              hasEncodedFrameInCurrentConfig,
+              pendingCrispRefresh,
+              let motionAt = lastMotionUptime,
+              nowUptime >= motionAt,
+              nowUptime - motionAt >= crispRefreshDelay else {
+            return false
+        }
+        pendingCrispRefresh = false
+        crispRefreshCount += 1
+        lastAdmittedUptime = nowUptime
+        return true
     }
 
     mutating func shouldEncodeFrame(
@@ -75,25 +151,91 @@ struct CaptureStaticFrameGate: Sendable {
         requiresKeyframe: Bool,
         nowUptime: TimeInterval
     ) -> Bool {
-        guard nowUptime.isFinite else { return true }
-        if !hasEncodedFrameInCurrentConfig || requiresKeyframe || hasDirtyRects {
-            remainingSettlingFrames = settlingTailFrames
-            lastAdmittedUptime = nowUptime
-            return true
+        evaluate(
+            hasDirtyRects: hasDirtyRects,
+            requiresKeyframe: requiresKeyframe,
+            nowUptime: nowUptime
+        ).shouldEncode
+    }
+}
+
+enum SettledCrispRefreshEncoderPolicy {
+    /// Tighter maximum QP cap applied for the single settled static-desktop refresh
+    /// frame (`~180ms` after motion stops) so text and UI edges snap sharp without
+    /// altering VBV frame-size limits or dropping subsequent frames.
+    static let settledMaxAllowedFrameQP: Int = 20
+    static let defaultMaxAllowedFrameQPCeiling: Int = 51
+    static let settledSpatialQualityHint: Float = 0.90
+
+    static func withCrispRefreshHints<T>(
+        encoder: VTCompressionSession,
+        enabled: Bool,
+        restoreSpeedOverQuality: Bool,
+        restoreBitrate: Int,
+        restoreVBVLimits: [NSNumber],
+        body: () -> T
+    ) -> T {
+        guard enabled else { return body() }
+        var originalMaxQPRef: Unmanaged<CFTypeRef>?
+        let hadOriginalMaxQP = VTSessionCopyProperty(
+            encoder,
+            key: kVTCompressionPropertyKey_MaxAllowedFrameQP,
+            allocator: nil,
+            valueOut: &originalMaxQPRef
+        ) == noErr
+        let originalMaxQP = originalMaxQPRef?.takeRetainedValue()
+        // Before MaxAllowedFrameQP is explicitly set, VideoToolbox returns negative
+        // sentinels (-13 or -1) from VTSessionCopyProperty, which VTSessionSetProperty
+        // rejects with kVTPropertyErr (-12900). Restore a valid 1...51 ceiling.
+        let restoreMaxQP: Int = {
+            if hadOriginalMaxQP,
+               let number = originalMaxQP as? NSNumber,
+               (1...51).contains(number.intValue) {
+                return number.intValue
+            }
+            return defaultMaxAllowedFrameQPCeiling
+        }()
+
+        VTSessionSetProperty(
+            encoder,
+            key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality,
+            value: kCFBooleanFalse
+        )
+        VTSessionSetProperty(
+            encoder,
+            key: kVTCompressionPropertyKey_MaxAllowedFrameQP,
+            value: settledMaxAllowedFrameQP as CFNumber
+        )
+        let qualityStatus = VTSessionSetProperty(
+            encoder,
+            key: kVTCompressionPropertyKey_Quality,
+            value: settledSpatialQualityHint as CFNumber
+        )
+        defer {
+            VTSessionSetProperty(
+                encoder,
+                key: kVTCompressionPropertyKey_MaxAllowedFrameQP,
+                value: restoreMaxQP as CFNumber
+            )
+            VTSessionSetProperty(
+                encoder,
+                key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality,
+                value: restoreSpeedOverQuality ? kCFBooleanTrue : kCFBooleanFalse
+            )
+            if qualityStatus == noErr, restoreBitrate > 0 {
+                VTSessionSetProperty(
+                    encoder,
+                    key: kVTCompressionPropertyKey_AverageBitRate,
+                    value: restoreBitrate as CFNumber
+                )
+                VTSessionSetProperty(
+                    encoder,
+                    key: kVTCompressionPropertyKey_DataRateLimits,
+                    value: restoreVBVLimits as CFArray
+                )
+            }
         }
-        if remainingSettlingFrames > 0 {
-            remainingSettlingFrames -= 1
-            lastAdmittedUptime = nowUptime
-            return true
-        }
-        if let last = lastAdmittedUptime,
-           nowUptime >= last,
-           nowUptime - last < maxStaticRefreshInterval {
-            skippedStaticFrames += 1
-            return true == false
-        }
-        lastAdmittedUptime = nowUptime
-        return true
+        return body()
     }
 }
 

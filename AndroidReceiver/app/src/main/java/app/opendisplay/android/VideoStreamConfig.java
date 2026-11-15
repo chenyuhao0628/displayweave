@@ -5,8 +5,10 @@ import android.media.MediaFormat;
 import java.util.Locale;
 
 public final class VideoStreamConfig {
+    public static final String COLOR_SPACE_SRGB = "srgb";
+    public static final String COLOR_SPACE_DISPLAY_P3 = "displayP3";
     public static final VideoStreamConfig DEFAULT =
-            new VideoStreamConfig("h264", MediaFormat.MIMETYPE_VIDEO_AVC, 60, 0, 0, 0);
+            new VideoStreamConfig("h264", MediaFormat.MIMETYPE_VIDEO_AVC, 60, 0, 0, 0, COLOR_SPACE_SRGB);
 
     public final String codec;
     public final String mimeType;
@@ -14,17 +16,36 @@ public final class VideoStreamConfig {
     public final int width;
     public final int height;
     public final int bitrate;
+    public final String colorSpace;
 
-    private VideoStreamConfig(String codec, String mimeType, int fps, int width, int height, int bitrate) {
+    private VideoStreamConfig(
+            String codec,
+            String mimeType,
+            int fps,
+            int width,
+            int height,
+            int bitrate,
+            String colorSpace) {
         this.codec = codec;
         this.mimeType = mimeType;
         this.fps = fps;
         this.width = Math.max(0, width);
         this.height = Math.max(0, height);
         this.bitrate = Math.max(0, bitrate);
+        this.colorSpace = normalizeColorSpace(colorSpace);
     }
 
     public static VideoStreamConfig from(String codecName, int fps, int width, int height, int bitrate) {
+        return from(codecName, fps, width, height, bitrate, COLOR_SPACE_SRGB);
+    }
+
+    public static VideoStreamConfig from(
+            String codecName,
+            int fps,
+            int width,
+            int height,
+            int bitrate,
+            String colorSpace) {
         String normalized = codecName == null ? "h264" : codecName.toLowerCase(Locale.US);
         if (!"hevc".equals(normalized) && !"h264".equals(normalized)) {
             normalized = "h264";
@@ -32,11 +53,29 @@ public final class VideoStreamConfig {
         String mimeType = "hevc".equals(normalized)
                 ? MediaFormat.MIMETYPE_VIDEO_HEVC
                 : MediaFormat.MIMETYPE_VIDEO_AVC;
-        return new VideoStreamConfig(normalized, mimeType, sanitizeFps(fps), width, height, bitrate);
+        return new VideoStreamConfig(
+                normalized,
+                mimeType,
+                sanitizeFps(fps),
+                width,
+                height,
+                bitrate,
+                colorSpace);
     }
 
     public boolean isHevc() {
         return "hevc".equals(codec);
+    }
+
+    public boolean isDisplayP3() {
+        return COLOR_SPACE_DISPLAY_P3.equals(colorSpace);
+    }
+
+    public static String normalizeColorSpace(String raw) {
+        if (raw != null && COLOR_SPACE_DISPLAY_P3.equalsIgnoreCase(raw.trim())) {
+            return COLOR_SPACE_DISPLAY_P3;
+        }
+        return COLOR_SPACE_SRGB;
     }
 
     public int vpsNalType() {

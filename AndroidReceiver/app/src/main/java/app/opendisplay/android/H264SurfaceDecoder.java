@@ -19,6 +19,45 @@ import app.opendisplay.android.protocol.SpsParser;
 public final class H264SurfaceDecoder {
     private static final String LOG_TAG = "DisplayWeaveDecoder";
     private static final int MAX_RENDERED_TELEMETRY = 512;
+    /** AOSP {@code DataSpace.STANDARD_DCI_P3 >> 16} (Display P3 D65 color primaries). */
+    static final int COLOR_STANDARD_DISPLAY_P3 = 10;
+
+    static final class ColorSpaceFormatSpec {
+        final boolean wideColorGamut;
+        final int colorStandard;
+        final int colorTransfer;
+        final int colorRange;
+
+        ColorSpaceFormatSpec(
+                boolean wideColorGamut, int colorStandard, int colorTransfer, int colorRange) {
+            this.wideColorGamut = wideColorGamut;
+            this.colorStandard = colorStandard;
+            this.colorTransfer = colorTransfer;
+            this.colorRange = colorRange;
+        }
+    }
+
+    static ColorSpaceFormatSpec colorSpaceFormatSpec(VideoStreamConfig config) {
+        if (config != null && config.isDisplayP3()) {
+            return new ColorSpaceFormatSpec(
+                    true,
+                    COLOR_STANDARD_DISPLAY_P3,
+                    MediaFormat.COLOR_TRANSFER_SDR_VIDEO,
+                    MediaFormat.COLOR_RANGE_LIMITED);
+        }
+        return new ColorSpaceFormatSpec(false, 0, 0, 0);
+    }
+
+    static void applyColorSpaceToFormat(MediaFormat format, VideoStreamConfig config) {
+        ColorSpaceFormatSpec spec = colorSpaceFormatSpec(config);
+        if (format == null || !spec.wideColorGamut) {
+            return;
+        }
+        format.setInteger(MediaFormat.KEY_COLOR_STANDARD, spec.colorStandard);
+        format.setInteger(MediaFormat.KEY_COLOR_TRANSFER, spec.colorTransfer);
+        format.setInteger(MediaFormat.KEY_COLOR_RANGE, spec.colorRange);
+    }
+
     private final Surface surface;
     private final DecoderLowLatencyMode lowLatencyMode;
     private volatile Listener listener;
@@ -76,10 +115,18 @@ public final class H264SurfaceDecoder {
     }
 
     public void applyStreamConfig(String codecName, int fps, int width, int height) {
-        VideoStreamConfig next = VideoStreamConfig.from(codecName, fps, width, height, 0);
+        applyStreamConfig(codecName, fps, width, height, VideoStreamConfig.COLOR_SPACE_SRGB);
+    }
+
+    public void applyStreamConfig(
+            String codecName, int fps, int width, int height, String colorSpace) {
+        VideoStreamConfig next = VideoStreamConfig.from(
+                codecName, fps, width, height, 0, colorSpace);
         boolean changed;
         synchronized (this) {
-            changed = !streamConfig.codec.equals(next.codec) || streamConfig.fps != next.fps
+            changed = !streamConfig.codec.equals(next.codec)
+                    || streamConfig.fps != next.fps
+                    || !streamConfig.colorSpace.equals(next.colorSpace)
                     || (configuredWidth > 0 && width > 0 && configuredWidth != width)
                     || (configuredHeight > 0 && height > 0 && configuredHeight != height);
             streamConfig = next;
@@ -266,15 +313,34 @@ public final class H264SurfaceDecoder {
         HandlerThread candidateCallbackThread = null;
         try {
             candidateCodec = MediaCodec.createByCodecName(attempt.decoderName);
-            final long callbackGeneration;
+            long provisionalGeneration;
             synchronized (this) {
-                callbackGeneration = callbackState.activate(candidateCodec);
+                provisionalGeneration = callbackState.activate(candidateCodec);
             }
-            MediaFormat format = decoderFormat(width, height, vps, sps, pps);
+            MediaFormat format = decoderFormat(width, height, vps, sps, pps, true);
             if (attempt.enableLowLatency && android.os.Build.VERSION.SDK_INT >= 30) {
                 format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1);
             }
-            candidateCodec.configure(format, surface, null, 0);
+            try {
+                candidateCodec.configure(format, surface, null, 0);
+            } catch (RuntimeException colorError) {
+                if (!streamConfig.isDisplayP3()) {
+                    throw colorError;
+                }
+                Log.w(LOG_TAG, "Display P3 format rejected; retrying decoder with default color standard"
+                        + " decoder=" + attempt.decoderName, colorError);
+                releaseCandidate(candidateCodec);
+                candidateCodec = MediaCodec.createByCodecName(attempt.decoderName);
+                synchronized (this) {
+                    provisionalGeneration = callbackState.activate(candidateCodec);
+                }
+                MediaFormat sdrFormat = decoderFormat(width, height, vps, sps, pps, false);
+                if (attempt.enableLowLatency && android.os.Build.VERSION.SDK_INT >= 30) {
+                    sdrFormat.setInteger(MediaFormat.KEY_LOW_LATENCY, 1);
+                }
+                candidateCodec.configure(sdrFormat, surface, null, 0);
+            }
+            final long callbackGeneration = provisionalGeneration;
             HandlerThread callbackThread =
                     new HandlerThread("OpenDisplayFrameRendered");
             candidateCallbackThread = callbackThread;
@@ -334,7 +400,7 @@ public final class H264SurfaceDecoder {
     }
 
     private MediaFormat decoderFormat(
-            int width, int height, byte[] vps, byte[] sps, byte[] pps) {
+            int width, int height, byte[] vps, byte[] sps, byte[] pps, boolean includeColorSpace) {
         MediaFormat format = MediaFormat.createVideoFormat(streamConfig.mimeType, width, height);
         long maxInputBytes = Math.min(
                 Math.max((long) width * Math.max(height, 1), 1L << 20),
@@ -343,6 +409,9 @@ public final class H264SurfaceDecoder {
         format.setInteger(MediaFormat.KEY_PRIORITY, 0);
         if (android.os.Build.VERSION.SDK_INT >= 31) {
             format.setInteger(MediaFormat.KEY_ALLOW_FRAME_DROP, 1);
+        }
+        if (includeColorSpace) {
+            applyColorSpaceToFormat(format, streamConfig);
         }
         if (streamConfig.isHevc()) {
             java.io.ByteArrayOutputStream csd = new java.io.ByteArrayOutputStream();

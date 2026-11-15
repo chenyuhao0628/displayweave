@@ -332,6 +332,40 @@ struct UDPMediaProtocolSelfTest {
         expect(try UDPMediaAudioPayload.decode(from: openedAudio.payload) == audioPayload,
                "golden audio sealed datagram authenticates and decodes")
 
+        // 7. Opus format (formatOpus = 1) & tcpAudioV1 golden vector + framing bounds
+        let opusPayload = UDPMediaAudioPayload(
+            audioSeq: 6,
+            captureTimestampMs: 1_700_000_000_270,
+            sampleRate: 48_000,
+            channels: 2,
+            formatFlags: UDPMediaAudioPayload.formatOpus,
+            pcmBytes: Data([0xF8, 0xFF, 0xFE, 0x01, 0x02, 0x03, 0x04])
+        )
+        expect(opusPayload.isValid, "7-byte non-4-byte-aligned Opus packet must validate at 48kHz")
+        expect(opusPayload.encode() == fixtureHex("udpAudioOpusPayload"),
+               "Opus audio payload matches shared golden vector")
+        expect(try UDPMediaAudioPayload.decode(from: fixtureHex("udpAudioOpusPayload")) == opusPayload,
+               "Opus golden vector decodes losslessly")
+
+        let invalidOpusRate = UDPMediaAudioPayload(
+            audioSeq: 7,
+            captureTimestampMs: 1_700_000_000_290,
+            sampleRate: 44_100,
+            channels: 2,
+            formatFlags: UDPMediaAudioPayload.formatOpus,
+            pcmBytes: Data([0xF8, 0xFF, 0xFE])
+        )
+        expect(!invalidOpusRate.isValid, "Opus requires 48kHz sample rate")
+
+        let tcpAudioJsonData = TCPAudioFrameMessage.encodeJSONData(opusPayload)
+        expect(tcpAudioJsonData == fixtureHex("tcpAudioPayload"),
+               "TCPAudioFrameMessage JSON matches shared golden vector")
+        expect((try? TCPAudioFrameMessage.decode(jsonData: fixtureHex("tcpAudioPayload"))) == opusPayload,
+               "TCPAudioFrameMessage decodes shared golden vector")
+        let oversizeJson = Data(repeating: 0x20, count: TCPAudioFrameMessage.maxControlBytes + 1)
+        expect((try? TCPAudioFrameMessage.decode(jsonData: oversizeJson)) == nil,
+               "TCPAudioFrameMessage must reject control payloads > 4096 bytes")
+
         print("UDPMediaProtocolSelfTest PASS")
     }
 }

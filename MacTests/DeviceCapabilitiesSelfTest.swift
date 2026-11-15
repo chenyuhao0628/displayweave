@@ -115,7 +115,7 @@ struct DeviceCapabilitiesSelfTest {
         let upgradedHello = try JSONDecoder().decode(PhoneInfo.self, from: Data("""
         {"type":"hello","pixelsWide":2732,"pixelsHigh":2048,"scale":2.0,"device":"iPad",
          "panel":{"millimetersWide":280.6,"millimetersHigh":214.9},
-         "capabilities":["udpMediaV1","udpCursorV1","udpAudioV1","hevc5kV1","displayP3"],
+         "capabilities":["udpMediaV1","udpCursorV1","udpAudioV1","tcpAudioV1","audioOpusV1","hevc5kV1","displayP3"],
          "inputCaps":["pencil-v2","mac-input-v1"]}
         """.utf8))
         assertEqual(281, upgradedHello.panel?.millimetersWide,
@@ -125,9 +125,22 @@ struct DeviceCapabilitiesSelfTest {
         assertEqual(true, upgradedHello.supportsUDPMediaV1, "udpMediaV1 detected")
         assertEqual(true, upgradedHello.supportsUDPCursorV1, "udpCursorV1 detected")
         assertEqual(true, upgradedHello.supportsUDPAudioV1, "udpAudioV1 detected")
+        assertEqual(true, upgradedHello.supportsTCPAudioV1, "tcpAudioV1 detected")
+        assertEqual(true, upgradedHello.supportsAudioOpusV1, "audioOpusV1 detected")
+        assertEqual(true, upgradedHello.supportsAnyAudioV1, "supportsAnyAudioV1 true when UDP/TCP audio present")
         assertEqual(true, upgradedHello.supportsHEVC5KV1, "hevc5kV1 detected")
         assertEqual(true, upgradedHello.supportsDisplayP3, "displayP3 detected")
         precondition(upgradedHello.hasValidGeometry)
+
+        let wiredUsbHello = try JSONDecoder().decode(PhoneInfo.self, from: Data("""
+        {"type":"hello","pixelsWide":2560,"pixelsHigh":1600,"scale":2.0,"device":"Android",
+         "transport":"usb","capabilities":["tcpAudioV1","audioOpusV1","displayP3"]}
+        """.utf8))
+        assertEqual(false, wiredUsbHello.supportsUDPAudioV1, "USB hello omits udpAudioV1")
+        assertEqual(true, wiredUsbHello.supportsTCPAudioV1, "USB hello advertises tcpAudioV1")
+        assertEqual(true, wiredUsbHello.supportsAnyAudioV1, "USB hello enables audio capture via tcpAudioV1")
+        assertEqual(true, wiredUsbHello.supportsAudioOpusV1, "USB hello advertises audioOpusV1")
+        assertEqual(true, wiredUsbHello.supportsDisplayP3, "USB hello advertises displayP3")
 
         print("DeviceCapabilitiesSelfTest PASS")
     }

@@ -43,6 +43,10 @@ public final class CodecCapabilities {
         return hasUsableHardwareDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC) ? "hevc" : "h264";
     }
 
+    public static boolean supportsAudioOpusDecoder() {
+        return hasDecoder(MediaFormat.MIMETYPE_AUDIO_OPUS);
+    }
+
     /**
      * Caps the display refresh rate by the preferred hardware decoder's
      * advertised size/rate performance. Screen Hz alone is not a video
