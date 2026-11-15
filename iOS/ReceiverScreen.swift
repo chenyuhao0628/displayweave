@@ -155,20 +155,25 @@ private struct WindowGeometryObserver: UIViewRepresentable {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.lastReportedBounds = .null
-                self?.reportIfNeeded()
+                MainActor.assumeIsolated {
+                    self?.lastReportedBounds = .null
+                    self?.reportIfNeeded()
+                }
             }
             sceneActivateObserver = NotificationCenter.default.addObserver(
                 forName: UIScene.didActivateNotification,
                 object: nil,
                 queue: .main
             ) { [weak self] notification in
-                guard let self,
-                      let windowScene = self.window?.windowScene,
-                      notification.object as? UIWindowScene === windowScene else { return }
-                PhoneSceneSizing.applyMinimumSizeRestrictions(to: windowScene)
-                self.lastReportedBounds = .null
-                self.reportIfNeeded()
+                let activatedSceneID = (notification.object as AnyObject?).map(ObjectIdentifier.init)
+                MainActor.assumeIsolated {
+                    guard let self,
+                          let windowScene = self.window?.windowScene,
+                          activatedSceneID == ObjectIdentifier(windowScene) else { return }
+                    PhoneSceneSizing.applyMinimumSizeRestrictions(to: windowScene)
+                    self.lastReportedBounds = .null
+                    self.reportIfNeeded()
+                }
             }
         }
 
