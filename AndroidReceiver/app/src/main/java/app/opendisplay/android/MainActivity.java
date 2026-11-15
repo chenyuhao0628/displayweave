@@ -97,6 +97,37 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     private volatile String surfaceFrameRateStatus = "notRequested";
     private WifiLowLatencyLifecycle wifiLowLatencyLifecycle;
     private SurfaceFrameRateLifecycle surfaceFrameRateLifecycle;
+    private static final String ACTION_USB_PERMISSION = "app.opendisplay.android.USB_PERMISSION";
+    private android.hardware.usb.UsbAccessory usedUsbAccessory;
+    private android.hardware.usb.UsbAccessory permissionAskedUsbAccessory;
+    private boolean usbReceiversRegistered;
+    private final android.content.BroadcastReceiver usbAccessoryDetachedReceiver =
+            new android.content.BroadcastReceiver() {
+                @Override
+                @SuppressWarnings("deprecation")
+                public void onReceive(android.content.Context context, android.content.Intent intent) {
+                    android.hardware.usb.UsbAccessory detached = Build.VERSION.SDK_INT >= 33
+                            ? intent.getParcelableExtra(
+                                    android.hardware.usb.UsbManager.EXTRA_ACCESSORY,
+                                    android.hardware.usb.UsbAccessory.class)
+                            : intent.getParcelableExtra(android.hardware.usb.UsbManager.EXTRA_ACCESSORY);
+                    usedUsbAccessory = null;
+                    permissionAskedUsbAccessory = null;
+                    OpenDisplayServer activeServer = server;
+                    if (activeServer != null) {
+                        activeServer.detachUsbAccessory(detached);
+                    }
+                }
+            };
+    private final android.content.BroadcastReceiver usbAccessoryPermissionReceiver =
+            new android.content.BroadcastReceiver() {
+                @Override
+                public void onReceive(android.content.Context context, android.content.Intent intent) {
+                    if (intent.getBooleanExtra(android.hardware.usb.UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                        tryAttachUsbAccessory();
+                    }
+                }
+            };
 
     @Override
     @SuppressWarnings("deprecation")
@@ -157,8 +188,18 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
                 () -> { if (server != null) server.cancelPendingAdmissions(); },
                 id -> { if (server != null) server.revokePeer(id); });
         buildUi();
+        registerUsbAccessoryReceivers();
         applyKeepAwakePreference();
         showOnboardingIfNeeded();
+    }
+
+    @Override
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (intent != null && android.hardware.usb.UsbManager.ACTION_USB_ACCESSORY_ATTACHED.equals(intent.getAction())) {
+            tryAttachUsbAccessory();
+        }
     }
 
     @Override
@@ -168,6 +209,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         surfaceFrameRateLifecycle.onResume();
         updateWifiLowLatencyState();
         receiverLifecycle.onResume();
+        tryAttachUsbAccessory();
         updateCoordinator.resumePendingInstall();
         updateCoordinator.check(false);
     }
@@ -185,6 +227,7 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
 
     @Override
     protected void onDestroy() {
+        unregisterUsbAccessoryReceivers();
         uiHandler.removeCallbacks(hideStreamSettingsButton);
         uiHandler.removeCallbacks(dispatchLiveDisplaySpecUpdate);
         surfaceFrameRateLifecycle.onDestroy();
@@ -968,7 +1011,95 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         if (!advertiseWifi) {
             setStatus("USB 已就绪；授予附近设备权限后可使用 WiFi 发现");
         }
+        tryAttachUsbAccessory();
         return true;
+    }
+
+    @android.annotation.SuppressLint("UnspecifiedRegisterReceiverFlag")
+    private void registerUsbAccessoryReceivers() {
+        if (usbReceiversRegistered) {
+            return;
+        }
+        android.content.IntentFilter detachedFilter =
+                new android.content.IntentFilter(android.hardware.usb.UsbManager.ACTION_USB_ACCESSORY_DETACHED);
+        android.content.IntentFilter permissionFilter =
+                new android.content.IntentFilter(ACTION_USB_PERMISSION);
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(usbAccessoryDetachedReceiver, detachedFilter, android.content.Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(usbAccessoryPermissionReceiver, permissionFilter, android.content.Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(usbAccessoryDetachedReceiver, detachedFilter);
+            registerReceiver(usbAccessoryPermissionReceiver, permissionFilter);
+        }
+        usbReceiversRegistered = true;
+    }
+
+    private void unregisterUsbAccessoryReceivers() {
+        if (!usbReceiversRegistered) {
+            return;
+        }
+        usbReceiversRegistered = false;
+        try {
+            unregisterReceiver(usbAccessoryDetachedReceiver);
+        } catch (IllegalArgumentException ignored) {
+        }
+        try {
+            unregisterReceiver(usbAccessoryPermissionReceiver);
+        } catch (IllegalArgumentException ignored) {
+        }
+    }
+
+    private void tryAttachUsbAccessory() {
+        if (!foreground) {
+            return;
+        }
+        OpenDisplayServer activeServer = server;
+        if (activeServer == null) {
+            return;
+        }
+        android.app.KeyguardManager keyguard =
+                (android.app.KeyguardManager) getSystemService(KEYGUARD_SERVICE);
+        if (keyguard != null && keyguard.isKeyguardLocked()) {
+            return;
+        }
+        android.hardware.usb.UsbManager usbManager =
+                (android.hardware.usb.UsbManager) getSystemService(USB_SERVICE);
+        if (usbManager == null) {
+            return;
+        }
+        android.hardware.usb.UsbAccessory[] accessories = usbManager.getAccessoryList();
+        android.hardware.usb.UsbAccessory matched = null;
+        if (accessories != null) {
+            for (android.hardware.usb.UsbAccessory candidate : accessories) {
+                if (UsbAccessoryReceiverTransport.isMatchingAccessory(candidate)) {
+                    matched = candidate;
+                    break;
+                }
+            }
+        }
+        if (matched == null) {
+            usedUsbAccessory = null;
+            permissionAskedUsbAccessory = null;
+            return;
+        }
+        if (matched.equals(usedUsbAccessory) || activeServer.isUsbAccessoryAttached(matched)) {
+            return;
+        }
+        if (!usbManager.hasPermission(matched)) {
+            if (!matched.equals(permissionAskedUsbAccessory)) {
+                permissionAskedUsbAccessory = matched;
+                int flags = Build.VERSION.SDK_INT >= 31 ? android.app.PendingIntent.FLAG_MUTABLE : 0;
+                android.content.Intent permIntent =
+                        new android.content.Intent(ACTION_USB_PERMISSION).setPackage(getPackageName());
+                usbManager.requestPermission(
+                        matched,
+                        android.app.PendingIntent.getBroadcast(this, 0, permIntent, flags));
+            }
+            return;
+        }
+        if (activeServer.attachUsbAccessory(usbManager, matched)) {
+            usedUsbAccessory = matched;
+        }
     }
 
     private void stopServer() {

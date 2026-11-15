@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Matches AOA.manufacturer and AOA.model in Mac/USBAccessory.swift. -->
+<resources>
+    <usb-accessory manufacturer="OpenDisplay" model="OpenDisplay Receiver" />
+</resources>

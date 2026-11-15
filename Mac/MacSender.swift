@@ -30,6 +30,7 @@ enum SenderTransport {
     case tcp(NWEndpoint, interface: NWInterface? = nil)                   // WiFi (Bonjour) or -host/-port override
     case usb(udid: String?, port: UInt16)  // native usbmuxd dial; nil = first device
     case androidAdb(port: UInt16)          // localhost endpoint created by adb forward
+    case androidAccessory(serial: String)  // Android Open Accessory 2.0 over IOKit USB
 }
 
 enum SenderDisconnectReason { case connectionLost, receiverExit }
@@ -53,6 +54,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     // controller can deduplicate USB/WiFi sessions to the same device.
     @MainActor var onHello: ((PhoneInfo) -> Void)?
     @MainActor var onSecurityError: ((String) -> Void)?
+    @MainActor var onAccessoryBusy: ((String) -> Void)?
     @MainActor var onPipelineFailure: ((Error) -> Void)?
     @MainActor var onCaptureStoppedByUser: (() -> Void)?
     private var pipelineFailureReported = false // owned by queue
@@ -63,6 +65,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     private var connection: NWConnection?
     private var admission: AppleSecureAdmission?
     private var usbTLSRelay: UsbmuxTLSRelay?
+    private var accessoryRelay: AccessoryRelay?
+    private var dialTask: Task<Void, Never>?
     private let securityPlan: AppleSenderSecurityPlan
     var encrypted: Bool { securityPlan.encrypted }
     var secureReceiverID: String? { securityPlan.receiverID }
@@ -132,7 +136,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
     // stays gone past the grace ends the session via onDisconnected.
     private var everConnected = false
     private var disconnectedSince: Date?
-    private let disconnectGraceSeconds: TimeInterval = 10
+    private var disconnectGraceSeconds: TimeInterval {
+        if case .androidAccessory = transport { return 20 }
+        return 10
+    }
     private var disconnectCallbackPending = false
 
     private var lastHello: PhoneInfo?
@@ -1171,6 +1178,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         case .usb(let udid, let port): connectUSB(udid: udid, port: port)
         case .androidAdb(let port):
             connectTCP(.hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!))
+        case .androidAccessory(let serial):
+            connectAndroidAccessory(serial: serial)
         }
     }
 
@@ -1228,8 +1237,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         connection = nil
         let pending = admission; admission = nil
         pending?.cancel()
+        let activeDial = dialTask; dialTask = nil
+        activeDial?.cancel()
         let relay = usbTLSRelay; usbTLSRelay = nil
         relay?.onClosed = nil; relay?.stop()
+        let aoaRelay = accessoryRelay; accessoryRelay = nil
+        aoaRelay?.close()
+        if case .androidAccessory(let serial) = transport, stopped {
+            AccessoryRelay.close(serial: serial)
+        }
         previous?.viabilityUpdateHandler = nil
         previous?.stateUpdateHandler = nil
         previous?.cancel()
@@ -1250,7 +1266,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         connectionReady = false
         lastReceived = Date()
         receiveControl(on: conn, generation: generation)
-        queue.asyncAfter(deadline: .now() + 5) { [weak self] in
+        let helloTimeout: TimeInterval = {
+            if case .androidAccessory = transport, !everConnected { return 25 }
+            return 5
+        }()
+        queue.asyncAfter(deadline: .now() + helloTimeout) { [weak self] in
             guard let self, self.isCurrentConnection(conn, generation: generation), !self.connectionReady else { return }
             self.failSecurity("未收到匹配的接收端确认，请更新对端应用并重新连接")
         }
@@ -1363,6 +1383,15 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                         let msg = error.localizedDescription + "；正在有限重试已配对连接"
                         Task { [weak self] in await self?.status(msg) }
                         self.scheduleReconnect()
+                    } else if case .androidAccessory = self.transport,
+                              self.accessoryRelay?.hasReceivedData == false {
+                        // Android enumerates the USB accessory interface before
+                        // the user unlocks the phone or approves the system USB
+                        // accessory prompt; wait within initial grace instead of
+                        // treating user consent latency as a security rejection.
+                        let msg = AOA.Failure.noApp.localizedDescription
+                        Task { [weak self] in await self?.status(msg) }
+                        self.scheduleReconnect()
                     } else { self.failSecurity(error.localizedDescription) }
                 }
             }
@@ -1469,6 +1498,85 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
                 self.queue.async { [weak self] in
                     guard let self, generation == self.dialGeneration, !self.stopped else { return }
                     Task { [weak self] in await self?.status(hint) }
+                    self.scheduleReconnect()
+                }
+            }
+        }
+    }
+
+    /// Dial an Android receiver over user-space IOKit AOA 2.0, wrapping the bulk
+    /// pipe stream in `UsbmuxTLSRelay` + `AppleTLS` whenever TLS is required.
+    private func connectAndroidAccessory(serial: String) {
+        dialTask?.cancel()
+        dialGeneration += 1
+        let generation = dialGeneration
+        dialTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let (conn, aoaRelay) = try await AOA.dial(serial: serial, queue: self.queue)
+                self.queue.async { [weak self] in
+                    guard let self, generation == self.dialGeneration, !self.stopped else {
+                        conn.cancel()
+                        aoaRelay.close()
+                        return
+                    }
+                    self.dialTask = nil
+                    self.accessoryRelay = aoaRelay
+                    if self.securityPlan.encrypted {
+                        let relay = UsbmuxTLSRelay(tunnel: conn, queue: self.queue)
+                        self.usbTLSRelay = relay
+                        relay.onClosed = { [weak self, weak relay] in
+                            guard let self, let relay, self.usbTLSRelay === relay,
+                                  generation == self.dialGeneration, !self.stopped else { return }
+                            self.scheduleReconnect()
+                        }
+                        relay.start { [weak self, weak relay] result in
+                            guard let self, let relay, self.usbTLSRelay === relay,
+                                  generation == self.dialGeneration, !self.stopped else { return }
+                            switch result {
+                            case .success(let port):
+                                self.connectTCP(.hostPort(host: "127.0.0.1", port: .init(rawValue: port)!))
+                            case .failure(let error):
+                                self.failSecurity(error.localizedDescription)
+                            }
+                        }
+                        return
+                    }
+                    let connectionGeneration = self.adoptConnection(conn)
+                    conn.stateUpdateHandler = { [weak self] state in
+                        guard let self,
+                              self.isCurrentConnection(
+                                conn, generation: connectionGeneration) else {
+                            return
+                        }
+                        switch state {
+                        case .failed(let error):
+                            Log.info("android accessory connection failed: \(error)")
+                            self.connectionReady = false
+                            self.scheduleReconnect()
+                        case .cancelled:
+                            self.connectionReady = false
+                        default:
+                            break
+                        }
+                    }
+                    self.becomeReady(conn, generation: connectionGeneration)
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                let hint = error.localizedDescription
+                let isBusy = (error as? AOA.Failure) == .busy
+                Log.info("android accessory dial failed: \(error)")
+                self.queue.async { [weak self] in
+                    guard let self, generation == self.dialGeneration, !self.stopped else { return }
+                    self.dialTask = nil
+                    Task { @MainActor [weak self] in
+                        self?.onStatus?(hint)
+                        if isBusy {
+                            self?.onAccessoryBusy?(hint)
+                        }
+                    }
                     self.scheduleReconnect()
                 }
             }
@@ -3078,7 +3186,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         switch transport {
         case .tcp:
             transportName = lastHello?.isMacReceiver == true ? "lan" : "wifi"
-        case .usb, .androidAdb:
+        case .usb, .androidAdb, .androidAccessory:
             transportName = "usb"
         }
         let currentIdentity = protocolIdentity.beginConfiguration()
@@ -3224,13 +3332,14 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate, DisplayUnitPa
         case .tcp: return "wifi"
         case .usb: return "apple-usb"
         case .androidAdb: return "android-adb-usb"
+        case .androidAccessory: return "android-aoa-usb"
         }
     }
 
     private var bitrateTransport: BitrateTransport {
         switch transport {
         case .tcp: return .wifi
-        case .usb, .androidAdb: return .usb
+        case .usb, .androidAdb, .androidAccessory: return .usb
         }
     }
 
