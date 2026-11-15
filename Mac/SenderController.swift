@@ -54,6 +54,8 @@ final class SenderController: ObservableObject {
     private var browserRetryTask: Task<Void, Never>?
     @Published var discovered: [NWBrowser.Result] = []
     @Published var usbDevices: [UsbmuxDevice] = []
+    @Published var accessoryDevices: [UsbmuxDevice] = []
+    @Published var accessoryBusyDevices: [UsbmuxDevice] = []
     @Published var androidDevices: [AndroidAdbDevice] = []
     @Published var androidAdbStatus = "正在查找 ADB…"
     @Published var androidAdbPath = UserDefaults.standard.string(forKey: "androidAdbPath") ?? "" {
@@ -90,11 +92,23 @@ final class SenderController: ObservableObject {
 
     private var browser: NWBrowser?
     private var usbWatcher: UsbmuxDeviceWatcher?
+    private var accessoryWatcher: AccessoryDeviceWatcher?
     private var androidAdbClient: AndroidAdbClient?
     private var androidForwardManager: AndroidAdbForwardManager?
     private var androidConnectPending = Set<String>()
     private var androidRecoveryAttempt: [String: Int] = [:]
     private var androidRecoveryGeneration: [String: Int] = [:]
+    private var accessoryFallbackSuppressedSerials = Set<String>() {
+        didSet(oldValue) {
+            let bounded = PersistedDeviceCollectionPolicy.boundedSet(
+                accessoryFallbackSuppressedSerials,
+                previous: oldValue,
+                maxEntries: Self.maxPersistedEntries)
+            if bounded != accessoryFallbackSuppressedSerials {
+                accessoryFallbackSuppressedSerials = bounded
+            }
+        }
+    }
     private let benchmarkLaunch = BenchmarkLaunchOptions.parse(ProcessInfo.processInfo.arguments)
     private var didAutoStartBenchmark = false
 
@@ -232,6 +246,7 @@ final class SenderController: ObservableObject {
         wiredPathMonitor?.cancel(); wiredPathMonitor = nil
         _ = directCablePolicy.arrivals(present: [], active: [], enabled: false)
         usbWatcher?.stop(); usbWatcher = nil
+        accessoryWatcher?.stop(); accessoryWatcher = nil
         wifiAutoConnectArmed = false
         if !enabled {
             for serial in Array(androidRecoveryGeneration.keys) { androidRecoveryGeneration[serial, default: 0] += 1 }
@@ -242,7 +257,8 @@ final class SenderController: ObservableObject {
             replacementGeneration += 1
             sessions.forEach { end($0) }
             let cleanups = Array(cleanupTasks.values)
-            discovered = []; usbDevices = []; androidDevices = []
+            discovered = []; usbDevices = []; accessoryDevices = []; accessoryBusyDevices = []; androidDevices = []
+            accessoryFallbackSuppressedSerials.removeAll()
             return Task { for cleanup in cleanups { await cleanup.value } }
         }
         let generation = roleGeneration
@@ -253,6 +269,21 @@ final class SenderController: ObservableObject {
             self.usbDevices = devices
             self.autoConnect()
         }
+        accessoryWatcher = AccessoryDeviceWatcher(
+            onChange: { [weak self] devices in
+                guard let self, self.roleEnabled, self.roleGeneration == generation else { return }
+                let attachedSerials = Set(devices.compactMap { AOA.serial(from: $0.udid) })
+                self.accessoryFallbackSuppressedSerials.formIntersection(attachedSerials)
+                self.accessoryDevices = devices
+                self.refreshAndroidUsbStatus()
+                self.autoConnect()
+            },
+            onBusyChange: { [weak self] busy in
+                guard let self, self.roleEnabled, self.roleGeneration == generation else { return }
+                self.accessoryBusyDevices = busy
+                self.refreshAndroidUsbStatus()
+            }
+        )
         autoConnectTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(2))
             guard let self, !Task.isCancelled, self.roleEnabled, self.roleGeneration == generation else { return }
@@ -308,9 +339,11 @@ final class SenderController: ObservableObject {
         let configured = androidAdbPath.isEmpty ? nil : androidAdbPath
         guard let executable = AndroidAdbExecutableResolver.resolve(configuredPath: configured) else {
             androidDevices = []
-            androidAdbStatus = AndroidAdbFailure.executableNotFound(
-                AndroidAdbExecutableResolver.searchedPaths(configuredPath: configured))
-                .localizedDescription
+            accessoryWatcher?.updateAdbOnlineSerials([])
+            refreshAndroidUsbStatus(
+                adbFallbackMessage: AndroidAdbFailure.executableNotFound(
+                    AndroidAdbExecutableResolver.searchedPaths(configuredPath: configured))
+                    .localizedDescription)
             return
         }
         if androidAdbClient?.executable != executable {
@@ -333,13 +366,54 @@ final class SenderController: ObservableObject {
             let devices = try await androidAdbClient.devices()
             guard roleEnabled, roleGeneration == generation, !Task.isCancelled else { return }
             androidDevices = devices
-            androidAdbStatus = AndroidAdbPresentation.make(
-                executableFound: true, devices: devices).message
+            let onlineUsbSerials = Set(
+                AndroidAdbDeviceSelection.usbDevices(from: devices)
+                    .filter { $0.state == .device }
+                    .map(\.serial)
+            )
+            accessoryWatcher?.updateAdbOnlineSerials(onlineUsbSerials)
+            refreshAndroidUsbStatus(
+                adbFallbackMessage: AndroidAdbPresentation.make(
+                    executableFound: true, devices: devices).message)
             autoConnect()
         } catch {
             guard roleEnabled, roleGeneration == generation, !Task.isCancelled else { return }
             androidDevices = []
-            androidAdbStatus = error.localizedDescription
+            accessoryWatcher?.updateAdbOnlineSerials([])
+            refreshAndroidUsbStatus(adbFallbackMessage: error.localizedDescription)
+        }
+    }
+
+    private func refreshAndroidUsbStatus(adbFallbackMessage: String? = nil) {
+        let decisions = arbitratedAndroidWired
+        if let blocked = decisions.first(where: {
+            if case .blockedByExclusiveOwner = $0 { return true }
+            return false
+        }), case .blockedByExclusiveOwner(let serial, let name, let adbState) = blocked {
+            androidAdbStatus = AndroidWiredArbitrationPolicy.recoveryMessage(
+                serial: serial, name: name, adbState: adbState)
+            return
+        }
+        if decisions.contains(where: {
+            if case .preferAdb = $0 { return true }
+            return false
+        }) {
+            if let adbFallbackMessage {
+                androidAdbStatus = adbFallbackMessage
+            }
+            return
+        }
+        if let aoa = decisions.first(where: {
+            if case .useAccessory = $0 { return true }
+            return false
+        }), case .useAccessory(let serial, let name) = aoa {
+            let shortSerial = serial.count > 12 ? "…" + serial.suffix(8) : serial
+            let label = name ?? "Android（\(shortSerial)）"
+            androidAdbStatus = "免调试 USB 已就绪：\(label)"
+            return
+        }
+        if let adbFallbackMessage {
+            androidAdbStatus = adbFallbackMessage
         }
     }
 
@@ -446,8 +520,37 @@ final class SenderController: ObservableObject {
 
     private func sameAndroidDevice(_ result: NWBrowser.Result,
                                    _ device: AndroidAdbDevice) -> Bool {
-        guard let installID = installIDByAndroidSerial[device.serial] else { return false }
+        sameAndroidSerial(result, serial: device.serial)
+    }
+
+    private func sameAndroidSerial(_ result: NWBrowser.Result, serial: String) -> Bool {
+        guard let installID = installIDByAndroidSerial[serial] else { return false }
         return txtID(of: result) == installID
+    }
+
+    private var arbitratedAndroidWired: [AndroidWiredArbitrationDecision] {
+        let adbCandidates = androidUsbDevices.map { device -> AndroidWiredAdbCandidate in
+            let state: AndroidWiredAdbState
+            switch device.state {
+            case .device: state = .device
+            case .unauthorized: state = .unauthorized
+            case .offline: state = .offline
+            case .unknown(let raw): state = .other(raw)
+            }
+            return AndroidWiredAdbCandidate(serial: device.serial, state: state, model: device.model)
+        }
+        var aoaCandidates: [AndroidWiredAccessoryCandidate] = accessoryDevices.compactMap { dev in
+            guard let serial = AOA.serial(from: dev.udid) else { return nil }
+            return AndroidWiredAccessoryCandidate(serial: serial, name: dev.name, busy: false)
+        }
+        aoaCandidates.append(contentsOf: accessoryBusyDevices.compactMap { dev in
+            guard let serial = AOA.serial(from: dev.udid) else { return nil }
+            return AndroidWiredAccessoryCandidate(serial: serial, name: dev.name, busy: true)
+        })
+        return AndroidWiredArbitrationPolicy.arbitrate(
+            adbCandidates: adbCandidates,
+            accessoryCandidates: aoaCandidates
+        )
     }
 
     /// The session (over either transport) already serving this USB device.
@@ -477,9 +580,9 @@ final class SenderController: ObservableObject {
                 else { return false }
                 return sameDevice(result, device)
             case .androidAdb(let mapping):
-                guard let device = androidUsbDevices.first(where: { $0.serial == mapping.serial })
-                else { return false }
-                return sameAndroidDevice(result, device)
+                return sameAndroidSerial(result, serial: mapping.serial)
+            case .androidAccessory(let serial):
+                return sameAndroidSerial(result, serial: serial)
             default:
                 return false
             }
@@ -489,12 +592,33 @@ final class SenderController: ObservableObject {
     /// Existing session for this physical Android, including its App WiFi
     /// twin learned from the Receiver install ID.
     private func activeSession(coveringAndroidUSB device: AndroidAdbDevice) -> DeviceSession? {
-        if let direct = session(for: "android-adb:\(device.serial)") { return direct }
-        guard let installID = installIDByAndroidSerial[device.serial] else { return nil }
+        activeSession(coveringAndroidSerial: device.serial)
+    }
+
+    private func activeSession(coveringAndroidSerial serial: String) -> DeviceSession? {
+        if let direct = session(for: "android-adb:\(serial)") { return direct }
+        if let aoa = session(for: ConnectionTarget.androidAccessory(serial: serial).sessionID) { return aoa }
+        guard let installID = installIDByAndroidSerial[serial] else { return nil }
         return sessions.first { session in
             guard case .wifi(let result) = session.target else { return false }
             return session.deviceID == installID || txtID(of: result) == installID
         }
+    }
+
+    private func shouldAutoConnectAndroidAccessory(serial: String) -> Bool {
+        let target = ConnectionTarget.androidAccessory(serial: serial)
+        let trustedIDs = Set(AppleTransportSecurityModel.shared.peers.map(\.installID))
+        return AndroidWiredArbitrationPolicy.shouldAutoConnectAccessory(
+            mode: settings.transportMode,
+            serial: serial,
+            sessionID: target.sessionID,
+            knownInstallID: installIDByAndroidSerial[serial],
+            trustedPeerIDs: trustedIDs,
+            importedInvitationID: AppleTransportSecurityModel.shared.importedID,
+            allowLegacySender: AppleTransportSecurityModel.shared.legacySender,
+            disabledSessionIDs: usbDisabled,
+            fallbackSuppressedSerials: accessoryFallbackSuppressedSerials
+        )
     }
 
     // MARK: - Connection policy
@@ -518,13 +642,23 @@ final class SenderController: ObservableObject {
             && activeSession(coveringUSB: device) == nil {
             connect(to: .usb(udid: device.udid))
         }
-        for device in androidUsbDevices
-            where permitsUSB
-            && device.state == .device
-            && !usbDisabled.contains("android-adb:\(device.serial)")
-            && session(for: "android-adb:\(device.serial)") == nil
-            && !androidConnectPending.contains(device.serial) {
-            connect(to: .androidAdbDevice(serial: device.serial))
+        for decision in arbitratedAndroidWired where permitsUSB {
+            switch decision {
+            case .preferAdb(let serial, _):
+                if !usbDisabled.contains("android-adb:\(serial)"),
+                   session(for: "android-adb:\(serial)") == nil,
+                   !androidConnectPending.contains(serial) {
+                    connect(to: .androidAdbDevice(serial: serial))
+                }
+            case .useAccessory(let serial, _):
+                let target = ConnectionTarget.androidAccessory(serial: serial)
+                if session(for: target.sessionID) == nil,
+                   shouldAutoConnectAndroidAccessory(serial: serial) {
+                    connect(to: target)
+                }
+            case .blockedByExclusiveOwner:
+                break
+            }
         }
         var direct: [String: NWBrowser.Result] = [:]
         for result in discovered where DirectCable.interface(for: result) != nil {
@@ -551,12 +685,22 @@ final class SenderController: ObservableObject {
     /// An attached, auto-connectable USB device is (about to be) dialed over
     /// the cable — its WiFi service must not be grabbed in the launch race.
     private func cabled(_ result: NWBrowser.Result) -> Bool {
-        usbDevices.contains {
+        if usbDevices.contains(where: {
             sameDevice(result, $0) && !usbDisabled.contains("usb:\($0.udid)")
-        } || androidUsbDevices.contains {
-            sameAndroidDevice(result, $0)
-                && !usbDisabled.contains("android-adb:\($0.serial)")
-                && $0.state == .device
+        }) {
+            return true
+        }
+        return arbitratedAndroidWired.contains { decision in
+            switch decision {
+            case .preferAdb(let serial, _):
+                return sameAndroidSerial(result, serial: serial)
+                    && !usbDisabled.contains("android-adb:\(serial)")
+            case .useAccessory(let serial, _):
+                return sameAndroidSerial(result, serial: serial)
+                    && shouldAutoConnectAndroidAccessory(serial: serial)
+            case .blockedByExclusiveOwner:
+                return false
+            }
         }
     }
 
@@ -567,7 +711,7 @@ final class SenderController: ObservableObject {
     private func dedupeSessions() {
         let usbSessionIDs = Set(sessions.compactMap { s -> String? in
             switch s.target {
-            case .usb, .androidAdb: return s.deviceID
+            case .usb, .androidAdb, .androidAccessory: return s.deviceID
             default: return nil
             }
         })
@@ -599,6 +743,12 @@ final class SenderController: ObservableObject {
             return androidDevices.first(where: { $0.serial == serial })?.model ?? "Android"
         case .androidAdb(let mapping):
             return androidDevices.first(where: { $0.serial == mapping.serial })?.model ?? "Android"
+        case .androidAccessory(let serial):
+            let aoaUDID = AOA.prefix + serial
+            return accessoryDevices.first(where: { $0.udid == aoaUDID })?.name
+                ?? accessoryBusyDevices.first(where: { $0.udid == aoaUDID })?.name
+                ?? androidDevices.first(where: { $0.serial == serial })?.model
+                ?? "Android"
         case .wifi(let result):
             return serviceName(of: result) ?? "WiFi 设备"
         }
@@ -641,6 +791,9 @@ final class SenderController: ObservableObject {
             connectAndroidAdb(serial: serial, userInitiated: userInitiated)
             return
         }
+        if userInitiated, case .androidAccessory(let serial) = target {
+            accessoryFallbackSuppressedSerials.remove(serial)
+        }
         let id = target.sessionID
         guard session(for: id) == nil else { return }
 
@@ -654,12 +807,27 @@ final class SenderController: ObservableObject {
         case .usb(let udid?):
             covering = usbDevices.first(where: { $0.udid == udid })
                 .flatMap { activeSession(coveringUSB: $0) }
+        case .androidAccessory(let serial):
+            covering = activeSession(coveringAndroidSerial: serial)
         case .wifi(let result):
             covering = activeSession(coveringWiFi: result)
         default:
             covering = nil
         }
         if let covering {
+            if case .androidAccessory(let serial) = target,
+               case .wifi(let result) = covering.target {
+                let existingInstallID = covering.deviceID ?? txtID(of: result)
+                let decision = AndroidTransportHandoverPolicy.decision(
+                    mode: settings.transportMode,
+                    existing: .wifi(installID: existingInstallID),
+                    arrivingUSBInstallID: installIDByAndroidSerial[serial])
+                if decision == .replaceWiFiWithUSB || userInitiated {
+                    Log.info("Android AOA USB available — upgrading session from \(covering.id)")
+                    replace([covering], targets: [freshTarget(target)])
+                    return
+                }
+            }
             guard userInitiated else { return }
             Log.info("user chose \(id) — taking over from \(covering.id)")
             replace([covering], targets: [freshTarget(target)])
@@ -670,6 +838,7 @@ final class SenderController: ObservableObject {
         switch target {
         case .usb: usbDisabled.remove(id)
         case .androidAdb: usbDisabled.remove(id)
+        case .androidAccessory: usbDisabled.remove(id)
         case .androidAdbDevice: break
         case .wifi(let result):
             wifiRemembered.insert(id)
@@ -690,6 +859,8 @@ final class SenderController: ObservableObject {
             }
         case .androidAdb(let mapping):
             transport = .androidAdb(port: mapping.localPort)
+        case .androidAccessory(let serial):
+            transport = .androidAccessory(serial: serial)
         case .androidAdbDevice:
             return
         case .wifi(let result):
@@ -715,6 +886,7 @@ final class SenderController: ObservableObject {
             if case .bonjour(let txt) = result.metadata { advertisedTLS = txt["security"] == "tls-v1" }
         case .usb(let udid): securityID = udid.flatMap { installIDByUDID[$0] }
         case .androidAdb(let mapping): securityID = installIDByAndroidSerial[mapping.serial]
+        case .androidAccessory(let serial): securityID = installIDByAndroidSerial[serial]
         case .androidAdbDevice: return
         }
         do {
@@ -742,6 +914,9 @@ final class SenderController: ObservableObject {
             guard let self, let session, self.sessions.contains(where: { $0 === session }) else { return }
             self.securityStatus = "\(session.name)：\(message)"
             self.disconnect(session)
+        }
+        sender.onAccessoryBusy = { [weak self] hint in
+            self?.androidAdbStatus = hint
         }
         if case .androidAdb = target {
             session.androidForwardManager = androidForwardManager
@@ -779,6 +954,9 @@ final class SenderController: ObservableObject {
                 self.androidRecoveryAttempt.removeValue(forKey: mapping.serial)
                 self.androidRecoveryGeneration[mapping.serial, default: 0] += 1
             }
+            if case .androidAccessory(let serial) = session.target, let installID = info.id {
+                self.installIDByAndroidSerial[serial] = installID
+            }
             self.dedupeSessions()
             self.refreshWiFiAdvisory()
         }
@@ -814,6 +992,22 @@ final class SenderController: ObservableObject {
             guard let self, let session, self.roleEnabled, self.sessions.contains(where: { $0 === session }) else { return }
             if case .androidAdb(let mapping) = session.target {
                 self.recoverAndroidAdb(session: session, mapping: mapping)
+            } else if case .androidAccessory(let serial) = session.target {
+                let installID = session.deviceID ?? self.installIDByAndroidSerial[serial]
+                if reason == .connectionLost {
+                    self.accessoryFallbackSuppressedSerials.insert(serial)
+                }
+                let cleanup = self.end(session)
+                if reason == .connectionLost, self.settings.transportMode == .auto,
+                   let installID,
+                   let receiver = self.discovered.first(where: { self.txtID(of: $0) == installID }) {
+                    self.androidAdbStatus = "免调试 USB 已断开，正在切换同一设备的 WiFi…"
+                    Task { @MainActor [weak self] in
+                        await cleanup.value
+                        guard let self, self.roleEnabled, self.settings.transportMode == .auto else { return }
+                        self.connect(to: .wifi(receiver))
+                    }
+                }
             } else if reason == .connectionLost, let peer = self.macPeerID(session),
                       session.deviceKind?.lowercased() == "mac", self.macLANTokens[peer] == nil,
                       self.macLANPolicy.recover(peer: peer, now: ProcessInfo.processInfo.systemUptime,
@@ -852,7 +1046,14 @@ final class SenderController: ObservableObject {
             Log.info("sender pipeline failed: \(error)")
             session.failed = true
             session.status = "失败：\(error.localizedDescription)"
-            if case .androidAdb = session.target { self.androidAdbStatus = session.status }
+            switch session.target {
+            case .androidAdb:
+                self.androidAdbStatus = session.status
+            case .androidAccessory(let serial):
+                self.accessoryFallbackSuppressedSerials.insert(serial)
+                self.androidAdbStatus = session.status
+            default: break
+            }
         }
         sender.onPipelineFailure = { [weak self, weak session] error in
             guard let self, let session, !session.failed,
@@ -1011,6 +1212,7 @@ final class SenderController: ObservableObject {
         }
         switch session.target {
         case .usb: usbDisabled.insert(session.id)
+        case .androidAccessory: usbDisabled.insert(session.id)
         case .androidAdb(let mapping):
             usbDisabled.insert(session.id)
             androidRecoveryGeneration[mapping.serial, default: 0] += 1
@@ -1265,18 +1467,44 @@ final class SenderController: ObservableObject {
         var mergedServices = Set<String>()
         var coveredSessionIDs = Set<String>()
 
-        for device in androidUsbDevices {
-            let twin = discovered.first { sameAndroidDevice($0, device) }
+        for decision in arbitratedAndroidWired {
+            let serial = decision.serial
+            let twin = discovered.first { sameAndroidSerial($0, serial: serial) }
             if let twin, let name = serviceName(of: twin) { mergedServices.insert(name) }
-            let adbTarget = ConnectionTarget.androidAdbDevice(serial: device.serial)
-            coveredSessionIDs.insert(adbTarget.sessionID)
             if let twin { coveredSessionIDs.insert(ConnectionTarget.wifi(twin).sessionID) }
-            entries.append(DeviceEntry(
-                id: "android-device:\(device.serial)",
-                name: device.model ?? "Android（\(device.serial)）",
-                detail: androidDeviceDetail(device),
-                usbTarget: device.state == .device ? adbTarget : nil,
-                wifiTarget: twin.map { .wifi($0) }))
+            let shortSerial = serial.count > 12 ? "…" + serial.suffix(8) : serial
+            switch decision {
+            case .preferAdb(_, let model):
+                let adbTarget = ConnectionTarget.androidAdbDevice(serial: serial)
+                coveredSessionIDs.insert(adbTarget.sessionID)
+                let device = androidUsbDevices.first { $0.serial == serial }
+                entries.append(DeviceEntry(
+                    id: "android-device:\(serial)",
+                    name: model ?? device?.model ?? "Android（\(serial)）",
+                    detail: device.map(androidDeviceDetail) ?? "USB 已授权 · \(shortSerial)",
+                    usbTarget: adbTarget,
+                    wifiTarget: twin.map { .wifi($0) }))
+            case .useAccessory(_, let name):
+                let aoaTarget = ConnectionTarget.androidAccessory(serial: serial)
+                coveredSessionIDs.insert(aoaTarget.sessionID)
+                entries.append(DeviceEntry(
+                    id: "android-device:\(serial)",
+                    name: name ?? "Android（\(serial)）",
+                    detail: "免调试 USB 即插即用 · \(shortSerial)",
+                    usbTarget: aoaTarget,
+                    wifiTarget: twin.map { .wifi($0) }))
+            case .blockedByExclusiveOwner(_, let name, let adbState):
+                let aoaTarget = ConnectionTarget.androidAccessory(serial: serial)
+                coveredSessionIDs.insert(ConnectionTarget.androidAdbDevice(serial: serial).sessionID)
+                coveredSessionIDs.insert(aoaTarget.sessionID)
+                entries.append(DeviceEntry(
+                    id: "android-device:\(serial)",
+                    name: name ?? "Android（\(serial)）",
+                    detail: AndroidWiredArbitrationPolicy.recoveryMessage(
+                        serial: serial, name: name, adbState: adbState),
+                    usbTarget: adbState == nil ? aoaTarget : nil,
+                    wifiTarget: twin.map { .wifi($0) }))
+            }
         }
 
         for device in usbDevices {

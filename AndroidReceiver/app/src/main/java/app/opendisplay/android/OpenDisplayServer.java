@@ -141,16 +141,67 @@ public final class OpenDisplayServer implements NsdAdvertiser.Listener {
     }
 
     private static ReceiverTransport createTransport(Context context) throws java.io.IOException, java.security.GeneralSecurityException {
-        if (AndroidSecuritySettings.legacyEnabled(context)) return WifiTcpReceiverTransport.legacy(PORT);
+        if (AndroidSecuritySettings.legacyEnabled(context)) {
+            return new UsbAccessoryReceiverTransport.Composite(
+                    WifiTcpReceiverTransport.legacy(PORT),
+                    UsbAccessoryReceiverTransport.legacy());
+        }
         AndroidSecurityStore store = AndroidSecurityStore.get(context);
-        return new WifiTcpReceiverTransport(PORT, new SecureSocketAdmission(store.key, store.certificate, store.pairing));
+        SecureSocketAdmission admission = new SecureSocketAdmission(store.key, store.certificate, store.pairing);
+        return new UsbAccessoryReceiverTransport.Composite(
+                new WifiTcpReceiverTransport(PORT, admission),
+                new UsbAccessoryReceiverTransport(admission));
     }
 
     public void cancelPendingAdmissions() {
-        if (transport instanceof WifiTcpReceiverTransport) ((WifiTcpReceiverTransport) transport).cancelPendingAdmissions();
+        if (transport instanceof UsbAccessoryReceiverTransport.Composite) {
+            ((UsbAccessoryReceiverTransport.Composite) transport).cancelPendingAdmissions();
+        } else if (transport instanceof WifiTcpReceiverTransport) {
+            ((WifiTcpReceiverTransport) transport).cancelPendingAdmissions();
+        } else if (transport instanceof UsbAccessoryReceiverTransport) {
+            ((UsbAccessoryReceiverTransport) transport).cancelPendingAdmissions();
+        }
     }
+
     public void revokePeer(String id) {
-        if (transport instanceof WifiTcpReceiverTransport) ((WifiTcpReceiverTransport) transport).revokePeer(id);
+        if (transport instanceof UsbAccessoryReceiverTransport.Composite) {
+            ((UsbAccessoryReceiverTransport.Composite) transport).revokePeer(id);
+        } else if (transport instanceof WifiTcpReceiverTransport) {
+            ((WifiTcpReceiverTransport) transport).revokePeer(id);
+        } else if (transport instanceof UsbAccessoryReceiverTransport) {
+            ((UsbAccessoryReceiverTransport) transport).revokePeer(id);
+        }
+    }
+
+    public boolean attachUsbAccessory(android.hardware.usb.UsbManager manager,
+                                      android.hardware.usb.UsbAccessory accessory) {
+        if (!running) return false;
+        if (transport instanceof UsbAccessoryReceiverTransport.Composite) {
+            return ((UsbAccessoryReceiverTransport.Composite) transport).usb.openAccessory(manager, accessory);
+        }
+        if (transport instanceof UsbAccessoryReceiverTransport) {
+            return ((UsbAccessoryReceiverTransport) transport).openAccessory(manager, accessory);
+        }
+        return false;
+    }
+
+    public boolean isUsbAccessoryAttached(android.hardware.usb.UsbAccessory accessory) {
+        if (!running) return false;
+        if (transport instanceof UsbAccessoryReceiverTransport.Composite) {
+            return ((UsbAccessoryReceiverTransport.Composite) transport).usb.isAccessoryAttached(accessory);
+        }
+        if (transport instanceof UsbAccessoryReceiverTransport) {
+            return ((UsbAccessoryReceiverTransport) transport).isAccessoryAttached(accessory);
+        }
+        return false;
+    }
+
+    public void detachUsbAccessory(android.hardware.usb.UsbAccessory accessory) {
+        if (transport instanceof UsbAccessoryReceiverTransport.Composite) {
+            ((UsbAccessoryReceiverTransport.Composite) transport).usb.detachAccessory(accessory);
+        } else if (transport instanceof UsbAccessoryReceiverTransport) {
+            ((UsbAccessoryReceiverTransport) transport).detachAccessory(accessory);
+        }
     }
 
     OpenDisplayServer(Context context, DisplaySpec displaySpec, Listener listener,

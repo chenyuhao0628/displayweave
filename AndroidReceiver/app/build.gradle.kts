@@ -127,6 +127,11 @@ val runUpdateVerifierSelfTest = registerSelfTest(
     "app.opendisplay.android.update.UpdateVerifierSelfTest"
 )
 
+val runUsbAccessorySelfTest = registerSelfTest(
+    "runUsbAccessorySelfTest",
+    "app.opendisplay.android.UsbAccessorySelfTest"
+)
+
 tasks.withType<Test>().configureEach {
     testLogging {
         events = setOf(TestLogEvent.FAILED, TestLogEvent.SKIPPED)
@@ -143,5 +148,6 @@ tasks.matching { it.name == "test" }.configureEach {
         runReceiverConnectionSelfTest,
         runUpdatePolicySelfTest,
         runUpdateVerifierSelfTest,
+        runUsbAccessorySelfTest,
     )
 }

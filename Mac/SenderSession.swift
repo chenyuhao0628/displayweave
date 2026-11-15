@@ -7,6 +7,7 @@ enum ConnectionTarget: Hashable {
     case usb(udid: String?)           // wired via built-in usbmuxd; nil = first device
     case androidAdbDevice(serial: String)
     case androidAdb(AndroidAdbForward)
+    case androidAccessory(serial: String) // wired Android via IOKit AOA 2.0 (aoa:<serial>)
     case wifi(NWBrowser.Result)       // discovered via Bonjour
 
     /// Stable identity for sessions and persistence — survives Bonjour
@@ -16,6 +17,7 @@ enum ConnectionTarget: Hashable {
         case .usb(let udid): return "usb:\(udid ?? "first")"
         case .androidAdbDevice(let serial): return "android-adb:\(serial)"
         case .androidAdb(let mapping): return "android-adb:\(mapping.serial)"
+        case .androidAccessory(let serial): return "usb:\(AOA.prefix)\(serial)"
         case .wifi(let result):
             if case .service(let name, _, _, _) = result.endpoint { return "wifi:\(name)" }
             return "wifi:unknown"
@@ -72,7 +74,7 @@ final class DeviceSession: ObservableObject, Identifiable {
 
     var transportLabel: String {
         switch target {
-        case .usb, .androidAdb, .androidAdbDevice: return "USB"
+        case .usb, .androidAdb, .androidAdbDevice, .androidAccessory: return "USB"
         case .wifi:
             if let route = macLANRoute, !route.interfaceName.isEmpty {
                 return "\(route.direct ? "有线" : "局域网") · \(route.interfaceName)"

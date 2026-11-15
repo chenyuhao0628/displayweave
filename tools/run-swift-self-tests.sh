@@ -206,6 +206,10 @@ run_test SecureAdmissionSelfTest \
   Shared/SecurePairingState.swift Shared/AppleSecureAdmission.swift MacTests/SecureAdmissionSelfTest.swift
 run_test UsbmuxTLSRelaySelfTest \
   Shared/AppleTransportIdentity.swift Mac/UsbmuxTLSRelay.swift MacTests/UsbmuxTLSRelaySelfTest.swift
+run_test USBAccessorySelfTest \
+  "${settings[@]}" "${security[@]}" Shared/BoundedLogWriter.swift Mac/Log.swift \
+  Mac/AndroidUSBFunction.swift Mac/USBAccessory.swift Mac/UsbmuxTLSRelay.swift \
+  Mac/TransportSelectionPolicy.swift MacTests/USBAccessorySelfTest.swift
 run_test SecureTransportPlanSelfTest \
   "${security[@]}" MacTests/SecureTransportPlanSelfTest.swift
 run_test MacSecureReceiverSelfTest \

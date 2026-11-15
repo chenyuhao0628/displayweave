@@ -418,6 +418,10 @@ public final class WifiTcpReceiverTransport implements ReceiverTransport {
         return true;
     }
 
+    void disconnectCurrent() {
+        clearAndCloseCurrent();
+    }
+
     private void clearAndCloseCurrent() {
         ConnectionContext active;
         synchronized (this) {
