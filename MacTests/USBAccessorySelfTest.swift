@@ -228,6 +228,7 @@ struct USBAccessorySelfTest {
 
         expect(!AndroidWiredArbitrationPolicy.shouldAutoConnectAccessory(
             mode: .wifi,
+            serial: "SER_B",
             sessionID: "usb:aoa:SER_B",
             knownInstallID: "PEER_1",
             trustedPeerIDs: ["PEER_1"],
@@ -235,6 +236,30 @@ struct USBAccessorySelfTest {
             allowLegacySender: false,
             disabledSessionIDs: []
         ), "Wi-Fi-only transport mode must not auto-connect USB accessory")
+
+        expect(!AndroidWiredArbitrationPolicy.shouldAutoConnectAccessory(
+            mode: .auto,
+            serial: "SER_B",
+            sessionID: "usb:aoa:SER_B",
+            knownInstallID: "PEER_1",
+            trustedPeerIDs: ["PEER_1"],
+            importedInvitationID: nil,
+            allowLegacySender: false,
+            disabledSessionIDs: [],
+            fallbackSuppressedSerials: ["SER_B"]
+        ), "in-memory fallback suppression after connectionLost must prevent AOA<->Wi-Fi oscillation while cable stays plugged in")
+
+        expect(AndroidWiredArbitrationPolicy.shouldAutoConnectAccessory(
+            mode: .auto,
+            serial: "SER_B",
+            sessionID: "usb:aoa:SER_B",
+            knownInstallID: "PEER_1",
+            trustedPeerIDs: ["PEER_1"],
+            importedInvitationID: nil,
+            allowLegacySender: false,
+            disabledSessionIDs: [],
+            fallbackSuppressedSerials: ["OTHER_SERIAL"]
+        ), "fallback suppression on another serial must not block SER_B")
     }
 
     private static func testMutualTLSRelayOverSimulatedAccessoryStream() throws {

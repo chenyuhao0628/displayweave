@@ -198,6 +198,11 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
         super.onNewIntent(intent);
         setIntent(intent);
         if (intent != null && android.hardware.usb.UsbManager.ACTION_USB_ACCESSORY_ATTACHED.equals(intent.getAction())) {
+            OpenDisplayServer activeServer = server;
+            if (activeServer == null || !activeServer.isUsbAccessoryAttached(usedUsbAccessory)) {
+                usedUsbAccessory = null;
+                permissionAskedUsbAccessory = null;
+            }
             tryAttachUsbAccessory();
         }
     }
@@ -1082,6 +1087,9 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
             permissionAskedUsbAccessory = null;
             return;
         }
+        if (usedUsbAccessory != null && !activeServer.isUsbAccessoryAttached(usedUsbAccessory)) {
+            usedUsbAccessory = null;
+        }
         if (matched.equals(usedUsbAccessory) || activeServer.isUsbAccessoryAttached(matched)) {
             return;
         }
@@ -1103,6 +1111,8 @@ public final class MainActivity extends Activity implements OpenDisplayServer.Li
     }
 
     private void stopServer() {
+        usedUsbAccessory = null;
+        permissionAskedUsbAccessory = null;
         OpenDisplayServer activeServer = server;
         if (activeServer == null) {
             return;

@@ -500,6 +500,7 @@ final class AccessoryRelay: @unchecked Sendable {
     private let lock = NSLock()
     private var accepted: NWConnection?
     private var closed = false
+    private var pumpsStarted = false
     private var receivedBytesFromAccessory = false
     private var listenerReadyPort: UInt16?
     private var readyCallbacks: [(Result<UInt16, Error>) -> Void] = []
@@ -670,16 +671,26 @@ final class AccessoryRelay: @unchecked Sendable {
 
         listener.cancel()
         conn.stateUpdateHandler = { [weak self] state in
+            guard let self else { return }
             switch state {
+            case .ready:
+                self.lock.lock()
+                let shouldStart = !self.closed && self.accepted === conn && !self.pumpsStarted
+                if shouldStart {
+                    self.pumpsStarted = true
+                }
+                self.lock.unlock()
+                if shouldStart {
+                    self.pumpReads()
+                    self.pumpWrites()
+                }
             case .failed, .cancelled:
-                self?.close()
+                self.close()
             default:
                 break
             }
         }
         conn.start(queue: queue)
-        pumpReads()
-        pumpWrites()
     }
 
     private func isClosed() -> Bool {
@@ -721,13 +732,16 @@ final class AccessoryRelay: @unchecked Sendable {
                 }
                 consecutiveEmptyReads = 0
                 lock.lock()
+                guard !closed, let conn = accepted else {
+                    lock.unlock()
+                    return
+                }
                 receivedBytesFromAccessory = true
-                let conn = accepted
                 lock.unlock()
                 let chunk = Data(bytes: buf.bytes, count: transferred)
                 let sem = DispatchSemaphore(value: 0)
                 var sendFailed = false
-                conn?.send(content: chunk, completion: .contentProcessed { err in
+                conn.send(content: chunk, completion: .contentProcessed { err in
                     if err != nil { sendFailed = true }
                     sem.signal()
                 })

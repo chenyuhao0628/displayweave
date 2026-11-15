@@ -38,6 +38,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
@@ -79,7 +80,7 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
 
     private boolean started;
     private volatile boolean running;
-    private Listener listener;
+    private volatile Listener listener;
     private long nextGeneration;
     private ConnectionContext currentConnection;
     private UsbAccessory attachedAccessory;
@@ -103,6 +104,7 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
         final BufferedInputStream input;
         final BufferedOutputStream output;
         final Object writeLock = new Object();
+        final CountDownLatch published = new CountDownLatch(1);
         volatile int maxFrameBytes = LengthPrefixedProtocol.LEGACY_MAX_FRAME_BYTES;
 
         ConnectionContext(
@@ -269,35 +271,27 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
         }
 
         String resolvedPeer = (peerLabel == null || peerLabel.isEmpty()) ? "USB 配件" : peerLabel;
-        synchronized (this) {
-            if (!running) {
+        if (security == null) {
+            final BufferedInputStream rawIn;
+            final BufferedOutputStream rawOut;
+            try {
+                rawIn = new BufferedInputStream(bridge.serverSocket.getInputStream());
+                rawOut = new BufferedOutputStream(bridge.serverSocket.getOutputStream());
+            } catch (IOException | RuntimeException error) {
                 bridge.close();
                 return false;
             }
-            if (accessoryToken != null) {
-                attachedAccessory = accessoryToken;
-            }
-            if (security == null) {
-                try {
-                    adopt(
-                            bridge.serverSocket,
-                            bridge.serverSocket,
-                            bridge,
-                            new BufferedInputStream(bridge.serverSocket.getInputStream()),
-                            new BufferedOutputStream(bridge.serverSocket.getOutputStream()),
-                            null,
-                            resolvedPeer);
-                    return true;
-                } catch (IOException | RuntimeException error) {
-                    if (accessoryToken != null && accessoryToken.equals(attachedAccessory)) {
-                        attachedAccessory = null;
-                    }
-                    bridge.close();
-                    return false;
-                }
-            }
-            return beginAdmission(bridge, resolvedPeer, accessoryToken);
+            return adopt(
+                    bridge.serverSocket,
+                    bridge.serverSocket,
+                    bridge,
+                    rawIn,
+                    rawOut,
+                    null,
+                    resolvedPeer,
+                    accessoryToken);
         }
+        return beginAdmission(bridge, resolvedPeer, accessoryToken);
     }
 
     private synchronized boolean beginAdmission(
@@ -311,6 +305,9 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
             }
             bridge.close();
             return false;
+        }
+        if (accessoryToken != null) {
+            attachedAccessory = accessoryToken;
         }
         try {
             ScheduledFuture<?> deadline = deadlines.schedule(
@@ -329,14 +326,16 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
                             accepted.input,
                             accepted.output,
                             accepted.peer,
-                            peerLabel);
+                            peerLabel,
+                            accessoryToken);
                 } catch (IOException | GeneralSecurityException | RuntimeException error) {
                     String expiry = extractCertificateExpiryMessage(error);
                     String diagnostic = expiry != null
                             ? expiry
                             : (error.getClass().getSimpleName() + ": " + error.getMessage());
-                    if (running && listener != null) {
-                        listener.onAdmissionRejected(
+                    Listener activeListener = listener;
+                    if (running && activeListener != null) {
+                        activeListener.onAdmissionRejected(
                                 diagnostic.substring(0, Math.min(diagnostic.length(), 512)));
                     }
                 } finally {
@@ -372,40 +371,66 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
         }
     }
 
-    private synchronized boolean adopt(
+    private boolean adopt(
             Socket raw,
             Socket socket,
             LoopbackAccessoryBridge bridge,
             BufferedInputStream input,
             BufferedOutputStream output,
             SecurePairingState.Peer peer,
-            String peerLabel) {
-        if (!running || (security != null && (!pending.containsKey(raw) || !security.stillTrusted(peer)))) {
+            String peerLabel,
+            UsbAccessory accessoryToken) {
+        final ConnectionContext context;
+        ConnectionContext previous = null;
+        Listener activeListener = null;
+        boolean rejectedByPool = false;
+        synchronized (this) {
+            if (!running || (security != null && (!pending.containsKey(raw) || !security.stillTrusted(peer)))) {
+                if (accessoryToken != null && accessoryToken.equals(attachedAccessory)) {
+                    attachedAccessory = null;
+                }
+                bridge.close();
+                closeSocket(socket);
+                return false;
+            }
+            PendingSlot slot = pending.remove(raw);
+            if (slot != null) {
+                slot.deadline.cancel(false);
+            }
+            if (accessoryToken != null) {
+                attachedAccessory = accessoryToken;
+            }
+            context = new ConnectionContext(
+                    ++nextGeneration, socket, raw, bridge, input, output, peer);
+            try {
+                readers.execute(() -> readLoop(context));
+                previous = currentConnection;
+                currentConnection = context;
+                activeListener = listener;
+            } catch (RejectedExecutionException error) {
+                if (accessoryToken != null && accessoryToken.equals(attachedAccessory)) {
+                    attachedAccessory = null;
+                }
+                rejectedByPool = true;
+                previous = null;
+                activeListener = listener;
+            }
+        }
+        if (rejectedByPool) {
             bridge.close();
             closeSocket(socket);
-            return false;
-        }
-        PendingSlot slot = pending.remove(raw);
-        if (slot != null) {
-            slot.deadline.cancel(false);
-        }
-        ConnectionContext context = new ConnectionContext(
-                ++nextGeneration, socket, raw, bridge, input, output, peer);
-        try {
-            readers.execute(() -> readLoop(context));
-        } catch (RejectedExecutionException error) {
-            bridge.close();
-            closeSocket(socket);
-            if (listener != null) {
-                listener.onAdmissionRejected("连接切换过于频繁，请稍后重新连接");
+            if (activeListener != null) {
+                activeListener.onAdmissionRejected("连接切换过于频繁，请稍后重新连接");
             }
             return false;
         }
-        ConnectionContext previous = currentConnection;
-        currentConnection = context;
         closeConnection(previous);
-        if (listener != null) {
-            listener.onConnected(context.generation, peerLabel);
+        try {
+            if (activeListener != null) {
+                activeListener.onConnected(context.generation, peerLabel);
+            }
+        } finally {
+            context.published.countDown();
         }
         return true;
     }
@@ -419,6 +444,7 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
             attachedAccessory = null;
             cancelPendingAdmissions();
             toClose = currentConnection;
+            currentConnection = null;
         }
         closeConnection(toClose);
     }
@@ -431,15 +457,26 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
         pending.clear();
     }
 
-    public synchronized void revokePeer(String id) {
-        cancelPendingAdmissions();
-        ConnectionContext active = currentConnection;
-        if (active != null && active.peer != null && active.peer.installID.equals(id)) {
-            clearCurrent(active);
-            attachedAccessory = null;
-            closeConnection(active);
-            if (listener != null) {
-                listener.onDisconnected(active.generation);
+    public void revokePeer(String id) {
+        final ConnectionContext revoked;
+        final Listener activeListener;
+        synchronized (this) {
+            cancelPendingAdmissions();
+            ConnectionContext active = currentConnection;
+            if (active != null && active.peer != null && active.peer.installID.equals(id)) {
+                clearCurrent(active);
+                attachedAccessory = null;
+                revoked = active;
+                activeListener = listener;
+            } else {
+                revoked = null;
+                activeListener = null;
+            }
+        }
+        if (revoked != null) {
+            closeConnection(revoked);
+            if (activeListener != null) {
+                activeListener.onDisconnected(revoked.generation);
             }
         }
     }
@@ -515,15 +552,19 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
 
     private void readLoop(ConnectionContext context) {
         try {
+            context.published.await();
             while (running && isCurrent(context) && !context.socket.isClosed()) {
                 try (FrameBufferPool.Lease frame = LengthPrefixedProtocol.readPooled(
                         context.input, context.maxFrameBytes, framePool)) {
                     applyNegotiatedFrameLimit(context, frame.bytes(), frame.length);
-                    if (isCurrent(context) && listener != null) {
-                        listener.onFrame(context.generation, frame);
+                    Listener activeListener = listener;
+                    if (isCurrent(context) && activeListener != null) {
+                        activeListener.onFrame(context.generation, frame);
                     }
                 }
             }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         } catch (LengthPrefixedProtocol.FrameLengthException error) {
             if (running && isCurrent(context) && listener != null) {
                 listener.onFrameLengthRejected(
@@ -965,12 +1006,20 @@ public final class UsbAccessoryReceiverTransport implements ReceiverTransport {
             usb.revokePeer(id);
         }
 
-        private synchronized long activate(ReceiverTransport child, long childGeneration) {
-            Route previous = activeRoute;
-            long serverGen = nextServerGeneration.incrementAndGet();
-            activeRoute = new Route(serverGen, child, childGeneration);
-            if (previous != null && previous.transport == usb && child != usb) {
-                usb.detachAccessory(null);
+        private long activate(ReceiverTransport child, long childGeneration) {
+            final Route previous;
+            final long serverGen;
+            synchronized (this) {
+                previous = activeRoute;
+                serverGen = nextServerGeneration.incrementAndGet();
+                activeRoute = new Route(serverGen, child, childGeneration);
+            }
+            if (previous != null && previous.transport != child) {
+                if (previous.transport == usb) {
+                    usb.detachAccessory(null);
+                } else if (previous.transport == wifi) {
+                    wifi.disconnectCurrent();
+                }
             }
             return serverGen;
         }

@@ -33,7 +33,8 @@ final class AccessoryDeviceWatcher: @unchecked Sendable {
     private var iterators: [io_iterator_t] = []
     private var stopped = false
 
-    private var present: [String: (name: String?, refs: Int)] = [:]
+    private var serialByEntry: [UInt64: String] = [:]
+    private var nameBySerial: [String: String?] = [:]
     private var busyDevices: [String: String?] = [:]
     private var pendingDetach: [String: Task<Void, Never>] = [:]
     private var probes: [UInt64: Task<Void, Never>] = [:]
@@ -67,7 +68,8 @@ final class AccessoryDeviceWatcher: @unchecked Sendable {
             probes.values.forEach { $0.cancel() }
             probes.removeAll()
             deferredByAdb.removeAll()
-            present.removeAll()
+            serialByEntry.removeAll()
+            nameBySerial.removeAll()
             busyDevices.removeAll()
             for iter in iterators where iter != IO_OBJECT_NULL {
                 IOObjectRelease(iter)
@@ -211,7 +213,7 @@ final class AccessoryDeviceWatcher: @unchecked Sendable {
 
             let name = AOA.productName(of: parent)
             if capable.contains(serial) {
-                attach(serial: serial, name: name)
+                attach(entryID: devID, serial: serial, name: name)
                 continue
             }
 
@@ -280,7 +282,7 @@ final class AccessoryDeviceWatcher: @unchecked Sendable {
                     if self.busyDevices.removeValue(forKey: serial) != nil {
                         self.publishBusy()
                     }
-                    self.attach(serial: serial, name: name)
+                    self.attach(entryID: entryID, serial: serial, name: name)
                 }
                 return
             case .busy:
@@ -315,6 +317,8 @@ final class AccessoryDeviceWatcher: @unchecked Sendable {
         while case let svc = IOIteratorNext(iter), svc != IO_OBJECT_NULL {
             defer { IOObjectRelease(svc) }
             guard !stopped, let serial = AOA.serialNumber(of: svc) else { continue }
+            var devID: UInt64 = 0
+            guard IORegistryEntryGetRegistryEntryID(svc, &devID) == KERN_SUCCESS else { continue }
             // Never send GET_PROTOCOL here. Attach immediately only when the
             // device is already enumerated as an AOA accessory or was proven
             // capable earlier in this session.
@@ -322,7 +326,7 @@ final class AccessoryDeviceWatcher: @unchecked Sendable {
             if busyDevices.removeValue(forKey: serial) != nil {
                 publishBusy()
             }
-            attach(serial: serial, name: AOA.productName(of: svc))
+            attach(entryID: devID, serial: serial, name: AOA.productName(of: svc))
         }
     }
 
@@ -332,45 +336,54 @@ final class AccessoryDeviceWatcher: @unchecked Sendable {
             defer { IOObjectRelease(svc) }
             sawDetach = true
             var devID: UInt64 = 0
+            var detachedSerial: String?
             if IORegistryEntryGetRegistryEntryID(svc, &devID) == KERN_SUCCESS {
                 probes.removeValue(forKey: devID)?.cancel()
                 deferredByAdb.removeValue(forKey: devID)
                 asked.remove(devID)
+                detachedSerial = serialByEntry.removeValue(forKey: devID)
             }
-            guard !stopped, let serial = AOA.serialNumber(of: svc) else { continue }
-            if busyDevices.removeValue(forKey: serial) != nil {
+            guard !stopped else { continue }
+            let serial = detachedSerial ?? AOA.serialNumber(of: svc)
+            if let serial, busyDevices.removeValue(forKey: serial) != nil {
                 publishBusy()
             }
-            guard var entry = present[serial] else { continue }
-            entry.refs -= 1
-            if entry.refs > 0 {
-                present[serial] = entry
-                continue
-            }
-            present.removeValue(forKey: serial)
+            guard let serial = detachedSerial,
+                  !serialByEntry.values.contains(serial) else { continue }
             // Switching composite -> accessory detaches and re-enumerates on the
             // bus; hold disappearance briefly so the UI row does not flicker.
-            let name = entry.name
-            pendingDetach[serial]?.cancel()
+            let name = nameBySerial[serial] ?? nil
+            pendingDetach.removeValue(forKey: serial)?.cancel()
             pendingDetach[serial] = Task { [weak self] in
                 try? await Task.sleep(for: Self.detachGrace)
                 guard !Task.isCancelled else { return }
                 self?.finishDetach(serial: serial, fallbackName: name)
             }
         }
-        if sawDetach, present.isEmpty, pendingDetach.isEmpty {
+        if sawDetach, serialByEntry.isEmpty, pendingDetach.isEmpty {
             publish()
         }
     }
 
-    private func attach(serial: String, name: String?) {
-        let reenumerating = pendingDetach.removeValue(forKey: serial) != nil
-        if reenumerating { pendingDetach[serial]?.cancel() }
-        let prior = present[serial]
+    private func attach(entryID: UInt64, serial: String, name: String?) {
+        let priorDetach = pendingDetach.removeValue(forKey: serial)
+        priorDetach?.cancel()
+        let reenumerating = priorDetach != nil
+        let wasPresent = serialByEntry.values.contains(serial)
+        serialByEntry[entryID] = serial
+
+        let priorName = nameBySerial[serial] ?? nil
         let keepPriorName = AOA.isAccessoryName(name)
-        let resolvedName = (keepPriorName ? prior?.name : nil) ?? name ?? prior?.name
-        present[serial] = (resolvedName, (prior?.refs ?? 0) + 1)
-        if prior == nil && !reenumerating {
+        let resolvedName = (keepPriorName ? priorName : nil) ?? name ?? priorName
+        nameBySerial[serial] = resolvedName
+        if nameBySerial.count > Self.maxTrackedEntries {
+            let compacted = PersistedDeviceCollectionPolicy.boundedDictionary(
+                nameBySerial.compactMapValues { $0 },
+                maxEntries: Self.maxTrackedEntries
+            )
+            nameBySerial = compacted.mapValues { Optional($0) }
+        }
+        if !wasPresent && !reenumerating {
             Log.info("AOA USB attached: \(resolvedName ?? serial)")
         }
         publish()
@@ -380,27 +393,32 @@ final class AccessoryDeviceWatcher: @unchecked Sendable {
         queue.async { [weak self] in
             guard let self, !self.stopped else { return }
             self.pendingDetach.removeValue(forKey: serial)
-            guard self.present[serial] == nil else { return }
+            guard !self.serialByEntry.values.contains(serial) else { return }
             Log.info("AOA USB detached: \(fallbackName ?? serial)")
             self.publish()
         }
     }
 
     private func publish() {
-        var merged = present.mapValues(\.name)
-        for serial in pendingDetach.keys where merged[serial] == nil {
-            merged[serial] = nil
-        }
-        let snapshot = merged
-            .map { UsbmuxDevice(deviceID: 0, udid: AOA.prefix + $0.key, name: $0.value) }
+        var activeSerials = Set(serialByEntry.values)
+        activeSerials.formUnion(pendingDetach.keys)
+        let snapshot = activeSerials
+            .map { serial in
+                UsbmuxDevice(
+                    deviceID: 0,
+                    udid: AOA.prefix + serial,
+                    name: nameBySerial[serial] ?? nil
+                )
+            }
             .sorted { $0.udid < $1.udid }
         let cb = onChange
         Task { @MainActor in cb(snapshot) }
     }
 
     private func publishBusy() {
+        let activeSerials = Set(serialByEntry.values)
         let snapshot = busyDevices
-            .filter { !adbClaimedSerials.contains($0.key) && present[$0.key] == nil }
+            .filter { !adbClaimedSerials.contains($0.key) && !activeSerials.contains($0.key) }
             .map { UsbmuxDevice(deviceID: 0, udid: AOA.prefix + $0.key, name: $0.value) }
             .sorted { $0.udid < $1.udid }
         let cb = onBusyChange

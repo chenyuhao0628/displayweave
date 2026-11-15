@@ -429,10 +429,159 @@ public final class UsbAccessorySelfTest {
         }
     }
 
+    private static SSLSocket openTcpTlsClient(int port, Identity identity, String serverPin)
+            throws Exception {
+        SSLSocket tls = (SSLSocket) SecureTls.context(
+                identity.pair.getPrivate(), identity.cert, serverPin::equals)
+                .getSocketFactory()
+                .createSocket("127.0.0.1", port);
+        SecureTls.configure(tls, true);
+        tls.setSoTimeout(4_000);
+        tls.startHandshake();
+        return tls;
+    }
+
+    private static void testWifiAndUsbBidirectionalHandover() throws Exception {
+        Identity receiver = new Identity();
+        Identity sender = new Identity();
+        String receiverPin = SecureTls.fingerprint(receiver.cert);
+
+        SecurePairingState pairing = new SecurePairingState(
+                "receiver-android",
+                receiverPin,
+                null,
+                () -> System.nanoTime() / 1_000_000,
+                ignored -> { });
+        SecureSocketAdmission security = new SecureSocketAdmission(
+                receiver.pair.getPrivate(), receiver.cert, pairing);
+
+        WifiTcpReceiverTransport wifi = new WifiTcpReceiverTransport(0, security, 2_000);
+        UsbAccessoryReceiverTransport usb = new UsbAccessoryReceiverTransport(security, 2_000);
+        UsbAccessoryReceiverTransport.Composite composite =
+                new UsbAccessoryReceiverTransport.Composite(wifi, usb);
+
+        AtomicInteger wifiPort = new AtomicInteger();
+        CountDownLatch listening = new CountDownLatch(1);
+        AtomicReference<CountDownLatch> connectGate = new AtomicReference<>(new CountDownLatch(1));
+
+        composite.start(new ReceiverTransport.Listener() {
+            @Override
+            public void onListening(int port) {
+                wifiPort.set(port);
+                listening.countDown();
+            }
+
+            @Override
+            public void onConnected(long generation, String peer) {
+                connectGate.get().countDown();
+            }
+
+            @Override
+            public void onPayload(long generation, byte[] payload) {
+                composite.send(generation, payload);
+            }
+
+            @Override
+            public void onDisconnected(long generation) {
+            }
+
+            @Override
+            public void onError(long generation, String message) {
+            }
+        });
+
+        try {
+            expect(listening.await(3, TimeUnit.SECONDS), "TCP listener must start for handover test");
+            SecurePairingProtocol.Invitation invitation = pairing.startPairing();
+
+            // 1. Establish initial Wi-Fi session (pairs sender-mac).
+            try (SSLSocket wifiClient1 = openTcpTlsClient(wifiPort.get(), sender, receiverPin)) {
+                SecureSocketAdmission.writeFrame(
+                        wifiClient1.getOutputStream(),
+                        new SecurePairingProtocol.Auth("sender-mac", "MacBook Pro", invitation.token)
+                                .encode());
+                expect("receiver-android".equals(SecurePairingProtocol.readyIdentity(
+                        SecureSocketAdmission.readFrame(wifiClient1.getInputStream()))),
+                        "Initial Wi-Fi TLS client must receive DWR1");
+                expect(connectGate.get().await(3, TimeUnit.SECONDS),
+                        "Initial Wi-Fi TLS client must become active");
+                expect("wifi".equals(composite.name()),
+                        "Composite name must be 'wifi' while Wi-Fi session is active");
+
+                // 2. Hand over Wi-Fi -> USB AOA: superseded Wi-Fi socket must close cleanly!
+                connectGate.set(new CountDownLatch(1));
+                try (SimulatedAccessoryLink usbLink = new SimulatedAccessoryLink()) {
+                    expect(usb.attachStream(
+                            "USB 配件",
+                            usbLink.receiverIn,
+                            usbLink.receiverOut,
+                            usbLink.receiverCloseToken()),
+                            "USB AOA stream must attach during Wi-Fi -> USB handover");
+                    try (SSLSocket usbClient = usbLink.openTlsClient(sender, receiverPin)) {
+                        SecureSocketAdmission.writeFrame(
+                                usbClient.getOutputStream(),
+                                new SecurePairingProtocol.Auth("sender-mac", "MacBook Pro", null)
+                                        .encode());
+                        expect("receiver-android".equals(SecurePairingProtocol.readyIdentity(
+                                SecureSocketAdmission.readFrame(usbClient.getInputStream()))),
+                                "USB AOA reconnect must receive DWR1");
+                        expect(connectGate.get().await(3, TimeUnit.SECONDS),
+                                "USB AOA session must activate");
+                        expect("usb".equals(composite.name()),
+                                "Composite name must switch to 'usb' after Wi-Fi -> USB handover");
+                        expect(closed(wifiClient1),
+                                "Superseded Wi-Fi socket must close cleanly on Wi-Fi -> USB handover");
+
+                        byte[] usbFrame = "{\"transport\":\"usb\"}".getBytes(StandardCharsets.UTF_8);
+                        LengthPrefixedProtocol.write(usbClient.getOutputStream(), usbFrame);
+                        expect(Arrays.equals(
+                                usbFrame,
+                                LengthPrefixedProtocol.read(
+                                        usbClient.getInputStream(),
+                                        LengthPrefixedProtocol.LEGACY_MAX_FRAME_BYTES)),
+                                "Active USB session must round-trip frames after superseding Wi-Fi");
+
+                        // 3. Hand over USB AOA -> Wi-Fi: superseded USB socket & accessory token must close cleanly!
+                        connectGate.set(new CountDownLatch(1));
+                        try (SSLSocket wifiClient2 = openTcpTlsClient(wifiPort.get(), sender, receiverPin)) {
+                            SecureSocketAdmission.writeFrame(
+                                    wifiClient2.getOutputStream(),
+                                    new SecurePairingProtocol.Auth("sender-mac", "MacBook Pro", null)
+                                            .encode());
+                            expect("receiver-android".equals(SecurePairingProtocol.readyIdentity(
+                                    SecureSocketAdmission.readFrame(wifiClient2.getInputStream()))),
+                                    "Second Wi-Fi TLS client must receive DWR1");
+                            expect(connectGate.get().await(3, TimeUnit.SECONDS),
+                                    "Second Wi-Fi TLS session must activate");
+                            expect("wifi".equals(composite.name()),
+                                    "Composite name must switch back to 'wifi' after USB -> Wi-Fi handover");
+                            expect(closed(usbClient),
+                                    "Superseded USB TLS socket must close cleanly on USB -> Wi-Fi handover");
+                            expect(usbLink.accessoryClosed.get(),
+                                    "Superseded USB accessory close token must run on USB -> Wi-Fi handover");
+
+                            byte[] wifiFrame = "{\"transport\":\"wifi2\"}".getBytes(StandardCharsets.UTF_8);
+                            LengthPrefixedProtocol.write(wifiClient2.getOutputStream(), wifiFrame);
+                            expect(Arrays.equals(
+                                    wifiFrame,
+                                    LengthPrefixedProtocol.read(
+                                            wifiClient2.getInputStream(),
+                                            LengthPrefixedProtocol.LEGACY_MAX_FRAME_BYTES)),
+                                    "Active Wi-Fi session must round-trip frames after superseding USB");
+                        }
+                    }
+                }
+            }
+        } finally {
+            composite.stop();
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         testAccessoryMatching();
         testPacketStreamsAndZlp();
         testMutualTlsAdmissionCompositeAndRevocation();
+        testWifiAndUsbBidirectionalHandover();
         testExplicitLegacyMode();
         System.out.println("UsbAccessorySelfTest PASS");
     }

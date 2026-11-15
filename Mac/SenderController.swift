@@ -98,6 +98,17 @@ final class SenderController: ObservableObject {
     private var androidConnectPending = Set<String>()
     private var androidRecoveryAttempt: [String: Int] = [:]
     private var androidRecoveryGeneration: [String: Int] = [:]
+    private var accessoryFallbackSuppressedSerials = Set<String>() {
+        didSet(oldValue) {
+            let bounded = PersistedDeviceCollectionPolicy.boundedSet(
+                accessoryFallbackSuppressedSerials,
+                previous: oldValue,
+                maxEntries: Self.maxPersistedEntries)
+            if bounded != accessoryFallbackSuppressedSerials {
+                accessoryFallbackSuppressedSerials = bounded
+            }
+        }
+    }
     private let benchmarkLaunch = BenchmarkLaunchOptions.parse(ProcessInfo.processInfo.arguments)
     private var didAutoStartBenchmark = false
 
@@ -247,6 +258,7 @@ final class SenderController: ObservableObject {
             sessions.forEach { end($0) }
             let cleanups = Array(cleanupTasks.values)
             discovered = []; usbDevices = []; accessoryDevices = []; accessoryBusyDevices = []; androidDevices = []
+            accessoryFallbackSuppressedSerials.removeAll()
             return Task { for cleanup in cleanups { await cleanup.value } }
         }
         let generation = roleGeneration
@@ -260,6 +272,8 @@ final class SenderController: ObservableObject {
         accessoryWatcher = AccessoryDeviceWatcher(
             onChange: { [weak self] devices in
                 guard let self, self.roleEnabled, self.roleGeneration == generation else { return }
+                let attachedSerials = Set(devices.compactMap { AOA.serial(from: $0.udid) })
+                self.accessoryFallbackSuppressedSerials.formIntersection(attachedSerials)
                 self.accessoryDevices = devices
                 self.refreshAndroidUsbStatus()
                 self.autoConnect()
@@ -596,12 +610,14 @@ final class SenderController: ObservableObject {
         let trustedIDs = Set(AppleTransportSecurityModel.shared.peers.map(\.installID))
         return AndroidWiredArbitrationPolicy.shouldAutoConnectAccessory(
             mode: settings.transportMode,
+            serial: serial,
             sessionID: target.sessionID,
             knownInstallID: installIDByAndroidSerial[serial],
             trustedPeerIDs: trustedIDs,
             importedInvitationID: AppleTransportSecurityModel.shared.importedID,
             allowLegacySender: AppleTransportSecurityModel.shared.legacySender,
-            disabledSessionIDs: usbDisabled
+            disabledSessionIDs: usbDisabled,
+            fallbackSuppressedSerials: accessoryFallbackSuppressedSerials
         )
     }
 
@@ -774,6 +790,9 @@ final class SenderController: ObservableObject {
         if case .androidAdbDevice(let serial) = target {
             connectAndroidAdb(serial: serial, userInitiated: userInitiated)
             return
+        }
+        if userInitiated, case .androidAccessory(let serial) = target {
+            accessoryFallbackSuppressedSerials.remove(serial)
         }
         let id = target.sessionID
         guard session(for: id) == nil else { return }
@@ -975,6 +994,9 @@ final class SenderController: ObservableObject {
                 self.recoverAndroidAdb(session: session, mapping: mapping)
             } else if case .androidAccessory(let serial) = session.target {
                 let installID = session.deviceID ?? self.installIDByAndroidSerial[serial]
+                if reason == .connectionLost {
+                    self.accessoryFallbackSuppressedSerials.insert(serial)
+                }
                 let cleanup = self.end(session)
                 if reason == .connectionLost, self.settings.transportMode == .auto,
                    let installID,
@@ -1025,7 +1047,11 @@ final class SenderController: ObservableObject {
             session.failed = true
             session.status = "失败：\(error.localizedDescription)"
             switch session.target {
-            case .androidAdb, .androidAccessory: self.androidAdbStatus = session.status
+            case .androidAdb:
+                self.androidAdbStatus = session.status
+            case .androidAccessory(let serial):
+                self.accessoryFallbackSuppressedSerials.insert(serial)
+                self.androidAdbStatus = session.status
             default: break
             }
         }

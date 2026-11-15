@@ -376,14 +376,18 @@ enum AndroidWiredArbitrationPolicy {
 
     static func shouldAutoConnectAccessory(
         mode: StreamTransportMode,
+        serial: String = "",
         sessionID: String,
         knownInstallID: String?,
         trustedPeerIDs: Set<String>,
         importedInvitationID: String?,
         allowLegacySender: Bool,
-        disabledSessionIDs: Set<String>
+        disabledSessionIDs: Set<String>,
+        fallbackSuppressedSerials: Set<String> = []
     ) -> Bool {
-        guard mode != .wifi, !disabledSessionIDs.contains(sessionID) else {
+        guard mode != .wifi,
+              !disabledSessionIDs.contains(sessionID),
+              (serial.isEmpty || !fallbackSuppressedSerials.contains(serial)) else {
             return false
         }
         if let knownInstallID, trustedPeerIDs.contains(knownInstallID) {
