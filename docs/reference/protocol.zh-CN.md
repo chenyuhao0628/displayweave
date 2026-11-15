@@ -2,7 +2,7 @@
 
 # DisplayWeave 协议契约
 
-规范修订版 **2**，2026-11-15。修订版 1（2026-10-16）描述了 F01–F08 之后 `v0.3.0`–`v0.3.5` 的分帧 TCP/mTLS 契约；修订版 2 新增源码分支的认证 UDP 媒体、光标与音频平面（`udpMediaV1`、`udpCursorV1`、`udpAudioV1`）、硬件门控 5K HEVC（`hevc5kV1`）、Display P3 广色域标记（`displayP3`）、`panel` 物理毫米尺寸（`millimetersWide`、`millimetersHigh`），以及复用 `pencil-v1`/`pencil-v2` 与 `mac-input-v1` 的跨平台 iPadOS/Android 手写笔和桌面输入。`v0.3.5` 之后的修订版 2 新增能力**仅在源码分支实现，尚未包含在已发布的 `v0.3.5` 下载包中**；未声明相应能力令牌时完全保留与 `v0.3.5` 及更早对端的线级兼容。下述契约由关联解析器实现，并由文末测试覆盖。硬件性能不是协议保证。
+规范修订版 **3**，2026-11-15。修订版 1（2026-10-16）描述了 F01–F08 之后 `v0.3.0`–`v0.3.5` 的分帧 TCP/mTLS 契约；修订版 2 新增源码分支的认证 UDP 媒体、光标与音频平面（`udpMediaV1`、`udpCursorV1`、`udpAudioV1`）、硬件门控 5K HEVC（`hevc5kV1`）、Apple Display P3 广色域标记（`displayP3`）、`panel` 物理毫米尺寸（`millimetersWide`、`millimetersHigh`），以及复用 `pencil-v1`/`pencil-v2` 与 `mac-input-v1` 的跨平台 iPadOS/Android 手写笔和桌面输入；修订版 3 新增零 ADB Android USB Open Accessory 2.0（`AOA 2.0`）传输及确定性 ADB 优先仲裁与本机回环 mTLS（`DWA1`/`DWR1`）、认证 TCP 系统音频（`tcpAudioV1`）、`48 kHz` Opus 音频包（`audioOpusV1`，`UDPMediaAudioPayload.formatFlags = 1`）与 RFC 7845 `OpusHead` 解码器配置、时钟偏移无关的音画唇音同步（`120 ms` 环形上限、`15…90 ms` 动态播放水位、`target + 25 ms` 漂移裁剪）、贯穿 `CGVirtualDisplayDescriptor` CIE 1931 P3 原色与广色域 Android 接收端（`streamConfig.colorSpace`）的端到端 `displayP3`，以及 iPadOS Split View / 台前调度实时窗口像素钳制（`320…16384` 偶数像素、`150 ms` 防抖）。`v0.3.5` 之后的修订版 2 与修订版 3 新增能力**仅在源码分支实现，尚未包含在已发布的 `v0.3.5` 下载包中**；未声明相应能力令牌时完全保留与 `v0.3.5` 及更早对端的线级兼容。下述契约由关联解析器实现，并由文末测试覆盖。硬件性能不是协议保证。
 
 ## 命名空间与兼容
 
@@ -15,10 +15,12 @@
 | `binaryFrameHeaderV2` | 独立 Android TCP 二进制视频头能力，不能仅由版本推断。 |
 | `appleVideoV1` | iOS 明确的编码/FPS 能力范围；Mac 接收端身份已选择 Apple 能力路径。 |
 | `hevc5kV1` | 源码分支 Mac 硬件 HEVC 接收端能力，仅将 HEVC 范围提升至最高 `5120 × 2880 @ 60`（竖屏 `2880 × 5120 @ 60`）；H.264 回退仍限制为 `4096 × 2304`。 |
-| `displayP3` | 源码分支 Apple 流 Display P3 广色域信令（`P3_D65` / `sRGB` / `ITU_R_709_2`）。 |
+| `displayP3` | 源码分支贯穿 `CGVirtualDisplayDescriptor` CIE 1931 P3 原色、Apple 视频流（`P3_D65` / `sRGB` / `ITU_R_709_2`）与广色域 Android 接收端（`streamConfig.colorSpace` `"displayP3"` / `"srgb"`）的端到端 Display P3 广色域信令。 |
 | `udpMediaV1` | 源码分支认证 AES-128-GCM UDP 视频、奇偶校验 FEC、NACK 与延迟梯度反馈平面，经 mTLS TCP（`udpMediaConfig` / `udpMediaReady`）协商并支持自动回退 TCP。 |
 | `udpCursorV1` | 源码分支在活动 `udpMediaV1` 会话上承载 `125 Hz` 归一化光标坐标数据包（`packetType = 5`）；光标 PNG 位图仍走 TCP。 |
-| `udpAudioV1` | 源码分支在发送端开启后，经活动 `udpMediaV1` 会话承载可选 `48 kHz` S16LE PCM 系统音频数据包（`packetType = 6`）。 |
+| `udpAudioV1` | 源码分支在发送端开启后，经活动 `udpMediaV1` 会话承载可选 `48 kHz` S16LE PCM（`formatFlags = 0`）或协商后的 Opus（`formatFlags = 1`）系统音频数据包（`packetType = 6`）。 |
+| `tcpAudioV1` | 源码分支经已认证 mTLS TCP（`{"type":"audioFrame","payload":"<base64>"}`，`<= 4,096` UTF-8 字节）承载可选系统音频，覆盖有线 USB（`usbmux`、`adb forward`、`AOA 2.0`）与 UDP 受限网络，并在 UDP↔TCP 切换时共享 `UDPMediaAudioPayload` 与单调 `audioSeq`。 |
+| `audioOpusV1` | 源码分支在 `udpAudioV1` 或 `tcpAudioV1` 上启用 `48 kHz` Opus 系统音频编码（`UDPMediaAudioPayload.formatFlags = 1`，`20 ms` / `960` 立体声帧 @ `128 kbps`，不可用时自动回退 `5 ms` S16LE）。 |
 | `pencil-v1` / `pencil-v2` | 明确协商的基础/高级手写笔（iPadOS Apple Pencil 及源码分支 Android `TOOL_TYPE_STYLUS` / `TOOL_TYPE_ERASER`）；V2 要求已认证 TLS。 |
 | `mac-input-v1` | 明确协商的桌面键盘/指针输入（Mac 接收端，以及源码分支 iPadOS/iOS 与 Android 外接实体键盘/鼠标/触控板）；要求已认证 TLS 和两端本地许可。 |
 
@@ -26,7 +28,7 @@
 
 ## 传输与认证
 
-局域网使用直连 TCP（源码分支上，Mac 发送端局域网／Bonjour TCP 连接通过 `LANProxyBypassPolicy` 设置 `NWParameters.preferNoProxies = true`，同时保留 `127.0.0.1`／`::1`／`localhost` 回环 ADB 与 usbmux 隧道不受影响）。ADB 转发及所属会话的 usbmux 中继承载同样的字节流，不改变应用协议。安全模式在任何应用帧前启动 TLS，不使用 STARTTLS、带内明文协商或自动明文重试。两端分别显式开启旧版模式；有配对历史的安装 ID 不得降级，撤销配对仍保留历史。
+局域网使用直连 TCP（源码分支上，Mac 发送端局域网／Bonjour TCP 连接通过 `LANProxyBypassPolicy` 设置 `NWParameters.preferNoProxies = true`，同时保留 `127.0.0.1`／`::1`／`localhost` 回环 ADB、AOA 与 usbmux 隧道不受影响）。ADB 转发、所属会话的 usbmux 中继以及源码分支 Android USB Open Accessory 2.0（`AOA 2.0`）均承载同样的 `[UInt32BE][payload]` 字节流，不改变应用协议。源码分支上，`AccessoryDeviceWatcher` 仅匹配 `.adb`（`0xFF/0x42/0x01`）与 `.mtp` USB 接口（过滤扩展坞、相机、MIDI 设备及 Apple `0x05AC`），仅在无在线 `adb` `device` 行占用同一序列号时对每个 `IOUSBHostDevice` 注册表条目最多发送一次 `GET_PROTOCOL`（`51`）探测（`AndroidWiredArbitrationPolicy` 优先选择在线 `adb` 行，并将 `0xE00002C5` `kIOReturnExclusiveAccess` 映射为 `.busy` 引导恢复而非静默回退），随后写入 AOA 标识字符串（`52`，`"OpenDisplay"` / `"OpenDisplay Receiver"`）与 `START`（`53`）以重枚举为 `0x18D1:0x2D00`/`0x2D01`，使用 `16 KiB`（`16,384 B`）批量 IN/OUT URB 传输（当 `byteCount % maxPacketSize == 0 && byteCount % 16384 != 0` 时在批量 OUT 末尾追加 ZLP，并容忍最多 `64` 次连续零长度批量 IN 读取），再经 `127.0.0.1` 本机回环桥接入 `UsbmuxTLSRelay` + `AppleTLS` + `AppleSecureAdmission`（`DWA1`/`DWR1`）与 Android `LoopbackAccessoryBridge` + `SecureSocketAdmission` 双向 TLS（默认开启；AOA 首字节前保留 `25 s` hello 截止窗口供用户确认 Android USB 配件权限弹窗、`20 s` 断连宽限，并在取消弹窗后对当前会话抑制重复回退震荡）。安全模式在任何应用帧前启动 TLS，不使用 STARTTLS、带内明文协商或自动明文重试。两端分别显式开启旧版模式；有配对历史的安装 ID 不得降级，撤销配对仍保留历史。
 
 TLS 使用平台实现、双向证书及完整 DER 叶证书的 SHA-256 pin。传输密钥独立于应用/更新签名密钥。TLS 1.2+ 使用 ECDHE/AEAD，也支持 TLS 1.3。Apple 禁用会话票据/恢复；Android 每次连接使用新 SSLContext。当前身份有效期为 365 天，过期/密钥丢失需显式重置并重新配对。持久化、威胁模型与恢复详见[安全设计](secure-transport-design.zh-CN.md)。
 
@@ -50,6 +52,7 @@ ID 非空且最多 256 UTF-8 字节；名称可空且最多 128 字节。拒绝 
 | Android 旧版 TCP 接收 | 1 MiB。 |
 | Android 协商 TCP 接收 | 默认 8 MiB，受显式 `maxFrameBytes` 协商及绝对 16 MiB 上限限制。 |
 | `udpMediaV1` 数据报 | 线级总长 32…1232 字节（`16 B` AAD 头部 + `0…1200 B` 密文 + `16 B` AES-128-GCM 标签）；重组后的单帧 `videoData` 载荷最多 4 MiB、最多 2048 个分片。 |
+| `tcpAudioV1` `audioFrame` 控制 | 最多 4 KiB（`4,096` UTF-8 字节；`base64` 载荷 `<= 2,048` ASCII 字符，封装 `16 + 1…1152 B` `UDPMediaAudioPayload`）。当 `pendingSends > 2` 或 `pendingTCPAudioSends >= 2` 时发送端立即丢弃而不排队。 |
 | Mac 发送端入站控制 | 严格小于 1 MiB；桌面/Pencil 动作解析器进一步限制为 4 KiB。 |
 | Apple 接收端出站输入 | 派发前准入，排队/在途最多合计 64 次写入。iOS 每批含分帧最多 64 KiB；Mac/iPadOS 桌面单条事件最多 4 KiB。溢出关闭所属会话。 |
 | Android 出站控制 | 一个工作线程、128 个排队任务、每个控制载荷最多 64 KiB。 |
@@ -63,12 +66,12 @@ Android 接收缓冲使用显式引用租约，最多 32 MiB / 32 个缓冲，�
 逻辑桌面几何、面板物理尺寸与编码分辨率彼此独立：
 
 - `hello.panel` 可携带逻辑 `pointsWide`/`pointsHigh`、`pixelsWide`/`pixelsHigh`、`scale`，以及可选的物理毫米尺寸 `millimetersWide`/`millimetersHigh`。
-- 源码分支上，Mac 接收端仅在 `CGDisplayScreenSize` 有限、处于 `50…2000 mm` 内且未命中合成 72-DPI 回退（双轴满足 `|bounds * 25.4 / 72.0 - raw| <= 1.5 mm`）时上报 `millimetersWide`/`millimetersHigh`，而发送端接受 `10…2000 mm` 范围内的入站 `hello.panel` 毫米值；iOS/iPadOS 为已知机型上报 `50…2000 mm` 物理尺寸，并附带 Split View / 台前调度实时窗口 `pointsWide`/`pointsHigh`/`pixelsWide`/`pixelsHigh`（窗口尺寸变化后防抖重发 `hello`，使发送端无需断线即可更新虚拟显示器比例与采集配置）；Android 在 `DisplayMetrics` `xdpi`/`ydpi` 校准有效时（`50…1000` DPI 且 `10…2000 mm`）上报毫米尺寸，无论是否同时携带逻辑点尺寸均可解析。
+- 源码分支上，Mac 接收端仅在 `CGDisplayScreenSize` 有限、处于 `50…2000 mm` 内且未命中合成 72-DPI 回退（双轴满足 `|bounds * 25.4 / 72.0 - raw| <= 1.5 mm`）时上报 `millimetersWide`/`millimetersHigh`，而发送端接受 `10…2000 mm` 范围内的入站 `hello.panel` 毫米值；iOS/iPadOS 为已知机型上报 `50…2000 mm` 物理尺寸，并附带 Split View / 台前调度实时窗口 `pointsWide`/`pointsHigh`/`pixelsWide`/`pixelsHigh`（`ReceiverWindowGeometryPolicy` 将窗口像素钳制为 `320…16384` 偶数像素，窗口稳定 `150 ms` 后防抖重发 `hello` 使发送端无需断线即可更新虚拟显示器比例与采集配置，并在重建解码器前容忍旋转过渡态 `(width, height) == (cfgHeight, cfgWidth)` 视频帧）；Android 在 `DisplayMetrics` `xdpi`/`ydpi` 校准有效时（`50…1000` DPI 且 `10…2000 mm`）上报毫米尺寸，无论是否同时携带逻辑点尺寸均可解析。
 - 鉴于 macOS 26.1+ 会拒绝面积小于约 `200 cm²`（`20,000 mm²`）的 `CGVirtualDisplayDescriptor.sizeInMillimeters`，发送端将未上报毫米尺寸的移动端虚拟显示器默认设为 `208 × 96 mm`（竖屏 `96 × 208 mm`），并对面积偏小的上报毫米值按长宽比等比放大至面积 `>= 20,000 mm²` 且单边 `<= 2,000 mm`。
 
 每项 `videoCaps` 同时约束编码、宽/高、帧率和可选每秒像素量；同编码多个条目属于候选范围。发送端必须满足完整范围，并保留可行 H.264 回退。源码 Apple 刷新选择受屏幕、编码和吞吐量约束，最高 120fps；这是请求值，不是实测渲染。
 
-`streamConfig` 声明 `codec`、`width`、`height`、`fps`（Apple 也接受继承字段 `framesPerSecond`），以及适用的码率/身份/帧大小字段；当 Apple 接收端启用 `udpMediaV1` 时，`streamConfig` 还会携带正数 `configVersion`，使 UDP `videoData` 帧与对应配置严格绑定。Apple 尺寸须为能力内的正偶数且不超过 8192，FPS 不超过 120。已发布 `v0.3.5` 下载包默认每秒像素预算为 `4096 × 2304 × 60`（可选 iPad 原生屏幕试验仅提高自身矩形预算）。源码分支上，具备硬件 HEVC 解码且声明 `hevc5kV1` 的 Mac 接收端在保留 `4096 × 2304` 的同时新增 `5120 × 2880 @ 60` 与 `2880 × 5120 @ 60`（`maxPixelsPerSecond = 5120 × 2880 × 60`）HEVC 能力范围；H.264 仍严格封顶 `4096 × 2304`，`codecFailure` 回退前会将 5K 分辨率钳制回 `<= 4096 × 2304` 再重建 H.264。Apple 接收端允许三秒回退，在该失败连接上不再升级 HEVC。当双端同时声明 `displayP3` 时，Apple 视频流标记 Display P3 色域参数（`P3_D65` / `sRGB` / `ITU_R_709_2`）。详见 [Apple 视频指南](../guides/apple-video.zh-CN.md)。
+`streamConfig` 声明 `codec`、`width`、`height`、`fps`（Apple 也接受继承字段 `framesPerSecond`），以及适用的码率/身份/帧大小/色域字段；当 Apple 接收端启用 `udpMediaV1` 时，`streamConfig` 还会携带正数 `configVersion`，使 UDP `videoData` 帧与对应配置严格绑定。Apple 尺寸须为能力内的正偶数且不超过 8192，FPS 不超过 120。已发布 `v0.3.5` 下载包默认每秒像素预算为 `4096 × 2304 × 60`（可选 iPad 原生屏幕试验仅提高自身矩形预算）。源码分支上，具备硬件 HEVC 解码且声明 `hevc5kV1` 的 Mac 接收端在保留 `4096 × 2304` 的同时新增 `5120 × 2880 @ 60` 与 `2880 × 5120 @ 60`（`maxPixelsPerSecond = 5120 × 2880 × 60`）HEVC 能力范围；H.264 仍严格封顶 `4096 × 2304`，`codecFailure` 回退前会将 5K 分辨率钳制回 `<= 4096 × 2304` 再重建 H.264。Apple 接收端允许三秒回退，在该失败连接上不再升级 HEVC。源码分支上，`VirtualDisplayColorPolicy` 为 `CGVirtualDisplayDescriptor` 配置 CIE 1931 Display P3 原色坐标（`(0.680, 0.320)`、`(0.265, 0.690)`、`(0.150, 0.060)`、D65 `(0.3127, 0.3290)`）；当双端同时声明 `displayP3` 时，Apple 视频流标记 Display P3 色域参数（`P3_D65` / `sRGB` / `ITU_R_709_2`），广色域 Android 接收端（`Display.isWideColorGamut()`）接收 `streamConfig.colorSpace`（`"displayP3"` 或 `"srgb"`）、联动切换 `Window.setColorMode(COLOR_MODE_WIDE_COLOR_GAMUT)` 与 `COLOR_MODE_DEFAULT`，并在 `H264SurfaceDecoder` 中写入 `MediaFormat` `COLOR_STANDARD_DISPLAY_P3`（`10`），若厂商解码器拒绝广色域参数则安全回退默认色彩元数据。详见 [Apple 视频指南](../guides/apple-video.zh-CN.md)。
 
 Android 核心 V2 要求 `protocolVersion >= 2`、Android 身份及以下**全部六项**：`streamConfigAck`、`decoderReady`、`firstFrameRendered`、`sessionEpoch`、`configVersion`、`frameSequence`。`maxFrameBytes` 与 `binaryFrameHeaderV2` 继续独立判定。
 
@@ -161,9 +164,23 @@ Apple 旧版及未启用二进制头的 Android 保留 `{"cap":1000,"snd":1010}`
 | `3`（`feedback`） | `r2s` | **28 字节：** `[0…7] highestSeq: UInt64`、`[8…11] receivedCount: UInt32`、`[12…15] lostCount: UInt32`、`[16…19] arrivalGradientUs: Int32`、`[20…21] decodeQueueMs: UInt16`、`[22…23] renderFps: UInt16`、`[24…27] echoSendTimeUs: UInt32`。 |
 | `4`（`probe`） | `s2r` / `r2s` | ASCII `"DWV1-RCV-PROBE"`（接收端探测）或 `"DWV1-PROBE"`（发送端探测 / `probeAck`）。 |
 | `5`（`cursor`） | `s2r` | **17 字节**（`udpCursorV1`，要求 `fragIndex == 0 && fragCount == 1`）：`[0…7] sequence: UInt64`、`[8…11] normalizedX: Float32` IEEE-754 `[0, 1]` 有限浮点数（`-0.0` 规范化为 `+0.0`）、`[12…15] normalizedY: Float32` IEEE-754 `[0, 1]` 有限浮点数、`[16] visible: UInt8`（`0` 或 `1`）。接收端丢弃非递增 `sequence`。 |
-| `6`（`audio`） | `s2r` | **`16 + N` 字节**（`udpAudioV1`，要求 `fragIndex == 0 && fragCount == 1`）：`[0…3] audioSeq: UInt32`（单调回绕安全）、`[4…11] captureTimestampMs: Int64`、`[12…13] sampleRate: UInt16`（`> 0`，默认 `48000`）、`[14] channels: UInt8`（`1` 或 `2`）、`[15] formatFlags: UInt8`（`0` = S16LE 交错 PCM）、`[16…16+N−1] pcmBytes`（`1 <= N <= 1152` 且 `N % (channels * 2) == 0`；发送端每 `5 ms` 发送 `240` 个立体声采样帧 = `960 B`，接收端环形缓冲上限为 `60 ms` = `2,880` 帧）。 |
+| `6`（`audio`） | `s2r` | **`16 + N` 字节**（`udpAudioV1`，要求 `fragIndex == 0 && fragCount == 1`；在 `tcpAudioV1` 上经 base64 封装同一字节结构）：`[0…3] audioSeq: UInt32`（单调回绕安全）、`[4…11] captureTimestampMs: Int64`、`[12…13] sampleRate: UInt16`（`> 0`，默认 `48000`；Opus 严格要求 `48000`）、`[14] channels: UInt8`（`1` 或 `2`）、`[15] formatFlags: UInt8`（`0` = S16LE 交错 PCM，满足 `N % (channels * 2) == 0`；`1` = 协商 `audioOpusV1` 后的 Opus 音频包）、`[16…16+N−1] payloadBytes`（`1 <= N <= 1152`；各平台接收端播放环形缓冲上限均为 `120 ms` = `48 kHz` 下 `5,760` 个立体声帧）。 |
 
 FEC 冗余开销（按观测丢包率取 `5%`–`20%`，关键帧至少 `12%`）在设置编码器码率前先从网络总预算中扣除。发送端发包调度器按 `1 ms` 步进与 `1.2×` 预 FEC 速率运行（`maxQueuedPackets = 2048`、`maxQueuedAudioPackets = 16`），严格出队优先级为 `cursor > audio > retransmit > keyframe > normalVideo > fecParity`。未完成重组的 UDP 帧由 `UDPJitterBuffer`（Apple `3` 帧 / `45 ms`）与 Android `JitterBuffer`（`4` 帧 / `35 ms`）有界约束。
+
+### TCP 音频（`tcpAudioV1`）、Opus（`audioOpusV1`）与音画唇音同步
+
+当发送端开启系统音频、已认证接收端声明 `tcpAudioV1` 且当前没有活动 `udpMediaV1` 会话时（包含 `usbmux`、`adb forward`、`AOA 2.0` 等有线 USB 链路，以及 UDP 被阻断网络或 UDP 超时回退后的 TCP 通道），发送端将完全相同的 `UDPMediaAudioPayload` 字节封装为分帧 JSON 控制消息发送：
+
+```json
+{"type":"audioFrame","payload":"<base64 UDPMediaAudioPayload>"}
+```
+
+`TCPAudioFrameMessage` 强制校验总长 `<= 4,096` UTF-8 字节（`base64` 字符串 `<= 2,048` ASCII 字符）。`TCPAudioBackpressurePolicy` 在 `pendingSends > 2` 或 `pendingTCPAudioSends >= 2` 时立即丢弃出站 TCP 音频帧而不排队，确保音频绝不阻塞视频或输入。UDP↔TCP 双向切换在发送端保持同一单调 `audioSeq`，并在 Mac、iOS 与 Android 接收端复用连接作用域的音频播放器实例。
+
+当接收端声明 `audioOpusV1` 时，`AudioCapturePacketizer` 通过 Apple `AudioConverter`（`kAudioFormatOpus`，`formatFlags = 1`）将采集音频编码为 `20 ms`（`960` 个 `48,000 Hz` 立体声帧、`128 kbps`）Opus 包；若不可用或对端未声明，则自动回退为 `5 ms`（`240` 个立体声帧 = `960 B`）S16LE PCM（`formatFlags = 0`）。Apple 接收端通过 `AppleOpusAudioDecoder`（`AudioConverter`）同步解码 Opus；Android `UdpAudioPlayer` 通过 `MediaCodec`（`MIMETYPE_AUDIO_OPUS`）解码，写入符合 RFC 7845 的 19 字节 `"OpusHead"` `csd-0`（`48,000 Hz`、预跳过 `0`）、8 字节小端 `0` ns `csd-1` 与 8 字节小端 `80,000,000` ns（`80 ms`）`csd-2`，并配合有界输出排空追踪（`OpusPendingTracker`）。
+
+Mac、iOS 与 Android 接收端统一使用上限 `120 ms`（`48 kHz` 下 `5,760` 个立体声帧 = `23,040 B` S16LE）的有界环形缓冲。`AudioLipSyncPolicy`（Apple）与 `UdpAudioPlayer.LipSyncPolicy`（Android）利用双机时钟偏移无关的相对传输差 `(videoRenderMonoMs - videoCaptureMs) - (audioArrivalMonoMs - audioCaptureMs)`，在 `15…90 ms`（`720…4,320` 帧；UDP 抖动缓冲激活时基线约 `45 ms`，有线/TCP 基线约 `20 ms`）范围内动态调节目标播放水位，并在排队音频超过 `target + 25 ms` 时主动裁剪累计漂移。
 
 ## 控制与生命周期
 
@@ -200,7 +217,7 @@ Pencil 快捷键另需默认关闭的发送端许可与辅助功能。`inputConf
 
 ## 共享样本与验证
 
-[`wire-contract-v1.properties`](../../tools/fixtures/wire-contract-v1.properties) 包含公开合成的十六进制样本：外层分帧、旧版遥测、H.264/HEVC DWV2、非法版本/标志/身份/长度、桌面与手写笔输入（`desktopPayload`、`pencilPayload`、`actionPayload`），以及 14 项修订版 2 `udpMediaV1` 确定性向量（`udpRootSecret`、`udpS2RKeyEpoch1`、`udpS2RSaltEpoch1`、`udpR2SKeyEpoch1`、`udpR2SSaltEpoch1`、`udpS2RNonceSeq1`、`udpR2SNonceSeq1`、`udpHeaderVideoData`、`udpHeaderCursor`、`udpHeaderAudio`、`udpCursorPayload`、`udpAudioPayload`、`udpCursorSealedDatagram`、`udpAudioSealedDatagram`）。Swift `WireContractSelfTest` 与 Java `WireContractSelfTest` 配合 Swift `UDPMediaProtocolSelfTest`、`UDPMediaFECSelfTest`、`UDPMediaEngineSelfTest`、`UDPMediaTransportSelfTest`、`UDPDelayGradientBWESelfTest`、`MacCoreUpgradeSelfTest` 以及 Android Java `ProtocolSelfTest` 消费同一字节集与实际生产解析器/编码器。Swift 覆盖每个分割边界和粘包，Java 覆盖单字节读取、粘包及截断 EOF。
+[`wire-contract-v1.properties`](../../tools/fixtures/wire-contract-v1.properties) 包含公开合成的十六进制样本：外层分帧、旧版遥测、H.264/HEVC DWV2、非法版本/标志/身份/长度、桌面与手写笔输入（`desktopPayload`、`pencilPayload`、`actionPayload`）、14 项修订版 2 `udpMediaV1` 确定性向量（`udpRootSecret`、`udpS2RKeyEpoch1`、`udpS2RSaltEpoch1`、`udpR2SKeyEpoch1`、`udpR2SSaltEpoch1`、`udpS2RNonceSeq1`、`udpR2SNonceSeq1`、`udpHeaderVideoData`、`udpHeaderCursor`、`udpHeaderAudio`、`udpCursorPayload`、`udpAudioPayload`、`udpCursorSealedDatagram`、`udpAudioSealedDatagram`），以及 6 项修订版 3 音频/Opus 确定性向量（`udpAudioOpusPayload`、`tcpAudioPayload`、`tcpAudioFrame`、`opusHead48kStereo`、`opusCsd1PreSkip`、`opusCsd2SeekPreRoll`）。Swift `WireContractSelfTest` 与 Java `WireContractSelfTest` 配合 Swift `UDPMediaProtocolSelfTest`、`UDPMediaFECSelfTest`、`UDPMediaEngineSelfTest`、`UDPMediaTransportSelfTest`、`UDPDelayGradientBWESelfTest`、`AudioVisualFidelitySelfTest`、`USBAccessorySelfTest`、`CaptureFramePolicySelfTest`、`ReceiverSceneLifecyclePolicySelfTest`、`MacCoreUpgradeSelfTest` 以及 Android Java `ProtocolSelfTest`、`UsbAccessorySelfTest`、`ReceiverConnectionSelfTest`、`VideoStreamPolicySelfTest` 消费同一字节集与实际生产解析器/编码器。Swift 覆盖每个分割边界和粘包，Java 覆盖单字节读取、粘包及截断 EOF。
 
 [`secure-pairing-v1.properties`](../../tools/fixtures/secure-pairing-v1.properties) 为共享认证/邀请/ready 样本。真实 Apple↔Java TLS 和生产接收器运行套件补充字节测试。固定样本不能替代权限、角色/生命周期、原生密钥存储或硬件测试。
 
@@ -214,4 +231,4 @@ python3 tools/test-secure-android-receiver.py
 pnpm run check:docs
 ```
 
-规范源码位于 `Shared/ReceiverFrameDecoder.swift`、`Shared/SecurePairingProtocol.swift`、`Shared/UDPMediaProtocol.swift`、`Shared/UDPMediaFEC.swift`、`Shared/UDPMediaEngine.swift`、`Shared/UDPMediaTransport.swift`、`Mac/DeviceCapabilities.swift`、`Mac/StreamEncodingPolicy.swift`、`Mac/BinaryFrameHeaderV2.swift`、`Shared/AppleVideoPolicy.swift`、`Shared/PencilProtocol.swift`、`Shared/PencilActions.swift`、`Shared/DesktopInputProtocol.swift`，以及 Android 的 `protocol/LengthPrefixedProtocol.java`、`protocol/BinaryFrameHeaderV2.java`、`protocol/UdpMediaProtocol.java`、`protocol/AndroidStylusInput.java`、`protocol/AndroidDesktopInput.java`、`UdpMediaReceiverSession.java`、`SecurePairingProtocol.java` 和 `ReceiverProtocolSession.java`。
+规范源码位于 `Shared/ReceiverFrameDecoder.swift`、`Shared/SecurePairingProtocol.swift`、`Shared/UDPMediaProtocol.swift`、`Shared/UDPMediaFEC.swift`、`Shared/UDPMediaEngine.swift`、`Shared/UDPMediaTransport.swift`、`Mac/USBAccessory.swift`、`Mac/AccessoryDeviceWatcher.swift`、`Mac/AndroidUSBFunction.swift`、`Mac/AudioCapturePacketizer.swift`、`Mac/CaptureFramePolicy.swift`、`Mac/VirtualDisplay.swift`、`Mac/DeviceCapabilities.swift`、`Mac/StreamEncodingPolicy.swift`、`Mac/BinaryFrameHeaderV2.swift`、`Shared/AppleVideoPolicy.swift`、`Shared/PencilProtocol.swift`、`Shared/PencilActions.swift`、`Shared/DesktopInputProtocol.swift`、`iOS/ReceiverSceneLifecyclePolicy.swift`，以及 Android 的 `protocol/LengthPrefixedProtocol.java`、`protocol/BinaryFrameHeaderV2.java`、`protocol/UdpMediaProtocol.java`、`protocol/AndroidStylusInput.java`、`protocol/AndroidDesktopInput.java`、`UsbAccessoryReceiverTransport.java`、`UdpMediaReceiverSession.java`、`UdpAudioPlayer.java`、`H264SurfaceDecoder.java`、`SecurePairingProtocol.java` 和 `ReceiverProtocolSession.java`。

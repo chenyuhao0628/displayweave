@@ -56,7 +56,7 @@ xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecariOS -configuration 
 
 ## 当前验证覆盖
 
-`tools/run-swift-self-tests.sh` 执行 65 组独立测试，以及抽取当前方法的捕获恢复／编码负载调参／iOS 视频准入／桌面匹配／采集器偏好测试；Android `test` 包含八组纯 Java 自测，并使用实际编译 SDK 的 boot classpath；`pnpm build` 执行 TypeScript、client/SSR 生产构建、双语预渲染与生成页面断言。添加共用源码后需构建两个 Apple 目标。
+`tools/run-swift-self-tests.sh` 执行 68 组独立测试，以及抽取当前方法的捕获恢复／编码负载调参／iOS 视频准入／桌面匹配／采集器偏好测试；Android `test` 包含九组纯 Java 自测，并使用实际编译 SDK 的 boot classpath；`pnpm build` 执行 TypeScript、client/SSR 生产构建、双语预渲染与生成页面断言。添加共用源码后需构建两个 Apple 目标。
 
 `python3 tools/test-apple-keychain.py --ios-simulator` 在随机测试命名空间验证真实 Mac/iOS 钥匙串身份持久化、密钥丢失恢复与显式重置。`python3 tools/test-secure-ios-receiver.py` 使用生产 PhoneReceiver/安全代码构建隔离应用，以认证 TLS 发送合成视频、检查撤销并切至后台。两者均创建/删除自己的模拟器，不改动已安装应用。后者可加 `--screenshots build/security-ui`，在测试邀请消耗后记录浅色/深色设置界面。模拟器测试需顺序运行，避免多个冷启动互相争用；不捕获用户桌面，不创建虚拟显示器。
 
@@ -70,7 +70,7 @@ xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecariOS -configuration 
 
 ## 最终源码回归
 
-运行 `python3 tools/test-tls-interop.py` 验证真实 Apple↔Java TLS。上述 Apple Keychain、安全 iOS 与安全 Android runtime 脚本须串行执行，只用独立容器。iOS fixture 同时检查视频视图替换归属、延迟销毁和回调/图层清理；Android 检查打包后的 adaptive icon。执行 `python3 tools/test-apple-distribution.py`（12 项离线检查）与 `python3 tools/export-brand-assets.py --check`（先安装 `tools/brand-requirements.txt`）。分发预检可能被外部证书阻塞，不能代替真实产物签名，见[Apple 正式打包](../releases/apple-distribution.zh-CN.md)。
+运行 `python3 tools/test-tls-interop.py` 验证真实 Apple↔Java TLS。上述 Apple Keychain、安全 iOS 与安全 Android runtime 脚本须串行执行，只用独立容器。iOS fixture 同时检查视频视图替换归属、延迟销毁和回调/图层清理；Android 检查打包后的 adaptive icon。执行 `python3 tools/test-apple-distribution.py`（13 项离线检查）与 `python3 tools/export-brand-assets.py --check`（先安装 `tools/brand-requirements.txt`）。分发预检可能被外部证书阻塞，不能代替真实产物签名，见[Apple 正式打包](../releases/apple-distribution.zh-CN.md)。
 
 ## 目录维护
 

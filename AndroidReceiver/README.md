@@ -12,7 +12,7 @@ v0.3.5 includes [encrypted pairing](../docs/guides/secure-transport.md) and [Git
 
 - Android 8.0+; hardware HEVC support is device-dependent.
 - WiFi: Mac and Android on the same trusted LAN with Nearby WiFi/Local Network discovery permission where required.
-- USB: a data-capable cable, Developer options, USB debugging, and approval of the Mac's RSA identity.
+- USB (`v0.3.5` published APK): a data-capable cable, Developer options, USB debugging, and approval of the Mac's RSA identity. On the post-`v0.3.5` source branch (not yet in published `v0.3.5` downloads), Android USB Open Accessory 2.0 (`AOA 2.0`) additionally supports plug-and-play wired mTLS without USB debugging or `adb`, while deterministic arbitration still prefers an online wired `adb` device when USB debugging is active and surfaces explicit recovery guidance if `adb` is unauthorized/offline or an MTP client (`Android File Transfer` / `OpenMTP`) holds exclusive USB interface access.
 
 ## Install `v0.3.5`
 
@@ -84,8 +84,8 @@ The keystore remains outside Git; its password is read from macOS Keychain. Do n
 ## Protocol and lifecycle
 
 - Receiver TCP server: Android port `9000`.
-- USB: Mac `127.0.0.1:<dynamic>` → `adb forward` → Android `tcp:9000`.
-- WiFi: Mac connects directly to the advertised LAN address.
+- USB: Mac `127.0.0.1:<dynamic>` → `adb forward` → Android `tcp:9000` (in `v0.3.5` and when wired `adb` is online); on the post-`v0.3.5` source branch, zero-ADB `AOA 2.0` (`0x18D1:0x2D00`/`0x2D01`, `16 KiB` bulk URBs with ZLP framing) bridges `UsbmuxTLSRelay` ↔ `LoopbackAccessoryBridge` over loopback mTLS (`DWA1`/`DWR1`).
+- WiFi: Mac connects directly to the advertised LAN address (with optional source-branch `udpMediaV1` AES-128-GCM video/cursor/audio plane alongside TCP control, plus `tcpAudioV1`, `audioOpusV1`, `displayP3`, `pencil-v1`/`pencil-v2`, and `mac-input-v1`).
 - Video: length-prefixed frames with `streamConfig`; HEVC preferred when supported, H.264 fallback on capability/codec failure.
 - Input: tap, drag, cursor, and two-finger scroll JSON.
 - Recovery: listener/surface operations are idempotent; readiness requires a peer protocol message rather than TCP connect alone.

@@ -56,7 +56,7 @@ Keep screenshots and full logs outside Git. Record reproducible commands and san
 
 ## Current verification coverage
 
-`tools/run-swift-self-tests.sh` runs 65 standalone suites plus current-method capture recovery, encoder-load update, iOS admission, desktop-matching and collector preference fixtures. Android `test` includes eight plain-Java groups, using the configured compile SDK boot classpath. `pnpm build` runs TypeScript, client/SSR production builds, bilingual prerendering and generated-site assertions. Run both Apple target builds after adding shared source files.
+`tools/run-swift-self-tests.sh` runs 68 standalone suites plus current-method capture recovery, encoder-load update, iOS admission, desktop-matching and collector preference fixtures. Android `test` includes nine plain-Java groups, using the configured compile SDK boot classpath. `pnpm build` runs TypeScript, client/SSR production builds, bilingual prerendering and generated-site assertions. Run both Apple target builds after adding shared source files.
 
 `python3 tools/test-apple-keychain.py --ios-simulator` exercises real Mac/iOS Keychain identity persistence, missing-key recovery and explicit reset in random test namespaces. `python3 tools/test-secure-ios-receiver.py` builds an isolated app from the production PhoneReceiver/security code, sends synthetic video over authenticated TLS, checks revocation and backgrounds the app. Both create/delete their own simulator and leave installed applications untouched. Use `--screenshots build/security-ui` on the latter for light/dark settings evidence after its test invitation has been consumed. Run simulator suites sequentially to avoid competing cold boots; no desktop capture or virtual display is involved.
 
@@ -70,7 +70,7 @@ The extended Android runtime command is `python3 tools/test-android-experience.p
 
 ## Final source regression
 
-Run `python3 tools/test-tls-interop.py` for actual Apple↔Java TLS. Run the Apple Keychain, secure iOS and secure Android runtime scripts above sequentially, using isolated containers only. The iOS fixture also checks replacement video-view ownership, delayed dismantle and callback/layer cleanup; Android resolves the packaged adaptive icon. Run `python3 tools/test-apple-distribution.py` (12 offline checks) and `python3 tools/export-brand-assets.py --check` (install `tools/brand-requirements.txt`). Distribution preflight may be blocked by external certificates; it is not a substitute for signing a real artifact. See [production Apple packaging](../releases/apple-distribution.md).
+Run `python3 tools/test-tls-interop.py` for actual Apple↔Java TLS. Run the Apple Keychain, secure iOS and secure Android runtime scripts above sequentially, using isolated containers only. The iOS fixture also checks replacement video-view ownership, delayed dismantle and callback/layer cleanup; Android resolves the packaged adaptive icon. Run `python3 tools/test-apple-distribution.py` (13 offline checks) and `python3 tools/export-brand-assets.py --check` (install `tools/brand-requirements.txt`). Distribution preflight may be blocked by external certificates; it is not a substitute for signing a real artifact. See [production Apple packaging](../releases/apple-distribution.md).
 
 ## Workspace maintenance
 

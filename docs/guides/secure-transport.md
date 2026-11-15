@@ -26,7 +26,7 @@ Android private keys are non-exportable Android Keystore entries; only public ce
 
 Both receiver plaintext listening and sender plaintext permission start off. To use an older application, explicitly enable the relevant **insecure legacy compatibility** setting and use a trusted network. Changing the mode disconnects affected sessions. A new sender refuses legacy hello IDs with any pairing history, including revoked entries. TLS/authentication failures never enable legacy mode or retry in plaintext.
 
-The port remains `9000`, Bonjour remains `_opensidecar._tcp`, and application framing is unchanged inside TLS. Secure receivers add `security=tls-v1` to discovery. Stripping this advertisement cannot change an already paired sender's certificate pin. ADB forwarding and usbmux carry the same authenticated stream; the Mac's usbmux relay accepts one loopback client and only forwards encrypted bytes.
+The port remains `9000`, Bonjour remains `_opensidecar._tcp`, and application framing is unchanged inside TLS. Secure receivers add `security=tls-v1` to discovery. Stripping this advertisement cannot change an already paired sender's certificate pin. ADB forwarding, usbmux, and source-branch zero-ADB Android USB Open Accessory 2.0 (`AOA 2.0`, not yet in published `v0.3.5` downloads) carry the same authenticated `DWA1`/`DWR1` mTLS stream; the Mac's loopback TLS relay (`UsbmuxTLSRelay`) and Android `LoopbackAccessoryBridge` accept one loopback client per session and forward encrypted bytes end-to-end.
 
 ## Verification boundary
 

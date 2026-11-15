@@ -26,7 +26,7 @@ Android 私钥保存在不可导出的 Android Keystore 条目中，只有公开
 
 接收端明文监听和发送端明文许可默认均关闭。连接旧版应用时，必须手动启用对应的**未加密旧版兼容**选项，并使用可信网络。改变模式会断开相关会话。新发送端拒绝任何有配对历史的旧版 hello 身份，包括已撤销记录。TLS/认证失败不会打开旧版模式或用明文重试。
 
-端口仍为 `9000`，Bonjour 仍为 `_opensidecar._tcp`，TLS 内的应用帧格式不变。安全接收端在发现信息中增加 `security=tls-v1`。剥除该字段不能改变已配对发送端的证书固定值。ADB 转发和 usbmux 使用相同认证流；Mac 的 usbmux 中继只接受一个本机回环客户端，且只转发加密字节。
+端口仍为 `9000`，Bonjour 仍为 `_opensidecar._tcp`，TLS 内的应用帧格式不变。安全接收端在发现信息中增加 `security=tls-v1`。剥除该字段不能改变已配对发送端的证书固定值。ADB 转发、usbmux 以及源码分支零 ADB Android USB Open Accessory 2.0（`AOA 2.0`，尚未包含在已发布 `v0.3.5` 下载包中）均承载同一套认证 `DWA1`/`DWR1` 双向 TLS 流；Mac 本机回环 TLS 中继（`UsbmuxTLSRelay`）与 Android `LoopbackAccessoryBridge` 每个会话只接受一个本机回环客户端并端到端转发加密字节。
 
 ## 验证边界
 

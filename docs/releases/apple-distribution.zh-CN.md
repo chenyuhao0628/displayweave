@@ -23,7 +23,7 @@ python3 tools/apple-distribution.py preflight mac \
   --sparkle-bin build/verify/mac/SourcePackages/artifacts/sparkle/Sparkle/bin
 ```
 
-将占位符替换为已存在的本地身份，参数不传密码。预检读取 Keychain 并运行 `notarytool history` 校验访问，不提交产物；非零退出表示前提尚未满足。
+将占位符替换为已存在的本地身份，参数不传密码。预检检查 `xcodebuild`、`xcodegen`、`security`、`codesign`、`xcrun`、`ditto`、`hdiutil` 与 `git`，读取 Keychain 并运行 `notarytool history` 校验访问，不提交产物；非零退出表示前提尚未满足。
 
 iOS 需 Apple Distribution，并通过 Xcode 安装匹配 profile。文件必须位于 `~/Library/MobileDevice/Provisioning Profiles/` 或 `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`，传入绝对路径：
 
@@ -47,10 +47,10 @@ python3 tools/apple-distribution.py preflight ios \
 
 工具从 `project.yml` 生成工程，手动签名 Release archive 并本地导出，不启用自动 provisioning 或自动版本修改。校验**实际导出物**的 bundle/version/build、架构、strict/deep 签名、签名叶证书/team 和 entitlement；Mac 额外检查 feed 与 Sparkle 公钥，iOS 检查内嵌 profile 及应用/team entitlement。
 
-Mac 同时归档 arm64 与 x86_64。提交 ZIP 到 Apple 公证服务，服务器等待上限 30 分钟，本地进程也有超时。仅 `Accepted` 可继续 staple、验证 staple 和 Gatekeeper。最终 ZIP 从已 staple 的应用生成，使用原 Sparkle 账户签名并验证。iOS 导出 arm64 并解包校验 IPA。全部成功后才删除 `INCOMPLETE`，生成 `receipt.json` 与 `SHA256SUMS.txt`。
+Mac 同时归档 arm64 与 x86_64。首先提交应用 ZIP 到 Apple 公证服务（`notary.json`），服务器等待上限 30 分钟，本地进程也有超时；仅 `Accepted` 可继续应用 staple、验证 staple 和 Gatekeeper 评估。随后工作流从已 staple 的 `DisplayWeave.app` 生成 `DisplayWeave-macOS.zip`（使用原 Sparkle `ed25519` 账户签名并校验），同时将 `DisplayWeave.app` 与 `/Applications` 符号链接打包为压缩 `UDZO` 格式 `DisplayWeave-macOS.dmg`（`hdiutil create`），使用 Developer ID Application 身份与 `--timestamp` 签名 DMG，提交 DMG 至 `notarytool`（`notary-dmg.json`，等待上限 30 分钟），要求 `Accepted` 并依次通过 `stapler staple`、`stapler validate` 与 `codesign --verify --verbose=2` 后再输出 `DisplayWeave-macOS.dmg`。iOS 导出 arm64 并解包校验 IPA。全部关卡通过后才删除 `INCOMPLETE`，并将 `DisplayWeave-macOS.zip` 与 `DisplayWeave-macOS.dmg` 一并写入 `SHA256SUMS.txt` 与 `receipt.json`（`artifacts`、`dmgArtifact`、`dmgSha256`、`dmgBytes`、`dmgNotarySubmission`），供 GitHub Releases 分发。
 
-超时后 Apple 任务可能仍运行。先查看保留的提交输出并查询状态，再决定是否重新提交；超时不等于通过。本地成功回执也不代表实机表现或已公开发行。正式工具目前为 Mac 生成 ZIP；引导式 DMG 仍属于未公证本地工作流，不宣称已有公证生产 DMG。
+超时后 Apple 任务可能仍运行。先查看保留的提交输出（`notary.json` 或 `notary-dmg.json`）并查询状态，再决定是否重新提交；超时不等于通过。本地成功回执也不代表实机表现或已公开发行。该源码分支 DMG 公证链路仍依赖外部 Developer ID 凭据；已发布的 `v0.3.5`（24）下载包及独立的 `tools/create-guided-dmg.sh` 本地脚本仍为未公证产物，在未来正式签名、公证并上传至 GitHub Releases 之前，不宣称已有已发布的公证 DMG。
 
 ## 自动验证
 
-执行 `python3 tools/test-apple-distribution.py`。覆盖错误证书/team、到期/不匹配 profile、历史 prefix、调试权限、bundle/feed/key 替换、不可变输出与符号链接逃逸、手动导出配置、公证/stapler 失败阻断。合成流程验证必要关卡前不会生成回执或签名。本地预检按预期因缺少分发身份失败；补齐条件后仍需真实签名、导出、公证验证。
+执行 `python3 tools/test-apple-distribution.py`（13 项离线检查）。覆盖错误证书/team、到期/不匹配 profile、历史 prefix、调试权限、bundle/feed/key 替换、不可变输出与符号链接逃逸、手动导出配置、应用与 DMG 公证/stapler 失败阻断，以及 `DisplayWeave-macOS.zip` + `DisplayWeave-macOS.dmg` 双产物哈希与回执生成。合成流程验证无论应用或 DMG 公证/staple 任一关卡失败，都不会落地回执、校验和或最终签名状态。本地预检按预期因缺少分发身份失败；补齐条件后仍需真实签名、导出、公证验证。

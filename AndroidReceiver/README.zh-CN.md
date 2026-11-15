@@ -12,7 +12,7 @@ v0.3.5 包含[加密配对](../docs/guides/secure-transport.zh-CN.md)与[仅 Git
 
 - Android 8.0+；硬件 HEVC 支持取决于设备。
 - WiFi：Mac 与 Android 位于同一可信局域网，并按系统要求授予附近 WiFi/本地网络发现权限。
-- USB：支持数据传输的线缆、开发者选项、USB 调试，以及允许 Mac 的 RSA 身份。
+- USB（已发布 `v0.3.5` APK）：支持数据传输的线缆、开发者选项、USB 调试，以及允许 Mac 的 RSA 身份。在 `v0.3.5` 之后的源码分支（尚未包含在已发布 `v0.3.5` 下载包中），新增 Android USB Open Accessory 2.0（`AOA 2.0`）免 USB 调试／免 `adb` 即插即用有线双向 TLS 传输；当开启 USB 调试且有线 `adb` 在线时确定性仲裁仍优先走 `adb`，并在 `adb` 未授权／离线或第三方 MTP 工具（`Android File Transfer` / `OpenMTP`）独占 USB 接口时展示明确恢复提示。
 
 ## 安装 `v0.3.5`
 
@@ -82,8 +82,8 @@ Keystore 保存在 Git 之外，密码从 macOS Keychain 读取。除非明确�
 ## 协议与生命周期
 
 - 接收端 TCP Server：Android 端口 `9000`。
-- USB：Mac `127.0.0.1:<动态端口>` → `adb forward` → Android `tcp:9000`。
-- WiFi：Mac 直接连接广播的局域网地址。
+- USB：`v0.3.5` 及有线 `adb` 在线时为 Mac `127.0.0.1:<动态端口>` → `adb forward` → Android `tcp:9000`；`v0.3.5` 之后的源码分支另支持免 ADB 的 `AOA 2.0`（`0x18D1:0x2D00`/`0x2D01`、`16 KiB` 批量 URB 含 ZLP 边界控制），经 `UsbmuxTLSRelay` ↔ `LoopbackAccessoryBridge` 承载端到端双向 TLS（`DWA1`/`DWR1`）。
+- WiFi：Mac 直接连接广播的局域网地址（源码分支支持与 TCP 控制并行的可选 `udpMediaV1` AES-128-GCM 视频/光标/音频平面，以及 `tcpAudioV1`、`audioOpusV1`、`displayP3`、`pencil-v1`/`pencil-v2` 与 `mac-input-v1`）。
 - 视频：带 `streamConfig` 的长度前缀帧；支持时优先 HEVC，能力/codec 失败后回退 H.264。
 - 输入：轻点、拖动、光标和双指滚动 JSON。
 - 恢复：listener/Surface 操作幂等；必须收到对端协议消息才视为就绪，而不只是 TCP connect。
