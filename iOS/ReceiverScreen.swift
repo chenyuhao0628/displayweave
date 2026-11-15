@@ -146,6 +146,7 @@ private struct WindowGeometryObserver: UIViewRepresentable {
         private var lastReportedBounds: CGRect = .null
         private var lastScreenScale: CGFloat = 0
         private var screenModeObserver: NSObjectProtocol?
+        private var sceneActivateObserver: NSObjectProtocol?
 
         override init(frame: CGRect) {
             super.init(frame: frame)
@@ -154,8 +155,25 @@ private struct WindowGeometryObserver: UIViewRepresentable {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.lastReportedBounds = .null
-                self?.reportIfNeeded()
+                MainActor.assumeIsolated {
+                    self?.lastReportedBounds = .null
+                    self?.reportIfNeeded()
+                }
+            }
+            sceneActivateObserver = NotificationCenter.default.addObserver(
+                forName: UIScene.didActivateNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                let activatedSceneID = (notification.object as AnyObject?).map(ObjectIdentifier.init)
+                MainActor.assumeIsolated {
+                    guard let self,
+                          let windowScene = self.window?.windowScene,
+                          activatedSceneID == ObjectIdentifier(windowScene) else { return }
+                    PhoneSceneSizing.applyMinimumSizeRestrictions(to: windowScene)
+                    self.lastReportedBounds = .null
+                    self.reportIfNeeded()
+                }
             }
         }
 
@@ -165,10 +183,14 @@ private struct WindowGeometryObserver: UIViewRepresentable {
             if let screenModeObserver {
                 NotificationCenter.default.removeObserver(screenModeObserver)
             }
+            if let sceneActivateObserver {
+                NotificationCenter.default.removeObserver(sceneActivateObserver)
+            }
         }
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
+            PhoneSceneSizing.applyMinimumSizeRestrictions(to: window?.windowScene)
             lastReportedBounds = .null
             reportIfNeeded()
         }
@@ -181,7 +203,21 @@ private struct WindowGeometryObserver: UIViewRepresentable {
         func reportIfNeeded() {
             guard let window else { return }
             let scene = window.windowScene
-            let candidate = window.bounds.width > 0 && window.bounds.height > 0 ? window.bounds : bounds
+            if let scene,
+               scene.activationState == .background || scene.activationState == .unattached {
+                return
+            }
+            let winBounds = window.bounds
+            let candidate: CGRect
+            if winBounds.width.isFinite, winBounds.height.isFinite,
+               winBounds.width > 0, winBounds.height > 0 {
+                candidate = winBounds
+            } else if bounds.width.isFinite, bounds.height.isFinite,
+                      bounds.width > 0, bounds.height > 0 {
+                candidate = bounds
+            } else {
+                return
+            }
             let scale = scene?.screen.scale ?? 0
             guard candidate != lastReportedBounds || scale != lastScreenScale else { return }
             lastReportedBounds = candidate

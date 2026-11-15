@@ -294,22 +294,52 @@ final class NonBlockingUDPSocket: @unchecked Sendable {
         return closed
     }
 
+    enum SendResult: Equatable, Sendable {
+        case sent(Int)
+        case wouldBlock
+        case failed
+    }
+
     @discardableResult
-    func send(_ data: Data, to destination: sockaddr_storage) -> Bool {
+    func sendStatus(_ data: Data, to destination: sockaddr_storage) -> SendResult {
         guard !isClosed,
+              !data.isEmpty,
               var dest = UDPEndpointResolver.adaptSockAddr(destination, forSocketFamily: family) else {
-            return false
+            return .failed
         }
         let addrLen = UDPEndpointResolver.sockAddrLength(dest)
         return data.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return false }
-            let sent = withUnsafePointer(to: &dest) { destPtr in
-                destPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
-                    Darwin.sendto(fd, base, data.count, 0, saPtr, addrLen)
+            guard let base = raw.baseAddress else { return .failed }
+            var sent: Int = -1
+            for _ in 0..<2 {
+                sent = withUnsafePointer(to: &dest) { destPtr in
+                    destPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
+                        Darwin.sendto(fd, base, data.count, 0, saPtr, addrLen)
+                    }
+                }
+                if sent >= 0 || Darwin.errno != EINTR {
+                    break
                 }
             }
-            return sent == data.count
+            if sent == data.count {
+                return .sent(sent)
+            }
+            if sent < 0 {
+                let err = Darwin.errno
+                if err == EAGAIN || err == EWOULDBLOCK || err == ENOBUFS {
+                    return .wouldBlock
+                }
+            }
+            return .failed
         }
+    }
+
+    @discardableResult
+    func send(_ data: Data, to destination: sockaddr_storage) -> Bool {
+        if case .sent = sendStatus(data, to: destination) {
+            return true
+        }
+        return false
     }
 
     func close() {
@@ -353,12 +383,14 @@ final class UDPMediaSenderSession: @unchecked Sendable {
     private var lastReceiverActivityUptime: TimeInterval = 0
     private var lastFrameSentUptime: TimeInterval = 0
     private var nextFrameId: UInt32 = 1
+    private var incompleteVideoFrameIds: [UInt32] = []
 
     var onReady: ((UInt64, Int64) -> Void)?
     var onBandwidthDecision: ((UInt64, Int64, UDPBandwidthDecision, Int) -> Void)?
     var onKeyframeRequested: ((UInt64, Int64) -> Void)?
     var onFallbackToTCP: ((UInt64, Int64, String) -> Void)?
     var onBytesSent: ((Int, Bool) -> Void)?
+    var socketSendOverride: ((Data, sockaddr_storage) -> NonBlockingUDPSocket.SendResult)?
 
     var isReady: Bool {
         stateLock.lock()
@@ -737,17 +769,44 @@ final class UDPMediaSenderSession: @unchecked Sendable {
         flushPacerBurstOnQueue(nowUptime: now)
     }
 
+    private func markVideoFrameIncompleteOnQueue(_ frameId: UInt32) {
+        guard !incompleteVideoFrameIds.contains(frameId) else { return }
+        if incompleteVideoFrameIds.count >= 16 {
+            incompleteVideoFrameIds.removeFirst(incompleteVideoFrameIds.count - 15)
+        }
+        incompleteVideoFrameIds.append(frameId)
+    }
+
+    private func consumeIncompleteVideoFrameOnQueue(_ frameId: UInt32) -> Bool {
+        guard let idx = incompleteVideoFrameIds.firstIndex(of: frameId) else { return false }
+        incompleteVideoFrameIds.remove(at: idx)
+        return true
+    }
+
     private func flushPacerBurstOnQueue(nowUptime: TimeInterval) {
         guard let dest = peerAddress, let socket else { return }
         let burst = pacer.pollTransmitBurst(nowUptime: nowUptime)
         guard !burst.isEmpty else { return }
         var pendingBytes = 0
         for item in burst {
-            if socket.send(item.datagram, to: dest) {
-                pendingBytes += item.datagram.count
+            let result = socketSendOverride?(item.datagram, dest) ?? socket.sendStatus(item.datagram, to: dest)
+            switch result {
+            case .sent(let sentBytes):
+                pendingBytes += sentBytes
                 if item.completesVideoFrame {
-                    onBytesSent?(pendingBytes, true)
-                    pendingBytes = 0
+                    let wasIncomplete = consumeIncompleteVideoFrameOnQueue(item.frameId)
+                    if !wasIncomplete {
+                        onBytesSent?(pendingBytes, true)
+                        pendingBytes = 0
+                    }
+                }
+            case .wouldBlock, .failed:
+                if item.packetType == .videoData && !item.flags.contains(.retransmit) {
+                    if item.completesVideoFrame {
+                        _ = consumeIncompleteVideoFrameOnQueue(item.frameId)
+                    } else {
+                        markVideoFrameIncompleteOnQueue(item.frameId)
+                    }
                 }
             }
         }

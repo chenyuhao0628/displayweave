@@ -93,6 +93,32 @@ private enum FixtureFailure: Error { case write }
         rejects { try full.trustConfirmedReceiver(id: "peer1", name: "", fingerprint: clientPin, explicitInvitation: true) }
         try full.revoke("peer1")
         rejects { try full.trustConfirmedReceiver(id: "peer1", name: "", fingerprint: clientPin, explicitInvitation: false) }
+
+        // UTF-8 scalar byte-budget truncation (never splits multi-byte scalars or over-drops ZWJ grapheme clusters by Character count)
+        precondition(SecurePairingProtocol.truncateUTF8("abcdef", maxBytes: 0) == "")
+        precondition(SecurePairingProtocol.truncateUTF8("abcdef", maxBytes: 4) == "abcd")
+        // CJK 3-byte scalars ("配对邀请" = 12 UTF-8 bytes)
+        let cjk = "配对邀请"
+        for budget in 0...15 {
+            let truncated = SecurePairingProtocol.truncateUTF8(cjk, maxBytes: budget)
+            precondition(truncated.utf8.count <= budget, "CJK truncation exceeded byte budget \(budget)")
+            precondition(String(decoding: Data(truncated.utf8), as: UTF8.self) == truncated, "split UTF-8 scalar")
+        }
+        precondition(SecurePairingProtocol.truncateUTF8(cjk, maxBytes: 5) == "配")
+        precondition(SecurePairingProtocol.truncateUTF8(cjk, maxBytes: 6) == "配对")
+        // Multi-scalar ZWJ family emoji ("👨‍👩‍👧‍👦" = 4x 4-byte emoji + 3x 3-byte ZWJ = 25 UTF-8 bytes, 1 Swift Character!)
+        // Character-based truncation at maxBytes=11 would return "" (0 bytes), whereas scalar UTF-8 budget keeps "👨‍👩" (11 bytes)!
+        let family = "👨‍👩‍👧‍👦"
+        let truncatedFamily = SecurePairingProtocol.truncateUTF8(family, maxBytes: 11)
+        precondition(truncatedFamily.utf8.count == 11, "scalar UTF-8 budget must preserve valid prefix scalars (got \(truncatedFamily.utf8.count) bytes)")
+        precondition(SecurePairingProtocol.truncateUTF8(family, maxBytes: 3) == "")
+        precondition(SecurePairingProtocol.truncateUTF8(family, maxBytes: 4).utf8.count == 4)
+        let hugePaste = "DW1." + String(repeating: "测", count: 1000)
+        let boundedPaste = SecurePairingProtocol.truncateUTF8(hugePaste, maxBytes: SecurePairingProtocol.maximumInvitationBytes)
+        precondition(boundedPaste.utf8.count <= SecurePairingProtocol.maximumInvitationBytes
+            && boundedPaste.utf8.count >= SecurePairingProtocol.maximumInvitationBytes - 2,
+                     "oversized multi-byte invitation paste must truncate tightly to UTF-8 byte budget")
+
         if CommandLine.arguments.count == 2 {
             let vectors = ["invitation": encoded, "authHex": SecurePairingProtocol.hex(wire),
                            "readyHex": SecurePairingProtocol.hex(ready)]

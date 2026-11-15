@@ -306,6 +306,60 @@ private final class ReceiverLogProbe: @unchecked Sendable {
         precondition(audioProbe.stops >= 1, "stopping receiver must stop audio player")
         withExtendedLifetime(upgPeer) {}
 
+        // Verify portrait Mac monitor capability clamping + odd inset clamping + live Annex-B swapped (w,h)==(cfgH,cfgW) rotation
+        let oddPanel = StreamReceiver.resolvedPanel(
+            PanelAnnouncement(pixelsWide: 2235, pixelsHigh: 3457, scale: 2, millimetersWide: 210, millimetersHigh: 325)
+        )
+        precondition(oddPanel.pixelsWide == 2234 && oddPanel.pixelsHigh == 3456,
+                     "resolvedPanel must clamp odd panel dimensions to even pixels")
+        let portraitMac = StreamReceiver(hardwareHEVCDecode: true, securityProvider: { .legacy })
+        portraitMac.configure(
+            panel: PanelAnnouncement(pixelsWide: 2234, pixelsHigh: 3456, scale: 2, millimetersWide: 210, millimetersHigh: 325),
+            name: "PortraitMac",
+            maxFps: 120
+        )
+        portraitMac.start(port: 0, advertiseService: false)
+        try await waitFor("portrait mac listen") { portraitMac.listeningPort != 0 }
+        let portraitPort = portraitMac.listeningPort
+        let portraitPeer = try await Task.detached { () -> ReceiverTestPeer in
+            let peer = try ReceiverTestPeer(port: portraitPort)
+            let hello = try peer.hello()
+            let videoCaps = hello["videoCaps"] as? [[String: Any]] ?? []
+            precondition(!videoCaps.isEmpty && videoCaps.count <= 16,
+                         "advertised videoCaps must remain within protocol 16-entry cap")
+            let firstCap = videoCaps[0]
+            precondition(firstCap["maxWidth"] as? Int == 2304 && firstCap["maxHeight"] as? Int == 4096,
+                         "portrait Mac panel must advertise portrait 4K envelope first")
+            precondition(videoCaps.contains { ($0["maxWidth"] as? Int) == 2234 && ($0["maxHeight"] as? Int) == 3456 && ($0["maxFrameRate"] as? Int) == 120 },
+                         "portrait ProMotion Mac panel must advertise native 120Hz portrait envelope")
+            return peer
+        }.value
+        precondition(portraitMac.acceptsStreamConfiguration(["codec": "hevc", "width": 3000, "height": 3000, "fps": 60]) == nil,
+                     "out-of-envelope 3000x3000 short edge > 2880 must be rejected at streamConfig time")
+        precondition(portraitMac.acceptsStreamConfiguration(["codec": "hevc", "width": 2234, "height": 3456, "fps": 120]) != nil,
+                     "portrait native 2234x3456 @ 120Hz must be accepted")
+        precondition(portraitMac.acceptsStreamConfiguration(["codec": "hevc", "width": 3456, "height": 2234, "fps": 120]) != nil,
+                     "rotated landscape native 3456x2234 @ 120Hz must be accepted")
+
+        let portraitFrame = try await Task.detached { try receiverTestH264Frame(width: 64, height: 96) }.value
+        let landscapeFrame = try await Task.detached { try receiverTestH264Frame(width: 96, height: 64) }.value
+        let initialPortraitCfg = try JSONSerialization.data(withJSONObject: [
+            "type": "streamConfig", "codec": "h264", "width": 64, "height": 96, "fps": 60, "configVersion": 1
+        ])
+        try await Task.detached {
+            try portraitPeer.write(ReceiverFrameDecoder.frame(initialPortraitCfg) + ReceiverFrameDecoder.frame(portraitFrame))
+        }.value
+        try await waitFor("portrait 64x96 video") { portraitMac.videoSize == CGSize(width: 64, height: 96) }
+        // Live orientation switch: send swapped 96x64 keyframe BEFORE new streamConfig — must NOT disconnect with "视频尺寸与配置不符"!
+        try await Task.detached {
+            try portraitPeer.write(ReceiverFrameDecoder.frame(landscapeFrame))
+        }.value
+        try await waitFor("swapped 96x64 live rotation") { portraitMac.videoSize == CGSize(width: 96, height: 64) }
+        precondition(portraitMac.connected && !portraitMac.status.contains("视频尺寸与配置不符"),
+                     "swapped (w, h) == (cfgH, cfgW) across live orientation switch must never disconnect")
+        await withCheckedContinuation { continuation in portraitMac.stop { continuation.resume() } }
+        withExtendedLifetime(portraitPeer) {}
+
         print("Mac receiver loopback: hello, cursor coalescing, diagnostics, busy rejection, H264, invalid framing, reconnect, stop/restart PASS")
     }
 }

@@ -255,6 +255,152 @@ private func runReceiverProbeRetryCheck() throws {
     let finalCount = probeSeqs.count
     lock.unlock()
     expect(finalCount == 2, "UDPMediaReceiverSession stops retrying initial probes once sender responds (got \(finalCount))")
+
+    // Verify full 6-probe ceiling (~150ms spacing) when sender never replies
+    let silentEpoch: Int64 = 304
+    let silentSecret = UDPMediaKeyMaterial.generateRootSecret()
+    let silentKeys = try UDPMediaKeyMaterial.derive(rootSecret: silentSecret, sessionEpoch: silentEpoch)
+    var silentCrypto = UDPMediaCryptoSession(keyMaterial: silentKeys)
+    let sixProbesSem = DispatchSemaphore(value: 0)
+    var silentArrivalUptimes: [TimeInterval] = []
+    guard let silentServer = NonBlockingUDPSocket(
+        preferIPv6: false,
+        boundInterfaceName: "lo0",
+        queue: probeQueue,
+        onReceive: { data, _ in
+            guard let pkt = try? silentCrypto.open(datagram: data, expectedDirection: .receiverToSender),
+                  pkt.header.packetType == .probe else { return }
+            lock.lock()
+            silentArrivalUptimes.append(ProcessInfo.processInfo.systemUptime)
+            let count = silentArrivalUptimes.count
+            lock.unlock()
+            if count == UDPMediaReceiverSession.maxInitialProbes {
+                sixProbesSem.signal()
+            }
+        }
+    ) else {
+        fatalError("Failed to open silent probe server socket")
+    }
+    defer { silentServer.close() }
+    let silentConfig = UDPMediaConfigMessage(
+        sessionEpoch: silentEpoch,
+        udpPort: silentServer.localPort,
+        rootSecret: silentSecret
+    )
+    guard let silentReceiver = UDPMediaReceiverSession(
+        config: silentConfig,
+        generation: 8,
+        senderHost: "127.0.0.1",
+        boundInterfaceName: "lo0"
+    ) else {
+        fatalError("Failed to create silent receiver")
+    }
+    defer { silentReceiver.stop() }
+    expect(sixProbesSem.wait(timeout: .now() + 2.0) == .success,
+           "UDPMediaReceiverSession must emit all 6 initial UDP probes (~150ms spacing)")
+    Thread.sleep(forTimeInterval: 0.25)
+    lock.lock()
+    let silentCount = silentArrivalUptimes.count
+    let totalSpan = (silentArrivalUptimes.last ?? 0) - (silentArrivalUptimes.first ?? 0)
+    lock.unlock()
+    expect(silentCount == 6, "UDPMediaReceiverSession must stop at 6 initial probes (got \(silentCount))")
+    expect(totalSpan >= 0.60, "6 probes spaced by 150ms must span >= 600ms (got \(totalSpan)s)")
+}
+
+private func runSocketWouldBlockAndBytesSentAccountingCheck() {
+    let lock = NSLock()
+    let readySem = DispatchSemaphore(value: 0)
+    let doneSem = DispatchSemaphore(value: 0)
+
+    guard let sender = UDPMediaSenderSession(
+        sessionEpoch: 404,
+        wireGeneration: 9,
+        initialBitrate: 50_000_000,
+        bitrateBounds: 10_000_000...100_000_000,
+        peerHost: "127.0.0.1",
+        peerPort: nil,
+        boundInterfaceName: "lo0"
+    ) else {
+        fatalError("Failed to create sender for bytes-sent accounting check")
+    }
+    defer { sender.stop() }
+    sender.onReady = { _, _ in readySem.signal() }
+
+    guard let receiver = UDPMediaReceiverSession(
+        config: sender.makeConfigMessage(),
+        generation: 9,
+        senderHost: "127.0.0.1",
+        boundInterfaceName: "lo0"
+    ) else {
+        fatalError("Failed to create receiver for bytes-sent accounting check")
+    }
+    defer { receiver.stop() }
+    sender.configurePeer(host: "127.0.0.1", port: receiver.localPort)
+    expect(readySem.wait(timeout: .now() + 2.0) == .success, "UDP handshake ready for accounting check")
+
+    // Inject EAGAIN/EWOULDBLOCK (.wouldBlock) on the first fragment of Frame #1 (multi-fragment payload),
+    // and let remaining fragments succeed; then send a single-fragment Frame #2 where all packets succeed.
+    var callIndex = 0
+    var actualWireBytesAccepted = 0
+    var reportedBytesTotal = 0
+    var completedFrameReports: [Bool] = []
+
+    sender.queue.sync {
+        sender.onBytesSent = { bytes, completed in
+            lock.lock()
+            reportedBytesTotal += bytes
+            completedFrameReports.append(completed)
+            if completed {
+                doneSem.signal()
+            }
+            lock.unlock()
+        }
+        sender.socketSendOverride = { data, _ in
+            lock.lock()
+            let current = callIndex
+            callIndex += 1
+            if current == 0 {
+                lock.unlock()
+                return .wouldBlock
+            }
+            actualWireBytesAccepted += data.count
+            lock.unlock()
+            return .sent(data.count)
+        }
+    }
+
+    // Multi-fragment frame (~3.6 KB -> 4 data shards + FEC parity): shard 0 hits .wouldBlock!
+    let multiFragFrame = Data([0x00, 0x00, 0x00, 0x01, 0x65]) + Data(repeating: 0xAB, count: 3600)
+    expect(sender.sendFrame(annexB: multiFragFrame, isKeyframe: true, captureTimestampMs: 500, configVersion: 1),
+           "multi-fragment frame enqueued")
+    Thread.sleep(forTimeInterval: 0.05)
+
+    lock.lock()
+    let completedAfterDroppedFirstFrag = completedFrameReports.contains(true)
+    let bytesAfterFirstFrame = reportedBytesTotal
+    let acceptedAfterFirstFrame = actualWireBytesAccepted
+    lock.unlock()
+    expect(!completedAfterDroppedFirstFrag,
+           "frame with a .wouldBlock dropped fragment must NEVER report completedFrame == true")
+    expect(bytesAfterFirstFrame == acceptedAfterFirstFrame,
+           "onBytesSent must NEVER count .wouldBlock dropped packet bytes (\(bytesAfterFirstFrame) vs \(acceptedAfterFirstFrame))")
+
+    // Second frame: all fragments succeed -> reports exact wire bytes and completedFrame == true
+    let smallFrame = Data([0x00, 0x00, 0x00, 0x01, 0x41, 0x9A, 0x22, 0x33])
+    expect(sender.sendFrame(annexB: smallFrame, isKeyframe: false, captureTimestampMs: 516, configVersion: 1),
+           "second frame enqueued")
+    expect(doneSem.wait(timeout: .now() + 1.0) == .success, "complete second frame reported")
+    Thread.sleep(forTimeInterval: 0.02)
+
+    lock.lock()
+    let finalReported = reportedBytesTotal
+    let finalAccepted = actualWireBytesAccepted
+    let completedTrueCount = completedFrameReports.filter { $0 }.count
+    lock.unlock()
+    expect(finalReported == finalAccepted,
+           "total onBytesSent (\(finalReported)) must equal exact accepted socket bytes (\(finalAccepted))")
+    expect(completedTrueCount == 1,
+           "only the fully transmitted frame may report completedFrame == true (got \(completedTrueCount))")
 }
 
 @main
@@ -284,9 +430,11 @@ struct UDPMediaTransportSelfTest {
                    "AF_INET socket rejects pure IPv6 destination cleanly with false")
         }
         let v4Dest = UDPEndpointResolver.resolveSockAddr(host: "127.0.0.1", port: v4OnlySock.localPort)!
+        expect(v4OnlySock.sendStatus(Data(), to: v4Dest) == .failed,
+               "empty datagram sendStatus must return .failed")
         v4OnlySock.close()
-        expect(!v4OnlySock.send(Data([0x01]), to: v4Dest),
-               "closed NonBlockingUDPSocket.send must return false")
+        expect(v4OnlySock.sendStatus(Data([0x01]), to: v4Dest) == .failed && !v4OnlySock.send(Data([0x01]), to: v4Dest),
+               "closed NonBlockingUDPSocket.sendStatus/send must return .failed/false")
 
         // Verify UDPEndpointResolver IPv6 preference even before peerPort is known
         expect(UDPEndpointResolver.prefersIPv6(host: nil), "unbound socket defaults to dual-stack IPv6")
@@ -302,8 +450,11 @@ struct UDPMediaTransportSelfTest {
         runLoopbackTransportCheck(host: "::1", boundInterfaceName: nil, sessionEpoch: 101)
         runLoopbackTransportCheck(host: "::1", boundInterfaceName: "lo0", sessionEpoch: 102)
 
-        // 4. Receiver multi-probe retry (~150ms spacing) on dropped initial probe
+        // 4. Receiver multi-probe retry (~150ms spacing, up to 6 probes)
         try runReceiverProbeRetryCheck()
+
+        // 5. EAGAIN/EWOULDBLOCK (.wouldBlock) packet-drop accounting in onBytesSent
+        runSocketWouldBlockAndBytesSentAccountingCheck()
 
         print("UDPMediaTransportSelfTest PASS")
     }

@@ -13,6 +13,13 @@ struct TransportSecuritySettings: View {
     @State private var showReset = false
     private let refresh = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
+    static func boundedInvitationInput(
+        _ value: String,
+        maxBytes: Int = SecurePairingProtocol.maximumInvitationBytes
+    ) -> String {
+        SecurePairingProtocol.truncateUTF8(value, maxBytes: maxBytes)
+    }
+
     var body: some View {
         Group {
             Section("安全与配对") {
@@ -41,14 +48,15 @@ struct TransportSecuritySettings: View {
                     TextField("粘贴接收端 DW1. 配对邀请", text: $importText, axis: .vertical)
                         .lineLimit(2...4)
                         .onChange(of: importText) { _, value in
-                            if value.utf8.count > SecurePairingProtocol.maximumInvitationBytes {
-                                importText = SecurePairingProtocol.truncateUTF8(
-                                    value,
-                                    maxBytes: SecurePairingProtocol.maximumInvitationBytes
-                                )
+                            let bounded = Self.boundedInvitationInput(value)
+                            if bounded != value {
+                                importText = bounded
                             }
                         }
-                    Button("导入邀请") { model.importInvitation(importText); importText = "" }
+                    Button("导入邀请") {
+                        model.importInvitation(Self.boundedInvitationInput(importText))
+                        importText = ""
+                    }
                         .disabled(importText.isEmpty)
                     if let id = model.importedID {
                         Text("邀请已导入（\(id)），现在返回设备列表选择对应接收端。")

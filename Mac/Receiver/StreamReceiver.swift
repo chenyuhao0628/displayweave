@@ -127,40 +127,57 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         if let securityObserver { NotificationCenter.default.removeObserver(securityObserver) }
     }
 
-    /// Populates `millimetersWide` / `millimetersHigh` from `CGDisplayScreenSize`
-    /// when caller omitted physical dimensions and a valid hardware EDID size exists.
-    private static func resolvedPanel(_ base: PanelAnnouncement) -> PanelAnnouncement {
-        if base.millimetersWide != nil && base.millimetersHigh != nil {
-            return base
+    /// Normalizes pixel dimensions to valid even bounds (`2...16384`) and populates
+    /// `millimetersWide` / `millimetersHigh` from `CGDisplayScreenSize` when caller
+    /// omitted physical dimensions and a valid hardware EDID size exists.
+    static func resolvedPanel(_ base: PanelAnnouncement) -> PanelAnnouncement {
+        let clampedWide = max(2, min(16384, base.pixelsWide & ~1))
+        let clampedHigh = max(2, min(16384, base.pixelsHigh & ~1))
+        let clampedScale = (base.scale.isFinite && base.scale > 0)
+            ? min(4.0, max(0.5, base.scale))
+            : 1.0
+        let clampedPointsWide = base.pointsWide.map { max(2, min(16384, $0)) }
+        let clampedPointsHigh = base.pointsHigh.map { max(2, min(16384, $0)) }
+        let sanitized = PanelAnnouncement(
+            pixelsWide: clampedWide,
+            pixelsHigh: clampedHigh,
+            scale: clampedScale,
+            pointsWide: clampedPointsWide,
+            pointsHigh: clampedPointsHigh,
+            millimetersWide: base.millimetersWide,
+            millimetersHigh: base.millimetersHigh
+        )
+        if sanitized.millimetersWide != nil && sanitized.millimetersHigh != nil {
+            return sanitized
         }
         let mainID = CGMainDisplayID()
-        guard mainID != 0 else { return base }
+        guard mainID != 0 else { return sanitized }
         let raw = CGDisplayScreenSize(mainID)
         let bounds = CGDisplayBounds(mainID)
         guard raw.width.isFinite, raw.height.isFinite,
               raw.width >= 50, raw.height >= 50,
               raw.width <= 2000, raw.height <= 2000 else {
-            return base
+            return sanitized
         }
         if bounds.width > 0, bounds.height > 0 {
             let syntheticW = Double(bounds.width) * 25.4 / 72.0
             let syntheticH = Double(bounds.height) * 25.4 / 72.0
             if abs(syntheticW - Double(raw.width)) <= 1.5 && abs(syntheticH - Double(raw.height)) <= 1.5 {
-                return base
+                return sanitized
             }
         }
-        let wantPortrait = base.pixelsHigh > base.pixelsWide
+        let wantPortrait = sanitized.pixelsHigh > sanitized.pixelsWide
         let rawPortrait = raw.height > raw.width
         let widthMm = Int(((wantPortrait == rawPortrait) ? raw.width : raw.height).rounded())
         let heightMm = Int(((wantPortrait == rawPortrait) ? raw.height : raw.width).rounded())
         return PanelAnnouncement(
-            pixelsWide: base.pixelsWide,
-            pixelsHigh: base.pixelsHigh,
-            scale: base.scale,
-            pointsWide: base.pointsWide,
-            pointsHigh: base.pointsHigh,
-            millimetersWide: base.millimetersWide ?? widthMm,
-            millimetersHigh: base.millimetersHigh ?? heightMm
+            pixelsWide: sanitized.pixelsWide,
+            pixelsHigh: sanitized.pixelsHigh,
+            scale: sanitized.scale,
+            pointsWide: sanitized.pointsWide,
+            pointsHigh: sanitized.pointsHigh,
+            millimetersWide: sanitized.millimetersWide ?? widthMm,
+            millimetersHigh: sanitized.millimetersHigh ?? heightMm
         )
     }
 
@@ -396,38 +413,69 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         publish(connected: false, status: status)
     }
 
-    private func advertisedVideoCapabilities() -> [[String: Any]] {
+    func advertisedVideoCapabilities() -> [[String: Any]] {
         let codecs = supportsHEVC ? ["h264", "hevc"] : ["h264"]
+        let isPortrait = panel.pixelsHigh > panel.pixelsWide
+        let nativeEnvelope = AppleVideoPolicy.nativeHighRefreshEnvelope(
+            width: panel.pixelsWide,
+            height: panel.pixelsHigh,
+            maxFps: maxFps
+        )
+        let swappedNativeEnvelope = (panel.pixelsWide != panel.pixelsHigh)
+            ? AppleVideoPolicy.nativeHighRefreshEnvelope(
+                width: panel.pixelsHigh,
+                height: panel.pixelsWide,
+                maxFps: maxFps
+            )
+            : nil
         var caps: [[String: Any]] = []
         for codec in codecs {
+            let primary4K = isPortrait
+                ? (width: Self.maxH264ShortEdge, height: Self.maxH264LongEdge)
+                : (width: Self.maxH264LongEdge, height: Self.maxH264ShortEdge)
+            let secondary4K = isPortrait
+                ? (width: Self.maxH264LongEdge, height: Self.maxH264ShortEdge)
+                : (width: Self.maxH264ShortEdge, height: Self.maxH264LongEdge)
             caps.append([
                 "codec": codec,
-                "maxWidth": Self.maxH264LongEdge,
-                "maxHeight": Self.maxH264ShortEdge,
+                "maxWidth": primary4K.width,
+                "maxHeight": primary4K.height,
                 "maxFrameRate": maxFps,
                 "maxPixelsPerSecond": AppleVideoPolicy.maxPixelsPerSecond
             ])
             caps.append([
                 "codec": codec,
-                "maxWidth": Self.maxH264ShortEdge,
-                "maxHeight": Self.maxH264LongEdge,
+                "maxWidth": secondary4K.width,
+                "maxHeight": secondary4K.height,
                 "maxFrameRate": maxFps,
                 "maxPixelsPerSecond": AppleVideoPolicy.maxPixelsPerSecond
             ])
+            if let nativeEnvelope {
+                caps.append(nativeEnvelope.capability(codec: codec))
+            }
+            if let swappedNativeEnvelope {
+                caps.append(swappedNativeEnvelope.capability(codec: codec))
+            }
         }
         if supportsHEVC {
             let fps5K = min(maxFps, Self.maxHEVC5KFrameRate)
+            let primary5K = isPortrait
+                ? (width: Self.maxHEVC5KShortEdge, height: Self.maxHEVC5KLongEdge)
+                : (width: Self.maxHEVC5KLongEdge, height: Self.maxHEVC5KShortEdge)
+            let secondary5K = isPortrait
+                ? (width: Self.maxHEVC5KLongEdge, height: Self.maxHEVC5KShortEdge)
+                : (width: Self.maxHEVC5KShortEdge, height: Self.maxHEVC5KLongEdge)
             caps.append([
                 "codec": "hevc",
-                "maxWidth": Self.maxHEVC5KLongEdge,
-                "maxHeight": Self.maxHEVC5KShortEdge,
+                "maxWidth": primary5K.width,
+                "maxHeight": primary5K.height,
                 "maxFrameRate": fps5K,
                 "maxPixelsPerSecond": Self.maxHEVC5KPixelsPerSecond
             ])
             caps.append([
                 "codec": "hevc",
-                "maxWidth": Self.maxHEVC5KShortEdge,
-                "maxHeight": Self.maxHEVC5KLongEdge,
+                "maxWidth": secondary5K.width,
+                "maxHeight": secondary5K.height,
                 "maxFrameRate": fps5K,
                 "maxPixelsPerSecond": Self.maxHEVC5KPixelsPerSecond
             ])
@@ -435,14 +483,44 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
         return caps
     }
 
-    private func acceptsStreamConfiguration(_ obj: [String: Any]) -> AppleVideoConfiguration? {
-        AppleVideoConfiguration(
-            obj,
-            maxWidth: AppleVideoPolicy.maxHEVC5KWidth,
-            maxHeight: AppleVideoPolicy.maxHEVC5KWidth,
-            maxFps: maxFps,
-            allowHEVC5K: true
+    func acceptsStreamConfiguration(_ obj: [String: Any]) -> AppleVideoConfiguration? {
+        let maxEdge = supportsHEVC ? Self.maxHEVC5KLongEdge : Self.maxH264LongEdge
+        let nativeEnvelope = AppleVideoPolicy.nativeHighRefreshEnvelope(
+            width: panel.pixelsWide,
+            height: panel.pixelsHigh,
+            maxFps: maxFps
         )
+        let swappedNativeEnvelope = (panel.pixelsWide != panel.pixelsHigh)
+            ? AppleVideoPolicy.nativeHighRefreshEnvelope(
+                width: panel.pixelsHigh,
+                height: panel.pixelsWide,
+                maxFps: maxFps
+            )
+            : nil
+        let parsed = AppleVideoConfiguration(
+            obj,
+            maxWidth: maxEdge,
+            maxHeight: maxEdge,
+            maxFps: maxFps,
+            nativeEnvelope: nativeEnvelope,
+            allowHEVC5K: supportsHEVC
+        ) ?? AppleVideoConfiguration(
+            obj,
+            maxWidth: maxEdge,
+            maxHeight: maxEdge,
+            maxFps: maxFps,
+            nativeEnvelope: swappedNativeEnvelope,
+            allowHEVC5K: supportsHEVC
+        )
+        guard let config = parsed,
+              fitsHardwareEnvelope(
+                width: Int32(config.width),
+                height: Int32(config.height),
+                codec: config.codec
+              ) else {
+            return nil
+        }
+        return config
     }
 
     private func fitsHardwareEnvelope(width: Int32, height: Int32, codec: ReceiverVideoCodec) -> Bool {
@@ -881,7 +959,9 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
             let dims = CMVideoFormatDescriptionGetDimensions(format)
             let size = CGSize(width: Int(dims.width), height: Int(dims.height))
             let fitsEnvelope = fitsHardwareEnvelope(width: dims.width, height: dims.height, codec: videoCodec)
-            let matchesConfigured = configuredSize == nil || configuredSize == size
+            let matchesConfigured = configuredSize == nil
+                || configuredSize == size
+                || (fitsEnvelope && configuredSize.map { CGSize(width: $0.height, height: $0.width) == size } == true)
             if !fitsEnvelope || !matchesConfigured {
                 if isUDP && fitsEnvelope {
                     bitstream = ReceiverVideoBitstream(codec: videoCodec)
@@ -891,6 +971,9 @@ final class StreamReceiver: ObservableObject, @unchecked Sendable {
                 }
                 drop(conn, status: "视频尺寸与配置不符，请重新连接")
                 return
+            }
+            if configuredSize != nil && configuredSize != size {
+                configuredSize = size
             }
             videoRenderer.flush(removingDisplayedImage: true)
             videoBackpressure = ReceiverVideoBackpressurePolicy()
